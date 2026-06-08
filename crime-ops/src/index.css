@@ -231,6 +231,36 @@ a:hover { color: var(--blue-500); }
 /* Nav right */
 .db-nav-right { display: flex; align-items: center; gap: 12px; margin-left: auto; flex-shrink: 0; }
 
+/* Language switcher */
+.nav-lang {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.nav-lang-btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+  background: transparent;
+  transition: color 0.15s, background 0.15s;
+}
+
+.nav-lang-btn:hover { color: var(--text-1); }
+
+.nav-lang-btn.active {
+  color: #fff;
+  background: linear-gradient(135deg, var(--blue-600), var(--blue-500));
+}
+
 .nav-icon-btn {
   width: 34px;
   height: 34px;

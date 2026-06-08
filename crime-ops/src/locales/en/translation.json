@@ -1,0 +1,43 @@
+{
+  "nav": {
+    "subtitle": "Crime Analytics Platform"
+  },
+  "search": {
+    "placeholder": "Search modules…",
+    "results": "Results for",
+    "noResults": "No modules match"
+  },
+  "welcome": {
+    "title": "Welcome back,",
+    "subtitle": "Sentinel is your centralised intelligence hub. Select a module below to get started."
+  },
+  "system": {
+    "operational": "System operational"
+  },
+  "section": {
+    "modules": "Modules"
+  },
+  "action": {
+    "signOut": "Sign out"
+  },
+  "badge": {
+    "soon": "Soon"
+  },
+  "a11y": {
+    "notifications": "Notifications",
+    "lightMode": "Switch to light mode",
+    "darkMode": "Switch to dark mode",
+    "clearSearch": "Clear search",
+    "language": "Change language"
+  },
+  "modules": {
+    "incidents":    { "label": "Incidents",    "desc": "Log, track and manage active crime incidents" },
+    "crimeMap":     { "label": "Crime Map",    "desc": "Geospatial intelligence and hotspot visualisation" },
+    "aiAnalytics":  { "label": "AI Analytics", "desc": "Pattern recognition and predictive crime modelling" },
+    "reports":      { "label": "Reports",      "desc": "Statistical summaries and shift performance data" },
+    "personnel":    { "label": "Personnel",    "desc": "Officer directory, roles and unit management" },
+    "caseFiles":    { "label": "Case Files",   "desc": "Structured case records and evidence linking" },
+    "intelligence": { "label": "Intelligence", "desc": "Aggregated field intelligence and source reports" },
+    "admin":        { "label": "Admin",        "desc": "User access control, audit logs and settings" }
+  }
+}

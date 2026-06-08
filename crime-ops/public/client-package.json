@@ -1,6 +1,6 @@
 {
   "name": "crime-dashboard",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "homepage": "index.html",
   "login_redirect": "index.html",
   "404": "404.html",
