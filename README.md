@@ -9,5 +9,4 @@ For Catalyst setup:
 npm install -g zcatalyst-cli
 catalyst login
 catalyst init
-
 ```
