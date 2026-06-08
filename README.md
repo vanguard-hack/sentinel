@@ -1,5 +1,8 @@
 # sentinel
 
+Runtime: Python 3.13
+UI: React
+
 For Catalyst setup:
 
 ```python
