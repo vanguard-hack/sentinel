@@ -1,7 +1,7 @@
 # sentinel
 
-Runtime: Python 3.13
-UI: React
+- Runtime: Python 3.13
+- UI: React
 
 For Catalyst setup:
 
@@ -10,3 +10,8 @@ npm install -g zcatalyst-cli
 catalyst login
 catalyst init
 ```
+
+For Deployment:
+
+1. Update version in `client-package.json`
+2. Run `catalyst deploy`
