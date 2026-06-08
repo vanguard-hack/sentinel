@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Shield, Map, BarChart2, AlertTriangle, FileText,
   Users, Brain, Database, Bell, LogOut, ChevronRight,
+  Search, Sun, Moon, X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -11,56 +12,48 @@ const MODULES = [
     label: 'Incidents',
     desc: 'Log, track and manage active crime incidents',
     accent: 'amber',
-    status: 'coming-soon',
   },
   {
     Icon: Map,
     label: 'Crime Map',
     desc: 'Geospatial intelligence and hotspot visualisation',
     accent: 'blue',
-    status: 'coming-soon',
   },
   {
     Icon: Brain,
     label: 'AI Analytics',
     desc: 'Pattern recognition and predictive crime modelling',
     accent: 'purple',
-    status: 'coming-soon',
   },
   {
     Icon: BarChart2,
     label: 'Reports',
     desc: 'Statistical summaries and shift performance data',
     accent: 'green',
-    status: 'coming-soon',
   },
   {
     Icon: Users,
     label: 'Personnel',
     desc: 'Officer directory, roles and unit management',
     accent: 'blue',
-    status: 'coming-soon',
   },
   {
     Icon: Database,
     label: 'Case Files',
     desc: 'Structured case records and evidence linking',
     accent: 'green',
-    status: 'coming-soon',
   },
   {
     Icon: FileText,
     label: 'Intelligence',
     desc: 'Aggregated field intelligence and source reports',
     accent: 'amber',
-    status: 'coming-soon',
   },
   {
     Icon: Shield,
     label: 'Admin',
     desc: 'User access control, audit logs and settings',
     accent: 'red',
-    status: 'coming-soon',
   },
 ];
 
@@ -84,9 +77,38 @@ function ModuleCard({ Icon, label, desc, accent }) {
 
 export default function Dashboard() {
   const { user, signOut } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isDark, setIsDark] = useState(
+    () => localStorage.getItem('sentinel-theme') === 'dark'
+  );
 
-  const displayName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.email_id || 'Officer';
-  const initials = displayName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  useEffect(() => {
+    const theme = isDark ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('sentinel-theme', theme);
+  }, [isDark]);
+
+  const displayName =
+    [user?.first_name, user?.last_name].filter(Boolean).join(' ') ||
+    user?.email_id ||
+    'Officer';
+
+  const welcomeName =
+    user?.first_name ||
+    user?.email_id?.split('@')[0] ||
+    'Officer';
+
+  const initials = displayName
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  const filteredModules = MODULES.filter((m) => {
+    const q = searchQuery.toLowerCase();
+    return m.label.toLowerCase().includes(q) || m.desc.toLowerCase().includes(q);
+  });
 
   return (
     <div className="db-page">
@@ -100,7 +122,37 @@ export default function Dashboard() {
           <span className="nav-brand-sub">Crime Analytics Platform</span>
         </div>
 
+        {/* Universal search */}
+        <div className="nav-search">
+          <Search size={14} className="nav-search-icon" />
+          <input
+            type="text"
+            className="nav-search-input"
+            placeholder="Search modules…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Search modules"
+          />
+          {searchQuery && (
+            <button
+              className="nav-search-clear"
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+
         <div className="db-nav-right">
+          <button
+            className="nav-icon-btn"
+            onClick={() => setIsDark((d) => !d)}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={isDark ? 'Light mode' : 'Dark mode'}
+          >
+            {isDark ? <Sun size={17} /> : <Moon size={17} />}
+          </button>
           <button className="nav-icon-btn" aria-label="Notifications">
             <Bell size={17} />
           </button>
@@ -125,7 +177,8 @@ export default function Dashboard() {
         <div className="db-welcome">
           <div className="db-welcome-left">
             <h1 className="db-welcome-title">
-              Welcome back, <span className="db-welcome-name">{user?.first_name || 'Officer'}</span>
+              Welcome back,{' '}
+              <span className="db-welcome-name">{welcomeName}</span>
             </h1>
             <p className="db-welcome-sub">
               Sentinel is your centralised intelligence hub. Select a module below to get started.
@@ -138,11 +191,17 @@ export default function Dashboard() {
         </div>
 
         {/* Module grid */}
-        <div className="db-section-label">Modules</div>
+        <div className="db-section-label">
+          {searchQuery ? `Results for "${searchQuery}"` : 'Modules'}
+        </div>
         <div className="module-grid">
-          {MODULES.map((m) => (
-            <ModuleCard key={m.label} {...m} />
-          ))}
+          {filteredModules.length > 0 ? (
+            filteredModules.map((m) => <ModuleCard key={m.label} {...m} />)
+          ) : (
+            <p className="module-no-results">
+              No modules match <strong>"{searchQuery}"</strong>
+            </p>
+          )}
         </div>
 
       </main>
