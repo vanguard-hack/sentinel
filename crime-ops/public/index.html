@@ -28,7 +28,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <script src="https://catalyst.zoho.com/baas/sdk/javascript/catalyst-min.js"></script>
+    <!-- Catalyst Web SDK v4. The second script is auto-served from this app's
+         own Catalyst origin and binds the SDK to the correct project + data
+         centre. Both are required for auth (getCurrentProjectUser / signOut). -->
+    <script src="https://static.zohocdn.com/catalyst/sdk/js/4.0.0/catalystWebSDK.js"></script>
+    <script src="/__catalyst/sdk/init.js"></script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

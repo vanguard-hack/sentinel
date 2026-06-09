@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Shield, Map, BarChart2, AlertTriangle, FileText,
@@ -12,7 +13,7 @@ import { LANGUAGES } from '../i18n';
 // are resolved at render time from the active language.
 const MODULES = [
   { key: 'incidents',    Icon: AlertTriangle, accent: 'amber'  },
-  { key: 'crimeMap',     Icon: Map,           accent: 'blue'   },
+  { key: 'crimeMap',     Icon: Map,           accent: 'blue', route: '/crime-map' },
   { key: 'aiAnalytics',  Icon: Brain,         accent: 'purple' },
   { key: 'reports',      Icon: BarChart2,     accent: 'green'  },
   { key: 'personnel',    Icon: Users,         accent: 'blue'   },
@@ -21,9 +22,16 @@ const MODULES = [
   { key: 'admin',        Icon: Shield,        accent: 'red'    },
 ];
 
-function ModuleCard({ Icon, label, desc, accent, soon }) {
+function ModuleCard({ Icon, label, desc, accent, soon, onOpen }) {
+  const available = typeof onOpen === 'function';
   return (
-    <div className={`module-card module-${accent}`}>
+    <div
+      className={`module-card module-${accent} ${available ? 'module-available' : ''}`}
+      onClick={available ? onOpen : undefined}
+      role={available ? 'button' : undefined}
+      tabIndex={available ? 0 : undefined}
+      onKeyDown={available ? (e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(); } : undefined}
+    >
       <div className={`module-icon-wrap icon-${accent}`}>
         <Icon size={20} strokeWidth={1.6} />
       </div>
@@ -34,7 +42,7 @@ function ModuleCard({ Icon, label, desc, accent, soon }) {
       <div className="module-arrow">
         <ChevronRight size={16} />
       </div>
-      <span className="module-soon-badge">{soon}</span>
+      {!available && <span className="module-soon-badge">{soon}</span>}
     </div>
   );
 }
@@ -42,6 +50,7 @@ function ModuleCard({ Icon, label, desc, accent, soon }) {
 export default function Dashboard() {
   const { user, signOut } = useAuth();
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [isDark, setIsDark] = useState(
     () => localStorage.getItem('sentinel-theme') === 'dark'
@@ -174,10 +183,6 @@ export default function Dashboard() {
             </h1>
             <p className="db-welcome-sub">{t('welcome.subtitle')}</p>
           </div>
-          <div className="db-welcome-badge">
-            <div className="db-status-dot" />
-            <span>{t('system.operational')}</span>
-          </div>
         </div>
 
         {/* Module grid */}
@@ -187,7 +192,12 @@ export default function Dashboard() {
         <div className="module-grid">
           {filteredModules.length > 0 ? (
             filteredModules.map((m) => (
-              <ModuleCard key={m.key} {...m} soon={t('badge.soon')} />
+              <ModuleCard
+                key={m.key}
+                {...m}
+                soon={t('badge.soon')}
+                onOpen={m.route ? () => navigate(m.route) : undefined}
+              />
             ))
           ) : (
             <p className="module-no-results">
