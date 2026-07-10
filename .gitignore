@@ -20,3 +20,6 @@ ksp/import/configs_txt/
 
 # Editor settings
 .vscode/
+
+# Catalyst CLI debug logs
+catalyst-debug.log

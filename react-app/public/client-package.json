@@ -1,0 +1,8 @@
+{
+  "name": "crime-dashboard",
+  "version": "1.21.0",
+  "homepage": "index.html",
+  "login_redirect": "index.html",
+  "404": "404.html",
+  "description": "Sentinel — AI Crime Analytics & Visualization Platform"
+}
