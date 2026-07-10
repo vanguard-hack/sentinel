@@ -1,0 +1,22 @@
+# OS / editor noise
+.DS_Store
+
+# Dependencies & build output
+node_modules/
+react-app/build/
+
+# Secrets — never commit. Real values live only locally and in the Catalyst console.
+react-app/.env
+functions/rag/catalyst-config.json
+
+# Catalyst import job reports
+Import_*.zip
+
+# Synthetic dataset artifacts — regenerate with ksp/fir/generate_fir_dataset.py
+ksp/*.csv
+ksp/fir/*.csv
+ksp/rag_docs/
+ksp/import/configs_txt/
+
+# Editor settings
+.vscode/
