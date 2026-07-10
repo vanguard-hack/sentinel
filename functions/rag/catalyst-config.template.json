@@ -1,0 +1,17 @@
+{
+	"deployment": {
+		"name": "rag",
+		"stack": "node20",
+		"type": "advancedio",
+		"env_variables": {
+			"RAG_CLIENT_ID": "<zoho-self-client-id>",
+			"RAG_CLIENT_SECRET": "<zoho-self-client-secret>",
+			"RAG_REFRESH_TOKEN": "<zoho-refresh-token — scripts/rotate-rag-token.sh renews this>",
+			"RAG_ORG": "<catalyst-org-id>",
+			"GROQ_API_KEY": "<groq-api-key>"
+		}
+	},
+	"execution": {
+		"main": "index.js"
+	}
+}

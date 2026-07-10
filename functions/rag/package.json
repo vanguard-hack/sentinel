@@ -1,0 +1,10 @@
+{
+  "name": "rag",
+  "version": "1.0.0",
+  "description": "Server-side proxy for the Catalyst QuickML RAG answer API",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "zcatalyst-sdk-node": "^3.4.0"
+  }
+}

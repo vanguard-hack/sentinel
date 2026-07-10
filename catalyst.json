@@ -1,0 +1,9 @@
+{
+  "client": {
+    "source": "react-app/build"
+  },
+  "functions": {
+    "source": "functions",
+    "targets": ["rag"]
+  }
+}
