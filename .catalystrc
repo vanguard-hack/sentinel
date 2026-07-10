@@ -1,10 +1,10 @@
 {
   "defaults": {
-    "project": 1,
+    "project": 2,
     "env": 1
   },
   "actives": {
-    "project": 1,
+    "project": 2,
     "env": 1
   },
   "projects": [
@@ -23,6 +23,32 @@
           "id": "60073599957",
           "name": "Development",
           "type": 3
+        }
+      ]
+    },
+    {
+      "idx": 2,
+      "id": "49826000000024269",
+      "name": "Sentinel",
+      "domain": {
+        "id": "50043006231",
+        "name": "sentinel-60073599957.development"
+      },
+      "timezone": "Asia/Kolkata",
+      "env": [
+        {
+          "idx": 1,
+          "id": "60073599957",
+          "name": "Development",
+          "type": 3,
+          "env_status": "Active",
+          "project_details": {
+            "project_name": "Sentinel",
+            "id": "49826000000024269",
+            "project_type": "Live"
+          },
+          "is_default": true,
+          "action_required": false
         }
       ]
     }
