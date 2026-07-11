@@ -81,8 +81,12 @@ const AGUI_TRANSFORM =
 //      second RAG round-trip)
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+// Groq rate-limits per model. High-volume/simple calls (routing, expansion,
+// prose-from-rows, component transform) run on the fast model so the 70B
+// budget is reserved for ZCQL generation and knowledge fallbacks.
+const GROQ_MODEL_FAST = process.env.GROQ_MODEL_FAST || 'llama-3.1-8b-instant';
 
-async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeoutMs = 12_000 } = {}) {
+async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeoutMs = 12_000, model = GROQ_MODEL } = {}) {
   if (!process.env.GROQ_API_KEY) return null;
   // One retry on 429: the free tier has a tokens-per-minute cap that a single
   // multi-call question (router + generator + prose) can trip.
@@ -94,7 +98,7 @@ async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeout
           Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ model: GROQ_MODEL, messages, temperature, max_tokens: maxTokens }),
+        body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (r.status === 429 && attempt === 0) {
@@ -285,6 +289,10 @@ module.exports = async (req, res) => {
     // Expand the question into a self-contained one for better retrieval,
     // using conversation context to resolve pronouns and references
     // (best-effort — the raw query is used if Groq is absent or slow).
+    // Expansion exists ONLY to resolve conversational references ("it", "that
+    // gang") into a standalone question. Without history there is nothing to
+    // resolve — the raw question is always more faithful than a rewrite (small
+    // models invent filters/years, which poisons ZCQL generation downstream).
     const contextBits = [];
     if (summary) contextBits.push('Earlier conversation topics: ' + summary);
     if (history.length) {
@@ -292,17 +300,15 @@ module.exports = async (req, res) => {
         'Recent conversation:\n' + history.map((m) => `${m.role}: ${m.content}`).join('\n')
       );
     }
-    const expanded = await callGroq(
-      [
-        { role: 'system', content: EXPAND_PROMPT },
-        {
-          role: 'user',
-          content:
-            (contextBits.length ? contextBits.join('\n\n') + '\n\n' : '') + 'Question: ' + query,
-        },
-      ],
-      { maxTokens: 160, temperature: 0.2, timeoutMs: 6_000 }
-    );
+    const expanded = contextBits.length
+      ? await callGroq(
+          [
+            { role: 'system', content: EXPAND_PROMPT },
+            { role: 'user', content: contextBits.join('\n\n') + '\n\nQuestion: ' + query },
+          ],
+          { maxTokens: 160, temperature: 0.2, timeoutMs: 6_000 }
+        )
+      : null;
     const searchQuery = (expanded || '').trim() || query;
 
     // ── Router: relational question → ZCQL over the Data Store; otherwise RAG.
@@ -315,7 +321,7 @@ module.exports = async (req, res) => {
           { role: 'system', content: zcql.ROUTER_PROMPT },
           { role: 'user', content: searchQuery },
         ],
-        { maxTokens: 4, temperature: 0, timeoutMs: 5_000 }
+        { maxTokens: 4, temperature: 0, timeoutMs: 5_000, model: GROQ_MODEL_FAST }
       );
       if (routed && /zcql/i.test(routed)) {
         try {
@@ -325,7 +331,7 @@ module.exports = async (req, res) => {
           let topN = null;
           let lastErr = null;
           let rows = null;
-          for (let attempt = 0; attempt < 3 && !rows; attempt++) {
+          for (let attempt = 0; attempt < 2 && !rows; attempt++) {
             const gen = await callGroq(
               [
                 { role: 'system', content: zcql.ZCQL_SYSTEM },
@@ -372,7 +378,7 @@ module.exports = async (req, res) => {
                     JSON.stringify(flat.slice(0, 60)),
                 },
               ],
-              { maxTokens: 300, temperature: 0.2, timeoutMs: 12_000 }
+              { maxTokens: 300, temperature: 0.2, timeoutMs: 12_000, model: GROQ_MODEL_FAST }
             );
             return json(res, 200, {
               answer: (prose || '').trim() || `The query returned ${flat.length} record(s).`,
@@ -440,7 +446,7 @@ module.exports = async (req, res) => {
     if (!components.length && looksDataShaped(text)) {
       const viaGroq = await callGroq(
         [{ role: 'user', content: AGUI_TRANSFORM + text }],
-        { maxTokens: 1024, temperature: 0, timeoutMs: 10_000 }
+        { maxTokens: 1024, temperature: 0, timeoutMs: 10_000, model: GROQ_MODEL_FAST }
       );
       if (viaGroq) {
         components = extractAgui(viaGroq).components;
