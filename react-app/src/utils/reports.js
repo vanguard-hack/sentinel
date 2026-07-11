@@ -109,11 +109,13 @@ export async function fetchReports() {
 
   const year = new Date().getFullYear();
   const months = monthWindows(12);
+  const YEARS = [];
+  for (let y = 2023; y <= year; y++) YEARS.push(y);
 
   const [
     cases, accusedN, victims, arrests, chargesheets, open, heinous, thisYear, lastYearSame,
     byCategory, byStatus, byDistrict, bySubHead, openByStation,
-    trendCounts, ageCounts, recentRows,
+    trendCounts, yearCounts, ageCounts, recentRows,
   ] = await Promise.all([
     countCases(),
     scalar('SELECT COUNT(ROWID) AS c FROM Accused', 'Accused', 'c'),
@@ -144,6 +146,9 @@ export async function fetchReports() {
     }),
     Promise.all(
       months.map((m) => countCases(` WHERE CrimeRegisteredDate BETWEEN '${m.from}' AND '${m.to}'`))
+    ),
+    Promise.all(
+      YEARS.map((y) => countCases(` WHERE CrimeRegisteredDate BETWEEN '${y}-01-01' AND '${y}-12-31'`))
     ),
     Promise.all(
       AGE_BUCKETS.map((b) =>
@@ -187,6 +192,10 @@ export async function fetchReports() {
     bySubHead,
     openByStation,
     trend: months.map((m, i) => ({ label: m.label, value: trendCounts[i] })),
+    yearly: YEARS.map((y, i) => ({
+      label: y === year ? `${y} (to date)` : String(y),
+      value: yearCounts[i],
+    })),
     accusedAges: AGE_BUCKETS.map((b, i) => ({ label: b.label, value: ageCounts[i] })),
     recent: recentRows.map((r) => ({
       crimeNo: r.CrimeNo,
