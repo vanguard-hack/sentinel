@@ -2153,3 +2153,7 @@ a:hover { color: var(--blue-500); }
 @media (max-width: 720px) {
   .db-kpi-row { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Full-width card inside the reports grid (e.g. Latest FIRs table). */
+.rp-card-wide { grid-column: 1 / -1; }
+/* 8 KPI tiles wrap into two tidy rows of four. */
