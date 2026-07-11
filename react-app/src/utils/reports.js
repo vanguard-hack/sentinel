@@ -18,9 +18,9 @@ const labelOf = (v) => {
 // COUNT(ROWID) grouped by a dimension → [{ label, value }] sorted desc.
 // `nameOf` maps a raw dimension value (usually an ID) to a display label.
 // `limit` folds the long tail into an "Other" bucket.
-export async function groupCount(table, dim, { limit, nameOf } = {}) {
+export async function groupCount(table, dim, { limit, nameOf, where = '' } = {}) {
   const rows = await runQuery(
-    `SELECT ${dim}, COUNT(ROWID) AS cnt FROM ${table} GROUP BY ${dim}`,
+    `SELECT ${dim}, COUNT(ROWID) AS cnt FROM ${table}${where} GROUP BY ${dim}`,
     table
   );
   let data = rows

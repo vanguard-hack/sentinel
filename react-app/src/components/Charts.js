@@ -1,6 +1,78 @@
 import React, { useState, useMemo } from 'react';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 
+// Area trend — one series over ordered periods (e.g. cases per month). SVG with
+// a filled area under the line; hovering (or focusing) a period highlights its
+// dot and shows value + label in the header readout. Colours come from the
+// validated viz tokens (--rp-series), so it adapts to theme automatically.
+export function TrendArea({ data, height = 150 }) {
+  const [active, setActive] = useState(null);
+  if (!data || !data.length) return <div className="rp-empty">No data</div>;
+
+  const w = 600;
+  const padX = 8;
+  const padTop = 12;
+  const padBottom = 22;
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const innerW = w - padX * 2;
+  const innerH = height - padTop - padBottom;
+  const x = (i) => padX + (data.length === 1 ? innerW / 2 : (i / (data.length - 1)) * innerW);
+  const y = (v) => padTop + innerH - (v / max) * innerH;
+
+  const linePts = data.map((d, i) => `${x(i)},${y(d.value)}`).join(' ');
+  const areaPts = `${padX},${padTop + innerH} ${linePts} ${padX + innerW},${padTop + innerH}`;
+
+  const shown = active != null ? data[active] : null;
+  const totalVal = data.reduce((s, d) => s + d.value, 0);
+
+  return (
+    <div className="trend-wrap">
+      <div className="trend-readout">
+        <span className="trend-readout-value">
+          {(shown ? shown.value : totalVal).toLocaleString()}
+        </span>
+        <span className="trend-readout-cap">
+          {shown ? shown.label : `total · ${data.length} periods`}
+        </span>
+      </div>
+      <svg
+        viewBox={`0 0 ${w} ${height}`}
+        className="trend-svg"
+        role="img"
+        preserveAspectRatio="none"
+        onMouseLeave={() => setActive(null)}
+      >
+        <polygon points={areaPts} className="trend-area" />
+        <polyline points={linePts} className="trend-line" fill="none" />
+        {data.map((d, i) => (
+          <g key={i}>
+            {/* generous invisible hit target per period */}
+            <rect
+              x={x(i) - innerW / data.length / 2}
+              y={0}
+              width={innerW / data.length}
+              height={height}
+              fill="transparent"
+              onMouseEnter={() => setActive(i)}
+            />
+            <circle
+              cx={x(i)}
+              cy={y(d.value)}
+              r={active === i ? 4.5 : 2.5}
+              className={`trend-dot ${active === i ? 'active' : ''}`}
+            />
+          </g>
+        ))}
+      </svg>
+      <div className="trend-labels">
+        {data.map((d, i) => (
+          <span key={i} className={active === i ? 'active' : ''}>{d.label}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Horizontal bar list — single-series magnitude. One hue (identity is the row
 // label, so no legend); every bar carries a direct value label. Interactive:
 // a segmented sort control (desc / asc) and per-bar hover that reveals the share

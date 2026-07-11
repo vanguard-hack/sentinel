@@ -2059,3 +2059,97 @@ a:hover { color: var(--blue-500); }
   font-size: 0.74rem;
   color: var(--text-4);
 }
+
+/* ── Dashboard: live analytics section ──────────────────────────────────── */
+.db-analytics {
+  margin: 6px 0 30px;
+  /* Same validated viz tokens as .rp-page so charts render identically. */
+  --rp-surface: var(--bg-1);
+  --rp-series: #2a78d6;
+  --rp-cat-0: #2a78d6;
+  --rp-cat-1: #1baf7a;
+  --rp-cat-2: #eda100;
+  --rp-cat-3: #008300;
+  --rp-cat-4: #4a3aa7;
+  --rp-cat-5: #e34948;
+}
+[data-theme="dark"] .db-analytics {
+  --rp-series: #3987e5;
+  --rp-cat-0: #3987e5;
+  --rp-cat-1: #199e70;
+  --rp-cat-2: #c98500;
+  --rp-cat-3: #008300;
+  --rp-cat-4: #9085e9;
+  --rp-cat-5: #e66767;
+}
+.db-analytics-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.db-analytics-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md, 10px);
+  color: var(--text-3);
+  font-size: 0.85rem;
+}
+.db-analytics-loading {
+  display: flex;
+  justify-content: center;
+  padding: 40px 0;
+}
+.db-kpi-row { grid-template-columns: repeat(5, 1fr); margin-bottom: 18px; }
+.db-analytics-grid { margin-bottom: 18px; }
+.db-trend-up { color: var(--red, #d64545) !important; }     /* rising crime = bad */
+.db-trend-down { color: var(--green, #1baf7a) !important; }
+.db-trend-up svg, .db-trend-down svg { vertical-align: -1px; margin-right: 3px; }
+
+/* Trend area chart */
+.trend-wrap { display: flex; flex-direction: column; }
+.trend-readout { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.trend-readout-value { font-size: 22px; font-weight: 680; color: var(--text-0); }
+.trend-readout-cap { font-size: 12px; color: var(--text-3); }
+.trend-svg { width: 100%; height: 150px; display: block; }
+.trend-area { fill: var(--rp-series); opacity: 0.12; }
+.trend-line { stroke: var(--rp-series); stroke-width: 2; }
+.trend-dot { fill: var(--rp-series); transition: r 0.1s; }
+.trend-dot.active { stroke: var(--bg-1); stroke-width: 2; }
+.trend-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--text-4);
+}
+.trend-labels span.active { color: var(--text-1); font-weight: 600; }
+
+/* Latest FIRs table */
+.db-recent-table td { white-space: nowrap; }
+.db-crimeno { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+.db-badge-heinous { color: #d64545; margin-left: 6px; vertical-align: -1px; }
+.db-status {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.db-status-amber { background: rgba(237, 161, 0, 0.14); color: #b07800; }
+.db-status-blue { background: rgba(42, 120, 214, 0.13); color: #2a78d6; }
+.db-status-green { background: rgba(27, 175, 122, 0.13); color: #148f63; }
+.db-status-grey { background: var(--hover-overlay); color: var(--text-3); }
+[data-theme="dark"] .db-status-amber { color: #e5ae33; }
+[data-theme="dark"] .db-status-green { color: #2fc48e; }
+[data-theme="dark"] .db-status-blue { color: #5f9ee8; }
+
+@media (max-width: 1100px) {
+  .db-kpi-row { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 720px) {
+  .db-kpi-row { grid-template-columns: repeat(2, 1fr); }
+}

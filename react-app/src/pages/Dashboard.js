@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Shield, Map, BarChart2, AlertTriangle, MessageSquare,
   Users, Brain, Database, Bell, LogOut, ChevronRight,
-  Search, Sun, Moon, X,
+  Search, Sun, Moon, X, FileText, Gavel, Siren, TrendingUp,
+  TrendingDown, RefreshCw, Flame, FolderOpen,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LANGUAGES } from '../i18n';
+import { fetchDashboard } from '../utils/dashboard';
+import { BarList, Donut, TrendArea } from '../components/Charts';
 
 // Each module references a translation key under `modules.*`; labels/descriptions
 // are resolved at render time from the active language.
@@ -21,6 +24,47 @@ const MODULES = [
   { key: 'assistant',    Icon: MessageSquare, accent: 'amber', route: '/assistant' },
   { key: 'admin',        Icon: Shield,        accent: 'red'    },
 ];
+
+function Kpi({ Icon, label, value, sub, trend }) {
+  return (
+    <div className="rp-kpi">
+      <div className="rp-kpi-icon"><Icon size={18} strokeWidth={1.7} /></div>
+      <div className="rp-kpi-body">
+        <span className="rp-kpi-value">{value}</span>
+        <span className="rp-kpi-label">{label}</span>
+        {sub && (
+          <span className={`rp-kpi-sub ${trend ? `db-trend-${trend}` : ''}`}>
+            {trend === 'up' && <TrendingUp size={11} />}
+            {trend === 'down' && <TrendingDown size={11} />}
+            {sub}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Card({ title, subtitle, children }) {
+  return (
+    <section className="rp-card">
+      <div className="rp-card-head">
+        <h2 className="rp-card-title">{title}</h2>
+        {subtitle && <p className="rp-card-sub">{subtitle}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+const STATUS_TONE = {
+  'Under Investigation': 'amber',
+  'Charge Sheeted': 'blue',
+  'Pending Trial': 'blue',
+  Convicted: 'green',
+  Acquitted: 'green',
+  'Closed - False Case': 'grey',
+  'Closed - Undetected': 'grey',
+};
 
 function ModuleCard({ Icon, label, desc, accent, soon, onOpen }) {
   const available = typeof onOpen === 'function';
@@ -55,6 +99,26 @@ export default function Dashboard() {
   const [isDark, setIsDark] = useState(
     () => localStorage.getItem('sentinel-theme') === 'dark'
   );
+
+  // Live analytics from the Data Store. Loads after mount; the module grid
+  // stays usable even if the Data Store is unreachable (stats simply hide).
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState(null);
+
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true);
+    setStatsError(null);
+    try {
+      setStats(await fetchDashboard());
+    } catch (e) {
+      setStatsError(e.message || String(e));
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
 
   useEffect(() => {
     const theme = isDark ? 'dark' : 'light';
@@ -183,6 +247,126 @@ export default function Dashboard() {
             </h1>
             <p className="db-welcome-sub">{t('welcome.subtitle')}</p>
           </div>
+        </div>
+
+        {/* ── Live analytics (Data Store) ── */}
+        <div className="db-analytics">
+          <div className="db-section-label db-analytics-label">
+            <span>Command Overview</span>
+            <button
+              className="cf-icon-btn"
+              onClick={loadStats}
+              title="Refresh analytics"
+              disabled={statsLoading}
+            >
+              <RefreshCw size={14} className={statsLoading ? 'cf-spin' : ''} />
+            </button>
+          </div>
+
+          {statsError ? (
+            <div className="db-analytics-error">
+              <AlertTriangle size={16} />
+              <span>Analytics unavailable: {statsError}</span>
+            </div>
+          ) : statsLoading && !stats ? (
+            <div className="db-analytics-loading"><div className="cf-spinner" /></div>
+          ) : stats && (
+            <>
+              <div className="rp-kpi-row db-kpi-row">
+                <Kpi
+                  Icon={FileText}
+                  label="Total cases"
+                  value={stats.kpis.total.toLocaleString()}
+                  sub={
+                    stats.kpis.yoyPct == null
+                      ? `${stats.kpis.thisYear.toLocaleString()} this year`
+                      : `${Math.abs(stats.kpis.yoyPct).toFixed(0)}% YoY (same period)`
+                  }
+                  trend={
+                    stats.kpis.yoyPct == null ? null : stats.kpis.yoyPct >= 0 ? 'up' : 'down'
+                  }
+                />
+                <Kpi
+                  Icon={FolderOpen}
+                  label="Open investigations"
+                  value={stats.kpis.open.toLocaleString()}
+                  sub={`${stats.kpis.openPct.toFixed(1)}% of all cases`}
+                />
+                <Kpi
+                  Icon={Gavel}
+                  label="Solved rate"
+                  value={`${stats.kpis.solvedPct.toFixed(1)}%`}
+                  sub="chargesheeted, on trial or decided"
+                />
+                <Kpi
+                  Icon={Flame}
+                  label="Heinous share"
+                  value={`${stats.kpis.heinousPct.toFixed(1)}%`}
+                  sub="of registered cases"
+                />
+                <Kpi
+                  Icon={Siren}
+                  label="Arrests & surrenders"
+                  value={stats.kpis.arrests.toLocaleString()}
+                  sub={`${stats.kpis.chargesheets.toLocaleString()} chargesheets filed`}
+                />
+              </div>
+
+              <div className="rp-grid db-analytics-grid">
+                <Card title="Registration trend" subtitle="FIRs registered per month, last 12 months">
+                  <TrendArea data={stats.trend} />
+                </Card>
+                <Card title="Crime mix" subtitle="Cases by major crime head">
+                  <Donut data={stats.byHead} />
+                </Card>
+                <Card title="Station load" subtitle="Open investigations by police station (top 8)">
+                  <BarList data={stats.openByStation} />
+                </Card>
+                <Card title="Accused age profile" subtitle="Accused on record by age band">
+                  <BarList data={stats.accusedAges} />
+                </Card>
+              </div>
+
+              <Card
+                title="Latest FIRs"
+                subtitle="Most recently registered cases across the state"
+              >
+                <div className="cf-scroll">
+                  <table className="cf-table db-recent-table">
+                    <thead>
+                      <tr>
+                        <th>Crime No</th><th>Date</th><th>Police station</th>
+                        <th>District</th><th>Crime head</th><th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stats.recent.map((r) => (
+                        <tr key={r.crimeNo}>
+                          <td className="db-crimeno">
+                            {r.crimeNo}
+                            {r.heinous && (
+                              <span className="db-badge-heinous" title="Heinous offence">
+                                <Flame size={11} />
+                              </span>
+                            )}
+                          </td>
+                          <td>{r.date}</td>
+                          <td>{r.station}</td>
+                          <td>{r.district}</td>
+                          <td>{r.head}</td>
+                          <td>
+                            <span className={`db-status db-status-${STATUS_TONE[r.status] || 'grey'}`}>
+                              {r.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </>
+          )}
         </div>
 
         {/* Module grid */}
