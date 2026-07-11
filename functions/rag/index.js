@@ -341,6 +341,17 @@ module.exports = async (req, res) => {
             );
             const s = zcql.parsePlan(gen);
             if (!s.ok) { lastErr = s.error; q = gen && String(gen).slice(0, 400); continue; }
+            if (s.unanswerable) {
+              // The database genuinely can't answer this — say so honestly
+              // rather than running an unrelated query or guessing.
+              return json(res, 200, {
+                answer: s.unanswerable,
+                components: [],
+                source: 'zcql',
+                sources: ['Data Store'],
+                expandedQuery: searchQuery === query ? undefined : searchQuery,
+              });
+            }
             q = s.query;
             rollup = s.rollup;
             topN = s.topN;
@@ -380,9 +391,15 @@ module.exports = async (req, res) => {
               ],
               { maxTokens: 300, temperature: 0.2, timeoutMs: 12_000, model: GROQ_MODEL_FAST }
             );
+            const answerText =
+              (prose || '').trim() || `The query returned ${flat.length} record(s).`;
+            // A negative prose ("no matching records", "does not answer...")
+            // with a rendered data table is a contradiction — the rows didn't
+            // answer the question, so don't show them.
+            const showComponents = flat.length > 0 && !isNegative(answerText);
             return json(res, 200, {
-              answer: (prose || '').trim() || `The query returned ${flat.length} record(s).`,
-              components,
+              answer: answerText,
+              components: showComponents ? components : [],
               source: 'zcql',
               sources: ['Data Store: ' + zcql.tablesInQuery(q).join(', ')],
               zcql: q,

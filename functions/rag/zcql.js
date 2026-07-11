@@ -111,7 +111,14 @@ const RULES = `RULES (follow ALL):
     afterwards — do not worry about names.
 12. Add only the filters the question asks for. Every query ends with LIMIT:
     200 for detail lists, 400 for GROUP BY queries.
-13. Only SELECT — never INSERT/UPDATE/DELETE/DROP/ALTER/CREATE/TRUNCATE.`;
+13. Only SELECT — never INSERT/UPDATE/DELETE/DROP/ALTER/CREATE/TRUNCATE.
+14. KNOW THE SCHEMA'S LIMITS. Religion, caste and occupation exist ONLY on
+    ComplainantDetails (complainants). Accused and Victim have no religion,
+    caste, occupation or address columns. If the question needs an attribute
+    the schema does not record, or needs columns from TWO fact tables at once
+    (e.g. accused attributes filtered by case attributes), do NOT approximate
+    with an unrelated query — reply {"zcql": null, "reason": "<one sentence
+    saying exactly what the database does not record>"} instead.`;
 
 const ZCQL_SYSTEM =
   'You convert an analyst question into a single-table ZCQL query plan for the ' +
@@ -142,6 +149,9 @@ function parsePlan(raw) {
     plan = JSON.parse(m[0]);
   } catch (e) {
     return { ok: false, error: 'invalid JSON: ' + e.message };
+  }
+  if (plan.zcql === null && plan.reason) {
+    return { ok: true, unanswerable: String(plan.reason).slice(0, 400) };
   }
   let q = String(plan.zcql || '').replace(/;+\s*$/, '').replace(/\s+/g, ' ').trim();
   if (!/^select\b/i.test(q)) return { ok: false, error: 'query must start with SELECT' };
