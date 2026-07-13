@@ -121,49 +121,59 @@ const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct
 const pad = (n) => String(n).padStart(2, '0');
 
 // Build a [{ label, value }] series from raw 'YYYY-MM-DD' dates for a range.
+// All bucketing is done in UTC so the keys used when counting the dates and the
+// keys used when laying out the axis always agree (mixing local getDate() with
+// UTC toISOString() silently drops every count — that was the "Past year" bug).
 export function buildTrend(dates, rangeKey) {
   const range = TREND_RANGES.find((r) => r.key === rangeKey) || TREND_RANGES[1];
   const counts = new Map();
+
+  // Monday-anchored week key, computed entirely in UTC.
+  const weekKey = (d) => {
+    const u = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    u.setUTCDate(u.getUTCDate() - ((u.getUTCDay() + 6) % 7));
+    return u.toISOString().slice(0, 10);
+  };
   const key = (d) => {
     if (range.bucket === 'day') return d.toISOString().slice(0, 10);
-    if (range.bucket === 'week') {
-      const day = new Date(d);
-      day.setDate(day.getDate() - ((day.getDay() + 6) % 7)); // Monday anchor
-      return day.toISOString().slice(0, 10);
-    }
+    if (range.bucket === 'week') return weekKey(d);
     if (range.bucket === 'month') return d.toISOString().slice(0, 7);
-    return String(d.getFullYear());
+    return String(d.getUTCFullYear());
   };
   dates.forEach((s) => {
     const d = new Date(s);
     if (!Number.isNaN(d.getTime())) counts.set(key(d), (counts.get(key(d)) || 0) + 1);
   });
 
-  // Build the ordered, gap-filled bucket list ending today.
+  // Ordered, gap-filled bucket list ending today (all in UTC).
   const out = [];
   const now = new Date();
+  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+
   if (range.bucket === 'day') {
     for (let i = range.days - 1; i >= 0; i--) {
-      const d = new Date(now); d.setDate(now.getDate() - i);
+      const d = new Date(today); d.setUTCDate(today.getUTCDate() - i);
       const k = d.toISOString().slice(0, 10);
-      out.push({ label: `${d.getDate()}/${d.getMonth() + 1}`, value: counts.get(k) || 0 });
+      out.push({ label: `${d.getUTCDate()}/${d.getUTCMonth() + 1}`, value: counts.get(k) || 0 });
     }
   } else if (range.bucket === 'week') {
-    for (let i = Math.round((range.months * 52) / 12) - 1; i >= 0; i--) {
-      const d = new Date(now); d.setDate(now.getDate() - i * 7);
-      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    const weeks = Math.round((range.months * 52) / 12);
+    const monday = new Date(today);
+    monday.setUTCDate(today.getUTCDate() - ((today.getUTCDay() + 6) % 7));
+    for (let i = weeks - 1; i >= 0; i--) {
+      const d = new Date(monday); d.setUTCDate(monday.getUTCDate() - i * 7);
       const k = d.toISOString().slice(0, 10);
-      out.push({ label: `${d.getDate()}/${d.getMonth() + 1}`, value: counts.get(k) || 0 });
+      out.push({ label: `${d.getUTCDate()}/${d.getUTCMonth() + 1}`, value: counts.get(k) || 0 });
     }
   } else if (range.bucket === 'month') {
     for (let i = range.months - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const k = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-      out.push({ label: `${MON[d.getMonth()]}${d.getMonth() === 0 ? " '" + String(d.getFullYear()).slice(2) : ''}`, value: counts.get(k) || 0 });
+      const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - i, 1));
+      const k = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`;
+      out.push({ label: `${MON[d.getUTCMonth()]}${d.getUTCMonth() === 0 ? " '" + String(d.getUTCFullYear()).slice(2) : ''}`, value: counts.get(k) || 0 });
     }
   } else {
     for (let i = range.years - 1; i >= 0; i--) {
-      const y = now.getFullYear() - i;
+      const y = today.getUTCFullYear() - i;
       out.push({ label: String(y), value: counts.get(String(y)) || 0 });
     }
   }
