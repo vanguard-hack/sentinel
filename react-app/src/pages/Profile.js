@@ -17,6 +17,7 @@ const FIELDS = [
 export default function Profile() {
   const { user } = useAuth();
   const email = user?.email_id || null;
+  const role = user?.role_details?.role_name || '';
 
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(true);
@@ -66,25 +67,29 @@ export default function Profile() {
 
   return (
     <div className="rp-page">
-      <TopBar title="My Profile" subtitle="Your account details" />
+      <TopBar title="My Profile" />
 
       <main className="rp-main">
         {loading ? (
           <div className="cf-state"><div className="cf-spinner" /><p>Loading your profile…</p></div>
         ) : (
-          <div className="pf-wrap">
-            <section className="pf-photo-card">
-              <div className="pf-photo">
-                <Avatar user={previewUser} size={120} />
+          <div className="pf-panel">
+            {/* Identity header */}
+            <div className="pf-header">
+              <div className="pf-header-band" />
+              <div className="pf-header-row">
+                <Avatar user={previewUser} size={84} className="pf-avatar" />
+                <div className="pf-header-id">
+                  <span className="pf-header-name">{form.displayName || 'Officer'}</span>
+                  <span className="pf-header-email">{email}</span>
+                </div>
+                {role && <span className="pf-role-badge">{role}</span>}
               </div>
-              <div className="pf-identity">
-                <span className="pf-identity-name">{form.displayName || 'Officer'}</span>
-                <span className="pf-identity-email">{email}</span>
-              </div>
-            </section>
+            </div>
 
-            <section className="pf-form-card">
-              <h2>Personal details</h2>
+            {/* Form */}
+            <div className="pf-body">
+              <h2 className="pf-section-title">Personal information</h2>
               <div className="pf-grid">
                 {FIELDS.map((f) => (
                   <label key={f.key} className="pf-field">
@@ -97,7 +102,7 @@ export default function Profile() {
                   </label>
                 ))}
                 <label className="pf-field pf-field-readonly">
-                  <span>Email (from account)</span>
+                  <span>Email address</span>
                   <input value={email || ''} disabled />
                 </label>
               </div>
@@ -105,13 +110,16 @@ export default function Profile() {
               {error && (
                 <div className="pf-error"><AlertTriangle size={15} /> {error}</div>
               )}
-              <div className="pf-save-row">
-                <button className="pf-save" onClick={save} disabled={saving}>
-                  {saving ? <span className="btn-spinner" /> : saved ? <Check size={16} /> : null}
-                  {saving ? 'Saving' : saved ? 'Saved' : 'Save changes'}
-                </button>
-              </div>
-            </section>
+            </div>
+
+            {/* Footer actions */}
+            <div className="pf-footer">
+              <span className="pf-footer-hint">Changes are saved to your account.</span>
+              <button className="pf-save" onClick={save} disabled={saving}>
+                {saving ? <span className="btn-spinner" /> : saved ? <Check size={16} /> : null}
+                {saving ? 'Saving' : saved ? 'Saved' : 'Save changes'}
+              </button>
+            </div>
           </div>
         )}
       </main>
