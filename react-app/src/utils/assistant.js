@@ -8,11 +8,34 @@ const STORAGE_KEY = 'sentinel-chat-sessions';
 export const uid = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
+// Clean a message list so a refresh mid-answer never leaves orphaned or
+// duplicated questions: collapse adjacent identical user messages, then drop
+// any trailing user message(s) that never received an assistant reply.
+export function sanitizeMessages(msgs) {
+  if (!Array.isArray(msgs)) return [];
+  const out = [];
+  for (const m of msgs) {
+    if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
+    const prev = out[out.length - 1];
+    if (m.role === 'user' && prev && prev.role === 'user' && prev.content === m.content) continue;
+    out.push(m);
+  }
+  while (out.length && out[out.length - 1].role === 'user') out.pop();
+  return out;
+}
+
+// Sanitize every session and drop any that end up empty.
+export function sanitizeSessions(sessions) {
+  return (Array.isArray(sessions) ? sessions : [])
+    .map((s) => ({ ...s, messages: sanitizeMessages(s.messages) }))
+    .filter((s) => s.messages.length > 0);
+}
+
 export function loadSessions() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
+    return sanitizeSessions(Array.isArray(arr) ? arr : []);
   } catch {
     return [];
   }
@@ -77,7 +100,12 @@ export async function loadSessionsRemote(email) {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return Array.isArray(data.conversations) ? data.conversations : null;
+    if (!Array.isArray(data.conversations)) return null;
+    // Same cleanup for server copies (a refresh mid-answer may have synced a
+    // dangling question).
+    return data.conversations
+      .map((c) => ({ ...c, messages: sanitizeMessages(c.messages) }))
+      .filter((c) => c.messages.length > 0);
   } catch {
     return null;
   }
