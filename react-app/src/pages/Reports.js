@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { fetchReports } from '../utils/reports';
 import { BarList, Donut, TrendArea } from '../components/Charts';
+import SocioCrimeMap from '../components/SocioCrimeMap';
 
 const STATUS_TONE = {
   'Under Investigation': 'amber',
@@ -201,6 +202,14 @@ export default function Reports() {
 
               <Card title="Top crime types" subtitle="Cases by crime sub-head">
                 <BarList data={data.bySubHead} />
+              </Card>
+
+              <Card
+                title="Socio-economic crime correlation"
+                subtitle="Districts shaded by the chosen indicator; circles sized by registered cases — when dark shading and big circles coincide, the two move together"
+                wide
+              >
+                <SocioCrimeMap crimeByDistrict={data.crimeByDistrict} />
               </Card>
 
               <Card title="Latest FIRs" subtitle="Most recently registered cases" wide>

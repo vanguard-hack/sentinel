@@ -6,6 +6,7 @@ import CaseFiles from './pages/CaseFiles';
 import Reports from './pages/Reports';
 import Assistant from './pages/Assistant';
 import AIAnalytics from './pages/AIAnalytics';
+import ChatWidget from './components/ChatWidget';
 import LoadingScreen from './components/LoadingScreen';
 
 function AppRoutes() {
@@ -14,6 +15,7 @@ function AppRoutes() {
   if (loading) return <LoadingScreen message="Verifying credentials…" />;
 
   return (
+    <>
     <Routes>
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/crime-map" element={<CrimeMap />} />
@@ -23,6 +25,8 @@ function AppRoutes() {
       <Route path="/ai-analytics" element={<AIAnalytics />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    <ChatWidget />
+    </>
   );
 }
 

@@ -2233,3 +2233,164 @@ a:hover { color: var(--blue-500); }
 /* Voice input states */
 .as-comp-btn.transcribing { opacity: 0.55; cursor: wait; }
 .as-voice-error { color: #d64545 !important; }
+
+/* ── Socio-economic crime correlation map ───────────────────────────────── */
+.scm { display: flex; flex-direction: column; gap: 12px; }
+.scm-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.scm-label { font-size: 0.8rem; color: var(--text-3); }
+.scm-hint { font-size: 0.75rem; color: var(--text-4); font-style: italic; }
+.scm-body { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(220px, 1fr); gap: 18px; align-items: start; }
+.scm-svg { width: 100%; height: auto; display: block; }
+.scm-shape {
+  fill: var(--rp-series);
+  stroke: var(--bg-1);
+  stroke-width: 0.7;
+  cursor: pointer;
+  transition: fill-opacity 0.15s;
+}
+.scm-shape.active { stroke: var(--text-1); stroke-width: 1.4; }
+.scm-bubble {
+  fill: #e34948;
+  fill-opacity: 0.55;
+  stroke: #fff;
+  stroke-width: 1;
+}
+[data-theme="dark"] .scm-bubble { stroke: var(--bg-1); }
+.scm-side { display: flex; flex-direction: column; gap: 14px; }
+.scm-tip {
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm, 8px);
+  padding: 12px 14px;
+  min-height: 108px;
+}
+.scm-tip-idle { display: flex; align-items: center; color: var(--text-4); font-size: 0.82rem; }
+.scm-tip-title { font-weight: 650; color: var(--text-1); margin-bottom: 8px; font-size: 0.9rem; }
+.scm-tip-row { display: flex; justify-content: space-between; gap: 10px; font-size: 0.8rem; color: var(--text-3); padding: 2px 0; }
+.scm-tip-row strong { color: var(--text-1); }
+.scm-legend { display: flex; flex-direction: column; gap: 6px; font-size: 0.76rem; color: var(--text-3); }
+.scm-legend-row { display: flex; align-items: center; gap: 8px; }
+.scm-swatch { width: 14px; height: 14px; border-radius: 3px; background: var(--rp-series); flex: none; }
+.scm-swatch.light { opacity: 0.18; }
+.scm-swatch.dark { opacity: 0.9; }
+.scm-swatch.bubble { border-radius: 50%; background: #e34948; opacity: 0.6; }
+.scm-corr {
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm, 8px);
+  padding: 12px 14px;
+  font-size: 0.82rem;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.scm-corr.notable { border-color: var(--rp-series); }
+.scm-corr-r { font-weight: 700; color: var(--text-0); font-size: 1rem; margin-bottom: 4px; }
+.scm-corr-n { font-weight: 400; font-size: 0.72rem; color: var(--text-4); margin-left: 8px; }
+.scm-corr p { margin: 0; }
+@media (max-width: 860px) { .scm-body { grid-template-columns: 1fr; } }
+
+/* ── Floating assistant widget ──────────────────────────────────────────── */
+.cw-fab {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 900;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: none;
+  background: #2a78d6;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s, background 0.15s;
+}
+.cw-fab:hover { transform: scale(1.06); }
+.cw-fab.open { background: var(--bg-3); color: var(--text-1); }
+.cw-panel {
+  position: fixed;
+  right: 22px;
+  bottom: 88px;
+  z-index: 900;
+  width: min(380px, calc(100vw - 32px));
+  height: min(560px, calc(100vh - 120px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  /* viz tokens so agui charts render inside the widget */
+  --rp-surface: var(--bg-1);
+  --rp-series: #2a78d6;
+  --rp-cat-0: #2a78d6; --rp-cat-1: #1baf7a; --rp-cat-2: #eda100;
+  --rp-cat-3: #008300; --rp-cat-4: #4a3aa7; --rp-cat-5: #e34948;
+}
+[data-theme="dark"] .cw-panel {
+  --rp-series: #3987e5;
+  --rp-cat-0: #3987e5; --rp-cat-1: #199e70; --rp-cat-2: #c98500;
+  --rp-cat-3: #008300; --rp-cat-4: #9085e9; --rp-cat-5: #e66767;
+}
+.cw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-1);
+  background: var(--bg-2);
+}
+.cw-head-title { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 0.88rem; color: var(--text-1); }
+.cw-head-actions { display: flex; gap: 2px; }
+.cw-head-actions button {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border: none; background: none; border-radius: 6px;
+  color: var(--text-3); cursor: pointer;
+}
+.cw-head-actions button:hover { background: var(--hover-overlay); color: var(--text-1); }
+.cw-head-actions button:disabled { opacity: 0.4; cursor: default; }
+.cw-thread { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.cw-empty { text-align: center; color: var(--text-4); padding: 36px 18px; display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 0.82rem; line-height: 1.5; }
+.cw-msg { display: flex; flex-direction: column; max-width: 100%; }
+.cw-msg-user { align-items: flex-end; }
+.cw-msg-assistant { align-items: flex-start; }
+.cw-bubble {
+  padding: 9px 13px;
+  border-radius: 12px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  max-width: 92%;
+  overflow-wrap: break-word;
+}
+.cw-msg-user .cw-bubble { background: #2a78d6; color: #fff; border-bottom-right-radius: 4px; }
+.cw-msg-assistant .cw-bubble { background: var(--bg-2); color: var(--text-1); border-bottom-left-radius: 4px; }
+.cw-msg-assistant .agui-components { max-width: 100%; }
+.cw-msg-assistant .agui-block { padding: 10px 12px; }
+.cw-sources { font-size: 0.68rem; color: var(--text-4); margin-top: 4px; }
+.cw-composer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-1);
+  background: var(--bg-2);
+}
+.cw-input {
+  flex: 1;
+  border: 1px solid var(--border-1);
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-size: 0.84rem;
+  background: var(--bg-1);
+  color: var(--text-1);
+  outline: none;
+}
+.cw-input:focus { border-color: #2a78d6; }
+.cw-send {
+  width: 36px; height: 36px; border-radius: 50%;
+  border: none; background: #2a78d6; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex: none;
+}
+.cw-send:disabled { opacity: 0.45; cursor: default; }

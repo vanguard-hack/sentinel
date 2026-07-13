@@ -135,7 +135,6 @@ export async function fetchReports() {
     // CaseMaster has no district column: group by station, map station →
     // district → name; groupCount re-aggregates identical labels.
     groupCount('CaseMaster', 'PoliceStationID', {
-      limit: 12,
       nameOf: (uid) => districtName(unitDistrict(uid)),
     }),
     groupCount('CaseMaster', 'CrimeMinorHeadID', { limit: 8, nameOf: subHeadName }),
@@ -188,7 +187,14 @@ export async function fetchReports() {
     },
     byCategory,
     byStatus,
-    byDistrict,
+    // Bar chart shows top 12 + Other; the correlation map needs every district.
+    byDistrict: (() => {
+      if (byDistrict.length <= 12) return byDistrict;
+      const head = byDistrict.slice(0, 12);
+      const rest = byDistrict.slice(12).reduce((s, d) => s + d.value, 0);
+      return rest > 0 ? [...head, { label: 'Other', value: rest }] : head;
+    })(),
+    crimeByDistrict: byDistrict,
     bySubHead,
     openByStation,
     trend: months.map((m, i) => ({ label: m.label, value: trendCounts[i] })),
