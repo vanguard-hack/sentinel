@@ -2211,6 +2211,143 @@ a:hover { color: var(--blue-500); }
 .ai-seg-label { font-size: 0.82rem; }
 .ai-sample { font-size: 0.78rem; color: var(--text-4); margin-left: auto; }
 
+/* ── AI Analytics view tabs ─────────────────────────────────────────────── */
+.ai-viewtabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 18px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-1, var(--border));
+  border-radius: 10px;
+}
+.ai-viewtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-2);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.ai-viewtab:hover { color: var(--text-0); }
+.ai-viewtab.active {
+  background: var(--rp-series, #2a78d6);
+  color: #fff;
+}
+
+/* ── Crime links ────────────────────────────────────────────────────────── */
+.cl-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.cl-head h2 { display: inline-flex; align-items: center; gap: 7px; }
+.cl-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.cl-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-1, var(--border));
+  border-radius: 10px;
+}
+.cl-kpi-value { font-size: 1.5rem; font-weight: 700; color: var(--text-0); }
+.cl-kpi-label { font-size: 0.76rem; color: var(--text-3); }
+
+.cl-explorer { display: grid; grid-template-columns: 250px 1fr; gap: 16px; }
+.cl-ring-list {
+  list-style: none;
+  max-height: 440px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 4px;
+}
+.cl-ring {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border-1, var(--border));
+  border-radius: 9px;
+  background: var(--bg-1);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+.cl-ring:hover { background: var(--bg-2); }
+.cl-ring.active { border-color: var(--rp-series, #2a78d6); background: var(--bg-2); }
+.cl-ring-rank { font-size: 0.74rem; font-weight: 700; color: var(--text-3); min-width: 26px; }
+.cl-ring-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.cl-ring-name { font-size: 0.84rem; font-weight: 600; color: var(--text-0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-ring-sub { font-size: 0.72rem; color: var(--text-3); }
+.cl-ring-type { font-size: 0.68rem; color: var(--text-3); text-align: right; max-width: 78px; }
+
+.cl-graph-wrap { min-width: 0; }
+.cl-ring-title { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.cl-ring-title strong { font-size: 0.95rem; color: var(--text-0); }
+.cl-ring-title span { font-size: 0.76rem; color: var(--text-3); }
+.cl-trim { color: var(--gold, #d97706) !important; }
+
+.cl-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+.cl-detail h3 { font-size: 0.86rem; color: var(--text-1); margin-bottom: 8px; }
+.cl-scroll { max-height: 300px; overflow: auto; border: 1px solid var(--border-1, var(--border)); border-radius: 9px; }
+.cl-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.cl-table th {
+  position: sticky; top: 0;
+  background: var(--bg-2);
+  color: var(--text-3);
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+.cl-table td { padding: 7px 10px; border-top: 1px solid var(--border-1, var(--border)); color: var(--text-1); vertical-align: top; }
+.cl-pname { display: block; font-weight: 600; color: var(--text-0); }
+.cl-pmeta { display: block; font-size: 0.7rem; color: var(--text-3); }
+.cl-crimeno { font-variant-numeric: tabular-nums; color: var(--text-0); }
+.cl-heinous { color: var(--red, #ef4444); margin-left: 5px; font-size: 0.7rem; }
+.cl-role {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 0.7rem; font-weight: 600; white-space: nowrap;
+}
+.cl-role-red { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.cl-role-amber { background: rgba(217, 119, 6, 0.16); color: #d97706; }
+.cl-role-blue { background: rgba(42, 120, 214, 0.16); color: #2a78d6; }
+.cl-role-grey { background: var(--bg-3); color: var(--text-2); }
+
+.cl-rank { list-style: none; display: flex; flex-direction: column; }
+.cl-rank li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name nums" "meta nums";
+  gap: 0 12px;
+  padding: 9px 4px;
+  border-top: 1px solid var(--border-1, var(--border));
+  align-items: center;
+}
+.cl-rank li:first-child { border-top: none; }
+.cl-rank-name { grid-area: name; font-weight: 600; font-size: 0.85rem; color: var(--text-0); }
+.cl-rank-meta { grid-area: meta; display: inline-flex; align-items: center; gap: 4px; font-size: 0.73rem; color: var(--text-3); }
+.cl-rank-nums { grid-area: nums; font-size: 0.75rem; color: var(--text-2); text-align: right; white-space: nowrap; }
+
+@media (max-width: 860px) {
+  .cl-explorer { grid-template-columns: 1fr; }
+  .cl-ring-list { max-height: 200px; flex-direction: row; }
+  .cl-ring { min-width: 200px; }
+  .cl-detail-grid { grid-template-columns: 1fr; }
+}
+
 .ai-fc-note {
   display: flex;
   align-items: center;

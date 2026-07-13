@@ -2,13 +2,14 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Shield, ArrowLeft, Sun, Moon, RefreshCw, AlertTriangle,
-  Brain, TrendingUp, TrendingDown, Lightbulb,
+  Brain, TrendingUp, TrendingDown, Lightbulb, Activity, Share2,
 } from 'lucide-react';
 import {
   fetchIncidents, hourlyProfile, dayOfMonthProfile, weekdayProfile,
   peakWindow, monthlySeries, forecastMonths, headDaypartMatrix, DAYPARTS,
 } from '../utils/aianalytics';
 import { TrendArea, BarList } from '../components/Charts';
+import CrimeLinks from '../components/CrimeLinks';
 
 function useTheme() {
   const [isDark, setIsDark] = useState(
@@ -51,6 +52,7 @@ export default function AIAnalytics() {
   const [error, setError] = useState(null);
   const [dim, setDim] = useState('hour');
   const [head, setHead] = useState('ALL');
+  const [view, setView] = useState('patterns'); // 'patterns' | 'links'
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -184,7 +186,26 @@ export default function AIAnalytics() {
       </header>
 
       <main className="rp-main">
-        {error ? (
+        <div className="ai-viewtabs" role="tablist" aria-label="Analytics view">
+          <button
+            className={`ai-viewtab ${view === 'patterns' ? 'active' : ''}`}
+            onClick={() => setView('patterns')}
+            role="tab" aria-selected={view === 'patterns'}
+          >
+            <Activity size={15} /> Temporal patterns
+          </button>
+          <button
+            className={`ai-viewtab ${view === 'links' ? 'active' : ''}`}
+            onClick={() => setView('links')}
+            role="tab" aria-selected={view === 'links'}
+          >
+            <Share2 size={15} /> Crime links
+          </button>
+        </div>
+
+        {view === 'links' ? (
+          <CrimeLinks />
+        ) : error ? (
           <div className="cf-state cf-error">
             <AlertTriangle size={22} />
             <p>{error}</p>

@@ -144,8 +144,9 @@ export async function fetchIncidents(limit = 30) {
         name: r.VictimName, age: r.AgeYear, gender: person(r.GenderID),
         isPolice: String(r.VictimPolice) === '1',
       })),
-      accused: (aById.get(key) || []).map((r) => ({
-        name: r.AccusedName, age: r.AgeYear, gender: person(r.GenderID), tag: r.PersonID,
+      accused: (aById.get(key) || []).map((r, i) => ({
+        name: r.AccusedName, age: r.AgeYear, gender: person(r.GenderID),
+        tag: `A${i + 1}`, personId: r.PersonID,
       })),
       arrests: (arrById.get(key) || []).map((r) => ({
         type: ARREST_TYPE[String(r.ArrestSurrenderTypeID)] || '—', date: r.ArrestSurrenderDate,
