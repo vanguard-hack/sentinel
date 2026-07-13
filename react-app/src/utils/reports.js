@@ -97,7 +97,7 @@ const countCases = (where = '') =>
 // Every case's registration date (paged), for the client-side trend filter.
 async function allCaseDates() {
   const dates = [];
-  const page = 500;
+  const page = 300; // ZCQL returns nothing above ~300 rows per query
   for (let offset = 0; offset < 20000; offset += page) {
     const rows = await runQuery(
       `SELECT CrimeRegisteredDate FROM CaseMaster LIMIT ${offset}, ${page}`,

@@ -18,8 +18,22 @@ function officerPhone(id) {
   return `+91 ${num.slice(0, 5)} ${num.slice(5)}`;
 }
 
+// ZCQL returns an EMPTY result for any single query whose row count exceeds
+// ~300, so every read here is paged in ≤CAP chunks (see aianalytics PAGE too).
+// `baseSql` must NOT carry its own LIMIT — we append it.
+const CAP = 300;
+async function fetchAll(baseSql, table) {
+  const out = [];
+  for (let off = 0; off < 20000; off += CAP) {
+    const rows = await runQuery(`${baseSql} LIMIT ${off}, ${CAP}`, table);
+    out.push(...rows);
+    if (rows.length < CAP) break;
+  }
+  return out;
+}
+
 async function mapOf(table, idCol, cols) {
-  const rows = await runQuery(`SELECT ${[idCol, ...cols].join(', ')} FROM ${table} LIMIT 0, 1000`, table);
+  const rows = await fetchAll(`SELECT ${[idCol, ...cols].join(', ')} FROM ${table}`, table);
   const m = new Map();
   rows.forEach((r) => m.set(String(r[idCol]), r));
   return m;
@@ -57,13 +71,13 @@ export async function fetchIncidents(limit = 30) {
     mapOf('ReligionMaster', 'ReligionID', ['ReligionName']),
     mapOf('CasteMaster', 'caste_master_id', ['caste_master_name']),
     mapOf('Act', 'ActCode', ['ShortName', 'ActDescription']),
-    runQuery('SELECT ActCode, SectionCode, SectionDescription FROM Section LIMIT 0, 1000', 'Section'),
-    runQuery(`SELECT CaseMasterID, ComplainantName, AgeYear, OccupationID, ReligionID, CasteID, GenderID FROM ComplainantDetails WHERE CaseMasterID IN (${idIn})`, 'ComplainantDetails'),
-    runQuery(`SELECT CaseMasterID, VictimName, AgeYear, GenderID, VictimPolice FROM Victim WHERE CaseMasterID IN (${idIn})`, 'Victim'),
-    runQuery(`SELECT CaseMasterID, AccusedName, AgeYear, GenderID, PersonID FROM Accused WHERE CaseMasterID IN (${idIn})`, 'Accused'),
-    runQuery(`SELECT CaseMasterID, ArrestSurrenderTypeID, ArrestSurrenderDate, IOID FROM ArrestSurrender WHERE CaseMasterID IN (${idIn})`, 'ArrestSurrender'),
-    runQuery(`SELECT CaseMasterID, ActID, SectionID FROM ActSectionAssociation WHERE CaseMasterID IN (${idIn})`, 'ActSectionAssociation'),
-    runQuery(`SELECT CaseMasterID, csdate, cstype FROM ChargesheetDetails WHERE CaseMasterID IN (${idIn})`, 'ChargesheetDetails'),
+    fetchAll('SELECT ActCode, SectionCode, SectionDescription FROM Section', 'Section'),
+    fetchAll(`SELECT CaseMasterID, ComplainantName, AgeYear, OccupationID, ReligionID, CasteID, GenderID FROM ComplainantDetails WHERE CaseMasterID IN (${idIn})`, 'ComplainantDetails'),
+    fetchAll(`SELECT CaseMasterID, VictimName, AgeYear, GenderID, VictimPolice FROM Victim WHERE CaseMasterID IN (${idIn})`, 'Victim'),
+    fetchAll(`SELECT CaseMasterID, AccusedName, AgeYear, GenderID, PersonID FROM Accused WHERE CaseMasterID IN (${idIn})`, 'Accused'),
+    fetchAll(`SELECT CaseMasterID, ArrestSurrenderTypeID, ArrestSurrenderDate, IOID FROM ArrestSurrender WHERE CaseMasterID IN (${idIn})`, 'ArrestSurrender'),
+    fetchAll(`SELECT CaseMasterID, ActID, SectionID FROM ActSectionAssociation WHERE CaseMasterID IN (${idIn})`, 'ActSectionAssociation'),
+    fetchAll(`SELECT CaseMasterID, csdate, cstype FROM ChargesheetDetails WHERE CaseMasterID IN (${idIn})`, 'ChargesheetDetails'),
   ]);
 
   const secMap = new Map();

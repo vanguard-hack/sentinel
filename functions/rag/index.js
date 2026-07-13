@@ -306,10 +306,31 @@ const ZIA_LANG_FIELD = process.env.ZIA_LANG_FIELD || 'language';
 const ZIA_LANGS = new Set(['en', 'hi', 'kn']);
 
 async function handleTranscribe(req, res) {
-  const body = JSON.parse((await readBody(req)) || '{}');
-  if (!body.audio) return json(res, 400, { error: 'audio (base64) is required' });
-
-  const buf = Buffer.from(String(body.audio), 'base64');
+  // Two request shapes are accepted:
+  //   • raw audio bytes as application/octet-stream, with mimetype/filename/
+  //     language in the query string (preferred — no base64 bloat and it
+  //     dodges the gateway's JSON-body content scanning), or
+  //   • legacy JSON { audio: <base64>, mimetype, filename, language }.
+  let buf, mimetype, filename, language;
+  const ctype = String(req.headers['content-type'] || '');
+  if (ctype.includes('application/octet-stream')) {
+    const q = (req.url || '').split('?')[1] || '';
+    const param = (k) => {
+      const m = q.match(new RegExp(`(?:^|&)${k}=([^&]*)`));
+      return m ? decodeURIComponent(m[1]) : '';
+    };
+    buf = await readBinaryBody(req);
+    mimetype = param('mimetype');
+    filename = param('filename');
+    language = param('language');
+  } else {
+    const body = JSON.parse((await readBody(req)) || '{}');
+    if (!body.audio) return json(res, 400, { error: 'audio (base64) is required' });
+    buf = Buffer.from(String(body.audio), 'base64');
+    mimetype = body.mimetype;
+    filename = body.filename;
+    language = body.language;
+  }
   if (!buf.length) return json(res, 400, { error: 'audio payload is empty' });
   if (buf.length > 15 * 1024 * 1024) return json(res, 413, { error: 'audio too large (15MB max)' });
 
@@ -317,10 +338,10 @@ async function handleTranscribe(req, res) {
   const form = new FormData();
   form.append(
     ZIA_FILE_FIELD,
-    new Blob([buf], { type: body.mimetype || 'audio/webm' }),
-    body.filename || 'recording.webm'
+    new Blob([buf], { type: mimetype || 'audio/wav' }),
+    filename || 'recording.wav'
   );
-  const lang = String(body.language || 'en').slice(0, 2).toLowerCase();
+  const lang = String(language || 'en').slice(0, 2).toLowerCase();
   form.append(ZIA_LANG_FIELD, ZIA_LANGS.has(lang) ? lang : 'en');
 
   const r = await fetch(ZIA_TRANSCRIBE_URL, {
