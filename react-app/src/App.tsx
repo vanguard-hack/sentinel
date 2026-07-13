@@ -10,7 +10,6 @@ import AIAnalytics from './pages/AIAnalytics';
 import Profile from './pages/Profile';
 import Incidents from './pages/Incidents';
 import Sidebar from './components/Sidebar';
-import ChatWidget from './components/ChatWidget';
 import LoadingScreen from './components/LoadingScreen';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -37,7 +36,6 @@ function AppRoutes() {
               <Route path="*" element={<Navigate to="/reports" replace />} />
             </Routes>
           </div>
-          <ChatWidget />
         </div>
       </LayoutProvider>
     </ErrorBoundary>
