@@ -13,6 +13,21 @@ import TopBar from '../components/TopBar';
 
 const PER_PAGE_OPTIONS = [25, 50, 100];
 
+// Windowed page list: 1 … around-current … last, with '…' gaps.
+function pageWindow(current, total) {
+  if (!total || total <= 1) return [1];
+  const wanted = new Set([1, total, current, current - 1, current + 1]);
+  const pages = [...wanted].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
+  const out = [];
+  let prev = 0;
+  for (const p of pages) {
+    if (p - prev > 1) out.push('…');
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
+
 // Order columns: ROWID first, business columns next, audit columns last.
 function orderColumns(cols) {
   const rowid = cols.filter((c) => c === 'ROWID');
@@ -384,11 +399,28 @@ export default function CaseFiles() {
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1 || loading}
               >
-                <ChevronLeft size={15} /> Prev
+                <ChevronLeft size={15} /> Previous
               </button>
-              <span className="cf-page-num">
-                Page {page}{totalPages ? ` of ${totalPages}` : ''}
-              </span>
+              <div className="cf-pages">
+                {totalPages ? (
+                  pageWindow(page, totalPages).map((p, i) =>
+                    p === '…' ? (
+                      <span key={`e${i}`} className="cf-page-ellipsis">…</span>
+                    ) : (
+                      <button
+                        key={p}
+                        className={`cf-page-num-btn ${p === page ? 'active' : ''}`}
+                        onClick={() => setPage(p)}
+                        disabled={loading}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )
+                ) : (
+                  <span className="cf-page-num">Page {page}</span>
+                )}
+              </div>
               <button
                 className="cf-page-btn"
                 onClick={() => setPage((p) => p + 1)}
