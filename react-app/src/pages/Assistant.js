@@ -7,9 +7,11 @@ import {
 } from 'lucide-react';
 import {
   loadSessions, saveSessions, makeTitle, newSession, generateReply, uid,
+  transcribeAudio,
 } from '../utils/assistant';
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
+import i18n from '../i18n';
 
 // Short, domain-relevant prompts shown on an empty conversation.
 const SUGGESTIONS = [
@@ -31,11 +33,13 @@ function useTheme() {
   return [isDark, setIsDark];
 }
 
-// Browser speech-to-text (Chrome/Safari). Null if unsupported.
-const SpeechRec =
-  typeof window !== 'undefined'
-    ? window.SpeechRecognition || window.webkitSpeechRecognition
-    : null;
+// Voice input records real audio via MediaRecorder and transcribes it with the
+// Zia audio-to-text model (English / Hindi / Kannada, follows the UI language).
+const canRecord =
+  typeof window !== 'undefined' &&
+  typeof window.MediaRecorder !== 'undefined' &&
+  navigator.mediaDevices &&
+  typeof navigator.mediaDevices.getUserMedia === 'function';
 
 export default function Assistant() {
   const navigate = useNavigate();
@@ -48,6 +52,8 @@ export default function Assistant() {
   const [attachments, setAttachments] = useState([]); // { id, name, size, type, url? }
   const [sending, setSending] = useState(false);
   const [listening, setListening] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [voiceError, setVoiceError] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
 
   // Up/Down history navigation through this session's past questions.
@@ -215,13 +221,19 @@ export default function Assistant() {
   };
 
   const onFiles = (e) => {
-    const picked = Array.from(e.target.files || []).map((f) => ({
-      id: uid(),
-      name: f.name,
-      size: f.size,
-      type: f.type,
-      url: f.type.startsWith('image/') ? URL.createObjectURL(f) : null,
-    }));
+    const files = Array.from(e.target.files || []);
+    // Audio files are transcribed straight into the composer instead of
+    // being attached — the assistant works on text.
+    files.filter((f) => f.type.startsWith('audio/')).forEach((f) => runTranscription(f));
+    const picked = files
+      .filter((f) => !f.type.startsWith('audio/'))
+      .map((f) => ({
+        id: uid(),
+        name: f.name,
+        size: f.size,
+        type: f.type,
+        url: f.type.startsWith('image/') ? URL.createObjectURL(f) : null,
+      }));
     setAttachments((prev) => [...prev, ...picked]);
     e.target.value = '';
   };
@@ -253,27 +265,47 @@ export default function Assistant() {
     );
   };
 
-  const toggleMic = () => {
-    if (!SpeechRec) return;
+  // Feed a finished audio blob/file through Zia and append the transcript to
+  // the composer. Errors surface in the disclaimer line under the composer.
+  const runTranscription = useCallback(async (blob) => {
+    setTranscribing(true);
+    setVoiceError(null);
+    try {
+      const text = await transcribeAudio(blob, i18n.resolvedLanguage || 'en');
+      setInput((cur) => (cur ? cur.replace(/\s+$/, '') + ' ' + text : text));
+      textareaRef.current?.focus();
+    } catch (e) {
+      setVoiceError(e.message || String(e));
+    } finally {
+      setTranscribing(false);
+    }
+  }, []);
+
+  const toggleMic = async () => {
+    if (!canRecord || transcribing) return;
     if (listening) {
-      recognitionRef.current?.stop();
+      recognitionRef.current?.stop(); // triggers onstop → transcription
       return;
     }
-    const rec = new SpeechRec();
-    rec.lang = 'en-IN';
-    rec.interimResults = true;
-    rec.continuous = false;
-    let base = input ? input + ' ' : '';
-    rec.onresult = (ev) => {
-      let txt = '';
-      for (let i = ev.resultIndex; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
-      setInput(base + txt);
-    };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
-    recognitionRef.current = rec;
-    setListening(true);
-    rec.start();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      const chunks = [];
+      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setListening(false);
+        const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+        if (blob.size > 800) runTranscription(blob); // skip sub-second blips
+      };
+      recognitionRef.current = rec;
+      setVoiceError(null);
+      setListening(true);
+      rec.start();
+    } catch (e) {
+      setVoiceError('Microphone unavailable: ' + (e.message || e));
+      setListening(false);
+    }
   };
 
   return (
@@ -480,11 +512,18 @@ export default function Assistant() {
                   onChange={(e) => { setInput(e.target.value); histRef.current.idx = null; }}
                   onKeyDown={onKeyDown}
                 />
-                {SpeechRec && (
+                {canRecord && (
                   <button
-                    className={`as-comp-btn ${listening ? 'listening' : ''}`}
+                    className={`as-comp-btn ${listening ? 'listening' : ''} ${transcribing ? 'transcribing' : ''}`}
                     onClick={toggleMic}
-                    title={listening ? 'Stop dictation' : 'Dictate'}
+                    disabled={transcribing}
+                    title={
+                      transcribing
+                        ? 'Transcribing…'
+                        : listening
+                        ? 'Stop recording'
+                        : 'Record voice (Zia transcription — English/Hindi/Kannada)'
+                    }
                   >
                     <Mic size={18} />
                   </button>
@@ -499,8 +538,14 @@ export default function Assistant() {
                 </button>
               </div>
             </div>
-            <p className="as-disclaimer">
-              Sentinel Assistant — responses are a UI placeholder until a model backend is connected.
+            <p className={`as-disclaimer ${voiceError ? 'as-voice-error' : ''}`}>
+              {voiceError
+                ? `Voice input: ${voiceError}`
+                : transcribing
+                ? 'Transcribing audio with Zia…'
+                : listening
+                ? 'Recording — click the mic again to stop.'
+                : 'Sentinel Assistant — answers come from the FIR Data Store and the knowledge base.'}
             </p>
           </div>
         </main>

@@ -2229,3 +2229,7 @@ a:hover { color: var(--blue-500); }
 .trend-line-forecast { stroke-dasharray: 6 5; opacity: 0.85; }
 .trend-dot.forecast { fill: var(--bg-1); stroke: var(--rp-series); stroke-width: 1.6; }
 .rp-footnote svg { vertical-align: -2px; margin-right: 4px; }
+
+/* Voice input states */
+.as-comp-btn.transcribing { opacity: 0.55; cursor: wait; }
+.as-voice-error { color: #d64545 !important; }

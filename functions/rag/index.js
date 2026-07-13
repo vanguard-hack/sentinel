@@ -233,9 +233,62 @@ function json(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// ── Zia audio-to-text (QuickML) ─────────────────────────────────────────────
+// POST /server/rag/transcribe  { audio: <base64>, mimetype, filename, language }
+// Proxies to the Catalyst Zia transcription model (multipart), keeping OAuth
+// server-side like the RAG calls. Requires the refresh token to carry the
+// QuickML.deployment.READ scope in addition to QuickML.rag.READ.
+const ZIA_TRANSCRIBE_URL =
+  process.env.ZIA_TRANSCRIBE_URL ||
+  'https://api.catalyst.zoho.in/quickml/api/v1/models/zia/audio/transcribe';
+const ZIA_FILE_FIELD = process.env.ZIA_FILE_FIELD || 'file';
+const ZIA_LANG_FIELD = process.env.ZIA_LANG_FIELD || 'language';
+const ZIA_LANGS = new Set(['en', 'hi', 'kn']);
+
+async function handleTranscribe(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  if (!body.audio) return json(res, 400, { error: 'audio (base64) is required' });
+
+  const buf = Buffer.from(String(body.audio), 'base64');
+  if (!buf.length) return json(res, 400, { error: 'audio payload is empty' });
+  if (buf.length > 15 * 1024 * 1024) return json(res, 413, { error: 'audio too large (15MB max)' });
+
+  const token = await getAccessToken();
+  const form = new FormData();
+  form.append(
+    ZIA_FILE_FIELD,
+    new Blob([buf], { type: body.mimetype || 'audio/webm' }),
+    body.filename || 'recording.webm'
+  );
+  const lang = String(body.language || 'en').slice(0, 2).toLowerCase();
+  form.append(ZIA_LANG_FIELD, ZIA_LANGS.has(lang) ? lang : 'en');
+
+  const r = await fetch(ZIA_TRANSCRIBE_URL, {
+    method: 'POST',
+    headers: {
+      'CATALYST-ORG': ORG,
+      Authorization: `Zoho-oauthtoken ${token}`,
+    },
+    body: form,
+    signal: AbortSignal.timeout(60_000),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) return json(res, r.status, { error: 'transcription failed', detail: data });
+
+  // Field name isn't documented — check the likely spots and return raw too.
+  const d = data.data || data;
+  const text =
+    d.transcript || d.transcription || d.text || d.result || d.output ||
+    (typeof d.response === 'string' ? d.response : '') || '';
+  return json(res, 200, { text: String(text).trim(), raw: data });
+}
+
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return json(res, 405, { error: 'Use POST' });
+    if (req.url && req.url.replace(/\/+$/, '').endsWith('/transcribe')) {
+      return await handleTranscribe(req, res);
+    }
 
     const body = JSON.parse((await readBody(req)) || '{}');
     const query = (body.query || '').trim();

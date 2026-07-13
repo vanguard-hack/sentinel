@@ -43,6 +43,34 @@ export const newSession = () => ({
   messages: [],
 });
 
+// Transcribe an audio Blob/File via the Zia audio-to-text model (proxied by
+// the same server-side function that fronts RAG). Returns the transcript text;
+// throws with a readable message on failure.
+export async function transcribeAudio(blob, language = 'en') {
+  const base64 = await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result).split(',')[1] || '');
+    fr.onerror = () => reject(new Error('could not read audio'));
+    fr.readAsDataURL(blob);
+  });
+  const res = await fetch('/server/rag/transcribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      audio: base64,
+      mimetype: blob.type || 'audio/webm',
+      filename: blob.name || 'recording.webm',
+      language,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error ? `${data.error}` : `transcription failed (HTTP ${res.status})`);
+  }
+  if (!data.text) throw new Error('no speech detected in the audio');
+  return data.text;
+}
+
 // Ask the RAG proxy function (server-side, same origin) for an answer. Returns
 // { text, components } — components are AG-UI-style typed specs (bar-chart,
 // pie-chart, table, cards) rendered by AguiRenderer. Falls back to an
