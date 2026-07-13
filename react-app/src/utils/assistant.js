@@ -43,10 +43,54 @@ export const newSession = () => ({
   messages: [],
 });
 
+// Re-encode any decodable audio (webm/opus recordings, mp3 files, …) into
+// 16 kHz mono PCM WAV — the format the Zia transcription model reliably
+// accepts. Uses the browser's own decoder, so whatever MediaRecorder produced
+// is guaranteed decodable here.
+async function toWav(blob) {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC();
+  let decoded;
+  try {
+    decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+  } finally {
+    ctx.close();
+  }
+  const rate = 16000;
+  const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(decoded.duration * rate)), rate);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start();
+  const rendered = await off.startRendering();
+  const pcm = rendered.getChannelData(0);
+
+  const view = new DataView(new ArrayBuffer(44 + pcm.length * 2));
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); view.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE');
+  str(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, rate, true);
+  view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  str(36, 'data'); view.setUint32(40, pcm.length * 2, true);
+  for (let i = 0; i < pcm.length; i++) {
+    const s = Math.max(-1, Math.min(1, pcm[i]));
+    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Blob([view.buffer], { type: 'audio/wav' });
+}
+
 // Transcribe an audio Blob/File via the Zia audio-to-text model (proxied by
 // the same server-side function that fronts RAG). Returns the transcript text;
 // throws with a readable message on failure.
-export async function transcribeAudio(blob, language = 'en') {
+export async function transcribeAudio(input, language = 'en') {
+  let blob = input;
+  let filename = 'recording.wav';
+  try {
+    blob = await toWav(input);
+  } catch {
+    // Undecodable in this browser — send the original and let the model try.
+    filename = input.name || 'recording.webm';
+  }
   const base64 = await new Promise((resolve, reject) => {
     const fr = new FileReader();
     fr.onload = () => resolve(String(fr.result).split(',')[1] || '');
@@ -58,17 +102,22 @@ export async function transcribeAudio(blob, language = 'en') {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       audio: base64,
-      mimetype: blob.type || 'audio/webm',
-      filename: blob.name || 'recording.webm',
+      mimetype: blob.type || 'audio/wav',
+      filename,
       language,
     }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data.error ? `${data.error}` : `transcription failed (HTTP ${res.status})`);
+    const reason =
+      (data.detail && (data.detail.message || (data.detail.details && data.detail.details.reason))) ||
+      data.error ||
+      `HTTP ${res.status}`;
+    throw new Error(`transcription failed — ${reason}`);
   }
-  if (!data.text) throw new Error('no speech detected in the audio');
-  return data.text;
+  const text = String(data.text || '').replace(/^[.\s]+$/, '');
+  if (!text) throw new Error('no speech detected in the audio');
+  return text;
 }
 
 // Ask the RAG proxy function (server-side, same origin) for an answer. Returns
