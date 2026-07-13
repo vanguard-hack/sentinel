@@ -283,11 +283,34 @@ async function handleTranscribe(req, res) {
   return json(res, 200, { text: String(text).trim(), raw: data });
 }
 
+// ── PDF report via SmartBrowz ───────────────────────────────────────────────
+// POST /server/rag/report-pdf  { html }  →  { pdf: <base64> }
+// The browser composes a self-contained HTML report; SmartBrowz renders it.
+async function handleReportPdf(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const html = String(body.html || '');
+  if (!html.trim()) return json(res, 400, { error: 'html is required' });
+  if (html.length > 2 * 1024 * 1024) return json(res, 413, { error: 'html too large' });
+
+  const app = catalystSDK.initialize(req);
+  const stream = await app.smartbrowz().convertToPdf(html, {
+    pdf_options: { format: 'A4', print_background: true },
+  });
+  const chunks = [];
+  for await (const c of stream) chunks.push(c);
+  const pdf = Buffer.concat(chunks);
+  if (!pdf.length) return json(res, 502, { error: 'SmartBrowz returned an empty document' });
+  return json(res, 200, { pdf: pdf.toString('base64'), bytes: pdf.length });
+}
+
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return json(res, 405, { error: 'Use POST' });
     if (req.url && req.url.replace(/\/+$/, '').endsWith('/transcribe')) {
       return await handleTranscribe(req, res);
+    }
+    if (req.url && req.url.replace(/\/+$/, '').endsWith('/report-pdf')) {
+      return await handleReportPdf(req, res);
     }
 
     const body = JSON.parse((await readBody(req)) || '{}');

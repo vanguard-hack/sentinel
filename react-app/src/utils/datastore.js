@@ -145,6 +145,20 @@ export async function fetchPage({ table, page = 1, perPage = 50, column = 'ALL',
   return { rows: hasNext ? rows.slice(0, perPage) : rows, hasNext };
 }
 
+// Fetch every row of a table (paginated at the ZCQL per-query cap). Used by
+// the Excel export; `cap` is a safety limit per table.
+export async function fetchAllRows(table, { cap = 10000 } = {}) {
+  const out = [];
+  const page = 300;
+  for (let offset = 0; offset < cap; offset += page) {
+    const resp = await zcql().executeQuery(`SELECT * FROM ${table} LIMIT ${offset}, ${page}`);
+    const rows = flatten(resp, table);
+    out.push(...rows);
+    if (rows.length < page) break;
+  }
+  return out;
+}
+
 // Best-effort total row count (drives the "N records" label). Returns null on
 // failure so the UI can still paginate via hasNext.
 export async function fetchCount({ table, column = 'ALL', search = '' }) {

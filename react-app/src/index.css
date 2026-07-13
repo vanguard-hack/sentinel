@@ -30,7 +30,10 @@
 
   --radius-sm: 6px;
   --radius: 10px;
+  --radius-md: 10px;
   --radius-lg: 16px;
+  /* alias used by newer components */
+  --border-1: var(--border);
 
   --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
 
@@ -42,11 +45,12 @@
 
 /* ── Dark mode ──────────────────────────────────────────────────────────── */
 [data-theme="dark"] {
-  --bg-0: #050c1a;
-  --bg-1: #0a1628;
-  --bg-2: #0f1f35;
-  --bg-3: #162a47;
-  --bg-4: #1e3a5f;
+  /* Pure-black dark theme — neutral greys, no blue cast. */
+  --bg-0: #000000;
+  --bg-1: #0a0a0a;
+  --bg-2: #131313;
+  --bg-3: #1c1c1c;
+  --bg-4: #262626;
 
   --blue-400: #60a5fa;
   --blue-500: #3b82f6;
@@ -67,8 +71,8 @@
   --text-3: #64748b;
   --text-4: #475569;
 
-  --border: rgba(59, 130, 246, 0.15);
-  --border-bright: rgba(59, 130, 246, 0.3);
+  --border: rgba(255, 255, 255, 0.10);
+  --border-bright: rgba(255, 255, 255, 0.22);
 
   --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.3);
 
@@ -2394,3 +2398,67 @@ a:hover { color: var(--blue-500); }
   cursor: pointer; flex: none;
 }
 .cw-send:disabled { opacity: 0.45; cursor: default; }
+
+/* Export buttons (Case Files Excel, Reports PDF) */
+.cf-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--bg-1);
+  color: var(--text-1);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cf-export-btn:hover:not(:disabled) { border-color: #2a78d6; color: #2a78d6; }
+.cf-export-btn:disabled { opacity: 0.55; cursor: default; }
+
+/* Profile dropdown */
+.nav-profile { position: relative; }
+.nav-user-btn { border: none; background: none; cursor: pointer; border-radius: 10px; padding: 4px 8px; }
+.nav-user-btn:hover, .nav-user-btn.open { background: var(--hover-overlay); }
+.nav-profile-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 500;
+  width: 280px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.nav-profile-card {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-1);
+}
+.nav-profile-avatar {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: #2a78d6; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 1.1rem; flex: none;
+}
+.nav-profile-id { display: flex; flex-direction: column; min-width: 0; }
+.nav-profile-name { font-weight: 650; color: var(--text-0); font-size: 0.95rem; }
+.nav-profile-email { font-size: 0.78rem; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; }
+.nav-profile-role {
+  margin-top: 4px; align-self: flex-start;
+  font-size: 0.68rem; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  background: rgba(42, 120, 214, 0.13); color: #2a78d6;
+}
+.nav-profile-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 11px 16px;
+  border: none; background: none; text-align: left;
+  font-size: 0.85rem; color: var(--text-1); cursor: pointer; text-decoration: none;
+}
+.nav-profile-item:hover { background: var(--hover-overlay); }
+.nav-profile-signout { color: #d64545; border-top: 1px solid var(--border-1); }

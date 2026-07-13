@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import {
   Shield, Database, ArrowLeft, Search, X, Sun, Moon,
   ChevronLeft, ChevronRight, ChevronDown, Check, RefreshCw, AlertTriangle,
+  FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import {
   TABLE_GROUPS, ALL_TABLES, tableLabel, SYSTEM_COLUMNS,
-  fetchColumns, fetchPage, fetchCount,
+  fetchColumns, fetchPage, fetchCount, fetchAllRows,
 } from '../utils/datastore';
 
 const PER_PAGE_OPTIONS = [25, 50, 100];
@@ -50,6 +52,37 @@ export default function CaseFiles() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Excel export: every table becomes a worksheet in one workbook.
+  const [exporting, setExporting] = useState(null); // null | { done, total, table }
+
+  const exportExcel = useCallback(async () => {
+    if (exporting) return;
+    const wb = XLSX.utils.book_new();
+    try {
+      for (let i = 0; i < ALL_TABLES.length; i++) {
+        const t = ALL_TABLES[i];
+        setExporting({ done: i, total: ALL_TABLES.length, table: t.label });
+        let rows = [];
+        try {
+          rows = await fetchAllRows(t.name);
+        } catch {
+          rows = [{ error: 'export failed for this table' }];
+        }
+        // Sheet names cap at 31 chars and forbid : \ / ? * [ ]
+        const sheet = t.name.replace(/[:\\/?*[\]]/g, ' ').slice(0, 31);
+        XLSX.utils.book_append_sheet(
+          wb,
+          XLSX.utils.json_to_sheet(rows.length ? rows : [{}]),
+          sheet
+        );
+      }
+      const stamp = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `sentinel-datastore-${stamp}.xlsx`);
+    } finally {
+      setExporting(null);
+    }
+  }, [exporting]);
 
   // Table picker (searchable combobox) state.
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -314,6 +347,20 @@ export default function CaseFiles() {
 
               <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
                 <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
+              </button>
+
+              <button
+                className="cf-export-btn"
+                onClick={exportExcel}
+                disabled={!!exporting}
+                title="Export every table to one Excel workbook (a sheet per table)"
+              >
+                <FileSpreadsheet size={15} />
+                <span>
+                  {exporting
+                    ? `Exporting ${exporting.done + 1}/${exporting.total}…`
+                    : 'Export Excel'}
+                </span>
               </button>
             </div>
           </div>

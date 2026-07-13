@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import {
   Shield, ArrowLeft, Sun, Moon, RefreshCw, AlertTriangle,
   FileText, Users, HeartPulse, PackageCheck, FolderOpen, Gavel,
-  Flame, Siren, TrendingUp, TrendingDown,
+  Flame, Siren, TrendingUp, TrendingDown, FileDown,
 } from 'lucide-react';
 import { fetchReports } from '../utils/reports';
+import { downloadReportPdf } from '../utils/reportPdf';
 import { BarList, Donut, TrendArea } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
 
@@ -68,6 +69,21 @@ export default function Reports() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState(null);
+
+  const exportPdf = useCallback(async () => {
+    if (!data || pdfBusy) return;
+    setPdfBusy(true);
+    setPdfError(null);
+    try {
+      await downloadReportPdf(data);
+    } catch (e) {
+      setPdfError(e.message || String(e));
+    } finally {
+      setPdfBusy(false);
+    }
+  }, [data, pdfBusy]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,6 +113,15 @@ export default function Reports() {
           <span>Dashboard</span>
         </button>
         <div className="db-nav-right">
+          <button
+            className="cf-export-btn"
+            onClick={exportPdf}
+            disabled={pdfBusy || loading || !data}
+            title={pdfError ? `Last attempt failed: ${pdfError}` : 'Download this report as PDF'}
+          >
+            <FileDown size={15} />
+            <span>{pdfBusy ? 'Rendering…' : pdfError ? 'Retry PDF' : 'Export PDF'}</span>
+          </button>
           <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
             <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
           </button>

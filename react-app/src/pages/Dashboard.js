@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Shield, Map, BarChart2, AlertTriangle, MessageSquare,
   Users, Brain, Database, Bell, LogOut, ChevronRight,
-  Search, Sun, Moon, X,
+  Search, Sun, Moon, X, UserCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LANGUAGES } from '../i18n';
@@ -55,6 +55,23 @@ export default function Dashboard() {
   const [isDark, setIsDark] = useState(
     () => localStorage.getItem('sentinel-theme') === 'dark'
   );
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef(null);
+
+  // Close the profile menu on outside click or Escape.
+  useEffect(() => {
+    if (!profileOpen) return undefined;
+    const onDown = (e) => {
+      if (profileRef.current && !profileRef.current.contains(e.target)) setProfileOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setProfileOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [profileOpen]);
 
   useEffect(() => {
     const theme = isDark ? 'dark' : 'light';
@@ -157,17 +174,49 @@ export default function Dashboard() {
           <button className="nav-icon-btn" aria-label={t('a11y.notifications')}>
             <Bell size={17} />
           </button>
-          <div className="nav-user">
-            <div className="nav-avatar">{initials}</div>
-            <div className="nav-user-info">
-              <span className="nav-user-name">{displayName}</span>
-              <span className="nav-user-email">{user?.email_id}</span>
-            </div>
+          <div className="nav-profile" ref={profileRef}>
+            <button
+              className={`nav-user nav-user-btn ${profileOpen ? 'open' : ''}`}
+              onClick={() => setProfileOpen((o) => !o)}
+              aria-haspopup="menu"
+              aria-expanded={profileOpen}
+              title="Account"
+            >
+              <div className="nav-avatar">{initials}</div>
+              <div className="nav-user-info">
+                <span className="nav-user-name">{displayName}</span>
+                <span className="nav-user-email">{user?.email_id}</span>
+              </div>
+            </button>
+
+            {profileOpen && (
+              <div className="nav-profile-pop" role="menu">
+                <div className="nav-profile-card">
+                  <div className="nav-profile-avatar">{initials}</div>
+                  <div className="nav-profile-id">
+                    <span className="nav-profile-name">{displayName}</span>
+                    <span className="nav-profile-email">{user?.email_id}</span>
+                    {user?.role_details?.role_name && (
+                      <span className="nav-profile-role">{user.role_details.role_name}</span>
+                    )}
+                  </div>
+                </div>
+                <a
+                  className="nav-profile-item"
+                  href="https://accounts.zoho.in/home"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <UserCircle size={16} />
+                  <span>View account</span>
+                </a>
+                <button className="nav-profile-item nav-profile-signout" onClick={signOut}>
+                  <LogOut size={16} />
+                  <span>{t('action.signOut')}</span>
+                </button>
+              </div>
+            )}
           </div>
-          <button className="nav-signout-btn" onClick={signOut} title={t('action.signOut')}>
-            <LogOut size={15} />
-            <span>{t('action.signOut')}</span>
-          </button>
         </div>
       </header>
 
