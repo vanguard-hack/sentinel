@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Shield, ArrowLeft, Sun, Moon, RefreshCw, AlertTriangle,
   FileText, Users, HeartPulse, PackageCheck, FolderOpen, Gavel,
   Flame, Siren, TrendingUp, TrendingDown, FileDown,
 } from 'lucide-react';
-import { fetchReports } from '../utils/reports';
-import { downloadReportPdf } from '../utils/reportPdf';
+import { fetchReports, buildTrend, TREND_RANGES } from '../utils/reports';
+import { exportReportPdf } from '../utils/reportPdf';
 import { BarList, Donut, TrendArea } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
 
@@ -71,19 +71,27 @@ export default function Reports() {
   const [error, setError] = useState(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState(null);
+  const [trendRange, setTrendRange] = useState('month');
+  const contentRef = useRef(null);
 
   const exportPdf = useCallback(async () => {
     if (!data || pdfBusy) return;
     setPdfBusy(true);
     setPdfError(null);
     try {
-      await downloadReportPdf(data);
+      await exportReportPdf(contentRef.current);
     } catch (e) {
       setPdfError(e.message || String(e));
     } finally {
       setPdfBusy(false);
     }
   }, [data, pdfBusy]);
+
+  const trendSeries = useMemo(
+    () => (data?.caseDates ? buildTrend(data.caseDates, trendRange) : []),
+    [data, trendRange]
+  );
+  const trendLabelEvery = trendRange === 'day' ? 5 : trendRange === 'year' ? 4 : 1;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -119,8 +127,8 @@ export default function Reports() {
             disabled={pdfBusy || loading || !data}
             title={pdfError ? `Last attempt failed: ${pdfError}` : 'Download this report as PDF'}
           >
-            <FileDown size={15} />
-            <span>{pdfBusy ? 'Rendering…' : pdfError ? 'Retry PDF' : 'Export PDF'}</span>
+            {pdfBusy ? <span className="btn-spinner" /> : <FileDown size={15} />}
+            <span>{pdfBusy ? 'Exporting' : pdfError ? 'Retry PDF' : 'Export PDF'}</span>
           </button>
           <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
             <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
@@ -148,7 +156,7 @@ export default function Reports() {
             <p>Crunching the numbers…</p>
           </div>
         ) : (
-          <>
+          <div ref={contentRef}>
             {/* KPI tiles */}
             <div className="rp-kpi-row">
               <Kpi
@@ -195,14 +203,37 @@ export default function Reports() {
               />
             </div>
 
+            {/* Crime trend with day/month/year/5-year filter */}
+            <section className="rp-card rp-card-wide">
+              <div className="rp-card-head rp-trend-head">
+                <div>
+                  <h2>Crime trend</h2>
+                  <span className="rp-card-sub">
+                    {TREND_RANGES.find((r) => r.key === trendRange)?.label} · cases registered
+                  </span>
+                </div>
+                <div className="rp-seg" role="group" aria-label="Trend range">
+                  {TREND_RANGES.map((r) => (
+                    <button
+                      key={r.key}
+                      className={`rp-seg-btn ${trendRange === r.key ? 'active' : ''}`}
+                      onClick={() => setTrendRange(r.key)}
+                      aria-pressed={trendRange === r.key}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="rp-card-body">
+                <TrendArea data={trendSeries} labelEvery={trendLabelEvery} height={180} />
+              </div>
+            </section>
+
             {/* Charts */}
             <div className="rp-grid">
               <Card title="Crimes per year" subtitle="Total cases registered each year">
                 <TrendArea data={data.yearly} />
-              </Card>
-
-              <Card title="Registration trend" subtitle="FIRs registered per month, last 12 months">
-                <TrendArea data={data.trend} />
               </Card>
 
               <Card title="Case status" subtitle="Distribution of FIR outcomes">
@@ -277,7 +308,7 @@ export default function Reports() {
             <p className="rp-footnote">
               Live from the Data Store via ZCQL aggregates over the Police FIR schema.
             </p>
-          </>
+          </div>
         )}
       </main>
     </div>

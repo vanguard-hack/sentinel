@@ -176,17 +176,13 @@ export default function Dashboard() {
           </button>
           <div className="nav-profile" ref={profileRef}>
             <button
-              className={`nav-user nav-user-btn ${profileOpen ? 'open' : ''}`}
+              className={`nav-avatar-btn ${profileOpen ? 'open' : ''}`}
               onClick={() => setProfileOpen((o) => !o)}
               aria-haspopup="menu"
               aria-expanded={profileOpen}
-              title="Account"
+              title={displayName}
             >
               <div className="nav-avatar">{initials}</div>
-              <div className="nav-user-info">
-                <span className="nav-user-name">{displayName}</span>
-                <span className="nav-user-email">{user?.email_id}</span>
-              </div>
             </button>
 
             {profileOpen && (

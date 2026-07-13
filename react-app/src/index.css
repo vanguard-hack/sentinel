@@ -2485,3 +2485,26 @@ a:hover { color: var(--blue-500); }
 .cw-mic.listening { background: #d64545; color: #fff; border-color: #d64545; animation: cw-pulse 1.2s infinite; }
 .cw-mic:disabled { opacity: 0.5; cursor: default; }
 @keyframes cw-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+/* Avatar-only profile button + button spinner + reports trend filter */
+.nav-avatar-btn {
+  border: none; background: none; cursor: pointer;
+  padding: 2px; border-radius: 50%; line-height: 0;
+}
+.nav-avatar-btn:hover, .nav-avatar-btn.open { box-shadow: 0 0 0 2px var(--border-bright); }
+.btn-spinner {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  display: inline-block; animation: cf-rotate 0.7s linear infinite;
+}
+.rp-trend-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.rp-seg {
+  display: inline-flex; border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm, 8px); overflow: hidden; background: var(--bg-1);
+}
+.rp-seg-btn {
+  padding: 6px 12px; border: none; background: none;
+  font-size: 0.78rem; color: var(--text-3); cursor: pointer; white-space: nowrap;
+}
+.rp-seg-btn + .rp-seg-btn { border-left: 1px solid var(--border-1); }
+.rp-seg-btn.active { background: var(--rp-series, #2a78d6); color: #fff; }

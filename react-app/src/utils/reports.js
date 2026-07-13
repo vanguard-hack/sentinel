@@ -94,6 +94,82 @@ const AGE_BUCKETS = [
 const countCases = (where = '') =>
   scalar(`SELECT COUNT(ROWID) AS c FROM CaseMaster${where}`, 'CaseMaster', 'c');
 
+// Every case's registration date (paged), for the client-side trend filter.
+async function allCaseDates() {
+  const dates = [];
+  const page = 500;
+  for (let offset = 0; offset < 20000; offset += page) {
+    const rows = await runQuery(
+      `SELECT CrimeRegisteredDate FROM CaseMaster LIMIT ${offset}, ${page}`,
+      'CaseMaster'
+    );
+    rows.forEach((r) => r.CrimeRegisteredDate && dates.push(String(r.CrimeRegisteredDate).slice(0, 10)));
+    if (rows.length < page) break;
+  }
+  return dates;
+}
+
+// Time-range filter options for the crime-trend card on Reports.
+export const TREND_RANGES = [
+  { key: 'day', label: 'Per day', bucket: 'day', days: 30 },
+  { key: 'month', label: 'Per month', bucket: 'month', months: 12 },
+  { key: 'year', label: 'Past year', bucket: 'week', months: 12 },
+  { key: '5y', label: 'Past 5 years', bucket: 'year', years: 5 },
+];
+
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const pad = (n) => String(n).padStart(2, '0');
+
+// Build a [{ label, value }] series from raw 'YYYY-MM-DD' dates for a range.
+export function buildTrend(dates, rangeKey) {
+  const range = TREND_RANGES.find((r) => r.key === rangeKey) || TREND_RANGES[1];
+  const counts = new Map();
+  const key = (d) => {
+    if (range.bucket === 'day') return d.toISOString().slice(0, 10);
+    if (range.bucket === 'week') {
+      const day = new Date(d);
+      day.setDate(day.getDate() - ((day.getDay() + 6) % 7)); // Monday anchor
+      return day.toISOString().slice(0, 10);
+    }
+    if (range.bucket === 'month') return d.toISOString().slice(0, 7);
+    return String(d.getFullYear());
+  };
+  dates.forEach((s) => {
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) counts.set(key(d), (counts.get(key(d)) || 0) + 1);
+  });
+
+  // Build the ordered, gap-filled bucket list ending today.
+  const out = [];
+  const now = new Date();
+  if (range.bucket === 'day') {
+    for (let i = range.days - 1; i >= 0; i--) {
+      const d = new Date(now); d.setDate(now.getDate() - i);
+      const k = d.toISOString().slice(0, 10);
+      out.push({ label: `${d.getDate()}/${d.getMonth() + 1}`, value: counts.get(k) || 0 });
+    }
+  } else if (range.bucket === 'week') {
+    for (let i = Math.round((range.months * 52) / 12) - 1; i >= 0; i--) {
+      const d = new Date(now); d.setDate(now.getDate() - i * 7);
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      const k = d.toISOString().slice(0, 10);
+      out.push({ label: `${d.getDate()}/${d.getMonth() + 1}`, value: counts.get(k) || 0 });
+    }
+  } else if (range.bucket === 'month') {
+    for (let i = range.months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const k = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+      out.push({ label: `${MON[d.getMonth()]}${d.getMonth() === 0 ? " '" + String(d.getFullYear()).slice(2) : ''}`, value: counts.get(k) || 0 });
+    }
+  } else {
+    for (let i = range.years - 1; i >= 0; i--) {
+      const y = now.getFullYear() - i;
+      out.push({ label: String(y), value: counts.get(String(y)) || 0 });
+    }
+  }
+  return out;
+}
+
 // Everything the Reports page needs, in parallel.
 export async function fetchReports() {
   // Master lookups first (small), then the aggregations that use them.
@@ -115,7 +191,7 @@ export async function fetchReports() {
   const [
     cases, accusedN, victims, arrests, chargesheets, open, heinous, thisYear, lastYearSame,
     byCategory, byStatus, byDistrict, bySubHead, openByStation,
-    trendCounts, yearCounts, ageCounts, recentRows,
+    trendCounts, yearCounts, ageCounts, recentRows, caseDates,
   ] = await Promise.all([
     countCases(),
     scalar('SELECT COUNT(ROWID) AS c FROM Accused', 'Accused', 'c'),
@@ -164,6 +240,7 @@ export async function fetchReports() {
         'ORDER BY CrimeRegisteredDate DESC LIMIT 0, 8',
       'CaseMaster'
     ),
+    allCaseDates(),
   ]);
 
   const solved = byStatus
@@ -198,6 +275,7 @@ export async function fetchReports() {
     bySubHead,
     openByStation,
     trend: months.map((m, i) => ({ label: m.label, value: trendCounts[i] })),
+    caseDates,
     yearly: YEARS.map((y, i) => ({
       label: y === year ? `${y} (to date)` : String(y),
       value: yearCounts[i],
