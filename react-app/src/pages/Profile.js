@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Camera, Trash2, Check, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Check, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Avatar from '../components/Avatar';
 import TopBar from '../components/TopBar';
-import { getProfile, saveProfile, fileToAvatar, cachedPhoto } from '../utils/profile';
+import { getProfile, saveProfile } from '../utils/profile';
 
 const FIELDS = [
   { key: 'displayName', label: 'Full name', placeholder: 'e.g. Inspector R. Gowda' },
@@ -19,13 +19,10 @@ export default function Profile() {
   const email = user?.email_id || null;
 
   const [form, setForm] = useState({});
-  const [photo, setPhoto] = useState(cachedPhoto()); // preview data URL ('' = none)
-  const [photoBlob, setPhotoBlob] = useState(null); // set when a new image is picked
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
-  const fileRef = useRef(null);
 
   useEffect(() => {
     let gone = false;
@@ -43,7 +40,6 @@ export default function Profile() {
         station: p.station || '',
         phone: p.phone || '',
       });
-      setPhoto(p.photo || cachedPhoto());
       setLoading(false);
     })();
     return () => { gone = true; };
@@ -51,29 +47,12 @@ export default function Profile() {
 
   const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setSaved(false); };
 
-  const onPhoto = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    try {
-      const { dataUrl, blob } = await fileToAvatar(file);
-      setPhoto(dataUrl);
-      setPhotoBlob(blob);
-      setSaved(false);
-    } catch (err) {
-      setError(err.message || 'could not read image');
-    }
-  };
-
   const save = useCallback(async () => {
     if (!email) { setError('Not signed in.'); return; }
     setSaving(true);
     setError(null);
     try {
-      // photo arg: new upload {blob,dataUrl} · '' to remove · undefined to keep
-      const photoArg = photoBlob ? { blob: photoBlob, dataUrl: photo } : (photo ? undefined : '');
-      await saveProfile(email, form, photoArg);
-      setPhotoBlob(null);
+      await saveProfile(email, form);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
@@ -81,10 +60,8 @@ export default function Profile() {
     } finally {
       setSaving(false);
     }
-  }, [email, form, photo, photoBlob]);
+  }, [email, form]);
 
-  // A user object for the Avatar preview that ignores the cached photo (we pass
-  // the live selection separately).
   const previewUser = { ...user, first_name: form.displayName?.split(' ')[0] };
 
   return (
@@ -98,23 +75,11 @@ export default function Profile() {
           <div className="pf-wrap">
             <section className="pf-photo-card">
               <div className="pf-photo">
-                {photo ? (
-                  <img src={photo} alt="Profile" className="pf-photo-img" />
-                ) : (
-                  <Avatar user={previewUser} size={120} />
-                )}
+                <Avatar user={previewUser} size={120} />
               </div>
-              <div className="pf-photo-actions">
-                <button className="cf-export-btn" onClick={() => fileRef.current?.click()}>
-                  <Camera size={15} /> Upload photo
-                </button>
-                {photo && (
-                  <button className="pf-photo-remove" onClick={() => { setPhoto(''); setPhotoBlob(null); setSaved(false); }}>
-                    <Trash2 size={14} /> Remove
-                  </button>
-                )}
-                <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPhoto} />
-                <p className="pf-photo-hint">JPG or PNG, squared automatically.</p>
+              <div className="pf-identity">
+                <span className="pf-identity-name">{form.displayName || 'Officer'}</span>
+                <span className="pf-identity-email">{email}</span>
               </div>
             </section>
 

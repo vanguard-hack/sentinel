@@ -2824,10 +2824,9 @@ a:hover { color: var(--blue-500); }
 .pf-photo-card, .pf-form-card { border: 1px solid var(--border-1); border-radius: 14px; background: var(--bg-1); padding: 22px; }
 .pf-photo-card { display: flex; flex-direction: column; align-items: center; gap: 16px; height: fit-content; }
 .pf-photo { width: 120px; height: 120px; border-radius: 50%; overflow: hidden; }
-.pf-photo-img { width: 100%; height: 100%; object-fit: cover; }
-.pf-photo-actions { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.pf-photo-remove { display: inline-flex; align-items: center; gap: 5px; border: none; background: none; color: #d64545; font-size: 0.78rem; cursor: pointer; }
-.pf-photo-hint { font-size: 0.72rem; color: var(--text-4); text-align: center; }
+.pf-identity { display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; }
+.pf-identity-name { font-size: 1rem; font-weight: 600; color: var(--text-0); }
+.pf-identity-email { font-size: 0.8rem; color: var(--text-3); word-break: break-all; }
 .pf-form-card h2 { font-size: 1.05rem; color: var(--text-0); margin-bottom: 16px; }
 .pf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .pf-field { display: flex; flex-direction: column; gap: 5px; }
