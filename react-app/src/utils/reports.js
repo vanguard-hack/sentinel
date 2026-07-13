@@ -46,10 +46,10 @@ const AGE_BUCKETS = [
 // Time-range filter options for the Home dashboard. `windowDays` is the span of
 // data each range covers; `bucket` is the trend-chart granularity.
 export const TREND_RANGES = [
-  { key: 'day', label: 'Per day', bucket: 'day', days: 30, windowDays: 30 },
-  { key: 'month', label: 'Per month', bucket: 'month', months: 12, windowDays: 365 },
-  { key: 'year', label: 'Past year', bucket: 'week', months: 12, windowDays: 365 },
-  { key: '5y', label: 'Past 5 years', bucket: 'year', years: 5, windowDays: 365 * 5 },
+  { key: 'day', label: 'Today', bucket: 'day', days: 30, windowDays: 30 },
+  { key: 'month', label: 'Month', bucket: 'month', months: 12, windowDays: 365 },
+  { key: 'year', label: 'Year', bucket: 'week', months: 12, windowDays: 365 },
+  { key: '5y', label: '5 Years', bucket: 'year', years: 5, windowDays: 365 * 5 },
 ];
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
