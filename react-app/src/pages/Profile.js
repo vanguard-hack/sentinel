@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Avatar from '../components/Avatar';
-import { getProfile, saveProfile, fileToAvatarDataUrl, cachedPhoto } from '../utils/profile';
+import { getProfile, saveProfile, fileToAvatar, cachedPhoto } from '../utils/profile';
 
 function useTheme() {
   const [isDark, setIsDark] = useState(() => localStorage.getItem('sentinel-theme') === 'dark');
@@ -32,7 +32,8 @@ export default function Profile() {
   const [isDark, setIsDark] = useTheme();
 
   const [form, setForm] = useState({});
-  const [photo, setPhoto] = useState(cachedPhoto());
+  const [photo, setPhoto] = useState(cachedPhoto()); // preview data URL ('' = none)
+  const [photoBlob, setPhotoBlob] = useState(null); // set when a new image is picked
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -68,7 +69,9 @@ export default function Profile() {
     e.target.value = '';
     if (!file) return;
     try {
-      setPhoto(await fileToAvatarDataUrl(file));
+      const { dataUrl, blob } = await fileToAvatar(file);
+      setPhoto(dataUrl);
+      setPhotoBlob(blob);
       setSaved(false);
     } catch (err) {
       setError(err.message || 'could not read image');
@@ -80,7 +83,10 @@ export default function Profile() {
     setSaving(true);
     setError(null);
     try {
-      await saveProfile(email, { ...form, photo: photo || null });
+      // photo arg: new upload {blob,dataUrl} · '' to remove · undefined to keep
+      const photoArg = photoBlob ? { blob: photoBlob, dataUrl: photo } : (photo ? undefined : '');
+      await saveProfile(email, form, photoArg);
+      setPhotoBlob(null);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
@@ -88,7 +94,7 @@ export default function Profile() {
     } finally {
       setSaving(false);
     }
-  }, [email, form, photo]);
+  }, [email, form, photo, photoBlob]);
 
   // A user object for the Avatar preview that ignores the cached photo (we pass
   // the live selection separately).
@@ -131,7 +137,7 @@ export default function Profile() {
                   <Camera size={15} /> Upload photo
                 </button>
                 {photo && (
-                  <button className="pf-photo-remove" onClick={() => { setPhoto(''); setSaved(false); }}>
+                  <button className="pf-photo-remove" onClick={() => { setPhoto(''); setPhotoBlob(null); setSaved(false); }}>
                     <Trash2 size={14} /> Remove
                   </button>
                 )}

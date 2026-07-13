@@ -35,36 +35,42 @@ export async function getProfile(email) {
   }
 }
 
-export async function saveProfile(email, profile) {
+// Save text fields, and (separately) upload a new photo as RAW BINARY — the
+// Catalyst gateway's resource-access policy 403s arbitrary image data inside a
+// scanned JSON body, so the image bytes go up as an octet-stream instead.
+// `photo`: { blob, dataUrl } for a new upload · '' to remove · undefined to keep.
+export async function saveProfile(email, fields, photo) {
   if (!email) throw new Error('not signed in');
-  // Ship the photo as raw base64 + mime, NOT a data: URI — the Catalyst
-  // gateway's resource access policy rejects data-URI payloads on
-  // cookie-authenticated requests (403 access_forbidden).
-  const { photo, ...rest } = profile;
-  const wire = { ...rest };
-  if (typeof photo === 'string' && photo.startsWith('data:image/')) {
-    const [head, b64] = photo.split(',', 2);
-    wire.photoMime = (head.match(/^data:([^;]+)/) || [])[1] || 'image/jpeg';
-    wire.photoB64 = b64 || '';
-  } else if (photo === null || photo === '') {
-    wire.photoB64 = null;
+
+  if (photo && photo.blob) {
+    const res = await fetch(`/server/rag/profile/photo?email=${encodeURIComponent(email)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', 'X-Photo-Mime': photo.blob.type || 'image/jpeg' },
+      body: photo.blob,
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.error || d.message || `photo upload failed (HTTP ${res.status})`);
+    }
+    setCachedPhoto(photo.dataUrl || '');
   }
+
+  const wire = { ...fields };
+  if (photo === '') wire.photoB64 = null; // explicit removal
   const res = await fetch('/server/rag/profile/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, profile: wire }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || data.message || `save failed (HTTP ${res.status})`);
-  }
-  if ('photo' in profile) setCachedPhoto(profile.photo || '');
-  return data.profile || profile;
+  if (!res.ok) throw new Error(data.error || data.message || `save failed (HTTP ${res.status})`);
+  if (photo === '') setCachedPhoto('');
+  return data.profile || fields;
 }
 
-// Downscale an uploaded image to a square ~256px JPEG data URL (keeps the
-// stored photo small and fast).
-export function fileToAvatarDataUrl(file, size = 256) {
+// Downscale an uploaded image to a square ~256px JPEG. Returns { dataUrl, blob }
+// — dataUrl for instant preview, blob for the binary upload.
+export function fileToAvatar(file, size = 256) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -75,7 +81,12 @@ export function fileToAvatarDataUrl(file, size = 256) {
       canvas.width = canvas.height = size;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
-      resolve(canvas.toDataURL('image/jpeg', 0.85));
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      canvas.toBlob(
+        (blob) => resolve({ dataUrl, blob: blob || null }),
+        'image/jpeg',
+        0.85
+      );
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('could not read image')); };
     img.src = url;

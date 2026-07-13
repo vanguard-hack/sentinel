@@ -13,7 +13,7 @@ import Avatar from '../components/Avatar';
 // Each module references a translation key under `modules.*`; labels/descriptions
 // are resolved at render time from the active language.
 const MODULES = [
-  { key: 'incidents',    Icon: AlertTriangle, accent: 'amber'  },
+  { key: 'incidents',    Icon: AlertTriangle, accent: 'amber', route: '/incidents' },
   { key: 'crimeMap',     Icon: Map,           accent: 'blue', route: '/crime-map' },
   { key: 'aiAnalytics',  Icon: Brain,         accent: 'purple', route: '/ai-analytics' },
   { key: 'reports',      Icon: BarChart2,     accent: 'green', route: '/reports' },

@@ -35,11 +35,13 @@ export const resetPassword = () => { window.location.href = AUTH_URLS.resetPassw
 export const signOut = () => {
   const redirectURL = `${window.location.protocol}//${window.location.host}/__catalyst/auth/login`;
   const cat = getCatalyst();
+  // Bound the wait: if the SDK hasn't cleared the cookie and navigated within
+  // ~1.2s, force the redirect ourselves so sign-out never feels stuck.
+  setTimeout(() => { window.location.href = redirectURL; }, 1200);
   if (cat && cat.auth && typeof cat.auth.signOut === 'function') {
     cat.auth.signOut(redirectURL);
     return;
   }
-  // SDK not available (e.g. local dev) — best-effort hard redirect.
   window.location.href = redirectURL;
 };
 

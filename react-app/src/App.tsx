@@ -7,6 +7,7 @@ import Reports from './pages/Reports';
 import Assistant from './pages/Assistant';
 import AIAnalytics from './pages/AIAnalytics';
 import Profile from './pages/Profile';
+import Incidents from './pages/Incidents';
 import ChatWidget from './components/ChatWidget';
 import LoadingScreen from './components/LoadingScreen';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -26,6 +27,7 @@ function AppRoutes() {
       <Route path="/assistant" element={<Assistant />} />
       <Route path="/ai-analytics" element={<AIAnalytics />} />
       <Route path="/profile" element={<Profile />} />
+      <Route path="/incidents" element={<Incidents />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
     <ChatWidget />

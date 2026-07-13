@@ -2697,3 +2697,35 @@ a:hover { color: var(--blue-500); }
 .as-thinking { display: inline-flex; align-items: center; gap: 10px; }
 .as-thinking-phrase { font-size: 0.82rem; color: var(--text-3); animation: think-fade 1.8s ease both; }
 @keyframes think-fade { 0% { opacity: 0; transform: translateY(2px); } 25%, 80% { opacity: 1; transform: none; } 100% { opacity: 0.55; } }
+
+/* ── Incidents ──────────────────────────────────────────────────────────── */
+.inc-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.inc-count { font-size: 0.8rem; color: var(--text-4); margin-left: auto; }
+.inc-list { display: flex; flex-direction: column; gap: 10px; }
+.inc-card { border: 1px solid var(--border-1); border-radius: 12px; background: var(--bg-1); overflow: hidden; }
+.inc-card.open { border-color: #2a78d6; }
+.inc-head {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; border: none; background: none; cursor: pointer; text-align: left;
+}
+.inc-head:hover { background: var(--hover-overlay); }
+.inc-head-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.inc-crimeno { font-family: ui-monospace, Menlo, monospace; font-size: 0.82rem; color: var(--text-2); }
+.inc-type { font-weight: 650; color: var(--text-1); font-size: 0.92rem; }
+.inc-head-meta { display: flex; align-items: center; gap: 14px; flex: none; }
+.inc-where { font-size: 0.8rem; color: var(--text-3); }
+.inc-date { font-size: 0.8rem; color: var(--text-4); }
+.inc-chevron { color: var(--text-4); transition: transform 0.15s; }
+.inc-card.open .inc-chevron { transform: rotate(180deg); }
+@media (max-width: 760px) { .inc-where, .inc-date { display: none; } }
+.inc-body { padding: 4px 16px 18px; border-top: 1px solid var(--border-1); }
+.inc-facts { font-size: 0.86rem; color: var(--text-2); line-height: 1.55; margin: 14px 0 16px; }
+.inc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.inc-detail { font-size: 0.82rem; }
+.inc-detail-h { display: flex; align-items: center; gap: 6px; font-weight: 650; color: #2a78d6; margin-bottom: 6px; font-size: 0.78rem; }
+.inc-detail-b { color: var(--text-2); line-height: 1.65; }
+.inc-detail-b b { color: var(--text-1); font-weight: 600; }
+.inc-phone { display: inline-flex; align-items: center; gap: 5px; color: #148f63; margin-top: 2px; }
+[data-theme="dark"] .inc-phone { color: #2fc48e; }
+.inc-maplink { color: #2a78d6; text-decoration: none; font-size: 0.78rem; }
+.inc-maplink:hover { text-decoration: underline; }
