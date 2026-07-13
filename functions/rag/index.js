@@ -74,6 +74,8 @@ const AGUI_TRANSFORM =
   'names — use when the data is per-district) or ' +
   '{"type":"network-graph","title":s,"nodes":[{"id":s,"label":s,"group":s}],' +
   '"links":[{"source":s,"target":s}]} (use for relationships between people/gangs/entities). ' +
+  'RULE: if the values are per Karnataka district, ALWAYS use geo-map (not bar-chart), ' +
+  'with plain district names (e.g. "Bengaluru City", "Kalaburagi" — no DIST suffix). ' +
   'Choose the 1-2 components that best fit the data. Output ONLY the fenced block.' +
   '\n\nTEXT:\n';
 
@@ -201,6 +203,58 @@ function stripMarkdownTables(text, components) {
   }
   const keep = lines.filter((_, i) => !blocks.some((b) => i >= b.start && i < b.end));
   return { text: keep.join('\n').replace(/\n{3,}/g, '\n\n').trim(), components };
+}
+
+// Karnataka district detection — when a chart's labels are districts, the
+// interactive geo heatmap is strictly better, so add it deterministically
+// rather than hoping the transform model picks it.
+const KA_DISTRICT_WORDS = [
+  'bengaluru', 'bangalore', 'mysuru', 'mysore', 'mandya', 'hassan', 'tumakuru', 'tumkur',
+  'kolar', 'chikkaballapura', 'ramanagara', 'chamarajanagar', 'kodagu', 'dakshina kannada',
+  'mangaluru', 'mangalore', 'udupi', 'uttara kannada', 'shivamogga', 'shimoga', 'davanagere',
+  'davangere', 'chitradurga', 'ballari', 'bellary', 'vijayanagara', 'koppal', 'raichur',
+  'kalaburagi', 'kalaburgi', 'gulbarga', 'yadgir', 'bidar', 'vijayapura', 'bijapur',
+  'bagalkote', 'bagalkot', 'belagavi', 'belgaum', 'dharwad', 'hubballi', 'gadag', 'haveri',
+  'chikkamagaluru', 'chikmagalur',
+];
+const looksLikeDistrict = (label) => {
+  const l = String(label).toLowerCase();
+  return KA_DISTRICT_WORDS.some((w) => l.includes(w));
+};
+
+// If a bar/pie chart is really per-district data, prepend an interactive
+// geo-map built from the same points (client normalises the names).
+function promoteDistrictCharts(components) {
+  if (components.some((c) => c.type === 'geo-map')) return components;
+  const chart = components.find(
+    (c) =>
+      (c.type === 'bar-chart' || c.type === 'pie-chart') &&
+      Array.isArray(c.data) &&
+      c.data.length >= 3 &&
+      c.data.filter((p) => looksLikeDistrict(p.label)).length >= c.data.length * 0.6
+  );
+  if (!chart) return components;
+  return [
+    {
+      type: 'geo-map',
+      title: chart.title || 'Crime by district',
+      data: chart.data
+        .filter((p) => looksLikeDistrict(p.label))
+        .map((p) => ({ district: String(p.label), value: Number(p.value) || 0 })),
+    },
+    ...components,
+  ];
+}
+
+// Any fenced code block still in the prose after agui extraction is noise —
+// models sometimes draw ASCII "heatmaps"/charts in ```text blocks. The real
+// visualisation is a component; drop the block entirely.
+function stripStrayCodeBlocks(text) {
+  return String(text)
+    .replace(/```[a-z]*\s*[\s\S]*?```/gi, '')
+    .replace(/```[a-z]*\s*[\s\S]*$/gi, '') // unterminated fence at the end
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 // When components carry the data, an enumerated list in the prose is pure
@@ -633,7 +687,7 @@ module.exports = async (req, res) => {
             );
             // Strip any table/enumeration the model emits anyway — the component
             // is the single source of truth for the rows.
-            let answerText = (prose || '').trim();
+            let answerText = stripStrayCodeBlocks((prose || '').trim());
             answerText = stripDuplicatedLists(
               stripMarkdownTables(answerText, components).text,
               components
@@ -726,7 +780,9 @@ module.exports = async (req, res) => {
     // Final sanitation on whichever text we ended up with (RAG or fallback):
     // markdown tables become a component when none exists, then any list that
     // merely repeats rendered component data is dropped from the prose.
+    text = stripStrayCodeBlocks(text);
     ({ text, components } = stripMarkdownTables(text, components));
+    components = promoteDistrictCharts(components);
     const answer = stripDuplicatedLists(text, components);
 
     // Attribution: knowledge-base document titles for RAG answers, the model

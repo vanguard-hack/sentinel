@@ -11,6 +11,52 @@ const TOPO_FOLD = { 'Bengaluru City': 'Bengaluru Urban', Chamarajanagar: 'Chamar
 const W = 520;
 const H = 460;
 
+// Normalise messy district labels ("BANGALORE CITY", "Kalaburgi Dist",
+// "Belgaum") to the 2011-census TopoJSON names so shapes always match.
+const ALIASES = {
+  'bangalore city': 'Bengaluru Urban',
+  'bengaluru city': 'Bengaluru Urban',
+  bangalore: 'Bengaluru Urban',
+  bengaluru: 'Bengaluru Urban',
+  'bangalore urban': 'Bengaluru Urban',
+  'bangalore rural': 'Bengaluru Rural',
+  'bengaluru rural': 'Bengaluru Rural',
+  kalaburgi: 'Kalaburagi',
+  gulbarga: 'Kalaburagi',
+  belgaum: 'Belagavi',
+  bijapur: 'Vijayapura',
+  bellary: 'Ballari',
+  tumkur: 'Tumakuru',
+  mysore: 'Mysuru',
+  shimoga: 'Shivamogga',
+  chikmagalur: 'Chikkamagaluru',
+  chamarajanagar: 'Chamarajanagara',
+  mangaluru: 'Dakshina Kannada',
+  'mangaluru city': 'Dakshina Kannada',
+  mangalore: 'Dakshina Kannada',
+  davangere: 'Davanagere',
+  'hubballi-dharwad': 'Dharwad',
+  hubli: 'Dharwad',
+  vijayanagara: 'Ballari',
+};
+
+function normaliseDistrict(raw, topoNames) {
+  if (!raw) return null;
+  let s = String(raw).trim().replace(/\s+/g, ' ');
+  s = s.replace(/\s*(dist(rict)?|division|commissionerate)\.?$/i, '').trim();
+  const lower = s.toLowerCase();
+  if (ALIASES[lower]) return ALIASES[lower];
+  if (TOPO_FOLD[s]) return TOPO_FOLD[s];
+  // exact case-insensitive match against topo names
+  const hit = topoNames.find((n) => n.toLowerCase() === lower);
+  if (hit) return hit;
+  // prefix match (handles "Uttara Kannada (Karwar)" style labels)
+  const pre = topoNames.find(
+    (n) => lower.startsWith(n.toLowerCase()) || n.toLowerCase().startsWith(lower)
+  );
+  return pre || null;
+}
+
 export default function GeoHeatMap({ spec }) {
   const [geo, setGeo] = useState(null);
   const [sel, setSel] = useState(null);
@@ -34,12 +80,14 @@ export default function GeoHeatMap({ spec }) {
 
   const byTopo = useMemo(() => {
     const m = {};
+    if (!geo) return m;
+    const topoNames = geo.features.map((f) => f.properties.district);
     data.forEach((d) => {
-      const name = TOPO_FOLD[d.district] || d.district;
-      m[name] = (m[name] || 0) + (Number(d.value) || 0);
+      const name = normaliseDistrict(d.district, topoNames);
+      if (name) m[name] = (m[name] || 0) + (Number(d.value) || 0);
     });
     return m;
-  }, [data]);
+  }, [data, geo]);
 
   const values = Object.values(byTopo);
   const max = Math.max(1, ...values);
