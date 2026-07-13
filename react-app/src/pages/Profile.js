@@ -67,7 +67,14 @@ export default function Profile() {
 
   return (
     <div className="rp-page">
-      <TopBar title="My Profile" />
+      <TopBar title="My Profile">
+        {!loading && (
+          <button className="pf-save" onClick={save} disabled={saving}>
+            {saving ? <span className="btn-spinner" /> : saved ? <Check size={16} /> : null}
+            {saving ? 'Saving' : saved ? 'Saved' : 'Save'}
+          </button>
+        )}
+      </TopBar>
 
       <main className="rp-main">
         {loading ? (
@@ -110,14 +117,6 @@ export default function Profile() {
               {error && (
                 <div className="pf-error"><AlertTriangle size={15} /> {error}</div>
               )}
-            </div>
-
-            {/* Footer actions */}
-            <div className="pf-footer">
-              <button className="pf-save" onClick={save} disabled={saving}>
-                {saving ? <span className="btn-spinner" /> : saved ? <Check size={16} /> : null}
-                {saving ? 'Saving' : saved ? 'Saved' : 'Save'}
-              </button>
             </div>
           </div>
         )}

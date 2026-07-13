@@ -2944,7 +2944,7 @@ a:hover { color: var(--blue-500); }
   box-shadow: var(--shadow-card);
   flex-shrink: 0;
 }
-.pf-header-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-top: 44px; }
+.pf-header-id { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding-top: 56px; }
 .pf-header-name { font-size: 1.15rem; font-weight: 700; color: var(--text-0); }
 .pf-header-email { font-size: 0.82rem; color: var(--text-3); word-break: break-all; }
 .pf-role-badge {
@@ -2988,16 +2988,6 @@ a:hover { color: var(--blue-500); }
 .pf-field-readonly input { background: var(--bg-2); color: var(--text-3); cursor: not-allowed; }
 .pf-error { display: flex; align-items: center; gap: 8px; margin-top: 16px; color: var(--red); font-size: 0.82rem; }
 
-/* Footer actions */
-.pf-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 26px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-2);
-}
 .pf-save {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 10px 22px; border: none; border-radius: 10px;
