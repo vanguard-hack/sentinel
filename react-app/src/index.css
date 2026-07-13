@@ -2929,8 +2929,8 @@ a:hover { color: var(--blue-500); }
 .pf-header { position: relative; }
 .pf-header-band {
   height: 84px;
-  background: linear-gradient(120deg, var(--blue-500), var(--blue-700));
-  opacity: 0.9;
+  background: linear-gradient(100deg,
+    #aecdf0 0%, #cfd3e6 32%, #e6d7dd 55%, #f4e3d3 78%, #fbf1d6 100%);
 }
 .pf-header-row {
   display: flex;
@@ -2992,13 +2992,12 @@ a:hover { color: var(--blue-500); }
 .pf-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   padding: 16px 26px;
   border-top: 1px solid var(--border);
   background: var(--bg-2);
 }
-.pf-footer-hint { font-size: 0.78rem; color: var(--text-3); }
 .pf-save {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 10px 22px; border: none; border-radius: 10px;

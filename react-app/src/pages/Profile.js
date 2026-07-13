@@ -114,10 +114,9 @@ export default function Profile() {
 
             {/* Footer actions */}
             <div className="pf-footer">
-              <span className="pf-footer-hint">Changes are saved to your account.</span>
               <button className="pf-save" onClick={save} disabled={saving}>
                 {saving ? <span className="btn-spinner" /> : saved ? <Check size={16} /> : null}
-                {saving ? 'Saving' : saved ? 'Saved' : 'Save changes'}
+                {saving ? 'Saving' : saved ? 'Saved' : 'Save'}
               </button>
             </div>
           </div>
