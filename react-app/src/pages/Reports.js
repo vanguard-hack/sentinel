@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  RefreshCw, AlertTriangle,
+  RefreshCw, AlertTriangle, CalendarDays, ChevronDown,
   FileText, Users, HeartPulse, PackageCheck, FolderOpen, Gavel,
   Flame, Siren, TrendingUp, TrendingDown, FileDown,
 } from 'lucide-react';
@@ -9,6 +9,7 @@ import { exportReportPdf } from '../utils/reportPdf';
 import { BarList, Donut, TrendArea } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
 import TopBar from '../components/TopBar';
+import { useAuth } from '../context/AuthContext';
 
 function Kpi({ Icon, label, value, sub, trend }) {
   return (
@@ -42,6 +43,9 @@ function Card({ title, subtitle, wide, children }) {
 }
 
 export default function Reports() {
+  const { user } = useAuth();
+  const firstName =
+    user?.first_name || user?.email_id?.split('@')[0] || 'Officer';
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -85,22 +89,42 @@ export default function Reports() {
 
   return (
     <div className="rp-page">
-      <TopBar title="Home" subtitle="Crime statistics & trends">
-        <button
-          className="cf-export-btn"
-          onClick={exportPdf}
-          disabled={pdfBusy || loading || !data}
-          title={pdfError ? `Last attempt failed: ${pdfError}` : 'Download this report as PDF'}
-        >
-          {pdfBusy ? <span className="btn-spinner" /> : <FileDown size={15} />}
-          <span>{pdfBusy ? 'Exporting' : pdfError ? 'Retry PDF' : 'Export PDF'}</span>
-        </button>
-        <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
-          <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
-        </button>
-      </TopBar>
+      <TopBar title="Home" subtitle="Crime statistics & trends" />
 
       <main className="rp-main">
+        {/* Welcome hero + time filter cluster */}
+        <div className="rp-hero">
+          <div className="rp-hero-text">
+            <h1 className="rp-hero-title">
+              Welcome Back, <span className="rp-hero-name">{firstName}</span>
+            </h1>
+            <p className="rp-hero-sub">Here’s the latest crime overview.</p>
+          </div>
+          <div className="rp-hero-controls">
+            <label className="rp-range" title="Trend granularity">
+              <CalendarDays size={15} className="rp-range-icon" />
+              <select value={trendRange} onChange={(e) => setTrendRange(e.target.value)}>
+                {TREND_RANGES.map((r) => (
+                  <option key={r.key} value={r.key}>{r.label}</option>
+                ))}
+              </select>
+              <ChevronDown size={15} className="rp-range-caret" />
+            </label>
+            <button
+              className="cf-export-btn"
+              onClick={exportPdf}
+              disabled={pdfBusy || loading || !data}
+              title={pdfError ? `Last attempt failed: ${pdfError}` : 'Download this report as PDF'}
+            >
+              {pdfBusy ? <span className="btn-spinner" /> : <FileDown size={15} />}
+              <span>{pdfBusy ? 'Exporting' : pdfError ? 'Retry PDF' : 'Export'}</span>
+            </button>
+            <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
+              <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
+            </button>
+          </div>
+        </div>
+
         {error ? (
           <div className="cf-state cf-error">
             <AlertTriangle size={22} />
@@ -162,25 +186,11 @@ export default function Reports() {
 
             {/* Crime trend with day/month/year/5-year filter */}
             <section className="rp-card rp-card-wide">
-              <div className="rp-card-head rp-trend-head">
-                <div>
-                  <h2>Crime trend</h2>
-                  <span className="rp-card-sub">
-                    {TREND_RANGES.find((r) => r.key === trendRange)?.label} · cases registered
-                  </span>
-                </div>
-                <div className="rp-seg" role="group" aria-label="Trend range">
-                  {TREND_RANGES.map((r) => (
-                    <button
-                      key={r.key}
-                      className={`rp-seg-btn ${trendRange === r.key ? 'active' : ''}`}
-                      onClick={() => setTrendRange(r.key)}
-                      aria-pressed={trendRange === r.key}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
+              <div className="rp-card-head">
+                <h2>Crime trend</h2>
+                <span className="rp-card-sub">
+                  {TREND_RANGES.find((r) => r.key === trendRange)?.label} · cases registered
+                </span>
               </div>
               <div className="rp-card-body">
                 <TrendArea data={trendSeries} labelEvery={trendLabelEvery} height={180} />

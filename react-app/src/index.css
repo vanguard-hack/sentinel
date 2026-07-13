@@ -1496,6 +1496,60 @@ a:hover { color: var(--blue-500); }
   margin: 0 auto;
 }
 
+/* ── Welcome hero + time filter cluster ── */
+.rp-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+.rp-hero-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-0);
+}
+.rp-hero-name { font-weight: 400; color: var(--text-3); }
+.rp-hero-sub { margin-top: 3px; font-size: 13px; color: var(--text-3); }
+.rp-hero-controls { display: flex; align-items: center; gap: 10px; }
+
+.rp-range {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 34px 0 12px;
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+  background: var(--bg-1);
+  color: var(--text-1);
+  cursor: pointer;
+}
+.rp-range:hover { background: var(--bg-2); }
+.rp-range-icon { color: var(--text-3); flex-shrink: 0; }
+.rp-range select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  background: none;
+  color: var(--text-1);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  padding-right: 2px;
+}
+.rp-range-caret {
+  position: absolute;
+  right: 11px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
 /* ── KPI tiles ── */
 .rp-kpi-row {
   display: grid;
