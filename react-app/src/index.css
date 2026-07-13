@@ -45,12 +45,13 @@
 
 /* ── Dark mode ──────────────────────────────────────────────────────────── */
 [data-theme="dark"] {
-  /* Pure-black dark theme — neutral greys, no blue cast. */
-  --bg-0: #000000;
-  --bg-1: #0a0a0a;
-  --bg-2: #131313;
-  --bg-3: #1c1c1c;
-  --bg-4: #262626;
+  /* Soft charcoal dark theme — lifted off pure black with a subtle cool-grey
+     blend so surfaces read as layered rather than a flat void. */
+  --bg-0: #15171a;
+  --bg-1: #1c1f23;
+  --bg-2: #24272d;
+  --bg-3: #2d3138;
+  --bg-4: #373c44;
 
   --blue-400: #60a5fa;
   --blue-500: #3b82f6;
