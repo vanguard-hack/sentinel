@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { BarList, Donut } from './Charts';
+import GeoHeatMap from './GeoHeatMap';
+import NetworkGraph from './NetworkGraph';
 
 // AG-UI-style static generative UI renderer for the assistant.
 // The RAG backend proposes typed component specs; this module validates and
@@ -106,6 +108,10 @@ function AguiComponent({ spec }) {
     body = <AguiTable spec={spec} />;
   } else if (spec.type === 'cards') {
     body = <AguiCards spec={spec} />;
+  } else if (spec.type === 'geo-map') {
+    body = Array.isArray(spec.data) && spec.data.length ? <GeoHeatMap spec={spec} /> : null;
+  } else if (spec.type === 'network-graph') {
+    body = Array.isArray(spec.nodes) && spec.nodes.length ? <NetworkGraph spec={spec} /> : null;
   }
   if (!body) return null;
   return (

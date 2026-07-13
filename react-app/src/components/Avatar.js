@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { cachedPhoto, PROFILE_EVENT } from '../utils/profile';
 
 // User avatar: shows the Zoho account profile photo when it loads, else the
 // initials. The photo is fetched from the Zoho contacts endpoint using the
@@ -29,9 +30,18 @@ function photoUrl(user) {
 
 export default function Avatar({ user, size = 32, className = '' }) {
   const [failed, setFailed] = useState(false);
-  const url = !failed ? photoUrl(user) : null;
+  const [uploaded, setUploaded] = useState(cachedPhoto());
 
-  // Reset the error state if the user (or their photo id) changes.
+  // Track the uploaded profile photo across the app.
+  useEffect(() => {
+    const sync = () => setUploaded(cachedPhoto());
+    window.addEventListener(PROFILE_EVENT, sync);
+    return () => window.removeEventListener(PROFILE_EVENT, sync);
+  }, []);
+
+  // Uploaded photo wins; otherwise fall back to the Zoho account photo.
+  const url = uploaded || (!failed ? photoUrl(user) : null);
+
   useEffect(() => { setFailed(false); }, [user?.zuid, user?.user_id, user?.email_id]);
 
   const style = { width: size, height: size, fontSize: Math.round(size * 0.4) };

@@ -251,11 +251,34 @@ function rollupToDistricts(flat) {
 
 const isNum = (v) => v !== '' && v !== null && v !== undefined && !isNaN(Number(v));
 
+const KA_DISTRICTS = new Set(Object.keys(DISTRICT_IDS));
+
 // Deterministic agui components from result rows.
 function rowsToComponents(flat, title) {
   if (!flat.length) return [];
   const columns = Object.keys(flat[0]);
   if (flat.length === 1 && columns.length === 1) return [];
+
+  const labelIsDistrict =
+    columns.length === 2 &&
+    flat.some((r) => KA_DISTRICTS.has(String(r[columns[0]])));
+
+  // Per-district numeric result → an interactive choropleth map + a table.
+  if (labelIsDistrict && flat.every((r) => isNum(r[columns[1]]))) {
+    return [
+      {
+        type: 'geo-map',
+        title: title || `${columns[1]} by district`,
+        data: flat.map((r) => ({ district: String(r[columns[0]]), value: Number(r[columns[1]]) })),
+      },
+      {
+        type: 'table',
+        title: 'District figures',
+        columns,
+        rows: flat.map((r) => columns.map((c) => (r[c] == null ? '' : String(r[c])))),
+      },
+    ];
+  }
 
   if (columns.length === 2 && flat.length >= 2 && flat.length <= 15 &&
       flat.every((r) => isNum(r[columns[1]])) &&

@@ -191,15 +191,13 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
-                <a
+                <button
                   className="nav-profile-item"
-                  href="https://accounts.zoho.in/home"
-                  target="_blank"
-                  rel="noreferrer"
+                  onClick={() => { setProfileOpen(false); navigate('/profile'); }}
                 >
                   <UserCircle size={16} />
-                  <span>View account</span>
-                </a>
+                  <span>View profile</span>
+                </button>
                 <button className="nav-profile-item nav-profile-signout" onClick={signOut}>
                   <LogOut size={16} />
                   <span>{t('action.signOut')}</span>

@@ -1,0 +1,111 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { geoMercator, geoPath } from 'd3-geo';
+import { feature } from 'topojson-client';
+/* eslint-disable react-hooks/exhaustive-deps */
+
+// Interactive Karnataka crime map for the assistant. Districts are shaded by
+// the metric (choropleth), and the hottest districts carry pulsing hotspot
+// markers. Hover or click a district to pin its figure. Data: [{district,value}].
+// Vijayanagara (2020) has no 2011 shape, so its value folds into Ballari.
+const TOPO_FOLD = { 'Bengaluru City': 'Bengaluru Urban', Chamarajanagar: 'Chamarajanagara', Vijayanagara: 'Ballari' };
+const W = 520;
+const H = 460;
+
+export default function GeoHeatMap({ spec }) {
+  const [geo, setGeo] = useState(null);
+  const [sel, setSel] = useState(null);
+  const data = Array.isArray(spec?.data) ? spec.data : [];
+
+  useEffect(() => {
+    let gone = false;
+    fetch(`${process.env.PUBLIC_URL}/maps/india.json`)
+      .then((r) => r.json())
+      .then((topo) => {
+        if (gone) return;
+        const d = feature(topo, topo.objects.districts);
+        setGeo({
+          type: 'FeatureCollection',
+          features: d.features.filter((f) => f.properties.st_nm === 'Karnataka'),
+        });
+      })
+      .catch(() => {});
+    return () => { gone = true; };
+  }, []);
+
+  const byTopo = useMemo(() => {
+    const m = {};
+    data.forEach((d) => {
+      const name = TOPO_FOLD[d.district] || d.district;
+      m[name] = (m[name] || 0) + (Number(d.value) || 0);
+    });
+    return m;
+  }, [data]);
+
+  const values = Object.values(byTopo);
+  const max = Math.max(1, ...values);
+  const { path, centroid } = useMemo(() => {
+    if (!geo) return {};
+    const proj = geoMercator().fitExtent([[10, 10], [W - 10, H - 10]], geo);
+    const p = geoPath(proj);
+    return { path: p, centroid: (f) => p.centroid(f) };
+  }, [geo]);
+
+  if (!geo) return <div className="rp-empty">Loading map…</div>;
+  if (!data.length) return <div className="rp-empty">No district data</div>;
+
+  const shade = (v) => (v == null ? 0.05 : 0.14 + 0.82 * (v / max));
+  // Hotspots = districts in the top 30% of the value range.
+  const hot = (v) => v != null && v >= max * 0.7;
+
+  return (
+    <div className="geo-map">
+      <svg viewBox={`0 0 ${W} ${H}`} className="geo-svg" role="img" onMouseLeave={() => setSel(null)}>
+        {geo.features.map((f) => {
+          const name = f.properties.district;
+          const v = byTopo[name];
+          const active = sel?.topo === name;
+          return (
+            <path
+              key={name}
+              d={path(f)}
+              className={`geo-shape ${active ? 'active' : ''}`}
+              style={{ fillOpacity: shade(v) }}
+              onMouseEnter={() => setSel({ topo: name, value: v })}
+              onClick={() => setSel({ topo: name, value: v, pinned: true })}
+            />
+          );
+        })}
+        {geo.features.map((f) => {
+          const v = byTopo[f.properties.district];
+          if (!hot(v)) return null;
+          const [cx, cy] = centroid(f);
+          const r = 4 + 7 * (v / max);
+          return (
+            <g key={`h-${f.properties.district}`} pointerEvents="none">
+              <circle cx={cx} cy={cy} r={r} className="geo-hot-pulse" />
+              <circle cx={cx} cy={cy} r={r * 0.5} className="geo-hot-core" />
+            </g>
+          );
+        })}
+      </svg>
+      <div className="geo-side">
+        <div className="geo-readout">
+          {sel && sel.value != null ? (
+            <>
+              <div className="geo-readout-name">{sel.topo}</div>
+              <div className="geo-readout-val">{sel.value.toLocaleString()}</div>
+              <div className="geo-readout-cap">{spec.title || 'incidents'}{hot(sel.value) ? ' · hotspot' : ''}</div>
+            </>
+          ) : (
+            <div className="geo-readout-hint">Hover or tap a district</div>
+          )}
+        </div>
+        <div className="geo-legend">
+          <span className="geo-legend-bar" />
+          <div className="geo-legend-ends"><span>low</span><span>high</span></div>
+          <div className="geo-legend-hot"><span className="geo-hot-dot" /> hotspot (top 30%)</div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -69,7 +69,11 @@ const AGUI_TRANSFORM =
   '{"components":[...]} where each component is ' +
   '{"type":"bar-chart"|"pie-chart","title":s,"data":[{"label":s,"value":n}]} or ' +
   '{"type":"table","title":s,"columns":[s],"rows":[[cells]]} or ' +
-  '{"type":"cards","title":s,"items":[{"title":s,"subtitle":s,"body":s,"badge":s}]}. ' +
+  '{"type":"cards","title":s,"items":[{"title":s,"subtitle":s,"body":s,"badge":s}]} or ' +
+  '{"type":"geo-map","title":s,"data":[{"district":s,"value":n}]} (Karnataka district ' +
+  'names — use when the data is per-district) or ' +
+  '{"type":"network-graph","title":s,"nodes":[{"id":s,"label":s,"group":s}],' +
+  '"links":[{"source":s,"target":s}]} (use for relationships between people/gangs/entities). ' +
   'Choose the 1-2 components that best fit the data. Output ONLY the fenced block.' +
   '\n\nTEXT:\n';
 
@@ -143,7 +147,9 @@ function looksDataShaped(text) {
   return t.length >= 120 && (/\d/.test(t) || listLines >= 3);
 }
 
-const AGUI_TYPES = new Set(['bar-chart', 'pie-chart', 'table', 'cards']);
+const AGUI_TYPES = new Set([
+  'bar-chart', 'pie-chart', 'table', 'cards', 'geo-map', 'network-graph',
+]);
 
 // Pull a ```agui (or ```json) fenced block out of the answer text. Returns
 // { text, components } — text has the block stripped; components is validated
@@ -415,6 +421,44 @@ async function handleConversations(req, res, action) {
   return json(res, 200, { id, title: record.title, starred: record.starred });
 }
 
+// ── User profile (Stratus): editable details + uploaded photo ───────────────
+const profileKey = (email) => `assistant/profiles/${encodeURIComponent(email)}.json`;
+const PROFILE_FIELDS = ['displayName', 'phone', 'department', 'designation', 'station', 'badgeNo'];
+
+async function handleProfile(req, res, action) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const email = String(body.email || '').trim().toLowerCase();
+  if (!email) return json(res, 400, { error: 'email is required' });
+
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+
+  if (action === 'get') {
+    try {
+      const txt = await streamToString(await bucket.getObject(profileKey(email)));
+      return json(res, 200, { profile: JSON.parse(txt || '{}') });
+    } catch {
+      return json(res, 200, { profile: {} });
+    }
+  }
+
+  // save — whitelist text fields; accept a data-URL photo up to ~1.2MB.
+  const incoming = body.profile || {};
+  const profile = {};
+  PROFILE_FIELDS.forEach((f) => {
+    if (typeof incoming[f] === 'string') profile[f] = incoming[f].slice(0, 200);
+  });
+  if (typeof incoming.photo === 'string' && incoming.photo.startsWith('data:image/')) {
+    if (incoming.photo.length > 1_600_000) return json(res, 413, { error: 'photo too large (1MB max)' });
+    profile.photo = incoming.photo;
+  } else if (incoming.photo === null) {
+    profile.photo = ''; // explicit removal
+  }
+  profile.updatedAt = Date.now();
+  await bucket.putObject(profileKey(email), Buffer.from(JSON.stringify(profile)));
+  return json(res, 200, { profile });
+}
+
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return json(res, 405, { error: 'Use POST' });
@@ -424,6 +468,8 @@ module.exports = async (req, res) => {
     if (path.endsWith('/conversations/list')) return await handleConversations(req, res, 'list');
     if (path.endsWith('/conversations/save')) return await handleConversations(req, res, 'save');
     if (path.endsWith('/conversations/delete')) return await handleConversations(req, res, 'delete');
+    if (path.endsWith('/profile/get')) return await handleProfile(req, res, 'get');
+    if (path.endsWith('/profile/save')) return await handleProfile(req, res, 'save');
 
     const body = JSON.parse((await readBody(req)) || '{}');
     const query = (body.query || '').trim();
