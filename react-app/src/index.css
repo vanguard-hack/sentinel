@@ -37,7 +37,8 @@
 
   --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
 
-  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  /* Tiempos (licensed serif) when available, with a close serif fallback. */
+  --font: 'Tiempos Text', 'Tiempos', 'Tiempos Headline', Georgia, 'Times New Roman', serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
   --hover-overlay: rgba(0, 0, 0, 0.04);
@@ -2896,7 +2897,7 @@ a:hover { color: var(--blue-500); }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 .app-sidebar {
-  width: 250px;
+  width: 208px;
   flex-shrink: 0;
   position: sticky;
   top: 0;
@@ -2908,7 +2909,7 @@ a:hover { color: var(--blue-500); }
   z-index: 40;
   transition: width 0.18s ease;
 }
-.app-sidebar.rail { width: 74px; }
+.app-sidebar.rail { width: 60px; }
 
 .sb-brand {
   display: flex;
@@ -2982,6 +2983,7 @@ a:hover { color: var(--blue-500); }
   font-weight: 600;
 }
 .sb-item.active .sb-item-icon { color: var(--blue-500); }
+.sb-item.icononly { justify-content: center; }
 .sb-item.soon { opacity: 0.5; cursor: default; }
 .sb-soon {
   font-size: 9px;
@@ -3122,7 +3124,7 @@ a:hover { color: var(--blue-500); }
     transition: transform 0.2s ease;
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.3);
   }
-  .app-sidebar.rail { width: 250px; }           /* no rail on mobile */
+  .app-sidebar.rail { width: 208px; }           /* no rail on mobile */
   .app-sidebar.rail .sb-item-label,
   .app-sidebar.rail .sb-brand-name,
   .app-sidebar.rail .sb-collapse,

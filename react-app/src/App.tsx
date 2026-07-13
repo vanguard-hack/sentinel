@@ -34,7 +34,7 @@ function AppRoutes() {
               <Route path="/ai-analytics" element={<AIAnalytics />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/incidents" element={<Incidents />} />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              <Route path="*" element={<Navigate to="/reports" replace />} />
             </Routes>
           </div>
           <ChatWidget />

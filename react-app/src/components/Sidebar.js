@@ -12,11 +12,11 @@ import Avatar from './Avatar';
 
 // Every feature lives here. `soon` items are shown disabled.
 const NAV = [
-  { to: '/dashboard', Icon: LayoutGrid, key: 'home', label: 'Home' },
+  { to: '/dashboard', Icon: LayoutGrid, key: 'home', label: 'Home', iconOnly: true },
+  { to: '/reports', Icon: BarChart2, key: 'reports' },
   { to: '/incidents', Icon: AlertTriangle, key: 'incidents' },
   { to: '/crime-map', Icon: Map, key: 'crimeMap' },
   { to: '/ai-analytics', Icon: Brain, key: 'aiAnalytics' },
-  { to: '/reports', Icon: BarChart2, key: 'reports' },
   { to: '/case-files', Icon: Database, key: 'caseFiles' },
   { to: '/assistant', Icon: MessageSquare, key: 'assistant' },
   { to: null, Icon: Users, key: 'personnel', soon: true },
@@ -88,14 +88,13 @@ export default function Sidebar() {
             return (
               <button
                 key={item.key}
-                className={`sb-item ${active ? 'active' : ''} ${item.soon ? 'soon' : ''}`}
+                className={`sb-item ${active ? 'active' : ''} ${item.soon ? 'soon' : ''} ${item.iconOnly ? 'icononly' : ''}`}
                 onClick={() => go(item)}
-                title={collapsed ? labelFor(item) : undefined}
+                title={(collapsed || item.iconOnly) ? labelFor(item) : undefined}
                 disabled={item.soon}
               >
                 <item.Icon size={19} strokeWidth={1.8} className="sb-item-icon" />
-                <span className="sb-item-label">{labelFor(item)}</span>
-                {item.soon && <span className="sb-soon">soon</span>}
+                {!item.iconOnly && <span className="sb-item-label">{labelFor(item)}</span>}
               </button>
             );
           })}
