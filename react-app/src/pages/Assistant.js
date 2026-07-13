@@ -7,11 +7,12 @@ import {
 } from 'lucide-react';
 import {
   loadSessions, saveSessions, makeTitle, newSession, generateReply, uid,
-  transcribeAudio,
+  transcribeAudio, loadSessionsRemote, saveSessionRemote, deleteSessionRemote,
 } from '../utils/assistant';
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
 import i18n from '../i18n';
+import { useAuth } from '../context/AuthContext';
 
 // Short, domain-relevant prompts shown on an empty conversation.
 const SUGGESTIONS = [
@@ -43,6 +44,8 @@ const canRecord =
 
 export default function Assistant() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const email = user?.email_id || null;
   const [isDark, setIsDark] = useTheme();
 
   const [sessions, setSessions] = useState(() => loadSessions());
@@ -68,6 +71,41 @@ export default function Assistant() {
   const messages = useMemo(() => active?.messages || [], [active]);
 
   useEffect(() => { saveSessions(sessions); }, [sessions]);
+
+  // On sign-in, pull the officer's stored conversations from the Data Store and
+  // merge them over the local cache (server wins — it's the durable copy).
+  useEffect(() => {
+    if (!email) return;
+    let cancelled = false;
+    (async () => {
+      const remote = await loadSessionsRemote(email);
+      if (cancelled || !remote) return;
+      setSessions((local) => {
+        const byId = new Map(local.map((s) => [s.id, s]));
+        remote.forEach((r) => byId.set(r.id, { ...byId.get(r.id), ...r }));
+        return [...byId.values()].sort(
+          (a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0)
+        );
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [email]);
+
+  // Debounced push of a changed session to the server; adopts the server's
+  // AI-generated title when the local one is still the default.
+  const saveTimers = useRef({});
+  const pushSession = useCallback((session) => {
+    if (!email || !session?.messages?.length) return;
+    clearTimeout(saveTimers.current[session.id]);
+    saveTimers.current[session.id] = setTimeout(async () => {
+      const title = await saveSessionRemote(session, email);
+      if (title && (session.title === 'New chat' || !session.title)) {
+        setSessions((prev) =>
+          prev.map((s) => (s.id === session.id ? { ...s, title } : s))
+        );
+      }
+    }, 900);
+  }, [email]);
 
   // Autoscroll the thread on new messages / typing.
   useEffect(() => {
@@ -117,6 +155,7 @@ export default function Assistant() {
     e.stopPropagation();
     setSessions((prev) => prev.filter((s) => s.id !== id));
     if (id === activeId) setActiveId(null);
+    deleteSessionRemote(id, email);
   };
 
   const send = useCallback(async (override) => {
@@ -168,9 +207,14 @@ export default function Assistant() {
         source: reply.source,
         ts: Date.now(),
       };
-      setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, messages: [...s.messages, botMsg] } : s))
-      );
+      setSessions((prev) => {
+        const next = prev.map((s) =>
+          s.id === sessionId ? { ...s, messages: [...s.messages, botMsg] } : s
+        );
+        const done = next.find((s) => s.id === sessionId);
+        if (done) pushSession(done); // persist the full exchange
+        return next;
+      });
     } catch (err) {
       const botMsg = {
         id: uid(),
@@ -184,7 +228,7 @@ export default function Assistant() {
     } finally {
       setSending(false);
     }
-  }, [input, attachments, sending, activeId, sessions]);
+  }, [input, attachments, sending, activeId, sessions, pushSession]);
 
   // Cycle previous/next questions with Up/Down (readline-style).
   const navigateHistory = (dir) => {

@@ -43,6 +43,72 @@ export const newSession = () => ({
   messages: [],
 });
 
+// ── Remote persistence (Catalyst Data Store, via the rag function) ──────────
+// Conversations are scoped by the signed-in user's email so they follow the
+// officer across devices and survive cache clears. localStorage stays as an
+// instant cache; these sync it with the server.
+
+// Strip transient/bulky fields before persisting a message.
+const slimMsg = (m) => ({
+  id: m.id,
+  role: m.role,
+  content: m.content,
+  ...(m.components && m.components.length ? { components: m.components } : {}),
+  ...(m.sources && m.sources.length ? { sources: m.sources, source: m.source } : {}),
+  ...(m.files && m.files.length ? { files: m.files } : {}),
+});
+
+export async function loadSessionsRemote(email) {
+  if (!email) return null;
+  try {
+    const res = await fetch('/server/rag/conversations/list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return Array.isArray(data.conversations) ? data.conversations : null;
+  } catch {
+    return null;
+  }
+}
+
+// Persist one conversation; returns the server's (possibly AI-generated) title.
+export async function saveSessionRemote(session, email) {
+  if (!email || !session || !session.messages?.length) return null;
+  try {
+    const res = await fetch('/server/rag/conversations/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        id: session.id,
+        title: session.title,
+        messages: session.messages.map(slimMsg),
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.title || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteSessionRemote(id, email) {
+  if (!email || !id) return;
+  try {
+    await fetch('/server/rag/conversations/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, id }),
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
 // Re-encode any decodable audio (webm/opus recordings, mp3 files, …) into
 // 16 kHz mono PCM WAV — the format the Zia transcription model reliably
 // accepts. Uses the browser's own decoder, so whatever MediaRecorder produced

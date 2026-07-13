@@ -2462,3 +2462,26 @@ a:hover { color: var(--blue-500); }
 }
 .nav-profile-item:hover { background: var(--hover-overlay); }
 .nav-profile-signout { color: #d64545; border-top: 1px solid var(--border-1); }
+
+/* Widget suggestions + mic */
+.cw-suggestions { display: flex; flex-direction: column; gap: 7px; margin-top: 6px; width: 100%; }
+.cw-suggestion {
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid var(--border-1);
+  border-radius: 9px;
+  background: var(--bg-2);
+  color: var(--text-2);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.cw-suggestion:hover { border-color: #2a78d6; color: var(--text-1); }
+.cw-mic {
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 1px solid var(--border-1); background: var(--bg-1); color: var(--text-2);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none;
+}
+.cw-mic:hover { color: var(--text-1); }
+.cw-mic.listening { background: #d64545; color: #fff; border-color: #d64545; animation: cw-pulse 1.2s infinite; }
+.cw-mic:disabled { opacity: 0.5; cursor: default; }
+@keyframes cw-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }

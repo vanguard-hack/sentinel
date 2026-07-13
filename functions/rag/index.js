@@ -303,15 +303,121 @@ async function handleReportPdf(req, res) {
   return json(res, 200, { pdf: pdf.toString('base64'), bytes: pdf.length });
 }
 
+// ── Conversation persistence (Data Store: ChatConversations) ────────────────
+// Long-term storage of assistant chats, scoped by user email. Create the table
+// in the console with columns: ConversationID (Varchar), UserEmail (Varchar),
+// Title (Varchar 255), Messages (Text), MessageCount (Int).
+const CONV_TABLE = process.env.CONV_TABLE || 'ChatConversations';
+const escZ = (s) => String(s).replace(/'/g, "''");
+
+async function generateTitle(firstUserMsg) {
+  const t = await callGroq(
+    [
+      {
+        role: 'system',
+        content:
+          'Create a concise 3-6 word title in Title Case for a police-analytics ' +
+          'chat that begins with the user message below. No quotes, no trailing ' +
+          'punctuation, no "Chat about" prefix. Output ONLY the title.',
+      },
+      { role: 'user', content: String(firstUserMsg).slice(0, 400) },
+    ],
+    { maxTokens: 20, temperature: 0.3, timeoutMs: 6_000, model: GROQ_MODEL_FAST }
+  );
+  const clean = (t || '').replace(/^["'\s]+|["'.\s]+$/g, '').replace(/\s+/g, ' ');
+  if (clean) return clean.slice(0, 80);
+  const words = String(firstUserMsg || '').trim().split(/\s+/).slice(0, 6).join(' ');
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'New chat';
+}
+
+// Cap the stored transcript so one runaway chat can't blow the Text column.
+function packMessages(messages) {
+  let msgs = Array.isArray(messages) ? messages : [];
+  let str = JSON.stringify(msgs);
+  while (str.length > 90_000 && msgs.length > 2) {
+    msgs = msgs.slice(2); // drop the oldest exchange
+    str = JSON.stringify(msgs);
+  }
+  return str;
+}
+
+async function handleConversations(req, res, action) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const email = String(body.email || '').trim().toLowerCase();
+  if (!email) return json(res, 400, { error: 'email is required' });
+
+  const app = catalystSDK.initialize(req);
+  const table = app.datastore().table(CONV_TABLE);
+
+  if (action === 'list') {
+    const rows = await app
+      .zcql()
+      .executeZCQLQuery(
+        `SELECT ${CONV_TABLE}.ROWID, ${CONV_TABLE}.ConversationID, ${CONV_TABLE}.Title, ` +
+          `${CONV_TABLE}.Messages, ${CONV_TABLE}.MODIFIEDTIME FROM ${CONV_TABLE} ` +
+          `WHERE ${CONV_TABLE}.UserEmail = '${escZ(email)}' ` +
+          `ORDER BY ${CONV_TABLE}.MODIFIEDTIME DESC LIMIT 0, 100`
+      );
+    const conversations = (rows || []).map((r) => {
+      const c = r[CONV_TABLE] || {};
+      let messages = [];
+      try { messages = JSON.parse(c.Messages || '[]'); } catch { /* skip */ }
+      return {
+        id: c.ConversationID,
+        title: c.Title || 'New chat',
+        updatedAt: c.MODIFIEDTIME,
+        messages: Array.isArray(messages) ? messages : [],
+      };
+    });
+    return json(res, 200, { conversations });
+  }
+
+  const id = String(body.id || '').trim();
+  if (!id) return json(res, 400, { error: 'id is required' });
+
+  // Locate an existing row for this (user, conversation).
+  const existing = await app
+    .zcql()
+    .executeZCQLQuery(
+      `SELECT ${CONV_TABLE}.ROWID FROM ${CONV_TABLE} ` +
+        `WHERE ${CONV_TABLE}.ConversationID = '${escZ(id)}' ` +
+        `AND ${CONV_TABLE}.UserEmail = '${escZ(email)}' LIMIT 0, 1`
+    );
+  const rowId = existing && existing[0] && existing[0][CONV_TABLE] && existing[0][CONV_TABLE].ROWID;
+
+  if (action === 'delete') {
+    if (rowId) await table.deleteRow(rowId);
+    return json(res, 200, { ok: true });
+  }
+
+  // upsert
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const firstUser = messages.find((m) => m && m.role === 'user');
+  let title = String(body.title || '').trim();
+  if (!title || title === 'New chat') {
+    title = firstUser ? await generateTitle(firstUser.content) : 'New chat';
+  }
+  const record = {
+    ConversationID: id,
+    UserEmail: email,
+    Title: title.slice(0, 240),
+    Messages: packMessages(messages),
+    MessageCount: messages.length,
+  };
+  if (rowId) await table.updateRow({ ROWID: rowId, ...record });
+  else await table.insertRow(record);
+  return json(res, 200, { id, title });
+}
+
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return json(res, 405, { error: 'Use POST' });
-    if (req.url && req.url.replace(/\/+$/, '').endsWith('/transcribe')) {
-      return await handleTranscribe(req, res);
-    }
-    if (req.url && req.url.replace(/\/+$/, '').endsWith('/report-pdf')) {
-      return await handleReportPdf(req, res);
-    }
+    const path = req.url ? req.url.replace(/\/+$/, '') : '';
+    if (path.endsWith('/transcribe')) return await handleTranscribe(req, res);
+    if (path.endsWith('/report-pdf')) return await handleReportPdf(req, res);
+    if (path.endsWith('/conversations/list')) return await handleConversations(req, res, 'list');
+    if (path.endsWith('/conversations/save')) return await handleConversations(req, res, 'save');
+    if (path.endsWith('/conversations/delete')) return await handleConversations(req, res, 'delete');
 
     const body = JSON.parse((await readBody(req)) || '{}');
     const query = (body.query || '').trim();
