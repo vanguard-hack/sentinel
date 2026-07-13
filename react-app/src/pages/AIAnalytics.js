@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Shield, ArrowLeft, Sun, Moon, RefreshCw, AlertTriangle,
-  Brain, Clock, CalendarDays, CalendarRange, TrendingUp, TrendingDown, Lightbulb,
+  Brain, TrendingUp, TrendingDown, Lightbulb,
 } from 'lucide-react';
 import {
   fetchIncidents, hourlyProfile, dayOfMonthProfile, weekdayProfile,
@@ -35,9 +35,9 @@ function Card({ title, subtitle, wide, children }) {
 }
 
 const DIMENSIONS = [
-  { key: 'hour', label: 'Hour of day', Icon: Clock },
-  { key: 'dom', label: 'Day of month', Icon: CalendarDays },
-  { key: 'dow', label: 'Day of week', Icon: CalendarRange },
+  { key: 'hour', label: 'Hour of day', glyph: 'H' },
+  { key: 'dom', label: 'Day of month', glyph: 'D' },
+  { key: 'dow', label: 'Day of week', glyph: 'W' },
 ];
 
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -200,14 +200,16 @@ export default function AIAnalytics() {
             {/* Controls: dimension toggle + crime-head filter */}
             <div className="ai-controls">
               <div className="ai-seg" role="group" aria-label="Time dimension">
-                {DIMENSIONS.map(({ key, label, Icon }) => (
+                {DIMENSIONS.map(({ key, label, glyph }) => (
                   <button
                     key={key}
                     className={`ai-seg-btn ${dim === key ? 'active' : ''}`}
                     onClick={() => setDim(key)}
                     aria-pressed={dim === key}
+                    title={label}
                   >
-                    <Icon size={14} /> {label}
+                    <span className="ai-seg-glyph" aria-hidden="true">{glyph}</span>
+                    <span className="ai-seg-label">{label}</span>
                   </button>
                 ))}
               </div>

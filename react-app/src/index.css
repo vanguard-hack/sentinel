@@ -2190,6 +2190,24 @@ a:hover { color: var(--blue-500); }
 }
 .ai-seg-btn + .ai-seg-btn { border-left: 1px solid var(--border-1); }
 .ai-seg-btn.active { background: var(--rp-series, #2a78d6); color: #fff; }
+.ai-seg-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--bg-2, rgba(0, 0, 0, 0.05));
+  color: var(--text-2);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.ai-seg-btn.active .ai-seg-glyph {
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+.ai-seg-label { font-size: 0.82rem; }
 .ai-sample { font-size: 0.78rem; color: var(--text-4); margin-left: auto; }
 
 .ai-fc-note {
