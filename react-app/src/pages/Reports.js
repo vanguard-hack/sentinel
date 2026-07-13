@@ -85,7 +85,7 @@ export default function Reports() {
 
   return (
     <div className="rp-page">
-      <TopBar title="Reports" subtitle="Crime statistics & trends">
+      <TopBar title="Home" subtitle="Crime statistics & trends">
         <button
           className="cf-export-btn"
           onClick={exportPdf}

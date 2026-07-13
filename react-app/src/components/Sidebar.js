@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Shield, LayoutGrid, AlertTriangle, Map, Brain, BarChart2, Database,
+  Shield, Home, AlertTriangle, Map, Brain, Database,
   MessageSquare, Users, ChevronLeft, ChevronRight, Sun, Moon, LogOut,
   UserCircle, PanelLeftClose,
 } from 'lucide-react';
@@ -12,8 +12,7 @@ import Avatar from './Avatar';
 
 // Every feature lives here. `soon` items are shown disabled.
 const NAV = [
-  { to: '/dashboard', Icon: LayoutGrid, key: 'home', label: 'Home', iconOnly: true },
-  { to: '/reports', Icon: BarChart2, key: 'reports' },
+  { to: '/reports', Icon: Home, key: 'reports', label: 'Home' },
   { to: '/incidents', Icon: AlertTriangle, key: 'incidents' },
   { to: '/crime-map', Icon: Map, key: 'crimeMap' },
   { to: '/ai-analytics', Icon: Brain, key: 'aiAnalytics' },
@@ -88,13 +87,13 @@ export default function Sidebar() {
             return (
               <button
                 key={item.key}
-                className={`sb-item ${active ? 'active' : ''} ${item.soon ? 'soon' : ''} ${item.iconOnly ? 'icononly' : ''}`}
+                className={`sb-item ${active ? 'active' : ''} ${item.soon ? 'soon' : ''}`}
                 onClick={() => go(item)}
-                title={(collapsed || item.iconOnly) ? labelFor(item) : undefined}
+                title={collapsed ? labelFor(item) : undefined}
                 disabled={item.soon}
               >
                 <item.Icon size={19} strokeWidth={1.8} className="sb-item-icon" />
-                {!item.iconOnly && <span className="sb-item-label">{labelFor(item)}</span>}
+                <span className="sb-item-label">{labelFor(item)}</span>
               </button>
             );
           })}
@@ -102,13 +101,13 @@ export default function Sidebar() {
 
         <div className="sb-footer">
           <button
-            className="sb-item sb-theme"
+            className="sb-item sb-theme icononly"
             onClick={() => setIsDark((d) => !d)}
-            title={collapsed ? (isDark ? 'Light mode' : 'Dark mode') : undefined}
+            title={isDark ? 'Light mode' : 'Dark mode'}
+            aria-label={isDark ? 'Light mode' : 'Dark mode'}
           >
             {isDark ? <Sun size={19} strokeWidth={1.8} className="sb-item-icon" />
                     : <Moon size={19} strokeWidth={1.8} className="sb-item-icon" />}
-            <span className="sb-item-label">{isDark ? 'Light mode' : 'Dark mode'}</span>
           </button>
 
           <div className="sb-profile" ref={profileRef}>

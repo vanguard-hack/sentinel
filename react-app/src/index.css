@@ -2896,7 +2896,7 @@ a:hover { color: var(--blue-500); }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 .app-sidebar {
-  width: 208px;
+  width: 180px;
   flex-shrink: 0;
   position: sticky;
   top: 0;
@@ -2930,9 +2930,10 @@ a:hover { color: var(--blue-500); }
   color: #fff;
 }
 .sb-brand-name {
-  font-size: 15px;
+  font-size: 19px;
   font-weight: 800;
-  letter-spacing: 0.16em;
+  letter-spacing: -0.03em;
+  text-transform: lowercase;
   color: var(--text-0);
   flex: 1;
   white-space: nowrap;
@@ -2949,8 +2950,11 @@ a:hover { color: var(--blue-500); }
 }
 .sb-collapse:hover { background: var(--bg-3); color: var(--text-1); }
 .app-sidebar.rail .sb-brand { justify-content: center; padding: 0; }
+/* Collapsed: hide the wordmark + mark, leaving the expand chevron visible so
+   there's always a way back out of the rail. */
 .app-sidebar.rail .sb-brand-name,
-.app-sidebar.rail .sb-collapse { display: none; }
+.app-sidebar.rail .sb-brand-mark { display: none; }
+.app-sidebar.rail .sb-collapse { margin: 0 auto; }
 
 .sb-nav {
   flex: 1;
@@ -3123,12 +3127,13 @@ a:hover { color: var(--blue-500); }
     transition: transform 0.2s ease;
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.3);
   }
-  .app-sidebar.rail { width: 208px; }           /* no rail on mobile */
+  .app-sidebar.rail { width: 180px; }           /* no rail on mobile */
   .app-sidebar.rail .sb-item-label,
   .app-sidebar.rail .sb-brand-name,
-  .app-sidebar.rail .sb-collapse,
+  .app-sidebar.rail .sb-brand-mark,
   .app-sidebar.rail .sb-account-id,
   .app-sidebar.rail .sb-account-caret { display: revert; }
+  .app-sidebar.rail .sb-item { justify-content: flex-start; }
   .app-sidebar.mobile-open { transform: translateX(0); }
   .sb-collapse { display: none; }
   .topbar-menu { display: flex; }
