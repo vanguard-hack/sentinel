@@ -592,6 +592,22 @@ a:hover { color: var(--blue-500); }
 }
 .map-title svg { color: var(--blue-400); }
 
+/* Floating drill-path over the map (India / State / District) */
+.map-loc {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+}
+
 .map-canvas {
   position: relative;
   flex: 1;

@@ -1,87 +1,39 @@
-// Aggregation queries for the Reports page against the Police FIR schema.
-// Counts/GROUP BYs run server-side via ZCQL; because the Data Store tables
-// have no declared FK relationships, ZCQL JOINs are unavailable — so grouped
-// results come back as IDs and we resolve names client-side from the small
-// master tables (fetched once per load, a few hundred rows total).
+// Reports data layer for the Police FIR schema.
+//
+// The Home dashboard is filtered by a single time range (day / month / year /
+// 5y). Because the Data Store has no FK joins and can't date-filter the
+// victim/accused/arrest/chargesheet tables (they carry no date column), we
+// fetch the raw per-case rows ONCE, then compute every KPI and chart for the
+// selected window entirely client-side — so changing the range is instant and
+// filters the whole report, not just the trend chart.
 import { runQuery } from './datastore';
-
-const num = (v) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-};
 
 const labelOf = (v) => {
   if (v === null || v === undefined || v === '') return '—';
   return String(v);
 };
 
-// COUNT(ROWID) grouped by a dimension → [{ label, value }] sorted desc.
-// `nameOf` maps a raw dimension value (usually an ID) to a display label.
-// `limit` folds the long tail into an "Other" bucket.
-export async function groupCount(table, dim, { limit, nameOf, where = '' } = {}) {
-  const rows = await runQuery(
-    `SELECT ${dim}, COUNT(ROWID) AS cnt FROM ${table}${where} GROUP BY ${dim}`,
-    table
-  );
-  let data = rows
-    .map((r) => ({
-      key: r[dim],
-      label: nameOf ? nameOf(r[dim]) : labelOf(r[dim]),
-      value: num(r.cnt ?? r['COUNT(ROWID)']),
-    }))
-    .filter((d) => d.value > 0);
+const CAP = 300; // ZCQL rows-per-query cap
 
-  // Re-aggregate after name mapping (several keys can map to one label,
-  // e.g. stations → district).
-  const merged = new Map();
-  for (const d of data) merged.set(d.label, (merged.get(d.label) || 0) + d.value);
-  data = [...merged.entries()]
-    .map(([label, value]) => ({ label, value }))
-    .sort((a, b) => b.value - a.value);
-
-  if (limit && data.length > limit) {
-    const head = data.slice(0, limit);
-    const rest = data.slice(limit).reduce((s, d) => s + d.value, 0);
-    if (rest > 0) head.push({ label: 'Other', value: rest });
-    data = head;
+async function fetchAll(sql, table) {
+  const out = [];
+  for (let off = 0; off < 40000; off += CAP) {
+    const rows = await runQuery(`${sql} LIMIT ${off}, ${CAP}`, table);
+    out.push(...rows);
+    if (rows.length < CAP) break;
   }
-  return data;
-}
-
-async function scalar(sql, table, key) {
-  const rows = await runQuery(sql, table);
-  const r = rows[0] || {};
-  return num(r[key] ?? Object.values(r)[0]);
+  return out;
 }
 
 // Fetch a master table once and return an id → name lookup function.
 async function lookup(table, idCol, nameCol) {
-  const rows = await runQuery(`SELECT ${idCol}, ${nameCol} FROM ${table} LIMIT 0, 300`, table);
+  const rows = await fetchAll(`SELECT ${idCol}, ${nameCol} FROM ${table}`, table);
   const map = new Map(rows.map((r) => [String(r[idCol]), r[nameCol]]));
   return (id) => map.get(String(id)) || labelOf(id);
 }
 
 // Solved = a final report reached the court or a decision was recorded.
 const SOLVED_STATUSES = new Set(['Charge Sheeted', 'Pending Trial', 'Convicted', 'Acquitted']);
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-// Last `n` calendar months ending this month → [{ label, from, to }].
-function monthWindows(n) {
-  const out = [];
-  const now = new Date();
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    const iso = (x) => x.toISOString().slice(0, 10);
-    out.push({
-      label: `${MONTHS[d.getMonth()]}${d.getMonth() === 0 ? ' ' + String(d.getFullYear()).slice(2) : ''}`,
-      from: iso(d),
-      to: iso(end),
-    });
-  }
-  return out;
-}
 
 const AGE_BUCKETS = [
   { label: '18–25', from: 18, to: 25 },
@@ -91,30 +43,13 @@ const AGE_BUCKETS = [
   { label: '60+', from: 61, to: 120 },
 ];
 
-const countCases = (where = '') =>
-  scalar(`SELECT COUNT(ROWID) AS c FROM CaseMaster${where}`, 'CaseMaster', 'c');
-
-// Every case's registration date (paged), for the client-side trend filter.
-async function allCaseDates() {
-  const dates = [];
-  const page = 300; // ZCQL returns nothing above ~300 rows per query
-  for (let offset = 0; offset < 20000; offset += page) {
-    const rows = await runQuery(
-      `SELECT CrimeRegisteredDate FROM CaseMaster LIMIT ${offset}, ${page}`,
-      'CaseMaster'
-    );
-    rows.forEach((r) => r.CrimeRegisteredDate && dates.push(String(r.CrimeRegisteredDate).slice(0, 10)));
-    if (rows.length < page) break;
-  }
-  return dates;
-}
-
-// Time-range filter options for the crime-trend card on Reports.
+// Time-range filter options for the Home dashboard. `windowDays` is the span of
+// data each range covers; `bucket` is the trend-chart granularity.
 export const TREND_RANGES = [
-  { key: 'day', label: 'Per day', bucket: 'day', days: 30 },
-  { key: 'month', label: 'Per month', bucket: 'month', months: 12 },
-  { key: 'year', label: 'Past year', bucket: 'week', months: 12 },
-  { key: '5y', label: 'Past 5 years', bucket: 'year', years: 5 },
+  { key: 'day', label: 'Per day', bucket: 'day', days: 30, windowDays: 30 },
+  { key: 'month', label: 'Per month', bucket: 'month', months: 12, windowDays: 365 },
+  { key: 'year', label: 'Past year', bucket: 'week', months: 12, windowDays: 365 },
+  { key: '5y', label: 'Past 5 years', bucket: 'year', years: 5, windowDays: 365 * 5 },
 ];
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -128,7 +63,6 @@ export function buildTrend(dates, rangeKey) {
   const range = TREND_RANGES.find((r) => r.key === rangeKey) || TREND_RANGES[1];
   const counts = new Map();
 
-  // Monday-anchored week key, computed entirely in UTC.
   const weekKey = (d) => {
     const u = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
     u.setUTCDate(u.getUTCDate() - ((u.getUTCDay() + 6) % 7));
@@ -145,7 +79,6 @@ export function buildTrend(dates, rangeKey) {
     if (!Number.isNaN(d.getTime())) counts.set(key(d), (counts.get(key(d)) || 0) + 1);
   });
 
-  // Ordered, gap-filled bucket list ending today (all in UTC).
   const out = [];
   const now = new Date();
   const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
@@ -180,9 +113,15 @@ export function buildTrend(dates, rangeKey) {
   return out;
 }
 
-// Everything the Reports page needs, in parallel.
+// The [from, to) window (ms) a range covers, ending now.
+export function windowFor(rangeKey) {
+  const range = TREND_RANGES.find((r) => r.key === rangeKey) || TREND_RANGES[1];
+  const to = Date.now();
+  return { from: to - range.windowDays * 86400000, to };
+}
+
+// ── Raw fetch (once per load) ───────────────────────────────────────────────
 export async function fetchReports() {
-  // Master lookups first (small), then the aggregations that use them.
   const [headName, statusName, unitName, unitDistrict, districtName, subHeadName] =
     await Promise.all([
       lookup('CrimeHead', 'CrimeHeadID', 'CrimeGroupName'),
@@ -193,97 +132,129 @@ export async function fetchReports() {
       lookup('CrimeSubHead', 'CrimeSubHeadID', 'CrimeHeadName'),
     ]);
 
-  const year = new Date().getFullYear();
-  const months = monthWindows(12);
-  const YEARS = [];
-  for (let y = 2023; y <= year; y++) YEARS.push(y);
-
-  const [
-    cases, accusedN, victims, arrests, chargesheets, open, heinous, thisYear, lastYearSame,
-    byCategory, byStatus, byDistrict, bySubHead, openByStation,
-    trendCounts, yearCounts, ageCounts, caseDates,
-  ] = await Promise.all([
-    countCases(),
-    scalar('SELECT COUNT(ROWID) AS c FROM Accused', 'Accused', 'c'),
-    scalar('SELECT COUNT(ROWID) AS c FROM Victim', 'Victim', 'c'),
-    scalar('SELECT COUNT(ROWID) AS c FROM ArrestSurrender', 'ArrestSurrender', 'c'),
-    scalar('SELECT COUNT(ROWID) AS c FROM ChargesheetDetails', 'ChargesheetDetails', 'c'),
-    countCases(' WHERE CaseStatusID = 1'),
-    countCases(' WHERE GravityOffenceID = 1'),
-    countCases(` WHERE CrimeRegisteredDate BETWEEN '${year}-01-01' AND '${year}-12-31'`),
-    countCases(
-      ` WHERE CrimeRegisteredDate BETWEEN '${year - 1}-01-01' AND '${year - 1}-${new Date()
-        .toISOString()
-        .slice(5, 10)}'`
-    ),
-    groupCount('CaseMaster', 'CrimeMajorHeadID', { limit: 8, nameOf: headName }),
-    groupCount('CaseMaster', 'CaseStatusID', { limit: 5, nameOf: statusName }),
-    // CaseMaster has no district column: group by station, map station →
-    // district → name; groupCount re-aggregates identical labels.
-    groupCount('CaseMaster', 'PoliceStationID', {
-      nameOf: (uid) => districtName(unitDistrict(uid)),
-    }),
-    groupCount('CaseMaster', 'CrimeMinorHeadID', { limit: 8, nameOf: subHeadName }),
-    groupCount('CaseMaster', 'PoliceStationID', {
-      limit: 8,
-      nameOf: (uid) => String(unitName(uid)).replace(' Police Station', ''),
-      where: ' WHERE CaseStatusID = 1',
-    }),
-    Promise.all(
-      months.map((m) => countCases(` WHERE CrimeRegisteredDate BETWEEN '${m.from}' AND '${m.to}'`))
-    ),
-    Promise.all(
-      YEARS.map((y) => countCases(` WHERE CrimeRegisteredDate BETWEEN '${y}-01-01' AND '${y}-12-31'`))
-    ),
-    Promise.all(
-      AGE_BUCKETS.map((b) =>
-        scalar(
-          `SELECT COUNT(ROWID) AS c FROM Accused WHERE AgeYear BETWEEN ${b.from} AND ${b.to}`,
-          'Accused',
-          'c'
-        )
-      )
-    ),
-    allCaseDates(),
+  const [caseRows, victimRows, accusedRows, arrestRows, csRows] = await Promise.all([
+    fetchAll('SELECT CaseMasterID, CrimeRegisteredDate, PoliceStationID, CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, GravityOffenceID FROM CaseMaster', 'CaseMaster'),
+    fetchAll('SELECT CaseMasterID FROM Victim', 'Victim'),
+    fetchAll('SELECT CaseMasterID, AgeYear FROM Accused', 'Accused'),
+    fetchAll('SELECT CaseMasterID FROM ArrestSurrender', 'ArrestSurrender'),
+    fetchAll('SELECT CaseMasterID FROM ChargesheetDetails', 'ChargesheetDetails'),
   ]);
 
-  const solved = byStatus
-    .filter((d) => SOLVED_STATUSES.has(d.label))
-    .reduce((s, d) => s + d.value, 0);
+  const cases = caseRows.map((c) => ({
+    id: String(c.CaseMasterID),
+    date: String(c.CrimeRegisteredDate || '').slice(0, 10),
+    ts: Date.parse(String(c.CrimeRegisteredDate || '').slice(0, 10)),
+    station: c.PoliceStationID,
+    major: c.CrimeMajorHeadID,
+    minor: c.CrimeMinorHeadID,
+    status: c.CaseStatusID,
+    gravity: c.GravityOffenceID,
+  }));
 
   return {
+    masters: { headName, statusName, unitName, unitDistrict, districtName, subHeadName },
+    raw: {
+      cases,
+      caseDates: cases.map((c) => c.date).filter(Boolean),
+      victimCases: victimRows.map((r) => String(r.CaseMasterID)),
+      accused: accusedRows.map((r) => ({ caseId: String(r.CaseMasterID), age: Number(r.AgeYear) || 0 })),
+      arrestCases: arrestRows.map((r) => String(r.CaseMasterID)),
+      chargesheetCases: csRows.map((r) => String(r.CaseMasterID)),
+    },
+  };
+}
+
+// ── Client-side aggregation for the selected window ─────────────────────────
+function groupCount(rows, keyFn, nameFn) {
+  const m = new Map();
+  rows.forEach((r) => {
+    const k = keyFn(r);
+    if (k === null || k === undefined || k === '') return;
+    const label = nameFn(k);
+    m.set(label, (m.get(label) || 0) + 1);
+  });
+  return [...m.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .filter((d) => d.value > 0)
+    .sort((a, b) => b.value - a.value);
+}
+
+function capOther(arr, limit) {
+  if (!limit || arr.length <= limit) return arr;
+  const head = arr.slice(0, limit);
+  const rest = arr.slice(limit).reduce((s, d) => s + d.value, 0);
+  return rest > 0 ? [...head, { label: 'Other', value: rest }] : head;
+}
+
+export function computeReport(raw, masters, rangeKey) {
+  const { headName, statusName, unitName, unitDistrict, districtName, subHeadName } = masters;
+  const { from, to } = windowFor(rangeKey);
+  const span = to - from;
+
+  const wcases = raw.cases.filter((c) => Number.isFinite(c.ts) && c.ts >= from && c.ts <= to);
+  const idSet = new Set(wcases.map((c) => c.id));
+  const firs = wcases.length;
+
+  const open = wcases.filter((c) => String(c.status) === '1').length;
+  const heinous = wcases.filter((c) => String(c.gravity) === '1').length;
+  const solved = wcases.filter((c) => SOLVED_STATUSES.has(statusName(c.status))).length;
+
+  const victims = raw.victimCases.reduce((n, id) => n + (idSet.has(id) ? 1 : 0), 0);
+  const accusedRows = raw.accused.filter((a) => idSet.has(a.caseId));
+  const accused = accusedRows.length;
+  const arrests = raw.arrestCases.reduce((n, id) => n + (idSet.has(id) ? 1 : 0), 0);
+  const chargesheets = raw.chargesheetCases.reduce((n, id) => n + (idSet.has(id) ? 1 : 0), 0);
+
+  const byCategory = capOther(groupCount(wcases, (c) => c.major, (id) => headName(id)), 8);
+  const byStatus = capOther(groupCount(wcases, (c) => c.status, (id) => statusName(id)), 5);
+  const bySubHead = capOther(groupCount(wcases, (c) => c.minor, (id) => subHeadName(id)), 8);
+  const byDistrictAll = groupCount(wcases, (c) => c.station, (uid) => districtName(unitDistrict(uid)));
+  const openByStation = capOther(
+    groupCount(
+      wcases.filter((c) => String(c.status) === '1'),
+      (c) => c.station,
+      (uid) => String(unitName(uid)).replace(' Police Station', '')
+    ),
+    8
+  );
+
+  const accusedAges = AGE_BUCKETS.map((b) => ({
+    label: b.label,
+    value: accusedRows.filter((a) => a.age >= b.from && a.age <= b.to).length,
+  }));
+
+  const yearMap = new Map();
+  wcases.forEach((c) => { const y = c.date.slice(0, 4); if (y) yearMap.set(y, (yearMap.get(y) || 0) + 1); });
+  const yearly = [...yearMap.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([y, v]) => ({ label: y, value: v }));
+
+  // vs the immediately-preceding window of the same length.
+  const prevFirs = raw.cases.reduce(
+    (n, c) => n + (Number.isFinite(c.ts) && c.ts >= from - span && c.ts < from ? 1 : 0), 0
+  );
+  const deltaPct = prevFirs ? ((firs - prevFirs) / prevFirs) * 100 : null;
+
+  return {
+    range: rangeKey,
+    rangeLabel: (TREND_RANGES.find((r) => r.key === rangeKey) || TREND_RANGES[1]).label,
     kpis: {
-      firs: cases,
-      accused: accusedN,
-      victims,
-      arrests,
-      chargesheets,
-      chargesheetPct: cases > 0 ? (chargesheets / cases) * 100 : 0,
+      firs, accused, victims, arrests, chargesheets,
+      chargesheetPct: firs ? (chargesheets / firs) * 100 : 0,
       open,
-      openPct: cases ? (open / cases) * 100 : 0,
-      solvedPct: cases ? (solved / cases) * 100 : 0,
-      heinousPct: cases ? (heinous / cases) * 100 : 0,
-      thisYear,
-      yoyPct: lastYearSame ? ((thisYear - lastYearSame) / lastYearSame) * 100 : null,
+      openPct: firs ? (open / firs) * 100 : 0,
+      solvedPct: firs ? (solved / firs) * 100 : 0,
+      heinousPct: firs ? (heinous / firs) * 100 : 0,
+      deltaPct,
     },
     byCategory,
     byStatus,
-    // Bar chart shows top 12 + Other; the correlation map needs every district.
-    byDistrict: (() => {
-      if (byDistrict.length <= 12) return byDistrict;
-      const head = byDistrict.slice(0, 12);
-      const rest = byDistrict.slice(12).reduce((s, d) => s + d.value, 0);
-      return rest > 0 ? [...head, { label: 'Other', value: rest }] : head;
-    })(),
-    crimeByDistrict: byDistrict,
+    byDistrict: capOther(byDistrictAll, 12),
+    crimeByDistrict: byDistrictAll,
     bySubHead,
     openByStation,
-    trend: months.map((m, i) => ({ label: m.label, value: trendCounts[i] })),
-    caseDates,
-    yearly: YEARS.map((y, i) => ({
-      label: y === year ? `${y} (to date)` : String(y),
-      value: yearCounts[i],
-    })),
-    accusedAges: AGE_BUCKETS.map((b, i) => ({ label: b.label, value: ageCounts[i] })),
+    yearly,
+    accusedAges,
+    caseDates: raw.caseDates,
   };
 }

@@ -7,10 +7,10 @@ import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.heat';
 import { feature } from 'topojson-client';
 import {
-  ArrowLeft, Home, Plus, Minus, Maximize2, MapPin, Flame, Shield, X, Phone, Mail, ExternalLink, Layers, Menu,
+  ArrowLeft, Home, Plus, Minus, Maximize2, Flame, Shield, X, Phone, Mail, ExternalLink, Layers,
 } from 'lucide-react';
 import { H, CRIME, STATE, DISTRICT, refreshAllData } from '../data/hierarchyStore';
-import { useLayout } from '../context/LayoutContext';
+import TopBar from '../components/TopBar';
 
 const fmtN = (n) => (n == null ? '—' : n.toLocaleString('en-IN'));
 
@@ -147,7 +147,6 @@ function StationImage({ image, onOpen }) {
 }
 
 export default function CrimeMap() {
-  const { toggleMobile } = useLayout();
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const ctrlRef = useRef(null);
@@ -498,36 +497,32 @@ export default function CrimeMap() {
 
   return (
     <div className="map-page">
-      <header className="map-topbar">
-        <button className="topbar-menu map-menu" onClick={toggleMobile} aria-label="Open menu">
-          <Menu size={18} />
-        </button>
-
-        <nav className="map-breadcrumb" aria-label="Map location">
-          <button className={`crumb ${level === 'india' ? 'active' : ''}`} onClick={() => ctrlRef.current?.showIndia()}>
-            <Home size={13} /> India
-          </button>
-          {selectedState && (
-            <>
-              <span className="crumb-sep">/</span>
-              <button className={`crumb ${level === 'state' ? 'active' : ''}`} onClick={() => ctrlRef.current?.showState(selectedState)}>
-                {selectedState}
-              </button>
-            </>
-          )}
-          {selectedDistrict && (
-            <>
-              <span className="crumb-sep">/</span>
-              <span className="crumb active">{selectedDistrict}</span>
-            </>
-          )}
-        </nav>
-
-        <div className="map-title"><MapPin size={16} /> <span>Crime Map</span></div>
-      </header>
+      <TopBar title="Crime Map" />
 
       <div className="map-canvas">
         <div ref={containerRef} className="map-leaflet" />
+
+        {/* Floating drill-path — only while zoomed into a state/district, so
+            there's a way back out without a standalone "India" title. */}
+        {selectedState && (
+          <nav className="map-loc" aria-label="Map location">
+            <button className="crumb" onClick={() => ctrlRef.current?.showIndia()}>
+              <Home size={13} /> India
+            </button>
+            <span className="crumb-sep">/</span>
+            {selectedDistrict ? (
+              <>
+                <button className="crumb" onClick={() => ctrlRef.current?.showState(selectedState)}>
+                  {selectedState}
+                </button>
+                <span className="crumb-sep">/</span>
+                <span className="crumb active">{selectedDistrict}</span>
+              </>
+            ) : (
+              <span className="crumb active">{selectedState}</span>
+            )}
+          </nav>
+        )}
 
         {dataReady === 'error' && <div className="map-status map-error">Couldn't load map data from the server.</div>}
         {dataReady === 'loading' && <div className="map-status">Loading data…</div>}

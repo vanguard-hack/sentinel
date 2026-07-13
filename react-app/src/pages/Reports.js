@@ -4,7 +4,7 @@ import {
   FileText, Users, HeartPulse, PackageCheck, FolderOpen, Gavel,
   Flame, Siren, TrendingUp, TrendingDown, FileDown,
 } from 'lucide-react';
-import { fetchReports, buildTrend, TREND_RANGES } from '../utils/reports';
+import { fetchReports, computeReport, buildTrend, TREND_RANGES } from '../utils/reports';
 import { exportReportPdf } from '../utils/reportPdf';
 import { BarList, Donut, TrendArea } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
@@ -46,13 +46,19 @@ export default function Reports() {
   const { user } = useAuth();
   const firstName =
     user?.first_name || user?.email_id?.split('@')[0] || 'Officer';
-  const [data, setData] = useState(null);
+  const [bundle, setBundle] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState(null);
   const [trendRange, setTrendRange] = useState('month');
   const contentRef = useRef(null);
+
+  // The selected range filters every KPI and chart, computed client-side.
+  const data = useMemo(
+    () => (bundle ? computeReport(bundle.raw, bundle.masters, trendRange) : null),
+    [bundle, trendRange]
+  );
 
   const exportPdf = useCallback(async () => {
     if (!data || pdfBusy) return;
@@ -77,7 +83,7 @@ export default function Reports() {
     setLoading(true);
     setError(null);
     try {
-      setData(await fetchReports());
+      setBundle(await fetchReports());
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -145,11 +151,11 @@ export default function Reports() {
                 label="FIRs registered"
                 value={data.kpis.firs.toLocaleString()}
                 sub={
-                  data.kpis.yoyPct == null
-                    ? `${data.kpis.thisYear.toLocaleString()} this year`
-                    : `${Math.abs(data.kpis.yoyPct).toFixed(0)}% YoY (same period)`
+                  data.kpis.deltaPct == null
+                    ? data.rangeLabel
+                    : `${Math.abs(data.kpis.deltaPct).toFixed(0)}% vs prev period`
                 }
-                trend={data.kpis.yoyPct == null ? null : data.kpis.yoyPct >= 0 ? 'up' : 'down'}
+                trend={data.kpis.deltaPct == null ? null : data.kpis.deltaPct >= 0 ? 'up' : 'down'}
               />
               <Kpi
                 Icon={FolderOpen}
