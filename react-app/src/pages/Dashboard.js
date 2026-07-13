@@ -1,14 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Shield, Map, BarChart2, AlertTriangle, MessageSquare,
-  Users, Brain, Database, Bell, LogOut, ChevronRight,
-  Search, Sun, Moon, X, UserCircle,
+  Users, Brain, Database, ChevronRight, Search, X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LANGUAGES } from '../i18n';
-import Avatar from '../components/Avatar';
+import TopBar from '../components/TopBar';
 
 // Each module references a translation key under `modules.*`; labels/descriptions
 // are resolved at render time from the active language.
@@ -49,41 +48,10 @@ function ModuleCard({ Icon, label, desc, accent, soon, onOpen }) {
 }
 
 export default function Dashboard() {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [isDark, setIsDark] = useState(
-    () => localStorage.getItem('sentinel-theme') === 'dark'
-  );
-  const [profileOpen, setProfileOpen] = useState(false);
-  const profileRef = useRef(null);
-
-  // Close the profile menu on outside click or Escape.
-  useEffect(() => {
-    if (!profileOpen) return undefined;
-    const onDown = (e) => {
-      if (profileRef.current && !profileRef.current.contains(e.target)) setProfileOpen(false);
-    };
-    const onKey = (e) => { if (e.key === 'Escape') setProfileOpen(false); };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [profileOpen]);
-
-  useEffect(() => {
-    const theme = isDark ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('sentinel-theme', theme);
-  }, [isDark]);
-
-  const displayName =
-    [user?.first_name, user?.last_name].filter(Boolean).join(' ') ||
-    user?.email_id ||
-    'Officer';
 
   const welcomeName =
     user?.first_name ||
@@ -105,112 +73,48 @@ export default function Dashboard() {
       )
     : modules;
 
+  const search = (
+    <div className="nav-search">
+      <Search size={15} className="nav-search-icon" />
+      <input
+        type="text"
+        className="nav-search-input"
+        placeholder={t('search.placeholder')}
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        aria-label={t('search.placeholder')}
+      />
+      {searchQuery && (
+        <button
+          className="nav-search-clear"
+          onClick={() => setSearchQuery('')}
+          aria-label={t('a11y.clearSearch')}
+        >
+          <X size={13} />
+        </button>
+      )}
+    </div>
+  );
+
   return (
-    <div className="db-page">
-
-      {/* ── Top navigation bar ── */}
-      <header className="db-nav-bar">
-        <div className="db-nav-brand">
-          <Shield size={20} strokeWidth={1.5} className="nav-brand-icon" />
-          <span className="nav-brand-name">SENTINEL</span>
-          <span className="nav-brand-rule" />
-          <span className="nav-brand-sub">{t('nav.subtitle')}</span>
-        </div>
-
-        {/* Universal search */}
-        <div className="nav-search">
-          <Search size={14} className="nav-search-icon" />
-          <input
-            type="text"
-            className="nav-search-input"
-            placeholder={t('search.placeholder')}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            aria-label={t('search.placeholder')}
-          />
-          {searchQuery && (
+    <>
+      <TopBar title="Home" search={search}>
+        <div className="nav-lang" role="group" aria-label={t('a11y.language')}>
+          {LANGUAGES.map((lng) => (
             <button
-              className="nav-search-clear"
-              onClick={() => setSearchQuery('')}
-              aria-label={t('a11y.clearSearch')}
+              key={lng.code}
+              className={`nav-lang-btn ${i18n.resolvedLanguage === lng.code ? 'active' : ''}`}
+              onClick={() => i18n.changeLanguage(lng.code)}
+              title={lng.name}
+              aria-pressed={i18n.resolvedLanguage === lng.code}
             >
-              <X size={13} />
+              {lng.label}
             </button>
-          )}
+          ))}
         </div>
+      </TopBar>
 
-        <div className="db-nav-right">
-          {/* Language switcher */}
-          <div className="nav-lang" role="group" aria-label={t('a11y.language')}>
-            {LANGUAGES.map((lng) => (
-              <button
-                key={lng.code}
-                className={`nav-lang-btn ${
-                  i18n.resolvedLanguage === lng.code ? 'active' : ''
-                }`}
-                onClick={() => i18n.changeLanguage(lng.code)}
-                title={lng.name}
-                aria-pressed={i18n.resolvedLanguage === lng.code}
-              >
-                {lng.label}
-              </button>
-            ))}
-          </div>
-
-          <button
-            className="nav-icon-btn"
-            onClick={() => setIsDark((d) => !d)}
-            aria-label={isDark ? t('a11y.lightMode') : t('a11y.darkMode')}
-            title={isDark ? t('a11y.lightMode') : t('a11y.darkMode')}
-          >
-            {isDark ? <Sun size={17} /> : <Moon size={17} />}
-          </button>
-          <button className="nav-icon-btn" aria-label={t('a11y.notifications')}>
-            <Bell size={17} />
-          </button>
-          <div className="nav-profile" ref={profileRef}>
-            <button
-              className={`nav-avatar-btn ${profileOpen ? 'open' : ''}`}
-              onClick={() => setProfileOpen((o) => !o)}
-              aria-haspopup="menu"
-              aria-expanded={profileOpen}
-              title={displayName}
-            >
-              <Avatar user={user} size={34} />
-            </button>
-
-            {profileOpen && (
-              <div className="nav-profile-pop" role="menu">
-                <div className="nav-profile-card">
-                  <Avatar user={user} size={52} className="nav-profile-avatar" />
-                  <div className="nav-profile-id">
-                    <span className="nav-profile-name">{displayName}</span>
-                    <span className="nav-profile-email">{user?.email_id}</span>
-                    {user?.role_details?.role_name && (
-                      <span className="nav-profile-role">{user.role_details.role_name}</span>
-                    )}
-                  </div>
-                </div>
-                <button
-                  className="nav-profile-item"
-                  onClick={() => { setProfileOpen(false); navigate('/profile'); }}
-                >
-                  <UserCircle size={16} />
-                  <span>View profile</span>
-                </button>
-                <button className="nav-profile-item nav-profile-signout" onClick={signOut}>
-                  <LogOut size={16} />
-                  <span>{t('action.signOut')}</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* ── Main content ── */}
       <main className="db-main-content">
-
         {/* Welcome */}
         <div className="db-welcome">
           <div className="db-welcome-left">
@@ -242,8 +146,7 @@ export default function Dashboard() {
             </p>
           )}
         </div>
-
       </main>
-    </div>
+    </>
   );
 }

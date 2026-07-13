@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  Shield, ArrowLeft, Sun, Moon, RefreshCw, AlertTriangle,
+  RefreshCw, AlertTriangle,
   FileText, Users, HeartPulse, PackageCheck, FolderOpen, Gavel,
   Flame, Siren, TrendingUp, TrendingDown, FileDown,
 } from 'lucide-react';
@@ -9,18 +8,7 @@ import { fetchReports, buildTrend, TREND_RANGES } from '../utils/reports';
 import { exportReportPdf } from '../utils/reportPdf';
 import { BarList, Donut, TrendArea } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
-
-function useTheme() {
-  const [isDark, setIsDark] = useState(
-    () => localStorage.getItem('sentinel-theme') === 'dark'
-  );
-  useEffect(() => {
-    const theme = isDark ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('sentinel-theme', theme);
-  }, [isDark]);
-  return [isDark, setIsDark];
-}
+import TopBar from '../components/TopBar';
 
 function Kpi({ Icon, label, value, sub, trend }) {
   return (
@@ -54,8 +42,6 @@ function Card({ title, subtitle, wide, children }) {
 }
 
 export default function Reports() {
-  const navigate = useNavigate();
-  const [isDark, setIsDark] = useTheme();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -99,39 +85,20 @@ export default function Reports() {
 
   return (
     <div className="rp-page">
-      <header className="db-nav-bar">
-        <div className="db-nav-brand">
-          <Shield size={20} strokeWidth={1.5} className="nav-brand-icon" />
-          <span className="nav-brand-name">SENTINEL</span>
-          <span className="nav-brand-rule" />
-          <span className="nav-brand-sub">Reports</span>
-        </div>
-        <button className="cf-back-btn" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft size={15} />
-          <span>Dashboard</span>
+      <TopBar title="Reports" subtitle="Crime statistics & trends">
+        <button
+          className="cf-export-btn"
+          onClick={exportPdf}
+          disabled={pdfBusy || loading || !data}
+          title={pdfError ? `Last attempt failed: ${pdfError}` : 'Download this report as PDF'}
+        >
+          {pdfBusy ? <span className="btn-spinner" /> : <FileDown size={15} />}
+          <span>{pdfBusy ? 'Exporting' : pdfError ? 'Retry PDF' : 'Export PDF'}</span>
         </button>
-        <div className="db-nav-right">
-          <button
-            className="cf-export-btn"
-            onClick={exportPdf}
-            disabled={pdfBusy || loading || !data}
-            title={pdfError ? `Last attempt failed: ${pdfError}` : 'Download this report as PDF'}
-          >
-            {pdfBusy ? <span className="btn-spinner" /> : <FileDown size={15} />}
-            <span>{pdfBusy ? 'Exporting' : pdfError ? 'Retry PDF' : 'Export PDF'}</span>
-          </button>
-          <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
-            <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
-          </button>
-          <button
-            className="nav-icon-btn"
-            onClick={() => setIsDark((d) => !d)}
-            title={isDark ? 'Light mode' : 'Dark mode'}
-          >
-            {isDark ? <Sun size={17} /> : <Moon size={17} />}
-          </button>
-        </div>
-      </header>
+        <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
+          <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
+        </button>
+      </TopBar>
 
       <main className="rp-main">
         {error ? (

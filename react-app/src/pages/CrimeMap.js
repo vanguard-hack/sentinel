@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster';
@@ -8,9 +7,10 @@ import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.heat';
 import { feature } from 'topojson-client';
 import {
-  ArrowLeft, Home, Plus, Minus, Maximize2, MapPin, Flame, Shield, X, Phone, Mail, ExternalLink, Layers,
+  ArrowLeft, Home, Plus, Minus, Maximize2, MapPin, Flame, Shield, X, Phone, Mail, ExternalLink, Layers, Menu,
 } from 'lucide-react';
 import { H, CRIME, STATE, DISTRICT, refreshAllData } from '../data/hierarchyStore';
+import { useLayout } from '../context/LayoutContext';
 
 const fmtN = (n) => (n == null ? '—' : n.toLocaleString('en-IN'));
 
@@ -147,7 +147,7 @@ function StationImage({ image, onOpen }) {
 }
 
 export default function CrimeMap() {
-  const navigate = useNavigate();
+  const { toggleMobile } = useLayout();
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const ctrlRef = useRef(null);
@@ -499,8 +499,8 @@ export default function CrimeMap() {
   return (
     <div className="map-page">
       <header className="map-topbar">
-        <button className="map-exit-btn" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft size={16} /> <span>Dashboard</span>
+        <button className="topbar-menu map-menu" onClick={toggleMobile} aria-label="Open menu">
+          <Menu size={18} />
         </button>
 
         <nav className="map-breadcrumb" aria-label="Map location">

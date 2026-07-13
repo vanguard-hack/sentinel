@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  Shield, ArrowLeft, Sun, Moon, RefreshCw, AlertTriangle,
+  RefreshCw, AlertTriangle,
   Brain, TrendingUp, TrendingDown, Lightbulb, Activity, Share2,
 } from 'lucide-react';
 import {
@@ -10,18 +9,7 @@ import {
 } from '../utils/aianalytics';
 import { TrendArea, BarList } from '../components/Charts';
 import CrimeLinks from '../components/CrimeLinks';
-
-function useTheme() {
-  const [isDark, setIsDark] = useState(
-    () => localStorage.getItem('sentinel-theme') === 'dark'
-  );
-  useEffect(() => {
-    const theme = isDark ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('sentinel-theme', theme);
-  }, [isDark]);
-  return [isDark, setIsDark];
-}
+import TopBar from '../components/TopBar';
 
 function Card({ title, subtitle, wide, children }) {
   return (
@@ -44,9 +32,6 @@ const DIMENSIONS = [
 const pad2 = (n) => String(n).padStart(2, '0');
 
 export default function AIAnalytics() {
-  const navigate = useNavigate();
-  const [isDark, setIsDark] = useTheme();
-
   const [data, setData] = useState(null); // { incidents, headNames }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -160,30 +145,11 @@ export default function AIAnalytics() {
 
   return (
     <div className="rp-page">
-      <header className="db-nav-bar">
-        <div className="db-nav-brand">
-          <Shield size={20} strokeWidth={1.5} className="nav-brand-icon" />
-          <span className="nav-brand-name">SENTINEL</span>
-          <span className="nav-brand-rule" />
-          <span className="nav-brand-sub">AI Analytics</span>
-        </div>
-        <button className="cf-back-btn" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft size={15} />
-          <span>Dashboard</span>
+      <TopBar title="AI Analytics" subtitle="Temporal patterns & criminal networks">
+        <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
+          <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
         </button>
-        <div className="db-nav-right">
-          <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
-            <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
-          </button>
-          <button
-            className="nav-icon-btn"
-            onClick={() => setIsDark((d) => !d)}
-            title={isDark ? 'Light mode' : 'Dark mode'}
-          >
-            {isDark ? <Sun size={17} /> : <Moon size={17} />}
-          </button>
-        </div>
-      </header>
+      </TopBar>
 
       <main className="rp-main">
         <div className="ai-viewtabs" role="tablist" aria-label="Analytics view">

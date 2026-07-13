@@ -1,19 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  Shield, ArrowLeft, Sun, Moon, RefreshCw, AlertTriangle, ChevronDown, Flame,
+  Shield, RefreshCw, AlertTriangle, ChevronDown, Flame,
   MapPin, Clock, User, Users, Gavel, Phone, BadgeCheck, FileText, Search,
 } from 'lucide-react';
 import { fetchIncidents } from '../utils/incidents';
-
-function useTheme() {
-  const [isDark, setIsDark] = useState(() => localStorage.getItem('sentinel-theme') === 'dark');
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    localStorage.setItem('sentinel-theme', isDark ? 'dark' : 'light');
-  }, [isDark]);
-  return [isDark, setIsDark];
-}
+import TopBar from '../components/TopBar';
 
 const STATUS_TONE = {
   'Under Investigation': 'amber', 'Charge Sheeted': 'blue', 'Pending Trial': 'blue',
@@ -138,8 +129,6 @@ function IncidentRow({ inc, open, onToggle }) {
 }
 
 export default function Incidents() {
-  const navigate = useNavigate();
-  const [isDark, setIsDark] = useTheme();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -172,25 +161,11 @@ export default function Incidents() {
 
   return (
     <div className="rp-page">
-      <header className="db-nav-bar">
-        <div className="db-nav-brand">
-          <Shield size={20} strokeWidth={1.5} className="nav-brand-icon" />
-          <span className="nav-brand-name">SENTINEL</span>
-          <span className="nav-brand-rule" />
-          <span className="nav-brand-sub">Incidents</span>
-        </div>
-        <button className="cf-back-btn" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft size={15} /><span>Dashboard</span>
+      <TopBar title="Incidents" subtitle="Latest FIRs & case status">
+        <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
+          <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
         </button>
-        <div className="db-nav-right">
-          <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
-            <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
-          </button>
-          <button className="nav-icon-btn" onClick={() => setIsDark((d) => !d)} title="Theme">
-            {isDark ? <Sun size={17} /> : <Moon size={17} />}
-          </button>
-        </div>
-      </header>
+      </TopBar>
 
       <main className="rp-main">
         <div className="inc-toolbar">

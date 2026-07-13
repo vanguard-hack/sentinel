@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Shield, ArrowLeft, Sun, Moon, Plus, MessageSquare, Trash2,
+  Plus, MessageSquare, Trash2,
   Paperclip, Mic, ArrowUp, X, Bot, FileText, PanelLeft,
   Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, MoreVertical,
   Star, Pencil, FileDown, CheckSquare,
@@ -14,6 +14,7 @@ import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
 import Avatar from '../components/Avatar';
 import Thinking from '../components/Thinking';
+import TopBar from '../components/TopBar';
 import i18n from '../i18n';
 import { useAuth } from '../context/AuthContext';
 import { exportConversationPdf } from '../utils/reportPdf';
@@ -25,18 +26,6 @@ const SUGGESTIONS = [
   'List known habitual offenders',
   'Unsolved cases by police station',
 ];
-
-function useTheme() {
-  const [isDark, setIsDark] = useState(
-    () => localStorage.getItem('sentinel-theme') === 'dark'
-  );
-  useEffect(() => {
-    const theme = isDark ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('sentinel-theme', theme);
-  }, [isDark]);
-  return [isDark, setIsDark];
-}
 
 // Voice input records real audio via MediaRecorder and transcribes it with the
 // Zia audio-to-text model (English / Hindi / Kannada, follows the UI language).
@@ -51,7 +40,6 @@ export default function Assistant() {
   const location = useLocation();
   const { user } = useAuth();
   const email = user?.email_id || null;
-  const [isDark, setIsDark] = useTheme();
 
   // Opening from the floating widget's "expand" passes the conversation to focus.
   const incomingId = location.state?.conversationId || null;
@@ -454,7 +442,7 @@ export default function Assistant() {
 
   return (
     <div className="as-page">
-      <header className="db-nav-bar">
+      <TopBar title="Assistant" subtitle="Ask about crime data">
         <button
           className="nav-icon-btn as-sidebar-toggle"
           onClick={() => setSidebarOpen((o) => !o)}
@@ -464,36 +452,17 @@ export default function Assistant() {
         >
           <PanelLeft size={18} />
         </button>
-        <div className="db-nav-brand">
-          <Shield size={20} strokeWidth={1.5} className="nav-brand-icon" />
-          <span className="nav-brand-name">SENTINEL</span>
-          <span className="nav-brand-rule" />
-          <span className="nav-brand-sub">Assistant</span>
-        </div>
-        <button className="cf-back-btn" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft size={15} />
-          <span>Dashboard</span>
-        </button>
-        <div className="db-nav-right">
-          {messages.length > 0 && (
-            <button
-              className="nav-icon-btn"
-              onClick={resetConversation}
-              title="Reset conversation"
-              aria-label="Reset conversation"
-            >
-              <RotateCcw size={17} />
-            </button>
-          )}
+        {messages.length > 0 && (
           <button
             className="nav-icon-btn"
-            onClick={() => setIsDark((d) => !d)}
-            title={isDark ? 'Light mode' : 'Dark mode'}
+            onClick={resetConversation}
+            title="Reset conversation"
+            aria-label="Reset conversation"
           >
-            {isDark ? <Sun size={17} /> : <Moon size={17} />}
+            <RotateCcw size={17} />
           </button>
-        </div>
-      </header>
+        )}
+      </TopBar>
 
       <div className="as-body">
         {/* ── Sessions sidebar ── */}

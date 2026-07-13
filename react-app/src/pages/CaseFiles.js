@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  Shield, Database, ArrowLeft, Search, X, Sun, Moon,
+  Database, Search, X,
   ChevronLeft, ChevronRight, ChevronDown, Check, RefreshCw, AlertTriangle,
   FileSpreadsheet,
 } from 'lucide-react';
@@ -10,6 +9,7 @@ import {
   TABLE_GROUPS, ALL_TABLES, tableLabel, SYSTEM_COLUMNS,
   fetchColumns, fetchPage, fetchCount, fetchAllRows,
 } from '../utils/datastore';
+import TopBar from '../components/TopBar';
 
 const PER_PAGE_OPTIONS = [25, 50, 100];
 
@@ -21,22 +21,7 @@ function orderColumns(cols) {
   return [...rowid, ...rest, ...sys];
 }
 
-function useTheme() {
-  const [isDark, setIsDark] = useState(
-    () => localStorage.getItem('sentinel-theme') === 'dark'
-  );
-  useEffect(() => {
-    const theme = isDark ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('sentinel-theme', theme);
-  }, [isDark]);
-  return [isDark, setIsDark];
-}
-
 export default function CaseFiles() {
-  const navigate = useNavigate();
-  const [isDark, setIsDark] = useTheme();
-
   const [activeTable, setActiveTable] = useState(ALL_TABLES[0].name);
   const [columns, setColumns] = useState([]);
   const [rows, setRows] = useState([]);
@@ -202,29 +187,7 @@ export default function CaseFiles() {
 
   return (
     <div className="cf-page">
-      {/* ── Header ── */}
-      <header className="db-nav-bar">
-        <div className="db-nav-brand">
-          <Shield size={20} strokeWidth={1.5} className="nav-brand-icon" />
-          <span className="nav-brand-name">SENTINEL</span>
-          <span className="nav-brand-rule" />
-          <span className="nav-brand-sub">Case Files</span>
-        </div>
-        <button className="cf-back-btn" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft size={15} />
-          <span>Dashboard</span>
-        </button>
-        <div className="db-nav-right">
-          <button
-            className="nav-icon-btn"
-            onClick={() => setIsDark((d) => !d)}
-            aria-label={isDark ? 'Light mode' : 'Dark mode'}
-            title={isDark ? 'Light mode' : 'Dark mode'}
-          >
-            {isDark ? <Sun size={17} /> : <Moon size={17} />}
-          </button>
-        </div>
-      </header>
+      <TopBar title="Case Files" subtitle="Browse the Data Store" />
 
       <div className="cf-body">
         {/* ── Main ── */}

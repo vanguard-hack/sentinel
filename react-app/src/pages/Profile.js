@@ -1,20 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  Shield, ArrowLeft, Sun, Moon, Camera, Trash2, Check, AlertTriangle,
-} from 'lucide-react';
+import { Camera, Trash2, Check, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Avatar from '../components/Avatar';
+import TopBar from '../components/TopBar';
 import { getProfile, saveProfile, fileToAvatar, cachedPhoto } from '../utils/profile';
-
-function useTheme() {
-  const [isDark, setIsDark] = useState(() => localStorage.getItem('sentinel-theme') === 'dark');
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    localStorage.setItem('sentinel-theme', isDark ? 'dark' : 'light');
-  }, [isDark]);
-  return [isDark, setIsDark];
-}
 
 const FIELDS = [
   { key: 'displayName', label: 'Full name', placeholder: 'e.g. Inspector R. Gowda' },
@@ -26,10 +15,8 @@ const FIELDS = [
 ];
 
 export default function Profile() {
-  const navigate = useNavigate();
   const { user } = useAuth();
   const email = user?.email_id || null;
-  const [isDark, setIsDark] = useTheme();
 
   const [form, setForm] = useState({});
   const [photo, setPhoto] = useState(cachedPhoto()); // preview data URL ('' = none)
@@ -102,22 +89,7 @@ export default function Profile() {
 
   return (
     <div className="rp-page">
-      <header className="db-nav-bar">
-        <div className="db-nav-brand">
-          <Shield size={20} strokeWidth={1.5} className="nav-brand-icon" />
-          <span className="nav-brand-name">SENTINEL</span>
-          <span className="nav-brand-rule" />
-          <span className="nav-brand-sub">My Profile</span>
-        </div>
-        <button className="cf-back-btn" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft size={15} /><span>Dashboard</span>
-        </button>
-        <div className="db-nav-right">
-          <button className="nav-icon-btn" onClick={() => setIsDark((d) => !d)} title="Theme">
-            {isDark ? <Sun size={17} /> : <Moon size={17} />}
-          </button>
-        </div>
-      </header>
+      <TopBar title="My Profile" subtitle="Your account details" />
 
       <main className="rp-main">
         {loading ? (
