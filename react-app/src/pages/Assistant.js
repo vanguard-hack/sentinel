@@ -99,16 +99,23 @@ export default function Assistant() {
   // different user never sees the previous user's cached chats). Any brand-new
   // local session not yet on the server is merged in so an in-flight chat
   // isn't dropped.
+  const remoteLoaded = useRef(false);
   useEffect(() => {
-    if (!email) return;
+    if (!email || remoteLoaded.current) return;
+    remoteLoaded.current = true;
     let cancelled = false;
     (async () => {
       const remote = await loadSessionsRemote(email);
       if (cancelled || !remote) return; // offline → keep local cache
       setSessions((local) => {
-        const remoteIds = new Set(remote.map((r) => r.id));
-        const unsynced = local.filter((s) => s.messages?.length && !remoteIds.has(s.id));
-        return [...unsynced, ...remote].sort(
+        // Union by id: server records are the base; any local session that
+        // has messages and isn't on the server yet (in-flight / just-sent) is
+        // preserved so the current conversation is never dropped.
+        const byId = new Map(remote.map((r) => [r.id, r]));
+        local.forEach((s) => {
+          if (s.messages?.length && !byId.has(s.id)) byId.set(s.id, s);
+        });
+        return [...byId.values()].sort(
           (a, b) =>
             (b.starred ? 1 : 0) - (a.starred ? 1 : 0) ||
             (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0)
@@ -242,18 +249,15 @@ export default function Assistant() {
       ts: Date.now(),
     };
 
-    // Resolve the target session (create one on the first message). Keep the
-    // title as 'New chat' on the first message so the server assigns an
-    // AI-generated title when the exchange is saved.
-    let sessionId = activeId;
+    // Resolve the target session id UP FRONT (never derive it inside the state
+    // updater — the updater runs during React's flush, after setActiveId, so
+    // reading it back there yields null and the view snaps to the greeting).
+    // Title stays 'New chat' so the server assigns an AI-generated one.
+    const created = activeId ? null : newSession();
+    const sessionId = activeId || created.id;
     setSessions((prev) => {
-      let list = prev;
-      if (!sessionId) {
-        const s = newSession();
-        sessionId = s.id;
-        list = [s, ...prev];
-      }
-      return list.map((s) =>
+      const base = created ? [created, ...prev] : prev;
+      return base.map((s) =>
         s.id === sessionId ? { ...s, messages: [...s.messages, userMsg] } : s
       );
     });
