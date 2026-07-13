@@ -43,6 +43,15 @@ export const newSession = () => ({
   messages: [],
 });
 
+// Merge one conversation into the shared local session store (used by the
+// floating widget so its chats appear in the main assistant's history).
+export function upsertLocalSession(session) {
+  const all = loadSessions();
+  const idx = all.findIndex((s) => s.id === session.id);
+  const merged = { ...(idx >= 0 ? all[idx] : {}), ...session, updatedAt: Date.now() };
+  saveSessions(idx >= 0 ? all.map((s) => (s.id === session.id ? merged : s)) : [merged, ...all]);
+}
+
 // ── Remote persistence (Catalyst Data Store, via the rag function) ──────────
 // Conversations are scoped by the signed-in user's email so they follow the
 // officer across devices and survive cache clears. localStorage stays as an

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { geoMercator, geoPath } from 'd3-geo';
-import { feature } from 'topojson-client';
+import { feature, mesh } from 'topojson-client';
 /* eslint-disable react-hooks/exhaustive-deps */
 
 // Interactive Karnataka crime map for the assistant. Districts are shaded by
@@ -69,9 +69,19 @@ export default function GeoHeatMap({ spec }) {
       .then((topo) => {
         if (gone) return;
         const d = feature(topo, topo.objects.districts);
+        // Exterior state boundary: arcs where Karnataka meets a non-Karnataka
+        // district, plus true exterior (coast) arcs belonging to Karnataka.
+        const outline = mesh(
+          topo,
+          topo.objects.districts,
+          (a, b) =>
+            (a.properties.st_nm === 'Karnataka') !== (b.properties.st_nm === 'Karnataka') ||
+            (a === b && a.properties.st_nm === 'Karnataka')
+        );
         setGeo({
           type: 'FeatureCollection',
           features: d.features.filter((f) => f.properties.st_nm === 'Karnataka'),
+          outline,
         });
       })
       .catch(() => {});
@@ -123,6 +133,8 @@ export default function GeoHeatMap({ spec }) {
             />
           );
         })}
+        {/* Black state outline for a distinct silhouette. */}
+        {geo.outline && <path d={path(geo.outline)} className="geo-outline" pointerEvents="none" />}
         {geo.features.map((f) => {
           const v = byTopo[f.properties.district];
           if (!hot(v)) return null;

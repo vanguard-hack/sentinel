@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Shield, ArrowLeft, Sun, Moon, Plus, MessageSquare, Trash2,
   Paperclip, Mic, ArrowUp, X, Bot, FileText, PanelLeft,
@@ -48,12 +48,15 @@ const canRecord =
 
 export default function Assistant() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const email = user?.email_id || null;
   const [isDark, setIsDark] = useTheme();
 
+  // Opening from the floating widget's "expand" passes the conversation to focus.
+  const incomingId = location.state?.conversationId || null;
   const [sessions, setSessions] = useState(() => loadSessions());
-  const [activeId, setActiveId] = useState(() => loadSessions()[0]?.id || null);
+  const [activeId, setActiveId] = useState(() => incomingId || loadSessions()[0]?.id || null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState([]); // { id, name, size, type, url? }
@@ -94,6 +97,15 @@ export default function Assistant() {
   const messages = useMemo(() => active?.messages || [], [active]);
 
   useEffect(() => { saveSessions(sessions); }, [sessions]);
+
+  // When navigated here from the widget, focus that conversation and clear the
+  // one-shot navigation state so a later refresh doesn't re-open it.
+  useEffect(() => {
+    if (incomingId) {
+      setActiveId(incomingId);
+      navigate('.', { replace: true, state: null });
+    }
+  }, [incomingId, navigate]);
 
   // On sign-in, load the officer's stored conversations from Stratus. The
   // server is authoritative (so history is intact after logout/login and a

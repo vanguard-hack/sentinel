@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { MessageSquare, X, ArrowUp, Bot, Maximize2, RotateCcw, Mic } from 'lucide-react';
 import {
-  generateReply, uid, transcribeAudio, saveSessionRemote,
+  generateReply, uid, transcribeAudio, saveSessionRemote, upsertLocalSession, loadSessions,
 } from '../utils/assistant';
 import { useAuth } from '../context/AuthContext';
 import AguiRenderer from './AguiRenderer';
@@ -16,7 +16,9 @@ import i18n from '../i18n';
 // to the Data Store (scoped by user) so it shows up in history like any other.
 // Hidden on /assistant itself.
 
-const STORE_KEY = 'sentinel-widget-chat';
+// The widget shares the main assistant's conversation store; it only remembers
+// which conversation is currently open in the bubble.
+const ACTIVE_KEY = 'sentinel-widget-active';
 
 const SUGGESTIONS = [
   'How many FIRs were registered in 2024?',
@@ -31,13 +33,8 @@ const canRecord =
   navigator.mediaDevices &&
   typeof navigator.mediaDevices.getUserMedia === 'function';
 
-const loadState = () => {
-  try {
-    const s = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
-    return { id: s.id || uid(), messages: Array.isArray(s.messages) ? s.messages : [] };
-  } catch {
-    return { id: uid(), messages: [] };
-  }
+const readActive = () => {
+  try { return localStorage.getItem(ACTIVE_KEY) || null; } catch { return null; }
 };
 
 export default function ChatWidget() {
@@ -47,7 +44,8 @@ export default function ChatWidget() {
   const email = user?.email_id || null;
 
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState(loadState); // { id, messages }
+  const [convId, setConvId] = useState(readActive);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [listening, setListening] = useState(false);
@@ -56,13 +54,20 @@ export default function ChatWidget() {
   const inputRef = useRef(null);
   const recorderRef = useRef(null);
 
-  const { id: convId, messages } = state;
+  // Load the active conversation's messages from the shared store whenever the
+  // widget opens or its active conversation changes (picks up anything added on
+  // the main assistant page too).
+  useEffect(() => {
+    if (!open) return;
+    const found = loadSessions().find((s) => s.id === convId);
+    setMessages(found?.messages || []);
+  }, [open, convId]);
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ id: convId, messages: messages.slice(-40) }));
+      if (convId) localStorage.setItem(ACTIVE_KEY, convId);
     } catch { /* non-fatal */ }
-  }, [convId, messages]);
+  }, [convId]);
 
   useEffect(() => {
     const el = threadRef.current;
@@ -71,18 +76,23 @@ export default function ChatWidget() {
 
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
 
-  const persist = useCallback((msgs) => {
+  // Write the conversation to the shared local store (so it shows in the main
+  // assistant's history) and to the server (durable + AI title).
+  const save = useCallback((id, msgs) => {
+    upsertLocalSession({ id, title: 'New chat', messages: msgs });
     if (email && msgs.length) {
-      saveSessionRemote({ id: convId, title: 'New chat', messages: msgs }, email);
+      saveSessionRemote({ id, title: 'New chat', messages: msgs }, email, { autotitle: true });
     }
-  }, [email, convId]);
+  }, [email]);
 
   const send = useCallback(async (override) => {
     const text = (typeof override === 'string' ? override : input).trim();
     if (!text || sending) return;
+    const id = convId || uid();
+    if (!convId) setConvId(id);
     const userMsg = { id: uid(), role: 'user', content: text };
     const history = [...messages, userMsg];
-    setState((s) => ({ ...s, messages: history }));
+    setMessages(history);
     setInput('');
     setSending(true);
     try {
@@ -96,19 +106,22 @@ export default function ChatWidget() {
         source: reply.source,
       };
       const next = [...history, botMsg];
-      setState((s) => ({ ...s, messages: next }));
-      persist(next);
+      setMessages(next);
+      save(id, next);
     } catch (e) {
-      setState((s) => ({
-        ...s,
-        messages: [...history, { id: uid(), role: 'assistant', content: `Sorry — ${e.message || e}` }],
-      }));
+      setMessages([...history, { id: uid(), role: 'assistant', content: `Sorry — ${e.message || e}` }]);
     } finally {
       setSending(false);
     }
-  }, [input, sending, messages, persist]);
+  }, [input, sending, messages, convId, save]);
 
-  const resetChat = () => setState({ id: uid(), messages: [] });
+  const resetChat = () => { setConvId(null); setMessages([]); };
+
+  // Expand into the full assistant, opening this same conversation.
+  const maximize = () => {
+    setOpen(false);
+    navigate('/assistant', convId ? { state: { conversationId: convId } } : undefined);
+  };
 
   const toggleMic = async () => {
     if (!canRecord || transcribing) return;
@@ -152,7 +165,7 @@ export default function ChatWidget() {
               <button onClick={resetChat} title="New conversation" disabled={!messages.length}>
                 <RotateCcw size={14} />
               </button>
-              <button onClick={() => navigate('/assistant')} title="Open full assistant">
+              <button onClick={maximize} title="Open in full assistant">
                 <Maximize2 size={14} />
               </button>
               <button onClick={() => setOpen(false)} title="Close"><X size={15} /></button>
