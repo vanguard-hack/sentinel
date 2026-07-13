@@ -100,15 +100,34 @@ export default function Sidebar() {
         </nav>
 
         <div className="sb-footer">
-          <button
-            className="sb-item sb-theme icononly"
-            onClick={() => setIsDark((d) => !d)}
-            title={isDark ? 'Light mode' : 'Dark mode'}
-            aria-label={isDark ? 'Light mode' : 'Dark mode'}
-          >
-            {isDark ? <Sun size={19} strokeWidth={1.8} className="sb-item-icon" />
-                    : <Moon size={19} strokeWidth={1.8} className="sb-item-icon" />}
-          </button>
+          {collapsed ? (
+            <button
+              className="sb-item sb-theme icononly"
+              onClick={() => setIsDark((d) => !d)}
+              title={isDark ? 'Light mode' : 'Dark mode'}
+              aria-label={isDark ? 'Light mode' : 'Dark mode'}
+            >
+              {isDark ? <Sun size={19} strokeWidth={1.8} className="sb-item-icon" />
+                      : <Moon size={19} strokeWidth={1.8} className="sb-item-icon" />}
+            </button>
+          ) : (
+            <div className="sb-theme-seg" role="group" aria-label="Theme">
+              <button
+                className={`sb-theme-opt ${!isDark ? 'active' : ''}`}
+                onClick={() => setIsDark(false)}
+                aria-pressed={!isDark}
+              >
+                <Sun size={16} strokeWidth={1.8} /> Light
+              </button>
+              <button
+                className={`sb-theme-opt ${isDark ? 'active' : ''}`}
+                onClick={() => setIsDark(true)}
+                aria-pressed={isDark}
+              >
+                <Moon size={16} strokeWidth={1.8} /> Dark
+              </button>
+            </div>
+          )}
 
           <div className="sb-profile" ref={profileRef}>
             <button
