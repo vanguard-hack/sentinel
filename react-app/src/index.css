@@ -2537,3 +2537,75 @@ a:hover { color: var(--blue-500); }
 .as-confirm-yes { color: var(--red, #d64545); }
 .as-confirm-no { color: var(--text-3); }
 .as-session-confirm button:hover { background: var(--bg-3); }
+
+/* ── Conversation options menu, rename, select, modals ──────────────────── */
+.as-session-icon.starred { color: #eda100; }
+.as-session-menu-wrap { position: relative; margin-left: auto; }
+.as-session-kebab {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border: none; background: none;
+  color: var(--text-4); border-radius: 5px; cursor: pointer; opacity: 0;
+}
+.as-session:hover .as-session-kebab { opacity: 1; }
+.as-session-kebab:hover { background: var(--hover-overlay); color: var(--text-1); }
+.as-conv-menu {
+  position: absolute; top: 28px; right: 0; z-index: 50;
+  min-width: 180px; padding: 6px;
+  background: var(--bg-2); border: 1px solid var(--border-1);
+  border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+  display: flex; flex-direction: column;
+}
+.as-conv-menu button {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border: none; background: none; text-align: left;
+  font-size: 0.85rem; color: var(--text-1); cursor: pointer; border-radius: 6px;
+}
+.as-conv-menu button:hover { background: var(--hover-overlay); }
+.as-conv-menu button svg { color: var(--text-3); }
+.as-conv-menu-del { color: #d64545 !important; }
+.as-conv-menu-del svg { color: #d64545 !important; }
+.as-rename-input {
+  flex: 1; min-width: 0; font-size: 0.85rem;
+  padding: 3px 6px; border: 1px solid #2a78d6; border-radius: 5px;
+  background: var(--bg-1); color: var(--text-1); outline: none;
+}
+.as-session-check {
+  width: 16px; height: 16px; border-radius: 4px; flex: none;
+  border: 1.5px solid var(--border-bright);
+  display: flex; align-items: center; justify-content: center; color: #fff;
+}
+.as-session-check.on { background: #2a78d6; border-color: #2a78d6; }
+.as-select-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; font-size: 0.8rem; color: var(--text-2);
+  border-bottom: 1px solid var(--border-1);
+}
+.as-select-bar > div { display: flex; gap: 6px; }
+.as-select-del, .as-select-cancel {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 10px; border: 1px solid var(--border-1); border-radius: 6px;
+  background: var(--bg-1); font-size: 0.78rem; cursor: pointer; color: var(--text-1);
+}
+.as-select-del { color: #d64545; }
+.as-select-del:disabled { opacity: 0.5; cursor: default; }
+
+.as-modal-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center;
+}
+.as-modal {
+  width: min(400px, calc(100vw - 40px));
+  background: var(--bg-1); border: 1px solid var(--border-1);
+  border-radius: 14px; padding: 22px 24px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.as-modal h3 { font-size: 1.05rem; color: var(--text-0); margin-bottom: 8px; }
+.as-modal p { font-size: 0.88rem; color: var(--text-2); line-height: 1.5; }
+.as-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.as-modal-cancel, .as-modal-delete {
+  padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+}
+.as-modal-cancel { border: 1px solid var(--border-1); background: var(--bg-1); color: var(--text-1); }
+.as-modal-delete { border: none; background: #d64545; color: #fff; }
+.as-export-toast { display: flex; align-items: center; gap: 12px; font-size: 0.9rem; color: var(--text-1); }

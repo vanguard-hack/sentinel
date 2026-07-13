@@ -303,12 +303,37 @@ async function handleReportPdf(req, res) {
   return json(res, 200, { pdf: pdf.toString('base64'), bytes: pdf.length });
 }
 
-// ── Conversation persistence (Data Store: ChatConversations) ────────────────
-// Long-term storage of assistant chats, scoped by user email. Create the table
-// in the console with columns: ConversationID (Varchar), UserEmail (Varchar),
-// Title (Varchar 255), Messages (Text), MessageCount (Int).
-const CONV_TABLE = process.env.CONV_TABLE || 'ChatConversations';
-const escZ = (s) => String(s).replace(/'/g, "''");
+// ── Conversation persistence (Stratus object storage) ───────────────────────
+// All of a user's assistant conversations live in ONE JSON object in a Stratus
+// bucket, keyed by email — no Data Store table to pre-create. Last-write-wins,
+// which is fine for a single user's own chat history.
+const CONV_BUCKET = process.env.CONV_BUCKET || 'accused';
+const convKey = (email) =>
+  `assistant/conversations/${encodeURIComponent(email)}.json`;
+
+async function streamToString(stream) {
+  if (!stream) return '';
+  if (typeof stream === 'string') return stream;
+  const chunks = [];
+  for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+async function loadConvBlob(bucket, email) {
+  try {
+    const stream = await bucket.getObject(convKey(email));
+    const txt = await streamToString(stream);
+    const parsed = JSON.parse(txt || '{}');
+    return Array.isArray(parsed.conversations) ? parsed.conversations : [];
+  } catch {
+    return []; // object doesn't exist yet, or unreadable
+  }
+}
+
+async function saveConvBlob(bucket, email, conversations) {
+  const body = Buffer.from(JSON.stringify({ conversations, updatedAt: Date.now() }));
+  await bucket.putObject(convKey(email), body);
+}
 
 async function generateTitle(firstUserMsg) {
   const t = await callGroq(
@@ -330,15 +355,13 @@ async function generateTitle(firstUserMsg) {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'New chat';
 }
 
-// Cap the stored transcript so one runaway chat can't blow the Text column.
+// Cap a single conversation's transcript so one runaway chat stays bounded.
 function packMessages(messages) {
   let msgs = Array.isArray(messages) ? messages : [];
-  let str = JSON.stringify(msgs);
-  while (str.length > 90_000 && msgs.length > 2) {
+  while (JSON.stringify(msgs).length > 120_000 && msgs.length > 2) {
     msgs = msgs.slice(2); // drop the oldest exchange
-    str = JSON.stringify(msgs);
   }
-  return str;
+  return msgs;
 }
 
 async function handleConversations(req, res, action) {
@@ -347,66 +370,48 @@ async function handleConversations(req, res, action) {
   if (!email) return json(res, 400, { error: 'email is required' });
 
   const app = catalystSDK.initialize(req);
-  const table = app.datastore().table(CONV_TABLE);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const conversations = await loadConvBlob(bucket, email);
 
   if (action === 'list') {
-    const rows = await app
-      .zcql()
-      .executeZCQLQuery(
-        `SELECT ${CONV_TABLE}.ROWID, ${CONV_TABLE}.ConversationID, ${CONV_TABLE}.Title, ` +
-          `${CONV_TABLE}.Messages, ${CONV_TABLE}.MODIFIEDTIME FROM ${CONV_TABLE} ` +
-          `WHERE ${CONV_TABLE}.UserEmail = '${escZ(email)}' ` +
-          `ORDER BY ${CONV_TABLE}.MODIFIEDTIME DESC LIMIT 0, 100`
-      );
-    const conversations = (rows || []).map((r) => {
-      const c = r[CONV_TABLE] || {};
-      let messages = [];
-      try { messages = JSON.parse(c.Messages || '[]'); } catch { /* skip */ }
-      return {
-        id: c.ConversationID,
-        title: c.Title || 'New chat',
-        updatedAt: c.MODIFIEDTIME,
-        messages: Array.isArray(messages) ? messages : [],
-      };
-    });
-    return json(res, 200, { conversations });
+    const list = [...conversations].sort(
+      (a, b) => (b.starred ? 1e15 : 0) - (a.starred ? 1e15 : 0) + (b.updatedAt || 0) - (a.updatedAt || 0)
+    );
+    return json(res, 200, { conversations: list });
   }
 
   const id = String(body.id || '').trim();
   if (!id) return json(res, 400, { error: 'id is required' });
-
-  // Locate an existing row for this (user, conversation).
-  const existing = await app
-    .zcql()
-    .executeZCQLQuery(
-      `SELECT ${CONV_TABLE}.ROWID FROM ${CONV_TABLE} ` +
-        `WHERE ${CONV_TABLE}.ConversationID = '${escZ(id)}' ` +
-        `AND ${CONV_TABLE}.UserEmail = '${escZ(email)}' LIMIT 0, 1`
-    );
-  const rowId = existing && existing[0] && existing[0][CONV_TABLE] && existing[0][CONV_TABLE].ROWID;
+  const idx = conversations.findIndex((c) => c.id === id);
 
   if (action === 'delete') {
-    if (rowId) await table.deleteRow(rowId);
+    if (idx >= 0) {
+      conversations.splice(idx, 1);
+      await saveConvBlob(bucket, email, conversations);
+    }
     return json(res, 200, { ok: true });
   }
 
-  // upsert
-  const messages = Array.isArray(body.messages) ? body.messages : [];
+  // upsert (also handles rename via title, and star via starred)
+  const messages = packMessages(Array.isArray(body.messages) ? body.messages : []);
   const firstUser = messages.find((m) => m && m.role === 'user');
   let title = String(body.title || '').trim();
   if (!title || title === 'New chat') {
     title = firstUser ? await generateTitle(firstUser.content) : 'New chat';
   }
+  const prev = idx >= 0 ? conversations[idx] : {};
   const record = {
-    ConversationID: id,
-    UserEmail: email,
-    Title: title.slice(0, 240),
-    Messages: packMessages(messages),
-    MessageCount: messages.length,
+    id,
+    title: title.slice(0, 240),
+    starred: typeof body.starred === 'boolean' ? body.starred : !!prev.starred,
+    messages: messages.length ? messages : prev.messages || [],
+    createdAt: prev.createdAt || Date.now(),
+    updatedAt: Date.now(),
   };
-  if (rowId) await table.updateRow({ ROWID: rowId, ...record });
-  else await table.insertRow(record);
-  return json(res, 200, { id, title });
+  if (idx >= 0) conversations[idx] = record;
+  else conversations.push(record);
+  await saveConvBlob(bucket, email, conversations);
+  return json(res, 200, { id, title: record.title, starred: record.starred });
 }
 
 module.exports = async (req, res) => {

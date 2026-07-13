@@ -74,8 +74,9 @@ export async function loadSessionsRemote(email) {
   }
 }
 
-// Persist one conversation; returns the server's (possibly AI-generated) title.
-export async function saveSessionRemote(session, email) {
+// Persist one conversation; returns { title, starred } (title may be
+// AI-generated). `starred` is sent only when provided (star toggle / rename).
+export async function saveSessionRemote(session, email, extra = {}) {
   if (!email || !session || !session.messages?.length) return null;
   try {
     const res = await fetch('/server/rag/conversations/save', {
@@ -86,11 +87,12 @@ export async function saveSessionRemote(session, email) {
         id: session.id,
         title: session.title,
         messages: session.messages.map(slimMsg),
+        ...(typeof session.starred === 'boolean' ? { starred: session.starred } : {}),
+        ...extra,
       }),
     });
     if (!res.ok) return null;
-    const data = await res.json();
-    return data.title || null;
+    return await res.json();
   } catch {
     return null;
   }

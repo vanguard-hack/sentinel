@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import {
   Shield, ArrowLeft, Sun, Moon, Plus, MessageSquare, Trash2,
   Paperclip, Mic, ArrowUp, X, Bot, FileText, PanelLeft,
-  Copy, Check, ThumbsUp, ThumbsDown, RotateCcw,
+  Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, MoreVertical,
+  Star, Pencil, FileDown, CheckSquare,
 } from 'lucide-react';
 import {
   loadSessions, saveSessions, makeTitle, newSession, generateReply, uid,
@@ -14,6 +15,7 @@ import RichText from '../components/RichText';
 import Avatar from '../components/Avatar';
 import i18n from '../i18n';
 import { useAuth } from '../context/AuthContext';
+import { exportReportPdf } from '../utils/reportPdf';
 
 // Short, domain-relevant prompts shown on an empty conversation.
 const SUGGESTIONS = [
@@ -59,7 +61,25 @@ export default function Assistant() {
   const [transcribing, setTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
-  const [confirmDelId, setConfirmDelId] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const [menuId, setMenuId] = useState(null); // open kebab menu
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [confirmDelId, setConfirmDelId] = useState(null); // single-delete modal
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const menuRef = useRef(null);
+
+  // Close the kebab menu on outside click.
+  useEffect(() => {
+    if (menuId == null) return undefined;
+    const onDown = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuId(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [menuId]);
 
   // Up/Down history navigation through this session's past questions.
   const histRef = useRef({ idx: null, draft: '' });
@@ -100,10 +120,10 @@ export default function Assistant() {
     if (!email || !session?.messages?.length) return;
     clearTimeout(saveTimers.current[session.id]);
     saveTimers.current[session.id] = setTimeout(async () => {
-      const title = await saveSessionRemote(session, email);
-      if (title && (session.title === 'New chat' || !session.title)) {
+      const out = await saveSessionRemote(session, email);
+      if (out?.title && (session.title === 'New chat' || !session.title)) {
         setSessions((prev) =>
-          prev.map((s) => (s.id === session.id ? { ...s, title } : s))
+          prev.map((s) => (s.id === session.id ? { ...s, title: out.title } : s))
         );
       }
     }, 900);
@@ -153,11 +173,55 @@ export default function Assistant() {
     textareaRef.current?.focus();
   }, [activeId]);
 
-  const deleteSession = (id, e) => {
-    e.stopPropagation();
+  const deleteSession = (id) => {
     setSessions((prev) => prev.filter((s) => s.id !== id));
     if (id === activeId) setActiveId(null);
     deleteSessionRemote(id, email);
+  };
+
+  // Toggle star (favourite) — starred conversations sort to the top.
+  const toggleStar = (id) => {
+    setSessions((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, starred: !s.starred } : s));
+      const s = next.find((x) => x.id === id);
+      if (s && email && s.messages.length) saveSessionRemote(s, email, { starred: s.starred });
+      return next;
+    });
+    setMenuId(null);
+  };
+
+  const commitRename = (id, title) => {
+    const clean = (title || '').trim();
+    setRenamingId(null);
+    if (!clean) return;
+    setSessions((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, title: clean } : s));
+      const s = next.find((x) => x.id === id);
+      if (s && email && s.messages.length) saveSessionRemote({ ...s, title: clean }, email);
+      return next;
+    });
+  };
+
+  // Export one conversation's full transcript to PDF (captures the thread DOM).
+  const exportSession = async (id) => {
+    setMenuId(null);
+    if (id !== activeId) { setActiveId(id); await new Promise((r) => setTimeout(r, 60)); }
+    if (!threadRef.current) return;
+    setExporting(true);
+    try {
+      await exportReportPdf(threadRef.current);
+    } catch { /* ignore */ } finally {
+      setExporting(false);
+    }
+  };
+
+  const bulkDelete = () => {
+    selected.forEach((id) => deleteSessionRemote(id, email));
+    setSessions((prev) => prev.filter((s) => !selected.has(s.id)));
+    if (selected.has(activeId)) setActiveId(null);
+    setSelected(new Set());
+    setSelectMode(false);
+    setConfirmBulk(false);
   };
 
   const send = useCallback(async (override) => {
@@ -403,43 +467,101 @@ export default function Assistant() {
           <button className="as-new-btn" onClick={startNewChat}>
             <Plus size={16} /> New chat
           </button>
+          {selectMode && (
+            <div className="as-select-bar">
+              <span>{selected.size} selected</span>
+              <div>
+                <button
+                  className="as-select-del"
+                  disabled={!selected.size}
+                  onClick={() => setConfirmBulk(true)}
+                >
+                  <Trash2 size={13} /> Delete
+                </button>
+                <button
+                  className="as-select-cancel"
+                  onClick={() => { setSelectMode(false); setSelected(new Set()); }}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
           <div className="as-session-list">
             {sessions.length === 0 && <p className="as-empty-hint">No conversations yet.</p>}
             {sessions.map((s) => (
               <div
                 key={s.id}
                 className={`as-session ${s.id === activeId ? 'active' : ''}`}
-                onClick={() => selectSession(s.id)}
+                onClick={() => {
+                  if (selectMode) {
+                    setSelected((prev) => {
+                      const n = new Set(prev);
+                      n.has(s.id) ? n.delete(s.id) : n.add(s.id);
+                      return n;
+                    });
+                  } else if (renamingId !== s.id) {
+                    selectSession(s.id);
+                  }
+                }}
                 title={s.title}
               >
-                <MessageSquare size={15} className="as-session-icon" />
-                <span className="as-session-title">{s.title}</span>
-                {confirmDelId === s.id ? (
-                  <span className="as-session-confirm" onClick={(e) => e.stopPropagation()}>
-                    <span className="as-confirm-q">Delete?</span>
-                    <button
-                      className="as-confirm-yes"
-                      onClick={(e) => { deleteSession(s.id, e); setConfirmDelId(null); }}
-                      title="Confirm delete"
-                    >
-                      <Check size={14} />
-                    </button>
-                    <button
-                      className="as-confirm-no"
-                      onClick={(e) => { e.stopPropagation(); setConfirmDelId(null); }}
-                      title="Cancel"
-                    >
-                      <X size={14} />
-                    </button>
+                {selectMode ? (
+                  <span className={`as-session-check ${selected.has(s.id) ? 'on' : ''}`}>
+                    {selected.has(s.id) && <Check size={12} />}
                   </span>
+                ) : s.starred ? (
+                  <Star size={14} className="as-session-icon starred" fill="currentColor" />
                 ) : (
-                  <button
-                    className="as-session-del"
-                    onClick={(e) => { e.stopPropagation(); setConfirmDelId(s.id); }}
-                    title="Delete conversation"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <MessageSquare size={15} className="as-session-icon" />
+                )}
+
+                {renamingId === s.id ? (
+                  <input
+                    className="as-rename-input"
+                    autoFocus
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitRename(s.id, renameValue);
+                      if (e.key === 'Escape') setRenamingId(null);
+                    }}
+                    onBlur={() => commitRename(s.id, renameValue)}
+                  />
+                ) : (
+                  <span className="as-session-title">{s.title}</span>
+                )}
+
+                {!selectMode && renamingId !== s.id && (
+                  <div className="as-session-menu-wrap" ref={menuId === s.id ? menuRef : null}>
+                    <button
+                      className="as-session-kebab"
+                      onClick={(e) => { e.stopPropagation(); setMenuId(menuId === s.id ? null : s.id); }}
+                      title="Options"
+                    >
+                      <MoreVertical size={15} />
+                    </button>
+                    {menuId === s.id && (
+                      <div className="as-conv-menu" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => { setSelectMode(true); setSelected(new Set([s.id])); setMenuId(null); }}>
+                          <CheckSquare size={15} /> Select
+                        </button>
+                        <button onClick={() => toggleStar(s.id)}>
+                          <Star size={15} /> {s.starred ? 'Unstar' : 'Star'}
+                        </button>
+                        <button onClick={() => { setRenamingId(s.id); setRenameValue(s.title); setMenuId(null); }}>
+                          <Pencil size={15} /> Rename
+                        </button>
+                        <button onClick={() => exportSession(s.id)}>
+                          <FileDown size={15} /> Export PDF
+                        </button>
+                        <button className="as-conv-menu-del" onClick={() => { setConfirmDelId(s.id); setMenuId(null); }}>
+                          <Trash2 size={15} /> Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
@@ -616,6 +738,47 @@ export default function Assistant() {
           </div>
         </main>
       </div>
+
+      {/* Delete confirmation modals */}
+      {confirmDelId && (
+        <div className="as-modal-overlay" onClick={() => setConfirmDelId(null)}>
+          <div className="as-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete conversation?</h3>
+            <p>
+              "{sessions.find((s) => s.id === confirmDelId)?.title || 'This conversation'}" will be
+              permanently deleted. This can't be undone.
+            </p>
+            <div className="as-modal-actions">
+              <button className="as-modal-cancel" onClick={() => setConfirmDelId(null)}>Cancel</button>
+              <button
+                className="as-modal-delete"
+                onClick={() => { deleteSession(confirmDelId); setConfirmDelId(null); }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmBulk && (
+        <div className="as-modal-overlay" onClick={() => setConfirmBulk(false)}>
+          <div className="as-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete {selected.size} conversation{selected.size === 1 ? '' : 's'}?</h3>
+            <p>The selected conversations will be permanently deleted. This can't be undone.</p>
+            <div className="as-modal-actions">
+              <button className="as-modal-cancel" onClick={() => setConfirmBulk(false)}>Cancel</button>
+              <button className="as-modal-delete" onClick={bulkDelete}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {exporting && (
+        <div className="as-modal-overlay">
+          <div className="as-modal as-export-toast">
+            <span className="btn-spinner" /> Exporting conversation to PDF…
+          </div>
+        </div>
+      )}
     </div>
   );
 }
