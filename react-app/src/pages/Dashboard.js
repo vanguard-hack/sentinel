@@ -14,7 +14,7 @@ import { LANGUAGES } from '../i18n';
 const MODULES = [
   { key: 'incidents',    Icon: AlertTriangle, accent: 'amber'  },
   { key: 'crimeMap',     Icon: Map,           accent: 'blue', route: '/crime-map' },
-  { key: 'aiAnalytics',  Icon: Brain,         accent: 'purple' },
+  { key: 'aiAnalytics',  Icon: Brain,         accent: 'purple', route: '/ai-analytics' },
   { key: 'reports',      Icon: BarChart2,     accent: 'green', route: '/reports' },
   { key: 'personnel',    Icon: Users,         accent: 'blue'   },
   { key: 'caseFiles',    Icon: Database,      accent: 'green', route: '/case-files' },

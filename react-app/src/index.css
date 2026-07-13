@@ -2157,3 +2157,75 @@ a:hover { color: var(--blue-500); }
 /* Full-width card inside the reports grid (e.g. Latest FIRs table). */
 .rp-card-wide { grid-column: 1 / -1; }
 /* 8 KPI tiles wrap into two tidy rows of four. */
+
+/* ── AI Analytics ────────────────────────────────────────────────────────── */
+.ai-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.ai-seg {
+  display: inline-flex;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm, 8px);
+  overflow: hidden;
+  background: var(--bg-1);
+}
+.ai-seg-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: none;
+  background: none;
+  font-size: 0.82rem;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.ai-seg-btn + .ai-seg-btn { border-left: 1px solid var(--border-1); }
+.ai-seg-btn.active { background: var(--rp-series, #2a78d6); color: #fff; }
+.ai-sample { font-size: 0.78rem; color: var(--text-4); margin-left: auto; }
+
+.ai-fc-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.ai-fc-note.up { color: #d64545; }   /* rising crime = bad */
+.ai-fc-note.down { color: #148f63; }
+
+.ai-insights { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.ai-insights li { display: flex; gap: 10px; align-items: flex-start; font-size: 0.86rem; color: var(--text-2); line-height: 1.5; }
+.ai-insights li svg { flex: none; margin-top: 3px; color: #eda100; }
+
+.ai-matrix { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.ai-matrix th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--text-3);
+  font-weight: 600;
+  font-size: 0.74rem;
+  border-bottom: 1px solid var(--border-1);
+  white-space: nowrap;
+}
+.ai-matrix td { padding: 6px 10px; border-bottom: 1px solid var(--border-1); }
+.ai-matrix-head { color: var(--text-1); font-weight: 550; white-space: nowrap; }
+.ai-matrix-total { font-weight: 650; color: var(--text-1); }
+.ai-cell {
+  display: inline-block;
+  min-width: 44px;
+  text-align: center;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(42, 120, 214, calc(var(--heat) * 0.75));
+  color: var(--text-1);
+}
+[data-theme="dark"] .ai-cell { background: rgba(57, 135, 229, calc(var(--heat) * 0.65)); }
+.trend-line-forecast { stroke-dasharray: 6 5; opacity: 0.85; }
+.trend-dot.forecast { fill: var(--bg-1); stroke: var(--rp-series); stroke-width: 1.6; }
+.rp-footnote svg { vertical-align: -2px; margin-right: 4px; }

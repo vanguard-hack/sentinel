@@ -5,7 +5,10 @@ import { ArrowDown, ArrowUp } from 'lucide-react';
 // a filled area under the line; hovering (or focusing) a period highlights its
 // dot and shows value + label in the header readout. Colours come from the
 // validated viz tokens (--rp-series), so it adapts to theme automatically.
-export function TrendArea({ data, height = 150 }) {
+// `labelEvery` thins the x-axis labels for dense series (hours, days).
+// Points flagged `forecast: true` (must be a suffix of the series) render as a
+// dashed line segment with hollow dots — visually distinct from observations.
+export function TrendArea({ data, height = 150, labelEvery = 1 }) {
   const [active, setActive] = useState(null);
   if (!data || !data.length) return <div className="rp-empty">No data</div>;
 
@@ -19,11 +22,18 @@ export function TrendArea({ data, height = 150 }) {
   const x = (i) => padX + (data.length === 1 ? innerW / 2 : (i / (data.length - 1)) * innerW);
   const y = (v) => padTop + innerH - (v / max) * innerH;
 
-  const linePts = data.map((d, i) => `${x(i)},${y(d.value)}`).join(' ');
-  const areaPts = `${padX},${padTop + innerH} ${linePts} ${padX + innerW},${padTop + innerH}`;
+  const fcStart = data.findIndex((d) => d.forecast);
+  const solid = fcStart === -1 ? data : data.slice(0, fcStart);
+  // The dashed segment starts at the last observed point for continuity.
+  const dashed = fcStart === -1 ? [] : data.slice(Math.max(0, fcStart - 1));
+
+  const pts = (arr, offset) => arr.map((d, i) => `${x(i + offset)},${y(d.value)}`).join(' ');
+  const solidPts = pts(solid, 0);
+  const dashedPts = pts(dashed, fcStart === -1 ? 0 : Math.max(0, fcStart - 1));
+  const areaPts = `${padX},${padTop + innerH} ${pts(solid, 0)} ${x(solid.length - 1)},${padTop + innerH}`;
 
   const shown = active != null ? data[active] : null;
-  const totalVal = data.reduce((s, d) => s + d.value, 0);
+  const totalVal = data.filter((d) => !d.forecast).reduce((s, d) => s + d.value, 0);
 
   return (
     <div className="trend-wrap">
@@ -32,7 +42,9 @@ export function TrendArea({ data, height = 150 }) {
           {(shown ? shown.value : totalVal).toLocaleString()}
         </span>
         <span className="trend-readout-cap">
-          {shown ? shown.label : `total · ${data.length} periods`}
+          {shown
+            ? `${shown.label}${shown.forecast ? ' · projected' : ''}`
+            : `total · ${data.filter((d) => !d.forecast).length} periods`}
         </span>
       </div>
       <svg
@@ -42,8 +54,11 @@ export function TrendArea({ data, height = 150 }) {
         preserveAspectRatio="none"
         onMouseLeave={() => setActive(null)}
       >
-        <polygon points={areaPts} className="trend-area" />
-        <polyline points={linePts} className="trend-line" fill="none" />
+        {solid.length > 1 && <polygon points={areaPts} className="trend-area" />}
+        {solid.length > 1 && <polyline points={solidPts} className="trend-line" fill="none" />}
+        {dashed.length > 1 && (
+          <polyline points={dashedPts} className="trend-line trend-line-forecast" fill="none" />
+        )}
         {data.map((d, i) => (
           <g key={i}>
             {/* generous invisible hit target per period */}
@@ -59,14 +74,16 @@ export function TrendArea({ data, height = 150 }) {
               cx={x(i)}
               cy={y(d.value)}
               r={active === i ? 4.5 : 2.5}
-              className={`trend-dot ${active === i ? 'active' : ''}`}
+              className={`trend-dot ${d.forecast ? 'forecast' : ''} ${active === i ? 'active' : ''}`}
             />
           </g>
         ))}
       </svg>
       <div className="trend-labels">
         {data.map((d, i) => (
-          <span key={i} className={active === i ? 'active' : ''}>{d.label}</span>
+          <span key={i} className={active === i ? 'active' : ''}>
+            {i % labelEvery === 0 ? d.label : ''}
+          </span>
         ))}
       </div>
     </div>
