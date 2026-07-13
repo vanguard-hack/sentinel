@@ -10,16 +10,6 @@ import { exportReportPdf } from '../utils/reportPdf';
 import { BarList, Donut, TrendArea } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
 
-const STATUS_TONE = {
-  'Under Investigation': 'amber',
-  'Charge Sheeted': 'blue',
-  'Pending Trial': 'blue',
-  Convicted: 'green',
-  Acquitted: 'green',
-  'Closed - False Case': 'grey',
-  'Closed - Undetected': 'grey',
-};
-
 function useTheme() {
   const [isDark, setIsDark] = useState(
     () => localStorage.getItem('sentinel-theme') === 'dark'
@@ -266,42 +256,6 @@ export default function Reports() {
                 wide
               >
                 <SocioCrimeMap crimeByDistrict={data.crimeByDistrict} />
-              </Card>
-
-              <Card title="Latest FIRs" subtitle="Most recently registered cases" wide>
-                <div className="cf-scroll">
-                  <table className="cf-table db-recent-table">
-                    <thead>
-                      <tr>
-                        <th>Crime No</th><th>Date</th><th>Police station</th>
-                        <th>District</th><th>Crime head</th><th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.recent.map((r) => (
-                        <tr key={r.crimeNo}>
-                          <td className="db-crimeno">
-                            {r.crimeNo}
-                            {r.heinous && (
-                              <span className="db-badge-heinous" title="Heinous offence">
-                                <Flame size={11} />
-                              </span>
-                            )}
-                          </td>
-                          <td>{r.date}</td>
-                          <td>{r.station}</td>
-                          <td>{r.district}</td>
-                          <td>{r.head}</td>
-                          <td>
-                            <span className={`db-status db-status-${STATUS_TONE[r.status] || 'grey'}`}>
-                              {r.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
               </Card>
             </div>
 

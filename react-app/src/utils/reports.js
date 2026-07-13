@@ -191,7 +191,7 @@ export async function fetchReports() {
   const [
     cases, accusedN, victims, arrests, chargesheets, open, heinous, thisYear, lastYearSame,
     byCategory, byStatus, byDistrict, bySubHead, openByStation,
-    trendCounts, yearCounts, ageCounts, recentRows, caseDates,
+    trendCounts, yearCounts, ageCounts, caseDates,
   ] = await Promise.all([
     countCases(),
     scalar('SELECT COUNT(ROWID) AS c FROM Accused', 'Accused', 'c'),
@@ -234,12 +234,6 @@ export async function fetchReports() {
         )
       )
     ),
-    runQuery(
-      'SELECT CrimeNo, CrimeRegisteredDate, PoliceStationID, CrimeMajorHeadID, ' +
-        'CaseStatusID, GravityOffenceID FROM CaseMaster ' +
-        'ORDER BY CrimeRegisteredDate DESC LIMIT 0, 8',
-      'CaseMaster'
-    ),
     allCaseDates(),
   ]);
 
@@ -281,14 +275,5 @@ export async function fetchReports() {
       value: yearCounts[i],
     })),
     accusedAges: AGE_BUCKETS.map((b, i) => ({ label: b.label, value: ageCounts[i] })),
-    recent: recentRows.map((r) => ({
-      crimeNo: r.CrimeNo,
-      date: r.CrimeRegisteredDate,
-      station: unitName(r.PoliceStationID),
-      district: districtName(unitDistrict(r.PoliceStationID)),
-      head: headName(r.CrimeMajorHeadID),
-      status: statusName(r.CaseStatusID),
-      heinous: String(r.GravityOffenceID) === '1',
-    })),
   };
 }
