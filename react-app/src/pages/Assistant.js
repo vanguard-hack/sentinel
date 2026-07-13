@@ -7,7 +7,7 @@ import {
   Star, Pencil, FileDown, CheckSquare,
 } from 'lucide-react';
 import {
-  loadSessions, saveSessions, newSession, generateReply, uid,
+  loadSessions, saveSessions, makeTitle, newSession, generateReply, uid,
   transcribeAudio, loadSessionsRemote, saveSessionRemote, deleteSessionRemote,
 } from '../utils/assistant';
 import AguiRenderer from '../components/AguiRenderer';
@@ -125,20 +125,25 @@ export default function Assistant() {
     return () => { cancelled = true; };
   }, [email]);
 
+  // Sessions the user manually renamed — their titles must never be
+  // overwritten by the server's auto-title.
+  const renamedRef = useRef(new Set());
+
   // Debounced push of a changed session to the server; adopts the server's
-  // AI-generated title when the local one is still the default.
+  // AI-generated title (unless the user renamed the conversation).
   const saveTimers = useRef({});
   const pushSession = useCallback((session) => {
     if (!email || !session?.messages?.length) return;
+    const renamed = renamedRef.current.has(session.id);
     clearTimeout(saveTimers.current[session.id]);
     saveTimers.current[session.id] = setTimeout(async () => {
-      const out = await saveSessionRemote(session, email);
-      if (out?.title && (session.title === 'New chat' || !session.title)) {
+      const out = await saveSessionRemote(session, email, renamed ? {} : { autotitle: true });
+      if (out?.title && !renamed) {
         setSessions((prev) =>
           prev.map((s) => (s.id === session.id ? { ...s, title: out.title } : s))
         );
       }
-    }, 900);
+    }, 700);
   }, [email]);
 
   // Autoscroll the thread on new messages / typing.
@@ -156,6 +161,9 @@ export default function Assistant() {
   };
   useEffect(growTextarea, [input]);
 
+  // Only allow starting a new chat when the current one has content — prevents
+  // stacking multiple empty "New chat" conversations.
+  const onBlankNewChat = !activeId || messages.length === 0;
   const startNewChat = useCallback(() => {
     setActiveId(null);
     setInput('');
@@ -206,12 +214,10 @@ export default function Assistant() {
     const clean = (title || '').trim();
     setRenamingId(null);
     if (!clean) return;
-    setSessions((prev) => {
-      const next = prev.map((s) => (s.id === id ? { ...s, title: clean } : s));
-      const s = next.find((x) => x.id === id);
-      if (s && email && s.messages.length) saveSessionRemote({ ...s, title: clean }, email);
-      return next;
-    });
+    renamedRef.current.add(id); // protect this title from auto-titling
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title: clean } : s)));
+    const s = sessions.find((x) => x.id === id);
+    if (s && email && s.messages.length) saveSessionRemote({ ...s, title: clean }, email);
   };
 
   // Export one conversation's full transcript to PDF (captures the thread DOM).
@@ -280,13 +286,22 @@ export default function Assistant() {
         ts: Date.now(),
       };
       const fullMessages = [...history, botMsg];
+      // Give a brand-new conversation an instant, meaningful title from the
+      // first question (upgraded to the AI title once the server responds).
+      const current = sessions.find((s) => s.id === sessionId);
+      const isFirst = !current || current.messages.length === 0;
+      const interimTitle =
+        isFirst && !renamedRef.current.has(sessionId) ? makeTitle(text) : current?.title || 'New chat';
       setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, messages: fullMessages } : s))
+        prev.map((s) =>
+          s.id === sessionId
+            ? { ...s, title: renamedRef.current.has(s.id) ? s.title : interimTitle, messages: fullMessages }
+            : s
+        )
       );
       // Persist AFTER the state update (never call side effects inside an
       // updater — a throw there unmounts the whole page).
-      const current = sessions.find((s) => s.id === sessionId);
-      pushSession({ id: sessionId, title: current?.title || 'New chat', messages: fullMessages });
+      pushSession({ id: sessionId, title: interimTitle, messages: fullMessages });
     } catch (err) {
       const botMsg = {
         id: uid(),
@@ -470,7 +485,12 @@ export default function Assistant() {
       <div className="as-body">
         {/* ── Sessions sidebar ── */}
         <aside className={`as-sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
-          <button className="as-new-btn" onClick={startNewChat}>
+          <button
+            className="as-new-btn"
+            onClick={startNewChat}
+            disabled={onBlankNewChat}
+            title={onBlankNewChat ? 'You already have a new chat open' : 'Start a new chat'}
+          >
             <Plus size={16} /> New chat
           </button>
           {selectMode && (

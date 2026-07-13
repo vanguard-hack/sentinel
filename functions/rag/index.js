@@ -396,8 +396,9 @@ async function handleConversations(req, res, action) {
   const messages = packMessages(Array.isArray(body.messages) ? body.messages : []);
   const firstUser = messages.find((m) => m && m.role === 'user');
   let title = String(body.title || '').trim();
-  if (!title || title === 'New chat') {
-    title = firstUser ? await generateTitle(firstUser.content) : 'New chat';
+  // Generate an AI title when asked (autotitle) or when none was provided.
+  if (body.autotitle || !title || title === 'New chat') {
+    title = firstUser ? await generateTitle(firstUser.content) : title || 'New chat';
   }
   const prev = idx >= 0 ? conversations[idx] : {};
   const record = {

@@ -2624,3 +2624,5 @@ a:hover { color: var(--blue-500); }
 .as-pdf-brand { font-size: 11px; letter-spacing: 0.08em; color: #2a78d6; font-weight: 700; text-transform: uppercase; }
 .as-pdf-header h1 { font-size: 20px; color: var(--text-0); margin: 6px 0 4px; }
 .as-pdf-meta { font-size: 11px; color: var(--text-3); }
+
+.as-new-btn:disabled { opacity: 0.45; cursor: default; }
