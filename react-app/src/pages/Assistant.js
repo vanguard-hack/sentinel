@@ -11,6 +11,7 @@ import {
 } from '../utils/assistant';
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
+import Avatar from '../components/Avatar';
 import i18n from '../i18n';
 import { useAuth } from '../context/AuthContext';
 
@@ -58,6 +59,7 @@ export default function Assistant() {
   const [transcribing, setTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [confirmDelId, setConfirmDelId] = useState(null);
 
   // Up/Down history navigation through this session's past questions.
   const histRef = useRef({ idx: null, draft: '' });
@@ -412,13 +414,33 @@ export default function Assistant() {
               >
                 <MessageSquare size={15} className="as-session-icon" />
                 <span className="as-session-title">{s.title}</span>
-                <button
-                  className="as-session-del"
-                  onClick={(e) => deleteSession(s.id, e)}
-                  title="Delete conversation"
-                >
-                  <Trash2 size={14} />
-                </button>
+                {confirmDelId === s.id ? (
+                  <span className="as-session-confirm" onClick={(e) => e.stopPropagation()}>
+                    <span className="as-confirm-q">Delete?</span>
+                    <button
+                      className="as-confirm-yes"
+                      onClick={(e) => { deleteSession(s.id, e); setConfirmDelId(null); }}
+                      title="Confirm delete"
+                    >
+                      <Check size={14} />
+                    </button>
+                    <button
+                      className="as-confirm-no"
+                      onClick={(e) => { e.stopPropagation(); setConfirmDelId(null); }}
+                      title="Cancel"
+                    >
+                      <X size={14} />
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    className="as-session-del"
+                    onClick={(e) => { e.stopPropagation(); setConfirmDelId(s.id); }}
+                    title="Delete conversation"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -445,7 +467,7 @@ export default function Assistant() {
                 {messages.map((m) => (
                   <div key={m.id} className={`as-msg as-msg-${m.role}`}>
                     <div className="as-avatar">
-                      {m.role === 'user' ? 'You' : <Bot size={16} />}
+                      {m.role === 'user' ? <Avatar user={user} size={28} /> : <Bot size={16} />}
                     </div>
                     <div className="as-msg-body">
                       {m.files && m.files.length > 0 && (

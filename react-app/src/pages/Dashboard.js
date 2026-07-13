@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LANGUAGES } from '../i18n';
+import Avatar from '../components/Avatar';
 
 // Each module references a translation key under `modules.*`; labels/descriptions
 // are resolved at render time from the active language.
@@ -88,13 +89,6 @@ export default function Dashboard() {
     user?.first_name ||
     user?.email_id?.split('@')[0] ||
     'Officer';
-
-  const initials = displayName
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 
   // Resolve translated text for each module, then filter by the search query.
   const modules = MODULES.map((m) => ({
@@ -182,13 +176,13 @@ export default function Dashboard() {
               aria-expanded={profileOpen}
               title={displayName}
             >
-              <div className="nav-avatar">{initials}</div>
+              <Avatar user={user} size={34} />
             </button>
 
             {profileOpen && (
               <div className="nav-profile-pop" role="menu">
                 <div className="nav-profile-card">
-                  <div className="nav-profile-avatar">{initials}</div>
+                  <Avatar user={user} size={52} className="nav-profile-avatar" />
                   <div className="nav-profile-id">
                     <span className="nav-profile-name">{displayName}</span>
                     <span className="nav-profile-email">{user?.email_id}</span>

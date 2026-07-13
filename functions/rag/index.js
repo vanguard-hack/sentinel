@@ -552,29 +552,41 @@ module.exports = async (req, res) => {
             if (topN) flat = flat.slice(0, topN);
             flat = zcql.enrichRows(flat).slice(0, 200);
             const components = zcql.rowsToComponents(flat);
+            // When the result is a multi-row list, the table carries the data;
+            // the prose must be a SHORT summary and never re-list the rows.
+            const isList = flat.length > 3;
             const prose = await callGroq(
               [
                 {
                   role: 'system',
-                  content:
-                    'You are Sentinel Assistant. Answer the analyst question from ' +
-                    'the query result rows (JSON) in 1-3 sentences. State numbers ' +
-                    'plainly. If rows are empty, say no matching records were ' +
-                    'found. Never invent values that are not in the rows, and do ' +
-                    'not enumerate long lists (a table is shown separately).',
+                  content: isList
+                    ? 'You are Sentinel Assistant. The query returned ' +
+                      `${flat.length} records, already shown to the user as a TABLE. ` +
+                      'Write ONE short summary sentence only — a count and/or the single ' +
+                      'top item. NEVER list, enumerate, or repeat the individual records, ' +
+                      'and never output a markdown table. Invent nothing.'
+                    : 'You are Sentinel Assistant. Answer the analyst question from the ' +
+                      'query result rows (JSON) in 1-2 sentences, stating numbers plainly. ' +
+                      'If rows are empty, say no matching records were found. Invent nothing.',
                 },
                 {
                   role: 'user',
                   content:
                     `Question: ${query}\n\nRows (${flat.length}` +
                     `${flat.length === 200 ? ', truncated' : ''}):\n` +
-                    JSON.stringify(flat.slice(0, 60)),
+                    JSON.stringify(flat.slice(0, isList ? 20 : 60)),
                 },
               ],
-              { maxTokens: 300, temperature: 0.2, timeoutMs: 12_000, model: GROQ_MODEL_FAST }
+              { maxTokens: isList ? 90 : 300, temperature: 0.2, timeoutMs: 12_000, model: GROQ_MODEL_FAST }
             );
-            const answerText =
-              (prose || '').trim() || `The query returned ${flat.length} record(s).`;
+            // Strip any table/enumeration the model emits anyway — the component
+            // is the single source of truth for the rows.
+            let answerText = (prose || '').trim();
+            answerText = stripDuplicatedLists(
+              stripMarkdownTables(answerText, components).text,
+              components
+            );
+            if (!answerText) answerText = `Found ${flat.length} matching record(s) — see the table below.`;
             // A negative prose ("no matching records", "does not answer...")
             // with a rendered data table is a contradiction — the rows didn't
             // answer the question, so don't show them.
