@@ -8,6 +8,7 @@ import Assistant from './pages/Assistant';
 import AIAnalytics from './pages/AIAnalytics';
 import ChatWidget from './components/ChatWidget';
 import LoadingScreen from './components/LoadingScreen';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function AppRoutes() {
   const { loading, signingOut } = useAuth();
@@ -15,7 +16,7 @@ function AppRoutes() {
   if (loading) return <LoadingScreen message="Verifying credentials…" />;
 
   return (
-    <>
+    <ErrorBoundary>
     <Routes>
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/crime-map" element={<CrimeMap />} />
@@ -26,7 +27,7 @@ function AppRoutes() {
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
     <ChatWidget />
-    </>
+    </ErrorBoundary>
   );
 }
 

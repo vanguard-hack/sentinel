@@ -5,7 +5,7 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
-export async function exportReportPdf(element) {
+export async function exportReportPdf(element, filename) {
   if (!element) throw new Error('nothing to export');
 
   const bg =
@@ -40,5 +40,27 @@ export async function exportReportPdf(element) {
     heightLeft -= pageH - margin * 2;
   }
 
-  pdf.save(`sentinel-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+  pdf.save(filename || `sentinel-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
+// Export one conversation's transcript with a titled header. Temporarily
+// injects a header into the thread element so the PDF is clearly labelled,
+// then removes it.
+export async function exportConversationPdf(threadEl, title) {
+  if (!threadEl) throw new Error('nothing to export');
+  const header = document.createElement('div');
+  header.className = 'as-pdf-header';
+  const safe = (title || 'Conversation').replace(/[<>&]/g, '');
+  header.innerHTML =
+    `<div class="as-pdf-brand">SENTINEL · Assistant Conversation</div>` +
+    `<h1>${safe}</h1>` +
+    `<div class="as-pdf-meta">Exported ${new Date().toLocaleString('en-IN')}</div>`;
+  threadEl.prepend(header);
+  const slug = (title || 'conversation')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'conversation';
+  try {
+    await exportReportPdf(threadEl, `sentinel-${slug}-${new Date().toISOString().slice(0, 10)}.pdf`);
+  } finally {
+    header.remove();
+  }
 }

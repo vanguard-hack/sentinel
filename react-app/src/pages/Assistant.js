@@ -7,7 +7,7 @@ import {
   Star, Pencil, FileDown, CheckSquare,
 } from 'lucide-react';
 import {
-  loadSessions, saveSessions, makeTitle, newSession, generateReply, uid,
+  loadSessions, saveSessions, newSession, generateReply, uid,
   transcribeAudio, loadSessionsRemote, saveSessionRemote, deleteSessionRemote,
 } from '../utils/assistant';
 import AguiRenderer from '../components/AguiRenderer';
@@ -15,7 +15,7 @@ import RichText from '../components/RichText';
 import Avatar from '../components/Avatar';
 import i18n from '../i18n';
 import { useAuth } from '../context/AuthContext';
-import { exportReportPdf } from '../utils/reportPdf';
+import { exportConversationPdf } from '../utils/reportPdf';
 
 // Short, domain-relevant prompts shown on an empty conversation.
 const SUGGESTIONS = [
@@ -94,19 +94,24 @@ export default function Assistant() {
 
   useEffect(() => { saveSessions(sessions); }, [sessions]);
 
-  // On sign-in, pull the officer's stored conversations from the Data Store and
-  // merge them over the local cache (server wins — it's the durable copy).
+  // On sign-in, load the officer's stored conversations from Stratus. The
+  // server is authoritative (so history is intact after logout/login and a
+  // different user never sees the previous user's cached chats). Any brand-new
+  // local session not yet on the server is merged in so an in-flight chat
+  // isn't dropped.
   useEffect(() => {
     if (!email) return;
     let cancelled = false;
     (async () => {
       const remote = await loadSessionsRemote(email);
-      if (cancelled || !remote) return;
+      if (cancelled || !remote) return; // offline → keep local cache
       setSessions((local) => {
-        const byId = new Map(local.map((s) => [s.id, s]));
-        remote.forEach((r) => byId.set(r.id, { ...byId.get(r.id), ...r }));
-        return [...byId.values()].sort(
-          (a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0)
+        const remoteIds = new Set(remote.map((r) => r.id));
+        const unsynced = local.filter((s) => s.messages?.length && !remoteIds.has(s.id));
+        return [...unsynced, ...remote].sort(
+          (a, b) =>
+            (b.starred ? 1 : 0) - (a.starred ? 1 : 0) ||
+            (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0)
         );
       });
     })();
@@ -205,11 +210,12 @@ export default function Assistant() {
   // Export one conversation's full transcript to PDF (captures the thread DOM).
   const exportSession = async (id) => {
     setMenuId(null);
-    if (id !== activeId) { setActiveId(id); await new Promise((r) => setTimeout(r, 60)); }
+    if (id !== activeId) { setActiveId(id); await new Promise((r) => setTimeout(r, 80)); }
     if (!threadRef.current) return;
+    const title = sessions.find((s) => s.id === id)?.title || 'Conversation';
     setExporting(true);
     try {
-      await exportReportPdf(threadRef.current);
+      await exportConversationPdf(threadRef.current, title);
     } catch { /* ignore */ } finally {
       setExporting(false);
     }
@@ -236,7 +242,9 @@ export default function Assistant() {
       ts: Date.now(),
     };
 
-    // Resolve the target session (create one on the first message).
+    // Resolve the target session (create one on the first message). Keep the
+    // title as 'New chat' on the first message so the server assigns an
+    // AI-generated title when the exchange is saved.
     let sessionId = activeId;
     setSessions((prev) => {
       let list = prev;
@@ -246,13 +254,7 @@ export default function Assistant() {
         list = [s, ...prev];
       }
       return list.map((s) =>
-        s.id === sessionId
-          ? {
-              ...s,
-              title: s.messages.length === 0 ? makeTitle(text) : s.title,
-              messages: [...s.messages, userMsg],
-            }
-          : s
+        s.id === sessionId ? { ...s, messages: [...s.messages, userMsg] } : s
       );
     });
     setActiveId(sessionId);
@@ -273,14 +275,14 @@ export default function Assistant() {
         source: reply.source,
         ts: Date.now(),
       };
-      setSessions((prev) => {
-        const next = prev.map((s) =>
-          s.id === sessionId ? { ...s, messages: [...s.messages, botMsg] } : s
-        );
-        const done = next.find((s) => s.id === sessionId);
-        if (done) pushSession(done); // persist the full exchange
-        return next;
-      });
+      const fullMessages = [...history, botMsg];
+      setSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? { ...s, messages: fullMessages } : s))
+      );
+      // Persist AFTER the state update (never call side effects inside an
+      // updater — a throw there unmounts the whole page).
+      const current = sessions.find((s) => s.id === sessionId);
+      pushSession({ id: sessionId, title: current?.title || 'New chat', messages: fullMessages });
     } catch (err) {
       const botMsg = {
         id: uid(),
