@@ -37,13 +37,27 @@ export async function getProfile(email) {
 
 export async function saveProfile(email, profile) {
   if (!email) throw new Error('not signed in');
+  // Ship the photo as raw base64 + mime, NOT a data: URI — the Catalyst
+  // gateway's resource access policy rejects data-URI payloads on
+  // cookie-authenticated requests (403 access_forbidden).
+  const { photo, ...rest } = profile;
+  const wire = { ...rest };
+  if (typeof photo === 'string' && photo.startsWith('data:image/')) {
+    const [head, b64] = photo.split(',', 2);
+    wire.photoMime = (head.match(/^data:([^;]+)/) || [])[1] || 'image/jpeg';
+    wire.photoB64 = b64 || '';
+  } else if (photo === null || photo === '') {
+    wire.photoB64 = null;
+  }
   const res = await fetch('/server/rag/profile/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, profile }),
+    body: JSON.stringify({ email, profile: wire }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `save failed (HTTP ${res.status})`);
+  if (!res.ok) {
+    throw new Error(data.error || data.message || `save failed (HTTP ${res.status})`);
+  }
   if ('photo' in profile) setCachedPhoto(profile.photo || '');
   return data.profile || profile;
 }

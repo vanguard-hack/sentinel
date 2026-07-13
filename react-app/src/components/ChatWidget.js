@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import AguiRenderer from './AguiRenderer';
 import RichText from './RichText';
+import Thinking from './Thinking';
 import i18n from '../i18n';
 
 // Floating assistant: a bubble in the bottom-right that expands into a compact
@@ -190,7 +191,7 @@ export default function ChatWidget() {
             )}
             {sending && (
               <div className="cw-msg cw-msg-assistant">
-                <div className="cw-bubble"><div className="as-typing"><span /><span /><span /></div></div>
+                <div className="cw-bubble"><Thinking /></div>
               </div>
             )}
           </div>

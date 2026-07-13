@@ -496,17 +496,25 @@ async function handleProfile(req, res, action) {
     }
   }
 
-  // save — whitelist text fields; accept a data-URL photo up to ~1.2MB.
+  // save — whitelist text fields. The photo travels as separate raw-base64 +
+  // mime fields (never as a "data:image/..." URI in the JSON — the gateway's
+  // resource access policy 403s that pattern on cookie-authenticated
+  // requests); it is reassembled into a data URL here for storage.
   const incoming = body.profile || {};
   const profile = {};
   PROFILE_FIELDS.forEach((f) => {
     if (typeof incoming[f] === 'string') profile[f] = incoming[f].slice(0, 200);
   });
-  if (typeof incoming.photo === 'string' && incoming.photo.startsWith('data:image/')) {
-    if (incoming.photo.length > 1_600_000) return json(res, 413, { error: 'photo too large (1MB max)' });
-    profile.photo = incoming.photo;
-  } else if (incoming.photo === null) {
+  const b64 = typeof incoming.photoB64 === 'string' ? incoming.photoB64.replace(/\s/g, '') : '';
+  const mime = /^image\/(jpeg|png|webp)$/.test(incoming.photoMime || '') ? incoming.photoMime : 'image/jpeg';
+  if (b64) {
+    if (b64.length > 1_600_000) return json(res, 413, { error: 'photo too large (1MB max)' });
+    if (!/^[A-Za-z0-9+/=]+$/.test(b64)) return json(res, 400, { error: 'invalid photo encoding' });
+    profile.photo = `data:${mime};base64,${b64}`;
+  } else if (incoming.photo === null || incoming.photoB64 === null) {
     profile.photo = ''; // explicit removal
+  } else if (typeof incoming.photo === 'string' && incoming.photo.startsWith('data:image/')) {
+    profile.photo = incoming.photo.slice(0, 1_600_000); // legacy path
   }
   profile.updatedAt = Date.now();
   await bucket.putObject(profileKey(email), Buffer.from(JSON.stringify(profile)));

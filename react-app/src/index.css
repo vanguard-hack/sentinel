@@ -2690,3 +2690,8 @@ a:hover { color: var(--blue-500); }
 }
 .pf-save:disabled { opacity: 0.7; cursor: default; }
 @media (max-width: 760px) { .pf-wrap { grid-template-columns: 1fr; } .pf-grid { grid-template-columns: 1fr; } }
+
+/* Thinking indicator */
+.as-thinking { display: inline-flex; align-items: center; gap: 10px; }
+.as-thinking-phrase { font-size: 0.82rem; color: var(--text-3); animation: think-fade 1.8s ease both; }
+@keyframes think-fade { 0% { opacity: 0; transform: translateY(2px); } 25%, 80% { opacity: 1; transform: none; } 100% { opacity: 0.55; } }

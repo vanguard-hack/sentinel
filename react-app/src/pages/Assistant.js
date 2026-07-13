@@ -13,6 +13,7 @@ import {
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
 import Avatar from '../components/Avatar';
+import Thinking from '../components/Thinking';
 import i18n from '../i18n';
 import { useAuth } from '../context/AuthContext';
 import { exportConversationPdf } from '../utils/reportPdf';
@@ -674,7 +675,7 @@ export default function Assistant() {
                   <div className="as-msg as-msg-assistant">
                     <div className="as-avatar"><Bot size={16} /></div>
                     <div className="as-msg-body">
-                      <div className="as-typing"><span /><span /><span /></div>
+                      <Thinking />
                     </div>
                   </div>
                 )}
