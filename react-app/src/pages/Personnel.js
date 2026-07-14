@@ -242,7 +242,7 @@ export default function Personnel() {
                       </td>
                       <td>
                         <span className="pp-rank" title={o.rank}>
-                          <RankInsignia hierarchy={o.rankHierarchy} size={24} title={o.rank} />
+                          <RankInsignia hierarchy={o.rankHierarchy} size={30} title={o.rank} />
                           {o.rankAbbr}
                         </span>
                       </td>
@@ -329,7 +329,7 @@ export default function Personnel() {
               <div>
                 <h2 className="pp-drawer-name">{selected.name}</h2>
                 <span className="pp-rank" title={selected.rank}>
-                  <RankInsignia hierarchy={selected.rankHierarchy} size={28} title={selected.rank} />
+                  <RankInsignia hierarchy={selected.rankHierarchy} size={40} title={selected.rank} />
                   {selected.rankAbbr}
                 </span>
               </div>

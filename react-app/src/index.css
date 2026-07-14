@@ -3447,17 +3447,13 @@ a:hover { color: var(--blue-500); }
 .pp-rank {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 3px 10px 3px 5px;
-  border-radius: 999px;
-  background: var(--blue-glow);
-  color: var(--blue-500);
-  font-size: 11.5px;
-  font-weight: 600;
+  gap: 9px;
+  color: var(--text-0);
+  font-size: 12.5px;
+  font-weight: 650;
   white-space: nowrap;
 }
-[data-theme="dark"] .pp-rank { color: var(--blue-400); }
-.pp-insignia { flex-shrink: 0; display: block; }
+.pp-insignia { flex-shrink: 0; display: block; width: auto; border-radius: 2px; }
 
 .pp-unit, .pp-contact, .pp-service { display: flex; flex-direction: column; line-height: 1.4; }
 .pp-unit-district, .pp-contact-phone, .pp-service-since { font-size: 11.5px; color: var(--text-3); }
