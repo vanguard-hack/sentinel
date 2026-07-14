@@ -11,7 +11,7 @@ import TopBar from '../components/TopBar';
 import RankInsignia from '../components/RankInsignia';
 import DateRangeCalendar from '../components/DateRangeCalendar';
 
-const PER_PAGE_OPTIONS = [10, 15, 25, 50];
+const PER_PAGE_OPTIONS = [5, 10, 15, 25];
 
 const hueOf = (id) => (Number(id) * 137) % 360;
 const initialsOf = (name) =>
@@ -45,7 +45,7 @@ export default function Roster() {
   const [district, setDistrict] = useState('All');
   const [rank, setRank] = useState('All');
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [perPage, setPerPage] = useState(5);
   const [calOpen, setCalOpen] = useState(false);
   const calRef = useRef(null);
 
