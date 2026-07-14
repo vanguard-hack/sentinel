@@ -1,12 +1,15 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 
-// Interactive crime-network graph for the assistant. A small force simulation
-// (repulsion + spring + centring) lays out nodes; the user can drag nodes and
-// click one to highlight it and its direct links. No external deps.
-// Spec: { nodes:[{id,label,group?}], links:[{source,target}] }
+// Interactive crime-network graph (Obsidian-graph-view style). A small force
+// simulation (repulsion + spring + centring) lays out nodes; hovering a node
+// fades everything but it and its direct neighbours, clicking pins that
+// focus, the wheel zooms about the cursor and dragging the background pans.
+// No external deps. Spec: { nodes:[{id,label,group?}], links:[{source,target}] }
 const W = 560;
 const H = 400;
 const CAT = ['--rp-cat-0', '--rp-cat-1', '--rp-cat-2', '--rp-cat-3', '--rp-cat-4', '--rp-cat-5'];
+const MIN_K = 0.4;
+const MAX_K = 6;
 
 export default function NetworkGraph({ spec }) {
   const rawNodes = useMemo(() => (Array.isArray(spec?.nodes) ? spec.nodes : []), [spec]);
@@ -14,9 +17,14 @@ export default function NetworkGraph({ spec }) {
 
   const [tick, setTick] = useState(0);
   const [sel, setSel] = useState(null);
-  const [drag, setDrag] = useState(null);
+  const [hover, setHover] = useState(null);
+  const [drag, setDrag] = useState(null); // { i } node drag
+  const [view, setView] = useState({ k: 1, tx: 0, ty: 0 });
   const svgRef = useRef(null);
   const sim = useRef({ nodes: [], links: [] });
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const panRef = useRef(null); // { x0, y0, tx0, ty0, moved }
 
   // Build the simulation model once per spec.
   const model = useMemo(() => {
@@ -97,6 +105,7 @@ export default function NetworkGraph({ spec }) {
 
   const color = (g) => `var(${CAT[model.groups.indexOf(g) % CAT.length]})`;
 
+  // Screen event → svg-space (0..W/H) and world-space (pre-transform) points.
   const toSvg = (e) => {
     const r = svgRef.current.getBoundingClientRect();
     return {
@@ -104,10 +113,33 @@ export default function NetworkGraph({ spec }) {
       y: ((e.clientY - r.top) / r.height) * H,
     };
   };
+  const toWorld = (p) => {
+    const { k, tx, ty } = viewRef.current;
+    return { x: (p.x - tx) / k, y: (p.y - ty) / k };
+  };
+
+  // Wheel zoom about the cursor. Native listener — React's is passive.
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const p = toSvg(e);
+      setView((v) => {
+        const k = Math.max(MIN_K, Math.min(MAX_K, v.k * Math.exp(-e.deltaY * 0.0018)));
+        const scale = k / v.k;
+        return { k, tx: p.x - (p.x - v.tx) * scale, ty: p.y - (p.y - v.ty) * scale };
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // Node dragging (accounts for the zoom/pan transform).
   useEffect(() => {
     if (!drag) return undefined;
     const move = (e) => {
-      const p = toSvg(e.touches ? e.touches[0] : e);
+      const p = toWorld(toSvg(e.touches ? e.touches[0] : e));
       const n = sim.current.nodes[drag.i];
       if (n) { n.x = p.x; n.y = p.y; n.vx = 0; n.vy = 0; setTick((t) => t + 1); }
     };
@@ -124,55 +156,114 @@ export default function NetworkGraph({ spec }) {
     };
   }, [drag]);
 
+  // Background panning; a press that never moves counts as a click-to-clear.
+  const panStart = (e) => {
+    const p = toSvg(e.touches ? e.touches[0] : e);
+    panRef.current = { x0: p.x, y0: p.y, tx0: viewRef.current.tx, ty0: viewRef.current.ty, moved: false };
+  };
+  useEffect(() => {
+    const move = (e) => {
+      const pan = panRef.current;
+      if (!pan) return;
+      const p = toSvg(e.touches ? e.touches[0] : e);
+      const dx = p.x - pan.x0;
+      const dy = p.y - pan.y0;
+      if (Math.abs(dx) + Math.abs(dy) > 3) pan.moved = true;
+      if (pan.moved) setView((v) => ({ ...v, tx: pan.tx0 + dx, ty: pan.ty0 + dy }));
+    };
+    const up = () => {
+      const pan = panRef.current;
+      if (pan && !pan.moved) setSel(null);
+      panRef.current = null;
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    window.addEventListener('touchmove', move);
+    window.addEventListener('touchend', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      window.removeEventListener('touchmove', move);
+      window.removeEventListener('touchend', up);
+    };
+  }, []);
+
   if (!model.nodes.length) return <div className="rp-empty">No network data</div>;
 
+  // Focus = pinned selection, else hover. Everything else fades (Obsidian-style).
+  const focus = sel != null ? sel : hover;
   const neighbours = new Set();
-  if (sel != null) {
+  if (focus != null) {
     model.links.forEach((l) => {
-      if (l.s === sel) neighbours.add(l.t);
-      if (l.t === sel) neighbours.add(l.s);
+      if (l.s === focus) neighbours.add(l.t);
+      if (l.t === focus) neighbours.add(l.s);
     });
   }
-  const dim = (i) => sel != null && i !== sel && !neighbours.has(i);
+  const dim = (i) => focus != null && i !== focus && !neighbours.has(i);
   void tick; // re-render trigger
+
+  // Labels stay hidden until they matter: zoomed in, a hub, or in focus.
+  const labelOn = (n, i) =>
+    focus === i || neighbours.has(i) || view.k >= 1.6 || n.deg >= 4;
+
+  const { k, tx, ty } = view;
 
   return (
     <div className="net-graph">
-      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="net-svg" onClick={() => setSel(null)}>
-        {model.links.map((l, i) => {
-          const a = model.nodes[l.s];
-          const b = model.nodes[l.t];
-          const on = sel == null || l.s === sel || l.t === sel;
-          return (
-            <line
-              key={i}
-              x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-              className="net-link"
-              style={{ opacity: on ? 0.5 : 0.08 }}
-            />
-          );
-        })}
-        {model.nodes.map((n, i) => {
-          const r = 8 + Math.min(10, n.deg * 2);
-          return (
-            <g
-              key={n.id}
-              transform={`translate(${n.x},${n.y})`}
-              className={`net-node ${dim(i) ? 'dim' : ''} ${sel === i ? 'sel' : ''}`}
-              onMouseDown={(e) => { e.stopPropagation(); setDrag({ i }); }}
-              onClick={(e) => { e.stopPropagation(); setSel(sel === i ? null : i); }}
-            >
-              <circle r={r} style={{ fill: color(n.group) }} />
-              <text y={r + 11} textAnchor="middle" className="net-label">{n.label}</text>
-            </g>
-          );
-        })}
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${H}`}
+        className={`net-svg ${focus != null ? 'focused' : ''}`}
+        onMouseDown={panStart}
+        onTouchStart={panStart}
+        onDoubleClick={() => setView({ k: 1, tx: 0, ty: 0 })}
+      >
+        <g transform={`translate(${tx},${ty}) scale(${k})`}>
+          {model.links.map((l, i) => {
+            const a = model.nodes[l.s];
+            const b = model.nodes[l.t];
+            const on = focus == null || l.s === focus || l.t === focus;
+            return (
+              <line
+                key={i}
+                x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                className={`net-link ${on ? '' : 'dim'}`}
+                strokeWidth={1.2 / k}
+              />
+            );
+          })}
+          {model.nodes.map((n, i) => {
+            const r = 5 + Math.min(11, n.deg * 1.8);
+            return (
+              <g
+                key={n.id}
+                transform={`translate(${n.x},${n.y})`}
+                className={`net-node ${dim(i) ? 'dim' : ''} ${sel === i ? 'sel' : ''} ${focus === i ? 'focus' : ''}`}
+                onMouseDown={(e) => { e.stopPropagation(); setDrag({ i }); }}
+                onMouseEnter={() => setHover(i)}
+                onMouseLeave={() => setHover((h) => (h === i ? null : h))}
+                onClick={(e) => { e.stopPropagation(); setSel(sel === i ? null : i); }}
+              >
+                {focus === i && <circle r={r + 5} className="net-halo" />}
+                <circle r={r} style={{ fill: color(n.group) }} />
+                <text
+                  y={r + 11}
+                  textAnchor="middle"
+                  className={`net-label ${labelOn(n, i) ? 'on' : ''}`}
+                  style={{ fontSize: Math.max(5.5, 10 / Math.sqrt(k)) }}
+                >
+                  {n.label}
+                </text>
+              </g>
+            );
+          })}
+        </g>
       </svg>
       <div className="net-meta">
-        {sel != null ? (
-          <span><strong>{model.nodes[sel].label}</strong> · {neighbours.size} connection{neighbours.size === 1 ? '' : 's'}</span>
+        {focus != null ? (
+          <span><strong>{model.nodes[focus].label}</strong> · {neighbours.size} connection{neighbours.size === 1 ? '' : 's'}</span>
         ) : (
-          <span>{model.nodes.length} nodes · {model.links.length} links · drag to move, click to focus</span>
+          <span>{model.nodes.length} nodes · {model.links.length} links · hover to trace, scroll to zoom, drag space to pan</span>
         )}
         {model.groups.length > 1 && (
           <div className="net-legend">

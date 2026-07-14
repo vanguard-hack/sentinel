@@ -2909,13 +2909,33 @@ a:hover { color: var(--blue-500); }
 
 /* ── AG-UI network graph ────────────────────────────────────────────────── */
 .net-graph { display: flex; flex-direction: column; gap: 8px; }
-.net-svg { width: 100%; height: auto; border: 1px solid var(--border-1); border-radius: 10px; background: var(--bg-2); touch-action: none; }
-.net-link { stroke: var(--text-4); stroke-width: 1.2; }
-.net-node { cursor: grab; }
-.net-node.dim { opacity: 0.25; }
+.net-svg {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  /* Faint cosmos glow behind the network, Obsidian-graph style. */
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 42%, var(--blue-glow), transparent 70%),
+    var(--bg-2);
+  touch-action: none;
+  cursor: grab;
+}
+.net-svg:active { cursor: grabbing; }
+.net-link { stroke: var(--text-4); opacity: 0.45; transition: opacity 0.18s; }
+.net-link.dim { opacity: 0.06; }
+.net-node { cursor: grab; transition: opacity 0.18s; }
+.net-node.dim { opacity: 0.12; }
 .net-node.sel circle { stroke: var(--text-0); stroke-width: 2.5; }
-.net-node circle { stroke: var(--bg-1); stroke-width: 1.5; transition: opacity .15s; }
-.net-label { font-size: 10px; fill: var(--text-2); pointer-events: none; }
+.net-node circle { stroke: var(--bg-1); stroke-width: 1.5; }
+.net-halo { fill: var(--blue-glow); stroke: none; }
+.net-label {
+  fill: var(--text-2);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s;
+}
+.net-label.on { opacity: 1; }
 .net-meta { font-size: 0.78rem; color: var(--text-3); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .net-legend { display: flex; gap: 12px; flex-wrap: wrap; }
 .net-legend span { display: inline-flex; align-items: center; gap: 5px; }
