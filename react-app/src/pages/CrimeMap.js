@@ -85,24 +85,25 @@ function OfficerRow({ label, sub, officer, onOpenPhoto }) {
 
 const DATA_URL = `${process.env.PUBLIC_URL}/maps/india.json`;
 const POLICE_URL = `${process.env.PUBLIC_URL}/maps/karnataka-police-stations.geojson`;
-const INDIA_CENTER = [22.8, 80.5];
-const INDIA_ZOOM = 5;
+const INDIA_CENTER = [14.9, 76.2]; // Karnataka centroid — the map never leaves the state
+const INDIA_ZOOM = 6.4;
 const POLICE_STATE = 'Karnataka'; // the state our police-station dataset covers
 
 // ── Sample crime hotspots (placeholder until the real incidents feed exists) ──
+// Karnataka-only map: hotspots seed around the state's major cities.
 const CITY_HOTSPOTS = [
-  { city: 'Delhi',     lat: 28.61, lng: 77.21, n: 42 },
-  { city: 'Mumbai',    lat: 19.07, lng: 72.87, n: 40 },
-  { city: 'Bengaluru', lat: 12.97, lng: 77.59, n: 32 },
-  { city: 'Kolkata',   lat: 22.57, lng: 88.36, n: 30 },
-  { city: 'Chennai',   lat: 13.08, lng: 80.27, n: 28 },
-  { city: 'Hyderabad', lat: 17.38, lng: 78.48, n: 26 },
-  { city: 'Pune',      lat: 18.52, lng: 73.85, n: 20 },
-  { city: 'Ahmedabad', lat: 23.02, lng: 72.57, n: 18 },
-  { city: 'Jaipur',    lat: 26.91, lng: 75.78, n: 16 },
-  { city: 'Lucknow',   lat: 26.85, lng: 80.95, n: 15 },
-  { city: 'Patna',     lat: 25.59, lng: 85.13, n: 12 },
-  { city: 'Bhopal',    lat: 23.26, lng: 77.41, n: 11 },
+  { city: 'Bengaluru',  lat: 12.97, lng: 77.59, n: 40 },
+  { city: 'Mysuru',     lat: 12.30, lng: 76.65, n: 22 },
+  { city: 'Hubballi',   lat: 15.36, lng: 75.12, n: 18 },
+  { city: 'Mangaluru',  lat: 12.91, lng: 74.86, n: 16 },
+  { city: 'Belagavi',   lat: 15.85, lng: 74.50, n: 15 },
+  { city: 'Kalaburagi', lat: 17.33, lng: 76.83, n: 13 },
+  { city: 'Davanagere', lat: 14.46, lng: 75.92, n: 11 },
+  { city: 'Ballari',    lat: 15.14, lng: 76.92, n: 10 },
+  { city: 'Shivamogga', lat: 13.93, lng: 75.57, n: 9 },
+  { city: 'Tumakuru',   lat: 13.34, lng: 77.10, n: 8 },
+  { city: 'Vijayapura', lat: 16.83, lng: 75.71, n: 8 },
+  { city: 'Hassan',     lat: 13.00, lng: 76.10, n: 7 },
 ];
 const CATEGORIES = ['Theft', 'Assault', 'Burglary', 'Vehicle', 'Fraud', 'Vandalism'];
 
@@ -318,15 +319,12 @@ export default function CrimeMap() {
     window.addEventListener('resize', onResize);
 
     // ── Styles ──
-    const stateStyle    = { color: '#2563eb', weight: 1,   fillColor: '#3b82f6', fillOpacity: 0.06 };
-    const stateHover    = { weight: 2, fillOpacity: 0.18 };
     const districtStyle = { color: '#3b82f6', weight: 1,   fillColor: '#1d4ed8', fillOpacity: 0.05 };
     const districtHover = { weight: 2, fillOpacity: 0.20 };
     const stateOutlineStyle      = { color: '#f59e0b', weight: 4, fill: false, opacity: 1 };
     const districtHighlightStyle = { color: '#fbbf24', weight: 2.5, fillColor: '#2563eb', fillOpacity: 0.4 };
 
     let data = null;
-    let statesLayer = null;
     let districtsLayer = null;
     let districtModeLocal = 'crime'; // mirrors React districtMode for the style fn
 
@@ -371,16 +369,8 @@ export default function CrimeMap() {
       if (policeLayer && policeOnLocal && stateName === POLICE_STATE) policeLayer.addTo(map);
     };
 
-    const showIndia = () => {
-      current.level = 'india'; current.state = null; current.district = null;
-      setLevel('india'); setSelectedState(null); setSelectedDistrict(null); setSelectedStation(null);
-      remove(districtsLayer); districtsLayer = null;
-      remove(stateOutlineLayer); stateOutlineLayer = null;
-      remove(districtHighlightLayer); districtHighlightLayer = null;
-      remove(policeLayer);
-      if (statesLayer) statesLayer.addTo(map);
-      if (data) map.flyToBounds(statesLayer.getBounds(), { padding: [20, 20], duration: 0.9, easeLinearity: 0.22 });
-    };
+    // Karnataka-only map: "home" resets to the state view.
+    const showIndia = () => showState(POLICE_STATE);
 
     const showDistrict = (f) => {
       current.level = 'district'; current.district = f.properties.district;
@@ -420,7 +410,6 @@ export default function CrimeMap() {
 
     const back = () => {
       if (current.level === 'district') showState(current.state);
-      else if (current.level === 'state') showIndia();
     };
 
     // ── Hotspots ──
@@ -466,17 +455,8 @@ export default function CrimeMap() {
           states: feature(topo, topo.objects.states),
           districts: feature(topo, topo.objects.districts),
         };
-        statesLayer = L.geoJSON(data.states, {
-          style: stateStyle,
-          onEachFeature: (feat, layer) => {
-            layer.on({
-              click: () => showState(feat.properties.st_nm),
-              mouseover: () => layer.setStyle(stateHover),
-              mouseout: () => statesLayer.resetStyle(layer),
-            });
-            layer.bindTooltip(feat.properties.st_nm, { sticky: true });
-          },
-        }).addTo(map);
+        // Karnataka only — boot straight into the state's district view.
+        showState(POLICE_STATE);
 
         buildHotspots();
         heatLayer.addTo(map);
@@ -547,24 +527,19 @@ export default function CrimeMap() {
       <div className="map-canvas">
         <div ref={containerRef} className="map-leaflet" />
 
-        {/* Floating drill-path — only while zoomed into a state/district, so
-            there's a way back out without a standalone "India" title. */}
+        {/* Floating drill-path — Karnataka is the root. */}
         {selectedState && (
           <nav className="map-loc" aria-label="Map location">
-            <button className="crumb" onClick={() => ctrlRef.current?.showIndia()}>
-              <Home size={13} /> India
-            </button>
-            <span className="crumb-sep">/</span>
             {selectedDistrict ? (
               <>
                 <button className="crumb" onClick={() => ctrlRef.current?.showState(selectedState)}>
-                  {selectedState}
+                  <Home size={13} /> {selectedState}
                 </button>
                 <span className="crumb-sep">/</span>
                 <span className="crumb active">{selectedDistrict}</span>
               </>
             ) : (
-              <span className="crumb active">{selectedState}</span>
+              <span className="crumb active"><Home size={13} /> {selectedState}</span>
             )}
           </nav>
         )}
@@ -684,9 +659,6 @@ export default function CrimeMap() {
           </aside>
         ) : selectedState ? (
           <aside className="map-info-panel">
-            <button className="map-info-close" onClick={() => ctrlRef.current?.showIndia()} aria-label="Close">
-              <X size={15} />
-            </button>
             <div className="map-info-name">{selectedState}</div>
             {info ? (
               <dl className="map-info-stats">
@@ -742,7 +714,7 @@ export default function CrimeMap() {
 
         {/* Controls */}
         <div className="map-controls">
-          {level !== 'india' && (
+          {level === 'district' && (
             <button className="map-ctrl map-ctrl-back" onClick={() => ctrlRef.current?.back()} title="Back (Esc)">
               <ArrowLeft size={16} /> <span>Back</span>
             </button>
@@ -762,11 +734,10 @@ export default function CrimeMap() {
           </button>
           <button className="map-ctrl" onClick={() => ctrlRef.current?.zoomIn()} title="Zoom in"><Plus size={16} /></button>
           <button className="map-ctrl" onClick={() => ctrlRef.current?.zoomOut()} title="Zoom out"><Minus size={16} /></button>
-          <button className="map-ctrl" onClick={() => ctrlRef.current?.showIndia()} title="Reset to India"><Maximize2 size={15} /></button>
+          <button className="map-ctrl" onClick={() => ctrlRef.current?.showIndia()} title="Reset to Karnataka"><Maximize2 size={15} /></button>
         </div>
 
         <div className="map-hint">
-          {level === 'india' && 'Click a state to outline & zoom in'}
           {level === 'state' && `${selectedState} · click a district to zoom`}
           {level === 'district' && `${selectedDistrict}, ${selectedState}`}
         </div>
