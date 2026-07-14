@@ -8,10 +8,9 @@ import {
   SHIFT_TYPES, LEGEND, mondayOf, mondayOfIso, shiftWeek, weekDays, weekRoster,
 } from '../utils/roster';
 import TopBar from '../components/TopBar';
-import RankInsignia from '../components/RankInsignia';
 import DateRangeCalendar from '../components/DateRangeCalendar';
 
-const PER_PAGE_OPTIONS = [5, 10, 15, 25];
+const PER_PAGE_OPTIONS = [5, 8, 15, 25];
 
 const hueOf = (id) => (Number(id) * 137) % 360;
 const initialsOf = (name) =>
@@ -45,7 +44,7 @@ export default function Roster() {
   const [district, setDistrict] = useState('All');
   const [rank, setRank] = useState('All');
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(5);
+  const [perPage, setPerPage] = useState(8);
   const [calOpen, setCalOpen] = useState(false);
   const calRef = useRef(null);
 
@@ -254,9 +253,8 @@ export default function Roster() {
                             </div>
                             <div className="pp-officer-id">
                               <span className="pp-officer-name">{o.name}</span>
-                              <span className="ro-officer-meta">
-                                <RankInsignia hierarchy={o.rankHierarchy} size={16} title={o.rank} />
-                                {o.rankAbbr} · {o.unit}
+                              <span className="ro-officer-meta" title={`${o.rank} — ${o.unit}`}>
+                                {o.rankAbbr} | {o.unit.replace(/ Police Station$/i, ' PS')}
                               </span>
                             </div>
                           </div>
