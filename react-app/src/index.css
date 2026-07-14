@@ -3764,13 +3764,24 @@ a:hover { color: var(--blue-500); }
   color: var(--text-3);
 }
 .ro-weeknav-btn:hover { background: var(--bg-3); color: var(--text-0); }
-.ro-weeknav-label {
-  min-width: 168px;
-  text-align: center;
+.ro-weekfield-wrap { position: relative; }
+.ro-weekfield {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-bright);
+  border-radius: 9px;
   font-size: 13px;
-  font-weight: 650;
-  color: var(--text-0);
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
 }
+.ro-weekfield:hover { border-color: var(--blue-500); }
+.ro-weekfield svg { color: var(--text-3); }
+.ro-cal-pop { left: 50%; right: auto; transform: translateX(-50%); }
 .ro-weeknav-today {
   margin-left: 2px;
   padding: 5px 10px;
@@ -3791,7 +3802,7 @@ a:hover { color: var(--blue-500); }
   color: var(--text-2);
 }
 .ro-legend-item { display: inline-flex; align-items: center; gap: 6px; }
-.ro-legend-dot { width: 9px; height: 9px; border-radius: 3px; }
+.ro-legend-dot { width: 4px; height: 14px; border-radius: 2px; background: var(--ro-line, var(--bg-4)); }
 .ro-legend-time { color: var(--text-4); font-size: 11px; }
 
 .ro-table thead th { text-align: center; padding: 10px 10px; }
@@ -3819,6 +3830,7 @@ a:hover { color: var(--blue-500); }
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  margin-top: 4px;
   font-size: 11px;
   color: var(--text-3);
   white-space: nowrap;
@@ -3827,33 +3839,35 @@ a:hover { color: var(--blue-500); }
   max-width: 200px;
 }
 
-/* Shift chips — soft colored blocks like the reference rosters */
+/* Shift cards — neutral, with a colored line on the left keyed to the shift
+   (the only color signal, per the scheduling-shifts reference design). */
 .ro-chip {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   gap: 1px;
-  min-width: 92px;
-  padding: 7px 8px;
-  border-radius: 8px;
-  line-height: 1.25;
+  min-width: 96px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--ro-line, var(--bg-4));
+  border-radius: 7px;
+  background: var(--bg-2);
+  line-height: 1.3;
+  text-align: left;
 }
-.ro-chip-label { font-size: 12px; font-weight: 600; }
-.ro-chip-time { font-size: 10.5px; opacity: 0.75; }
+.ro-chip-label { font-size: 12px; font-weight: 600; color: var(--text-0); }
+.ro-chip-time { font-size: 10.5px; color: var(--text-3); }
 
-.ro-morning   { background: rgba(217, 119, 6, 0.14);  color: var(--gold-dark); }
-.ro-evening   { background: rgba(5, 150, 105, 0.13);  color: var(--green); }
-.ro-night     { background: rgba(59, 130, 246, 0.15); color: var(--blue-600); }
-.ro-general   { background: rgba(124, 58, 237, 0.12); color: #7c3aed; }
-.ro-training  { background: rgba(8, 145, 178, 0.12);  color: #0891b2; }
-.ro-off       { background: var(--bg-3); color: var(--text-3); border: 1px dashed var(--border-bright); }
-.ro-leave     { background: rgba(217, 119, 6, 0.08);  color: var(--gold); border: 1px dashed rgba(217, 119, 6, 0.4); }
-.ro-suspended { background: rgba(220, 38, 38, 0.08);  color: var(--red); border: 1px dashed rgba(220, 38, 38, 0.4); }
-[data-theme="dark"] .ro-morning { color: var(--gold); }
-[data-theme="dark"] .ro-night { color: var(--blue-400); }
-[data-theme="dark"] .ro-general { color: #a78bfa; }
-[data-theme="dark"] .ro-training { color: #22d3ee; }
+.ro-morning   { --ro-line: #d97706; }
+.ro-evening   { --ro-line: #059669; }
+.ro-night     { --ro-line: #3b82f6; }
+.ro-general   { --ro-line: #7c3aed; }
+.ro-training  { --ro-line: #0891b2; }
+.ro-leave     { --ro-line: #dc2626; }
+.ro-off       { --ro-line: var(--bg-4); }
+.ro-off .ro-chip-label { color: var(--text-3); }
+.ro-leave .ro-chip-label { color: var(--red); }
 
 /* Drawer → roster shortcut */
 .pp-drawer-roster {

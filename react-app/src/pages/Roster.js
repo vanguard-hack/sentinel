@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  CalendarClock, Search, X, ChevronLeft, ChevronRight, RefreshCw, AlertTriangle,
+  CalendarClock, CalendarDays, Search, X, ChevronLeft, ChevronRight, RefreshCw, AlertTriangle,
 } from 'lucide-react';
 import { loadPersonnel } from '../utils/personnel';
 import {
-  SHIFT_TYPES, LEGEND, mondayOf, shiftWeek, weekDays, weekLabel, weekRoster,
+  SHIFT_TYPES, LEGEND, mondayOf, mondayOfIso, shiftWeek, weekDays, weekRoster,
 } from '../utils/roster';
 import TopBar from '../components/TopBar';
 import RankInsignia from '../components/RankInsignia';
+import DateRangeCalendar from '../components/DateRangeCalendar';
 
 const PER_PAGE = 15;
 
@@ -44,6 +45,22 @@ export default function Roster() {
   const [district, setDistrict] = useState('All');
   const [rank, setRank] = useState('All');
   const [page, setPage] = useState(1);
+  const [calOpen, setCalOpen] = useState(false);
+  const calRef = useRef(null);
+
+  useEffect(() => {
+    if (!calOpen) return undefined;
+    const onDown = (e) => {
+      if (calRef.current && !calRef.current.contains(e.target)) setCalOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setCalOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [calOpen]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -69,7 +86,8 @@ export default function Roster() {
   const officers = useMemo(() => data?.officers || [], [data]);
 
   const filtered = useMemo(() => {
-    let out = officers;
+    // Suspended officers are off the rolls — no roster shown for them.
+    let out = officers.filter((o) => o.status !== 'Suspended');
     if (district !== 'All') out = out.filter((o) => o.district === district);
     if (rank !== 'All') out = out.filter((o) => o.rankAbbr === rank);
     if (search) {
@@ -89,6 +107,7 @@ export default function Roster() {
 
   const days = weekDays(week);
   const todayIso = new Date().toISOString().slice(0, 10);
+  const ddmmyyyy = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
   return (
     <div className="cf-page">
@@ -105,7 +124,30 @@ export default function Roster() {
             >
               <ChevronLeft size={16} />
             </button>
-            <span className="ro-weeknav-label">{weekLabel(week)}</span>
+
+            <div className="ro-weekfield-wrap" ref={calRef}>
+              <button
+                className="ro-weekfield"
+                onClick={() => setCalOpen((o) => !o)}
+                aria-haspopup="dialog"
+                aria-expanded={calOpen}
+                title="Pick a week"
+              >
+                <span>{ddmmyyyy(week)} - {ddmmyyyy(days[6].iso)}</span>
+                <CalendarDays size={16} />
+              </button>
+
+              {calOpen && (
+                <div className="rp-cal-pop ro-cal-pop" role="dialog" aria-label="Pick a week">
+                  <DateRangeCalendar
+                    from={week}
+                    to={days[6].iso}
+                    onSelect={(f) => { setWeek(mondayOfIso(f)); setCalOpen(false); }}
+                  />
+                </div>
+              )}
+            </div>
+
             <button
               className="ro-weeknav-btn"
               onClick={() => setWeek((w) => shiftWeek(w, 1))}
