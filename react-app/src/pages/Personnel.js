@@ -13,7 +13,13 @@ const PER_PAGE_OPTIONS = [25, 50, 100];
 const hueOf = (id) => (Number(id) * 137) % 360;
 
 const initialsOf = (name) =>
-  String(name).split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+  String(name)
+    .split(' ')
+    .filter((w) => w && !/^dr\.?$/i.test(w))
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
 const fmtDate = (iso) => {
   const d = new Date(iso);

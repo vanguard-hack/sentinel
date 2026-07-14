@@ -167,16 +167,85 @@ def new_kgid():
             return k
 
 
-def gazetted(eid, district_id, rank_id):
-    gender = random.choices(['1', '2'], weights=[85, 15])[0]
+# Real Karnataka Police gazetted officers (public officials in public posts).
+# Sources: the app's curated policeHierarchy.js (built from stocklens.co.in +
+# IPS Civil List 2025 + district "Who's Who" pages) plus web checks 2026-07:
+# DGP tenure confirmed to Aug 2027; SP Vijayanagara and SP Bengaluru Urban
+# filled from district sites. Addl. SPs / DySPs aren't centrally published, so
+# those stay synthetic. Tuples: (rank_id, district_id, name, gender_id).
+REAL_SENIORS = [
+    (1, '4401', 'Dr. M. A. Saleem', '1'),            # DG&IGP, head of state police
+    (2, '4401', 'R. Hitendra', '1'),                 # ADGP Law & Order
+    (2, '4401', 'Harishekaran P.', '1'),             # ADGP Crime & Technical Services
+    (2, '4401', 'Soumendu Mukherjee', '1'),          # ADGP Administration
+    (2, '4401', 'S. Ravi', '1'),                     # ADGP KSRP
+    (2, '4401', 'B. Dayananda', '1'),                # ADGP Recruitment & Training
+    (2, '4401', 'Seemant Kumar Singh', '1'),         # CP Bengaluru City (ADGP rank)
+    (3, '4401', 'Dr. Chandragupta', '1'),            # IGP Intelligence
+    (3, '4403', 'Dr. M. B. Boralingaiah', '1'),      # IGP Southern Range (Mysuru)
+    (3, '4403', 'Seema Latkar', '2'),                # CP Mysuru City (IGP rank)
+    (3, '4412', 'Amit Singh', '1'),                  # IGP Western Range (Mangaluru)
+    (3, '4416', 'B. R. Ravikanthe Gowda', '1'),      # IGP Eastern Range (Davanagere)
+    (3, '4427', 'Dr. Chetan Singh Rathor', '1'),     # IGP Northern Range (Belagavi)
+    (3, '4422', 'Ajay Hilori', '1'),                 # IGP North Eastern Range (Kalaburagi)
+    (4, '4401', 'S. Girish', '1'),                   # DIGP Central Range
+    (4, '4418', 'Vartika Katiyar', '2'),             # DIGP Ballari Range
+    (4, '4412', 'Anupam Agrawal', '1'),              # CP Mangaluru City (DIG rank)
+    (4, '4427', 'B. B. Gulabrao', '1'),              # CP Belagavi City (DIG rank)
+    (4, '4428', 'N. Shashi Kumar', '1'),             # CP Hubballi-Dharwad City (DIG rank)
+    (4, '4422', 'Dr. Sharanappa S. D.', '1'),        # CP Kalaburagi City (DIG rank)
+]
+
+REAL_SP = {  # district_id: (name, gender_id)
+    '4401': ('C. K. Baba', '1'),
+    '4402': ('Chandrakanth M. V.', '1'),
+    '4403': ('Mallikarjun Baldandi', '1'),
+    '4404': ('Dr. Shobha Rani V. J.', '2'),
+    '4405': ('Shubhanwita', '2'),
+    '4406': ('Ashok K. V.', '1'),
+    '4407': ('Kanika Sikriwal', '2'),
+    '4408': ('Kushal Chouksey', '1'),
+    '4409': ('Srinivas Gowda R.', '1'),
+    '4410': ('Mutharaju M.', '1'),
+    '4411': ('Bindu Mani R. N.', '2'),
+    '4412': ('Dr. Arun K.', '1'),
+    '4413': ('Hariram Shankar', '1'),
+    '4414': ('Deepan M. N.', '1'),
+    '4415': ('Nikhil B.', '1'),
+    '4416': ('Shekhar H. Tekkannavar', '1'),
+    '4417': ('Ranjit Kumar Bandaru', '1'),
+    '4418': ('Pavan Nejjur', '1'),
+    '4419': ('S. Jahnavi', '2'),
+    '4420': ('Ram L. Arasiddi', '1'),
+    '4421': ('Arunangshu Giri', '1'),
+    '4422': ('Adduru Srinivasulu', '1'),
+    '4423': ('Pruthvik Shankar', '1'),
+    '4424': ('Pradeep Gunti', '1'),
+    '4425': ('Laxman B. Nimbargi', '1'),
+    '4426': ('Sidharth Goyal', '1'),
+    '4427': ('Ramarajan K.', '1'),
+    '4428': ('Gunjan Arya', '2'),
+    '4429': ('Rohan Jagadeesh', '1'),
+    '4430': ('Yashodha Vantagodi', '2'),
+    '4431': ('Jitendra Kumar Dayama', '1'),
+}
+
+
+def gazetted(eid, district_id, rank_id, name=None, gender=None):
+    if gender is None:
+        gender = random.choices(['1', '2'], weights=[85, 15])[0]
     # Senior ranks skew older: DGP ~b.1970, DySP ~b.1984.
     birth_year = 1968 + 2 * rank_id + random.randint(0, 3)
     dob = date(birth_year, 1, 1) + timedelta(days=random.randint(0, 364))
     appt = dob + timedelta(days=random.randint(22 * 365, 26 * 365))
+    if name is None:
+        name = unique_name(gender)
+    else:
+        used_names.add(name)
     return [
         eid, district_id, office_by_district[district_id], rank_id,
         6,  # DesignationID (unused for gazetted officers; kept for schema)
-        new_kgid(), unique_name(gender), dob.isoformat(), gender,
+        new_kgid(), name, dob.isoformat(), gender,
         random.randint(1, 8),
         'true' if random.random() < 0.02 else 'false',
         appt.isoformat(),
@@ -184,14 +253,16 @@ def gazetted(eid, district_id, rank_id):
 
 
 eid = 20001
-# State brass at HQ.
-for rank_id, count in [(1, 1), (2, 2), (3, 4), (4, 6)]:
-    for _ in range(count):
-        rows.append(gazetted(eid, BLR, rank_id))
-        eid += 1
-# District leadership: SP, Addl. SP and two DySPs each.
+# State and range seniors — real officers in their real posts.
+for rank_id, did, name, gender in REAL_SENIORS:
+    rows.append(gazetted(eid, did, rank_id, name, gender))
+    eid += 1
+# District leadership: the real SP, plus a synthetic Addl. SP and two DySPs.
 for did in districts:
-    for rank_id in (5, 6, 7, 7):
+    sp_name, sp_gender = REAL_SP.get(did, (None, None))
+    rows.append(gazetted(eid, did, 5, sp_name, sp_gender))
+    eid += 1
+    for rank_id in (6, 7, 7):
         rows.append(gazetted(eid, did, rank_id))
         eid += 1
 
