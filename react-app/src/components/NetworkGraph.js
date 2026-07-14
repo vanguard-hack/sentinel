@@ -11,7 +11,10 @@ const CAT = ['--rp-cat-0', '--rp-cat-1', '--rp-cat-2', '--rp-cat-3', '--rp-cat-4
 const MIN_K = 0.4;
 const MAX_K = 6;
 
-export default function NetworkGraph({ spec }) {
+// A zoom level `k` centred on the canvas midpoint.
+const viewAt = (k) => ({ k, tx: (W / 2) * (1 - k), ty: (H / 2) * (1 - k) });
+
+export default function NetworkGraph({ spec, initialZoom = 1 }) {
   const rawNodes = useMemo(() => (Array.isArray(spec?.nodes) ? spec.nodes : []), [spec]);
   const rawLinks = useMemo(() => (Array.isArray(spec?.links) ? spec.links : []), [spec]);
 
@@ -19,7 +22,7 @@ export default function NetworkGraph({ spec }) {
   const [sel, setSel] = useState(null);
   const [hover, setHover] = useState(null);
   const [drag, setDrag] = useState(null); // { i } node drag
-  const [view, setView] = useState({ k: 1, tx: 0, ty: 0 });
+  const [view, setView] = useState(() => viewAt(initialZoom));
   const svgRef = useRef(null);
   const sim = useRef({ nodes: [], links: [] });
   const viewRef = useRef(view);
@@ -216,7 +219,7 @@ export default function NetworkGraph({ spec }) {
         className={`net-svg ${focus != null ? 'focused' : ''}`}
         onMouseDown={panStart}
         onTouchStart={panStart}
-        onDoubleClick={() => setView({ k: 1, tx: 0, ty: 0 })}
+        onDoubleClick={() => setView(viewAt(initialZoom))}
       >
         <g transform={`translate(${tx},${ty}) scale(${k})`}>
           {model.links.map((l, i) => {

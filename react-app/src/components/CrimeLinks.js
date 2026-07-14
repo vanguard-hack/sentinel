@@ -140,7 +140,7 @@ export default function CrimeLinks() {
                     <span>{net.size} members · {net.edges.length} links · {net.caseIds.length} crimes · {net.district}{net.dateFrom ? ` · ${net.dateFrom} → ${net.dateTo}` : ''}</span>
                     {spec?.trimmed > 0 && <span className="cl-trim">graph shows top {spec.nodes.length} of {net.size} by connections</span>}
                   </div>
-                  <NetworkGraph spec={spec} />
+                  <NetworkGraph spec={spec} initialZoom={0.78} />
                 </>
               )}
             </div>
