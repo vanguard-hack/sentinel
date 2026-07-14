@@ -11,7 +11,7 @@ import TopBar from '../components/TopBar';
 import RankInsignia from '../components/RankInsignia';
 import DateRangeCalendar from '../components/DateRangeCalendar';
 
-const PER_PAGE = 15;
+const PER_PAGE_OPTIONS = [10, 15, 25, 50];
 
 const hueOf = (id) => (Number(id) * 137) % 360;
 const initialsOf = (name) =>
@@ -45,6 +45,7 @@ export default function Roster() {
   const [district, setDistrict] = useState('All');
   const [rank, setRank] = useState('All');
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
   const [calOpen, setCalOpen] = useState(false);
   const calRef = useRef(null);
 
@@ -81,7 +82,7 @@ export default function Roster() {
     return () => clearTimeout(id);
   }, [searchInput]);
 
-  useEffect(() => { setPage(1); }, [search, district, rank]);
+  useEffect(() => { setPage(1); }, [search, district, rank, perPage]);
 
   const officers = useMemo(() => data?.officers || [], [data]);
 
@@ -101,9 +102,9 @@ export default function Roster() {
     );
   }, [officers, district, rank, search]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const safePage = Math.min(page, totalPages);
-  const pageRows = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+  const pageRows = filtered.slice((safePage - 1) * perPage, safePage * perPage);
 
   const days = weekDays(week);
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -278,10 +279,18 @@ export default function Roster() {
         <div className="cf-pager">
           <span className="cf-pager-info">
             {filtered.length
-              ? `${((safePage - 1) * PER_PAGE + 1).toLocaleString()}–${((safePage - 1) * PER_PAGE + pageRows.length).toLocaleString()} of ${filtered.length.toLocaleString()} officers`
+              ? `${((safePage - 1) * perPage + 1).toLocaleString()}–${((safePage - 1) * perPage + pageRows.length).toLocaleString()} of ${filtered.length.toLocaleString()} officers`
               : loading ? '' : '0 officers'}
           </span>
           <div className="cf-pager-controls">
+            <select
+              className="cf-select pp-perpage"
+              value={perPage}
+              onChange={(e) => setPerPage(Number(e.target.value))}
+              title="Rows per page"
+            >
+              {PER_PAGE_OPTIONS.map((n) => <option key={n} value={n}>{n} / page</option>)}
+            </select>
             <button
               className="cf-page-btn"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
