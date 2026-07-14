@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster';
@@ -10,6 +11,7 @@ import {
   ArrowLeft, Home, Plus, Minus, Maximize2, Flame, Shield, X, Phone, Mail, ExternalLink, Layers,
 } from 'lucide-react';
 import { H, CRIME, STATE, DISTRICT, refreshAllData } from '../data/hierarchyStore';
+import { loadPersonnel } from '../utils/personnel';
 import TopBar from '../components/TopBar';
 
 const fmtN = (n) => (n == null ? '—' : n.toLocaleString('en-IN'));
@@ -28,6 +30,19 @@ const photoUrl = (p) => {
 };
 const officerInitials = (name) =>
   (name || '').replace(/,.*$/, '').split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || '—';
+
+// Station crews come from the Personnel data set (the Employee table). The
+// real-map stations carry no key into the synthetic Unit table, so each
+// station is bound to a station-house crew deterministically: a stable hash
+// of its KGIS id picks the unit, so the same station always shows the same
+// personnel. djb2 string hash.
+const stationHash = (s) => {
+  const str = String(s);
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+  return h;
+};
+const crewHue = (id) => (Number(id) * 137) % 360;
 
 // One officer line: avatar (photo or initials, click to enlarge) + role + name + contacts.
 function OfficerRow({ label, sub, officer, onOpenPhoto }) {
@@ -161,6 +176,36 @@ export default function CrimeMap() {
   const [policeCount, setPoliceCount] = useState(0);
   const [lightbox, setLightbox] = useState(null); // full-screen image URL
   const [dataReady, setDataReady] = useState('loading'); // 'loading' | 'ready' | 'error'
+  const navigate = useNavigate();
+
+  // Station-house crews, lazy-loaded from the Data Store the first time a
+  // station is selected: 'idle' | 'loading' | 'error' | { units: [...] }.
+  const [crews, setCrews] = useState('idle');
+  useEffect(() => {
+    if (!selectedStation || crews !== 'idle') return;
+    setCrews('loading');
+    loadPersonnel()
+      .then(({ officers }) => {
+        // Group station-house crews (subordinate ranks) by their unit.
+        const byUnit = new Map();
+        officers.forEach((o) => {
+          if (o.rankHierarchy < 8) return; // gazetted sit at district offices
+          if (!byUnit.has(o.unit)) byUnit.set(o.unit, []);
+          byUnit.get(o.unit).push(o);
+        });
+        const units = [...byUnit.values()].map((list) =>
+          list.sort((a, b) => a.rankHierarchy - b.rankHierarchy)
+        );
+        setCrews({ units });
+      })
+      .catch(() => setCrews('error'));
+  }, [selectedStation, crews]);
+
+  const stationCrew = useMemo(() => {
+    if (!selectedStation || typeof crews !== 'object' || !crews.units.length) return null;
+    const key = selectedStation.kgis || `${selectedStation.code}|${selectedStation.name}`;
+    return crews.units[stationHash(key) % crews.units.length];
+  }, [selectedStation, crews]);
 
   // All map data comes from the Stratus bucket (sole source). The map is gated on
   // this resolving, so every dataset is present before anything reads it.
@@ -251,7 +296,7 @@ export default function CrimeMap() {
     const selectStation = (marker, p, lat, lng) => {
       const k = marker._leaflet_id;
       const same = (s) => s && s._k === k;
-      setSelectedStation({ _k: k, name: p.name, code: p.code, dept: p.dept, lat, lng, image: marker._psImg, address: marker._psAddr });
+      setSelectedStation({ _k: k, name: p.name, code: p.code, dept: p.dept, kgis: p.kgis, lat, lng, image: marker._psImg, address: marker._psAddr });
 
       if (marker._psAddr === undefined) {
         fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`)
@@ -547,6 +592,31 @@ export default function CrimeMap() {
             <div className="ps-links">
               <a href={gmapsLink(selectedStation.lat, selectedStation.lng)} target="_blank" rel="noreferrer">Google Maps</a>
               <a href={panoLink(selectedStation.lat, selectedStation.lng)} target="_blank" rel="noreferrer">Street View</a>
+            </div>
+
+            {/* Station-house personnel (from the Employee table) */}
+            <div className="map-cmd">
+              <div className="map-cmd-title">Station personnel</div>
+              {crews === 'loading' && <div className="ps-crew-note">Loading personnel…</div>}
+              {crews === 'error' && <div className="ps-crew-note">Personnel unavailable.</div>}
+              {stationCrew && (
+                <div className="ps-crew">
+                  {stationCrew.map((o) => (
+                    <button
+                      key={o.id}
+                      className="ps-crew-row"
+                      onClick={() => navigate(`/personnel?q=${encodeURIComponent(o.name)}`)}
+                      title="Open in Personnel directory"
+                    >
+                      <span className="pp-avatar" style={{ width: 26, height: 26, fontSize: 10, '--pp-hue': crewHue(o.id) }}>
+                        {officerInitials(o.name)}
+                      </span>
+                      <span className="ps-crew-name">{o.name}</span>
+                      <span className="ps-crew-rank">{o.rankAbbr}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </aside>
         ) : selectedDistrict ? (

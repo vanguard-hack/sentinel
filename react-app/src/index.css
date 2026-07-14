@@ -3896,6 +3896,36 @@ a:hover { color: var(--blue-500); }
 .ro-off .ro-chip-label { color: var(--text-3); }
 .ro-leave .ro-chip-label { color: var(--red); }
 
+/* Crime map: station personnel list */
+.ps-crew { display: flex; flex-direction: column; gap: 2px; }
+.ps-crew-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 5px 6px;
+  border-radius: 8px;
+  text-align: left;
+}
+.ps-crew-row:hover { background: var(--hover-overlay); }
+.ps-crew-row .pp-avatar { flex-shrink: 0; }
+.ps-crew-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ps-crew-rank {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.ps-crew-note { font-size: 12px; color: var(--text-3); }
+
 /* Drawer → roster shortcut */
 .pp-drawer-roster {
   display: flex;

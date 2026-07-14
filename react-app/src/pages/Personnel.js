@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Users, Search, X, ChevronLeft, ChevronRight, RefreshCw, AlertTriangle,
   Mail, Phone, Droplets, CalendarDays, MapPin, BadgeCheck, Accessibility,
@@ -67,13 +67,14 @@ function OfficerAvatar({ officer, size = 34 }) {
 
 export default function Personnel() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const [data, setData] = useState(null); // { officers, districtOptions, rankOptions }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const [statusTab, setStatusTab] = useState('All');
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState(params.get('q') || '');
+  const [search, setSearch] = useState((params.get('q') || '').trim().toLowerCase());
   const [district, setDistrict] = useState('All');
   const [rank, setRank] = useState('All');
   const [sortKey, setSortKey] = useState('seniority');

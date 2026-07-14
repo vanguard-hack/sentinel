@@ -25,7 +25,6 @@ const NAV = [
       { to: '/personnel/roster', key: 'dutyRoster', label: 'Duty Roster' },
     ],
   },
-  { to: null, Icon: Shield, key: 'admin', soon: true },
 ];
 
 export default function Sidebar() {
