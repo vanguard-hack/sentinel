@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Network, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Network, RefreshCw, AlertTriangle, Plus, Minus, Maximize2 } from 'lucide-react';
 import { loadPersonnel } from '../utils/personnel';
 import TopBar from '../components/TopBar';
 import RankInsignia from '../components/RankInsignia';
@@ -54,6 +54,9 @@ export default function OrgChart() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [district, setDistrict] = useState('Bengaluru City');
+  const [zoom, setZoom] = useState(1);
+  const zoomBy = (dir) =>
+    setZoom((z) => Math.round(Math.min(1.6, Math.max(0.4, z + dir * 0.15)) * 100) / 100);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -148,6 +151,12 @@ export default function OrgChart() {
         </div>
 
         <div className="cf-table-wrap oc-wrap">
+          <div className="oc-zoom">
+            <button onClick={() => zoomBy(1)} title="Zoom in" aria-label="Zoom in"><Plus size={15} /></button>
+            <span className="oc-zoom-pct">{Math.round(zoom * 100)}%</span>
+            <button onClick={() => zoomBy(-1)} title="Zoom out" aria-label="Zoom out"><Minus size={15} /></button>
+            <button onClick={() => setZoom(1)} title="Reset zoom" aria-label="Reset zoom"><Maximize2 size={14} /></button>
+          </div>
           {error ? (
             <div className="cf-state cf-error">
               <AlertTriangle size={22} />
@@ -161,7 +170,7 @@ export default function OrgChart() {
             </div>
           ) : (
             <div className="oc-scroll">
-              <ul className="oc-tree">
+              <ul className="oc-tree" style={{ zoom }}>
                 <li>
                   {chart.dgp && (
                     <Card

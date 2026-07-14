@@ -3977,8 +3977,35 @@ a:hover { color: var(--blue-500); }
 
 /* ── Organisation chart ────────────────────────────────────────────────── */
 .oc-intro { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); font-weight: 550; }
-.oc-wrap { background: var(--bg-1); }
+.oc-wrap { background: var(--bg-1); position: relative; }
 .oc-scroll { overflow: auto; padding: 28px 20px 36px; }
+
+/* Floating zoom controls */
+.oc-zoom {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+}
+.oc-zoom button {
+  width: 27px;
+  height: 27px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  color: var(--text-2);
+}
+.oc-zoom button:hover { background: var(--bg-3); color: var(--text-0); }
+.oc-zoom-pct { min-width: 40px; text-align: center; font-size: 11.5px; font-weight: 600; color: var(--text-3); }
 
 /* Classic connector tree: each level is a flex row; ::before/::after draw the
    top rail + drop lines, with rounded outer corners for the smooth look. */
@@ -4022,15 +4049,17 @@ a:hover { color: var(--blue-500); }
   left: 50%;
   border-left: 1.5px solid var(--border-bright);
 }
-.oc-tree li:only-child::before, .oc-tree li:only-child::after { border-top: none; }
-.oc-tree li:only-child::after { left: 50%; }
-.oc-tree li:first-child::before { border-top: none; }
-.oc-tree li:last-child::after { border-left: none; }
-.oc-tree li:last-child::before {
+/* An only child continues the parent stub as one straight line — no rail,
+   no corner radius (it's both first- and last-child, so exclude it there). */
+.oc-tree li:only-child::before { display: none; }
+.oc-tree li:only-child::after { border-top: none; border-radius: 0; }
+.oc-tree li:first-child:not(:only-child)::before { border-top: none; }
+.oc-tree li:last-child:not(:only-child)::after { border-left: none; border-top: none; }
+.oc-tree li:last-child:not(:only-child)::before {
   border-right: 1.5px solid var(--border-bright);
   border-top-right-radius: 10px;
 }
-.oc-tree li:first-child::after { border-top-left-radius: 10px; }
+.oc-tree li:first-child:not(:only-child)::after { border-top-left-radius: 10px; }
 .oc-tree > li::before, .oc-tree > li::after { display: none; }
 
 /* Node cards */
