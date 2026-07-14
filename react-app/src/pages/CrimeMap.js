@@ -613,6 +613,15 @@ export default function CrimeMap() {
                       </span>
                       <span className="ps-crew-name">{o.name}</span>
                       <span className="ps-crew-rank">{o.rankAbbr}</span>
+                      <a
+                        className="ps-crew-call"
+                        href={`tel:${o.phone.replace(/\s+/g, '')}`}
+                        onClick={(e) => e.stopPropagation()}
+                        title={`Call ${o.name} (${o.phone})`}
+                        aria-label={`Call ${o.name}`}
+                      >
+                        <Phone size={13} />
+                      </a>
                     </button>
                   ))}
                 </div>

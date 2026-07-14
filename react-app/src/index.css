@@ -3924,6 +3924,17 @@ a:hover { color: var(--blue-500); }
   color: var(--text-3);
   white-space: nowrap;
 }
+.ps-crew-call {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  color: var(--text-3);
+}
+.ps-crew-call:hover { background: rgba(5, 150, 105, 0.12); color: var(--green); }
 .ps-crew-note { font-size: 12px; color: var(--text-3); }
 
 /* Drawer → roster shortcut */
