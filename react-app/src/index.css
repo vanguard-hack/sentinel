@@ -3131,7 +3131,7 @@ a:hover { color: var(--blue-500); }
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 10px 12px 10px 15px;
   border-radius: 10px;
   color: var(--text-2);
   font-size: 14px;
@@ -3143,10 +3143,11 @@ a:hover { color: var(--blue-500); }
 .sb-item-label { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; }
 .sb-item:hover:not(.soon):not(.active) { background: var(--bg-3); color: var(--text-0); }
 .sb-item.active {
-  background: var(--blue-glow);
+  background: rgba(59, 130, 246, 0.08);
   color: var(--blue-500);
   font-weight: 600;
 }
+[data-theme="dark"] .sb-item.active { background: rgba(59, 130, 246, 0.14); }
 .sb-item.active .sb-item-icon { color: var(--blue-500); }
 .sb-item.icononly { justify-content: center; }
 .sb-item.soon { opacity: 0.5; cursor: default; }
@@ -3715,21 +3716,35 @@ a:hover { color: var(--blue-500); }
 .rp-cal-apply:hover:not(:disabled) { background: var(--blue-600); }
 .rp-cal-apply:disabled { opacity: 0.5; cursor: default; }
 
-/* ── Sidebar sub-navigation (Personnel section) ────────────────────────── */
+/* ── Sidebar sub-navigation (Personnel section) ────────────────────────────
+   Tree design: a vertical guide line drops from the parent icon, with a
+   rounded elbow branching to each child. Active child = soft raised pill. */
 .sb-subnav {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin: 2px 0 4px;
-  padding-left: 30px;
+  margin: 2px 0 6px;
+  padding-left: 46px;
+}
+.sb-subnav::before {
+  content: '';
+  position: absolute;
+  left: 24px;
+  top: -4px;
+  bottom: 17px;
+  width: 1.5px;
+  border-radius: 1px;
+  background: var(--border-bright);
 }
 .sb-subitem {
   position: relative;
   display: flex;
   align-items: center;
-  padding: 6px 10px 6px 14px;
-  border-radius: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
   font-size: 12.5px;
+  font-weight: 500;
   color: var(--text-3);
   text-align: left;
   transition: background 0.12s, color 0.12s;
@@ -3737,18 +3752,23 @@ a:hover { color: var(--blue-500); }
 .sb-subitem::before {
   content: '';
   position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.6;
+  left: -22px;
+  top: calc(50% - 12px);
+  width: 15px;
+  height: 12px;
+  border-left: 1.5px solid var(--border-bright);
+  border-bottom: 1.5px solid var(--border-bright);
+  border-bottom-left-radius: 9px;
 }
-.sb-subitem:hover { background: var(--hover-overlay); color: var(--text-0); }
-.sb-subitem.active { background: var(--blue-glow); color: var(--blue-500); font-weight: 600; }
-[data-theme="dark"] .sb-subitem.active { color: var(--blue-400); }
+.sb-subitem:hover { color: var(--text-0); }
+.sb-subitem.active {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  color: var(--text-0);
+  font-weight: 600;
+}
+[data-theme="dark"] .sb-subitem.active { background: var(--bg-3); }
 
 /* ── Duty roster ───────────────────────────────────────────────────────── */
 .ro-weeknav {
