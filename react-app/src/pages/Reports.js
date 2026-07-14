@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { fetchReports, computeReport, buildTrend, TREND_RANGES, customLabel } from '../utils/reports';
 import { exportReportPdf } from '../utils/reportPdf';
+import DateRangeCalendar from '../components/DateRangeCalendar';
 import { BarList, Donut, TrendArea } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
 import TopBar from '../components/TopBar';
@@ -77,14 +78,14 @@ export default function Reports() {
   }, [calOpen]);
 
   const openCal = () => {
-    // Prefill with the active custom range, or a sensible last-12-months span.
-    const today = new Date().toISOString().slice(0, 10);
-    const yearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
-    setDraftFrom(customRange?.from || yearAgo);
-    setDraftTo(customRange?.to || today);
+    // Prefill with the active custom range; otherwise start empty.
+    setDraftFrom(customRange?.from || '');
+    setDraftTo(customRange?.to || '');
     setCalOpen((o) => !o);
   };
   const draftValid = draftFrom && draftTo && draftFrom <= draftTo;
+  const ddmmyyyy = (iso) =>
+    iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '';
 
   // The selected range filters every KPI and chart, computed client-side.
   const data = useMemo(
@@ -170,37 +171,32 @@ export default function Reports() {
 
               {calOpen && (
                 <div className="rp-cal-pop" role="dialog" aria-label="Custom date range">
-                  <div className="rp-cal-row">
-                    <label htmlFor="rp-cal-from">From</label>
-                    <input
-                      id="rp-cal-from"
-                      type="date"
-                      className="rp-cal-input"
-                      value={draftFrom}
-                      max={draftTo || undefined}
-                      onChange={(e) => setDraftFrom(e.target.value)}
-                    />
+                  <div className="rp-cal-inputs">
+                    <span className={`rp-cal-field ${draftFrom ? '' : 'placeholder'}`}>
+                      {ddmmyyyy(draftFrom) || 'From'}
+                    </span>
+                    <span className={`rp-cal-field ${draftTo ? '' : 'placeholder'}`}>
+                      {ddmmyyyy(draftTo) || 'dd/mm/yyyy'}
+                    </span>
                   </div>
-                  <div className="rp-cal-row">
-                    <label htmlFor="rp-cal-to">To</label>
-                    <input
-                      id="rp-cal-to"
-                      type="date"
-                      className="rp-cal-input"
-                      value={draftTo}
-                      min={draftFrom || undefined}
-                      onChange={(e) => setDraftTo(e.target.value)}
-                    />
-                  </div>
+
+                  <DateRangeCalendar
+                    from={draftFrom}
+                    to={draftTo}
+                    onSelect={(f, t) => { setDraftFrom(f); setDraftTo(t); }}
+                  />
+
                   <div className="rp-cal-actions">
-                    {customRange && (
-                      <button
-                        className="rp-cal-clear"
-                        onClick={() => { setCustomRange(null); setCalOpen(false); }}
-                      >
-                        Clear
-                      </button>
-                    )}
+                    <button
+                      className="rp-cal-clear"
+                      onClick={() => {
+                        setDraftFrom('');
+                        setDraftTo('');
+                        if (customRange) setCustomRange(null);
+                      }}
+                    >
+                      Clear
+                    </button>
                     <button
                       className="rp-cal-apply"
                       disabled={!draftValid}
