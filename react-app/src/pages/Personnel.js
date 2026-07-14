@@ -142,7 +142,7 @@ export default function Personnel() {
 
   return (
     <div className="cf-page">
-      <TopBar title="Personnel" subtitle="Police personnel directory" />
+      <TopBar title="Directory" parent="Personnel" />
 
       <div className="pp-body">
         {/* Toolbar */}

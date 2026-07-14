@@ -3370,7 +3370,7 @@ a:hover { color: var(--blue-500); }
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 18px 22px 14px;
+  padding: 18px 22px 4px;
 }
 
 .pp-toolbar {
@@ -3727,16 +3727,6 @@ a:hover { color: var(--blue-500); }
   margin: 2px 0 6px;
   padding-left: 46px;
 }
-.sb-subnav::before {
-  content: '';
-  position: absolute;
-  left: 24px;
-  top: -4px;
-  bottom: 17px;
-  width: 1.5px;
-  border-radius: 1px;
-  background: var(--border-bright);
-}
 .sb-subitem {
   position: relative;
   display: flex;
@@ -3749,17 +3739,22 @@ a:hover { color: var(--blue-500); }
   text-align: left;
   transition: background 0.12s, color 0.12s;
 }
+/* One continuous smooth stroke per child: a full-height rounded curve from
+   under the parent icon into the item. Stacked curves share the same x, so
+   together they read as a single flowing line. */
 .sb-subitem::before {
   content: '';
   position: absolute;
   left: -22px;
-  top: calc(50% - 12px);
-  width: 15px;
-  height: 12px;
+  width: 16px;
   border-left: 1.5px solid var(--border-bright);
   border-bottom: 1.5px solid var(--border-bright);
-  border-bottom-left-radius: 9px;
+  border-bottom-left-radius: 14px;
 }
+.sb-subitem:nth-child(1)::before { top: -8px;   height: calc(50% + 8px); }
+.sb-subitem:nth-child(2)::before { top: -44px;  height: calc(50% + 44px); }
+.sb-subitem:nth-child(3)::before { top: -80px;  height: calc(50% + 80px); }
+.sb-subitem:nth-child(4)::before { top: -116px; height: calc(50% + 116px); }
 .sb-subitem:hover { color: var(--text-0); }
 .sb-subitem.active {
   background: var(--bg-2);

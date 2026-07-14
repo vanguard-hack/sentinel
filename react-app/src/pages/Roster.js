@@ -111,7 +111,7 @@ export default function Roster() {
 
   return (
     <div className="cf-page">
-      <TopBar title="Duty Roster" subtitle="Weekly shift schedule" />
+      <TopBar title="Duty Roster" parent="Personnel" />
 
       <div className="pp-body">
         {/* Toolbar */}
