@@ -18,7 +18,7 @@ const NAV = [
   { to: '/ai-analytics', Icon: Brain, key: 'aiAnalytics' },
   { to: '/case-files', Icon: Database, key: 'caseFiles' },
   { to: '/assistant', Icon: MessageSquare, key: 'assistant' },
-  { to: null, Icon: Users, key: 'personnel', soon: true },
+  { to: '/personnel', Icon: Users, key: 'personnel' },
   { to: null, Icon: Shield, key: 'admin', soon: true },
 ];
 

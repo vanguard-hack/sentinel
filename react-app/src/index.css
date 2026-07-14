@@ -3354,3 +3354,230 @@ a:hover { color: var(--blue-500); }
 .app-main .db-page,
 .app-main .rp-page,
 .app-main .cf-page { min-height: auto; }
+
+/* ── Personnel directory ───────────────────────────────────────────────── */
+.pp-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 22px 14px;
+}
+
+.pp-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+/* Status tabs — pill segment, like the Case Files toolbar language. */
+.pp-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.pp-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 999px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.pp-tab:hover { color: var(--text-1); }
+.pp-tab.active { background: var(--blue-500); color: #fff; }
+.pp-tab-count {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  color: var(--text-3);
+}
+.pp-tab.active .pp-tab-count { background: rgba(255, 255, 255, 0.22); color: #fff; }
+
+.pp-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pp-search .cf-search-input { width: 230px; }
+
+/* Table cells */
+.pp-table tbody td:first-child {
+  color: var(--text-1);
+  font-family: var(--font);
+  font-size: 13px;
+}
+.pp-row { cursor: pointer; }
+
+.pp-avatar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: hsl(var(--pp-hue), 45%, 30%);
+  background: hsl(var(--pp-hue), 65%, 88%);
+}
+[data-theme="dark"] .pp-avatar {
+  color: hsl(var(--pp-hue), 60%, 82%);
+  background: hsl(var(--pp-hue), 32%, 26%);
+}
+
+.pp-officer { display: flex; align-items: center; gap: 11px; }
+.pp-officer-id { display: flex; flex-direction: column; line-height: 1.35; }
+.pp-officer-name { font-weight: 600; color: var(--text-0); }
+.pp-officer-kgid { font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); }
+
+.pp-rank {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--blue-glow);
+  color: var(--blue-500);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+[data-theme="dark"] .pp-rank { color: var(--blue-400); }
+
+.pp-unit, .pp-contact, .pp-service { display: flex; flex-direction: column; line-height: 1.4; }
+.pp-unit-district, .pp-contact-phone, .pp-service-since { font-size: 11.5px; color: var(--text-3); }
+
+.pp-blood {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--red);
+}
+
+.pp-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pp-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pp-status-active     { background: rgba(5, 150, 105, 0.12);  color: var(--green); }
+.pp-status-on-leave   { background: rgba(217, 119, 6, 0.12);  color: var(--gold); }
+.pp-status-training   { background: var(--blue-glow);         color: var(--blue-500); }
+.pp-status-suspended  { background: rgba(220, 38, 38, 0.12);  color: var(--red); }
+[data-theme="dark"] .pp-status-training { color: var(--blue-400); }
+
+/* Detail drawer */
+.pp-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(8, 12, 20, 0.45);
+}
+.pp-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  width: min(400px, 92vw);
+  background: var(--bg-1);
+  border-left: 1px solid var(--border);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.18);
+  padding: 22px;
+  overflow-y: auto;
+  animation: pp-slide-in 0.18s ease-out;
+}
+@keyframes pp-slide-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.pp-drawer-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--text-3);
+}
+.pp-drawer-close:hover { background: var(--bg-3); color: var(--text-0); }
+
+.pp-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-bottom: 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.pp-drawer-name { font-size: 18px; font-weight: 650; color: var(--text-0); margin-bottom: 4px; }
+.pp-drawer-head .pp-status { margin-left: auto; }
+
+.pp-drawer-grid { display: flex; flex-direction: column; gap: 4px; }
+.pp-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+}
+.pp-field:hover { background: var(--hover-overlay); }
+.pp-field > svg { flex-shrink: 0; margin-top: 3px; color: var(--text-4); }
+.pp-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.pp-field span { font-size: 13px; color: var(--text-1); word-break: break-word; }
+
+.pp-perpage { height: 30px; font-size: 12px; padding: 0 8px; margin-right: 8px; }
+
+/* Copy-to-clipboard affordance on email/phone — revealed on row/field hover. */
+.pp-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 6px;
+  border-radius: 5px;
+  color: var(--text-4);
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+  vertical-align: -5px;
+}
+.pp-row:hover .pp-copy,
+.pp-field:hover .pp-copy { opacity: 1; }
+.pp-copy:hover { background: var(--bg-3); color: var(--text-0); }
+.pp-copy.copied { opacity: 1; color: var(--green); }
+.pp-contact-line { display: inline-flex; align-items: center; }
+
+@media (max-width: 760px) {
+  .pp-body { padding: 14px 12px 10px; }
+  .pp-tabs { overflow-x: auto; max-width: 100%; }
+  .pp-search .cf-search-input { width: 160px; }
+}
