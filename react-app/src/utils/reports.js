@@ -55,12 +55,32 @@ export const TREND_RANGES = [
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const pad = (n) => String(n).padStart(2, '0');
 
+// A custom range is { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' } (inclusive).
+// Chart granularity scales with the span so the series stays readable.
+function customBucket(custom) {
+  const days =
+    (Date.parse(custom.to) - Date.parse(custom.from)) / 86400000 + 1;
+  if (days <= 45) return 'day';
+  if (days <= 200) return 'week';
+  if (days <= 1100) return 'month';
+  return 'year';
+}
+
+const fmtShort = (iso) =>
+  new Date(iso + 'T00:00:00Z').toLocaleDateString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+  });
+
+export const customLabel = (custom) =>
+  `${fmtShort(custom.from)} – ${fmtShort(custom.to)}`;
+
 // Build a [{ label, value }] series from raw 'YYYY-MM-DD' dates for a range.
 // All bucketing is done in UTC so the keys used when counting the dates and the
 // keys used when laying out the axis always agree (mixing local getDate() with
 // UTC toISOString() silently drops every count — that was the "Past year" bug).
-export function buildTrend(dates, rangeKey) {
+export function buildTrend(dates, rangeKey, custom) {
   const range = TREND_RANGES.find((r) => r.key === rangeKey) || TREND_RANGES[1];
+  const bucket = custom ? customBucket(custom) : range.bucket;
   const counts = new Map();
 
   const weekKey = (d) => {
@@ -69,9 +89,9 @@ export function buildTrend(dates, rangeKey) {
     return u.toISOString().slice(0, 10);
   };
   const key = (d) => {
-    if (range.bucket === 'day') return d.toISOString().slice(0, 10);
-    if (range.bucket === 'week') return weekKey(d);
-    if (range.bucket === 'month') return d.toISOString().slice(0, 7);
+    if (bucket === 'day') return d.toISOString().slice(0, 10);
+    if (bucket === 'week') return weekKey(d);
+    if (bucket === 'month') return d.toISOString().slice(0, 7);
     return String(d.getUTCFullYear());
   };
   dates.forEach((s) => {
@@ -79,42 +99,67 @@ export function buildTrend(dates, rangeKey) {
     if (!Number.isNaN(d.getTime())) counts.set(key(d), (counts.get(key(d)) || 0) + 1);
   });
 
-  const out = [];
+  // Axis window [start, end] in UTC days: the custom range verbatim, or the
+  // preset's span ending today.
   const now = new Date();
   const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  let start;
+  let end;
+  if (custom) {
+    start = new Date(custom.from + 'T00:00:00Z');
+    end = new Date(custom.to + 'T00:00:00Z');
+  } else {
+    end = today;
+    start = new Date(today);
+    if (bucket === 'day') {
+      start.setUTCDate(today.getUTCDate() - (range.days - 1));
+    } else if (bucket === 'week') {
+      start.setUTCDate(today.getUTCDate() - (Math.round((range.months * 52) / 12) - 1) * 7);
+    } else if (bucket === 'month') {
+      start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - (range.months - 1), 1));
+    } else {
+      start = new Date(Date.UTC(today.getUTCFullYear() - (range.years - 1), 0, 1));
+    }
+  }
 
-  if (range.bucket === 'day') {
-    for (let i = range.days - 1; i >= 0; i--) {
-      const d = new Date(today); d.setUTCDate(today.getUTCDate() - i);
-      const k = d.toISOString().slice(0, 10);
-      out.push({ label: `${d.getUTCDate()}/${d.getUTCMonth() + 1}`, value: counts.get(k) || 0 });
+  const out = [];
+  const dayLabel = (d) => `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
+  if (bucket === 'day') {
+    for (const d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+      out.push({ label: dayLabel(d), value: counts.get(d.toISOString().slice(0, 10)) || 0 });
     }
-  } else if (range.bucket === 'week') {
-    const weeks = Math.round((range.months * 52) / 12);
-    const monday = new Date(today);
-    monday.setUTCDate(today.getUTCDate() - ((today.getUTCDay() + 6) % 7));
-    for (let i = weeks - 1; i >= 0; i--) {
-      const d = new Date(monday); d.setUTCDate(monday.getUTCDate() - i * 7);
-      const k = d.toISOString().slice(0, 10);
-      out.push({ label: `${d.getUTCDate()}/${d.getUTCMonth() + 1}`, value: counts.get(k) || 0 });
+  } else if (bucket === 'week') {
+    const d = new Date(start);
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); // snap to Monday
+    for (; d <= end; d.setUTCDate(d.getUTCDate() + 7)) {
+      out.push({ label: dayLabel(d), value: counts.get(d.toISOString().slice(0, 10)) || 0 });
     }
-  } else if (range.bucket === 'month') {
-    for (let i = range.months - 1; i >= 0; i--) {
-      const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - i, 1));
+  } else if (bucket === 'month') {
+    for (
+      const d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+      d <= end;
+      d.setUTCMonth(d.getUTCMonth() + 1)
+    ) {
       const k = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`;
       out.push({ label: `${MON[d.getUTCMonth()]}${d.getUTCMonth() === 0 ? " '" + String(d.getUTCFullYear()).slice(2) : ''}`, value: counts.get(k) || 0 });
     }
   } else {
-    for (let i = range.years - 1; i >= 0; i--) {
-      const y = today.getUTCFullYear() - i;
+    for (let y = start.getUTCFullYear(); y <= end.getUTCFullYear(); y++) {
       out.push({ label: String(y), value: counts.get(String(y)) || 0 });
     }
   }
   return out;
 }
 
-// The [from, to) window (ms) a range covers, ending now.
-export function windowFor(rangeKey) {
+// The [from, to] window (ms) a range covers — the custom range verbatim
+// (inclusive of the whole `to` day), or the preset's span ending now.
+export function windowFor(rangeKey, custom) {
+  if (custom) {
+    return {
+      from: Date.parse(custom.from + 'T00:00:00Z'),
+      to: Date.parse(custom.to + 'T00:00:00Z') + 86399999,
+    };
+  }
   const range = TREND_RANGES.find((r) => r.key === rangeKey) || TREND_RANGES[1];
   const to = Date.now();
   return { from: to - range.windowDays * 86400000, to };
@@ -186,9 +231,9 @@ function capOther(arr, limit) {
   return rest > 0 ? [...head, { label: 'Other', value: rest }] : head;
 }
 
-export function computeReport(raw, masters, rangeKey) {
+export function computeReport(raw, masters, rangeKey, custom) {
   const { headName, statusName, unitName, unitDistrict, districtName, subHeadName } = masters;
-  const { from, to } = windowFor(rangeKey);
+  const { from, to } = windowFor(rangeKey, custom);
   const span = to - from;
 
   const wcases = raw.cases.filter((c) => Number.isFinite(c.ts) && c.ts >= from && c.ts <= to);
@@ -237,7 +282,9 @@ export function computeReport(raw, masters, rangeKey) {
 
   return {
     range: rangeKey,
-    rangeLabel: (TREND_RANGES.find((r) => r.key === rangeKey) || TREND_RANGES[1]).label,
+    rangeLabel: custom
+      ? customLabel(custom)
+      : (TREND_RANGES.find((r) => r.key === rangeKey) || TREND_RANGES[1]).label,
     kpis: {
       firs, accused, victims, arrests, chargesheets,
       chargesheetPct: firs ? (chargesheets / firs) * 100 : 0,

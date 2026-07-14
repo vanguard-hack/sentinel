@@ -4,7 +4,7 @@ import {
   FileText, Users, HeartPulse, PackageCheck, FolderOpen, Gavel,
   Flame, Siren, TrendingUp, TrendingDown, FileDown,
 } from 'lucide-react';
-import { fetchReports, computeReport, buildTrend, TREND_RANGES } from '../utils/reports';
+import { fetchReports, computeReport, buildTrend, TREND_RANGES, customLabel } from '../utils/reports';
 import { exportReportPdf } from '../utils/reportPdf';
 import { BarList, Donut, TrendArea } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
@@ -54,10 +54,42 @@ export default function Reports() {
   const [trendRange, setTrendRange] = useState('month');
   const contentRef = useRef(null);
 
+  // Custom date range: null = use the preset; { from, to } (YYYY-MM-DD,
+  // inclusive) overrides it for every KPI and chart.
+  const [customRange, setCustomRange] = useState(null);
+  const [calOpen, setCalOpen] = useState(false);
+  const [draftFrom, setDraftFrom] = useState('');
+  const [draftTo, setDraftTo] = useState('');
+  const calRef = useRef(null);
+
+  useEffect(() => {
+    if (!calOpen) return undefined;
+    const onDown = (e) => {
+      if (calRef.current && !calRef.current.contains(e.target)) setCalOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setCalOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [calOpen]);
+
+  const openCal = () => {
+    // Prefill with the active custom range, or a sensible last-12-months span.
+    const today = new Date().toISOString().slice(0, 10);
+    const yearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+    setDraftFrom(customRange?.from || yearAgo);
+    setDraftTo(customRange?.to || today);
+    setCalOpen((o) => !o);
+  };
+  const draftValid = draftFrom && draftTo && draftFrom <= draftTo;
+
   // The selected range filters every KPI and chart, computed client-side.
   const data = useMemo(
-    () => (bundle ? computeReport(bundle.raw, bundle.masters, trendRange) : null),
-    [bundle, trendRange]
+    () => (bundle ? computeReport(bundle.raw, bundle.masters, trendRange, customRange) : null),
+    [bundle, trendRange, customRange]
   );
 
   const exportPdf = useCallback(async () => {
@@ -74,10 +106,12 @@ export default function Reports() {
   }, [data, pdfBusy]);
 
   const trendSeries = useMemo(
-    () => (data?.caseDates ? buildTrend(data.caseDates, trendRange) : []),
-    [data, trendRange]
+    () => (data?.caseDates ? buildTrend(data.caseDates, trendRange, customRange) : []),
+    [data, trendRange, customRange]
   );
-  const trendLabelEvery = trendRange === 'day' ? 5 : trendRange === 'year' ? 4 : 1;
+  const trendLabelEvery = customRange
+    ? Math.max(1, Math.ceil(trendSeries.length / 14))
+    : trendRange === 'day' ? 5 : trendRange === 'year' ? 4 : 1;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -109,13 +143,78 @@ export default function Reports() {
           <div className="rp-hero-controls">
             <label className="rp-range" title="Trend granularity">
               <CalendarDays size={15} className="rp-range-icon" />
-              <select value={trendRange} onChange={(e) => setTrendRange(e.target.value)}>
+              <select
+                value={customRange ? '' : trendRange}
+                onChange={(e) => { setCustomRange(null); setTrendRange(e.target.value); }}
+              >
+                {customRange && <option value="">Custom</option>}
                 {TREND_RANGES.map((r) => (
                   <option key={r.key} value={r.key}>{r.label}</option>
                 ))}
               </select>
               <ChevronDown size={15} className="rp-range-caret" />
             </label>
+
+            {/* Custom date-range picker */}
+            <div className="rp-cal" ref={calRef}>
+              <button
+                className={`cf-icon-btn rp-cal-btn ${customRange ? 'active' : ''}`}
+                onClick={openCal}
+                title="Pick a custom date range"
+                aria-haspopup="dialog"
+                aria-expanded={calOpen}
+              >
+                <CalendarDays size={15} />
+                {customRange && <span className="rp-cal-label">{customLabel(customRange)}</span>}
+              </button>
+
+              {calOpen && (
+                <div className="rp-cal-pop" role="dialog" aria-label="Custom date range">
+                  <div className="rp-cal-row">
+                    <label htmlFor="rp-cal-from">From</label>
+                    <input
+                      id="rp-cal-from"
+                      type="date"
+                      className="rp-cal-input"
+                      value={draftFrom}
+                      max={draftTo || undefined}
+                      onChange={(e) => setDraftFrom(e.target.value)}
+                    />
+                  </div>
+                  <div className="rp-cal-row">
+                    <label htmlFor="rp-cal-to">To</label>
+                    <input
+                      id="rp-cal-to"
+                      type="date"
+                      className="rp-cal-input"
+                      value={draftTo}
+                      min={draftFrom || undefined}
+                      onChange={(e) => setDraftTo(e.target.value)}
+                    />
+                  </div>
+                  <div className="rp-cal-actions">
+                    {customRange && (
+                      <button
+                        className="rp-cal-clear"
+                        onClick={() => { setCustomRange(null); setCalOpen(false); }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                    <button
+                      className="rp-cal-apply"
+                      disabled={!draftValid}
+                      onClick={() => {
+                        setCustomRange({ from: draftFrom, to: draftTo });
+                        setCalOpen(false);
+                      }}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             <button
               className="cf-export-btn"
               onClick={exportPdf}
@@ -194,9 +293,7 @@ export default function Reports() {
             <section className="rp-card rp-card-wide">
               <div className="rp-card-head">
                 <h2>Crime trend</h2>
-                <span className="rp-card-sub">
-                  {TREND_RANGES.find((r) => r.key === trendRange)?.label} · cases registered
-                </span>
+                <span className="rp-card-sub">{data.rangeLabel} · cases registered</span>
               </div>
               <div className="rp-card-body">
                 <TrendArea data={trendSeries} labelEvery={trendLabelEvery} height={180} />

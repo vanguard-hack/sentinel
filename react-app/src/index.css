@@ -3581,3 +3581,80 @@ a:hover { color: var(--blue-500); }
   .pp-tabs { overflow-x: auto; max-width: 100%; }
   .pp-search .cf-search-input { width: 160px; }
 }
+
+/* ── Reports: custom date-range picker ─────────────────────────────────── */
+.rp-cal { position: relative; }
+.rp-cal-btn { width: auto; gap: 7px; padding: 0 10px; }
+.rp-cal-btn.active {
+  color: var(--blue-500);
+  border-color: var(--blue-500);
+  background: var(--blue-glow);
+}
+[data-theme="dark"] .rp-cal-btn.active { color: var(--blue-400); }
+.rp-cal-label { font-size: 12px; font-weight: 600; white-space: nowrap; }
+
+.rp-cal-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  min-width: 264px;
+  padding: 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-bright);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rp-cal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.rp-cal-row label {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.rp-cal-input {
+  height: 34px;
+  padding: 0 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  color: var(--text-1);
+  font-family: var(--font);
+  font-size: 13px;
+  color-scheme: light;
+}
+[data-theme="dark"] .rp-cal-input { color-scheme: dark; }
+.rp-cal-input:focus { outline: none; border-color: var(--blue-500); }
+
+.rp-cal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+.rp-cal-clear {
+  padding: 7px 12px;
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.rp-cal-clear:hover { background: var(--bg-3); color: var(--text-0); }
+.rp-cal-apply {
+  padding: 7px 16px;
+  border-radius: 8px;
+  background: var(--blue-500);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.rp-cal-apply:hover:not(:disabled) { background: var(--blue-600); }
+.rp-cal-apply:disabled { opacity: 0.5; cursor: default; }
