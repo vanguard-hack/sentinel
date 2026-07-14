@@ -23,6 +23,7 @@ const NAV = [
     children: [
       { to: '/personnel', key: 'personnelDirectory', label: 'Directory', exact: true },
       { to: '/personnel/roster', key: 'dutyRoster', label: 'Duty Roster' },
+      { to: '/personnel/org-chart', key: 'orgChart', label: 'Org Chart' },
     ],
   },
 ];

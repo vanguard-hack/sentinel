@@ -11,6 +11,7 @@ import Profile from './pages/Profile';
 import Incidents from './pages/Incidents';
 import Personnel from './pages/Personnel';
 import Roster from './pages/Roster';
+import OrgChart from './pages/OrgChart';
 import Sidebar from './components/Sidebar';
 import LoadingScreen from './components/LoadingScreen';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -37,6 +38,7 @@ function AppRoutes() {
               <Route path="/incidents" element={<Incidents />} />
               <Route path="/personnel" element={<Personnel />} />
               <Route path="/personnel/roster" element={<Roster />} />
+              <Route path="/personnel/org-chart" element={<OrgChart />} />
               <Route path="*" element={<Navigate to="/reports" replace />} />
             </Routes>
           </div>

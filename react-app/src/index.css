@@ -3974,3 +3974,111 @@ a:hover { color: var(--blue-500); }
   font-weight: 600;
 }
 .pp-drawer-roster:hover { background: var(--blue-600); }
+
+/* ── Organisation chart ────────────────────────────────────────────────── */
+.oc-intro { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); font-weight: 550; }
+.oc-wrap { background: var(--bg-1); }
+.oc-scroll { overflow: auto; padding: 28px 20px 36px; }
+
+/* Classic connector tree: each level is a flex row; ::before/::after draw the
+   top rail + drop lines, with rounded outer corners for the smooth look. */
+.oc-tree, .oc-tree ul {
+  display: flex;
+  justify-content: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.oc-tree ul { padding-top: 26px; position: relative; }
+/* stub from a parent card down to its children's rail */
+.oc-tree ul::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 1.5px;
+  height: 26px;
+  background: var(--border-bright);
+}
+.oc-tree li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding: 26px 9px 0;
+}
+.oc-tree > li { padding-top: 0; }
+.oc-tree li::before, .oc-tree li::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: 26px;
+  border-top: 1.5px solid var(--border-bright);
+}
+.oc-tree li::after {
+  right: auto;
+  left: 50%;
+  border-left: 1.5px solid var(--border-bright);
+}
+.oc-tree li:only-child::before, .oc-tree li:only-child::after { border-top: none; }
+.oc-tree li:only-child::after { left: 50%; }
+.oc-tree li:first-child::before { border-top: none; }
+.oc-tree li:last-child::after { border-left: none; }
+.oc-tree li:last-child::before {
+  border-right: 1.5px solid var(--border-bright);
+  border-top-right-radius: 10px;
+}
+.oc-tree li:first-child::after { border-top-left-radius: 10px; }
+.oc-tree > li::before, .oc-tree > li::after { display: none; }
+
+/* Node cards */
+.oc-card {
+  min-width: 172px;
+  max-width: 210px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 10px;
+  box-shadow: var(--shadow-card);
+}
+.oc-root-card { border-color: var(--blue-500); box-shadow: 0 2px 12px var(--blue-glow); }
+.oc-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border);
+}
+.oc-card-title {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.oc-officer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 4px;
+  border-radius: 7px;
+  text-align: left;
+}
+.oc-officer:hover { background: var(--hover-overlay); }
+.oc-officer-id { min-width: 0; display: flex; flex-direction: column; }
+.oc-officer-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.oc-officer-rank { font-size: 10.5px; color: var(--text-3); }
