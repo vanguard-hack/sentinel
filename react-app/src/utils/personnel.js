@@ -19,6 +19,12 @@ const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 const GENDERS = { 1: 'Male', 2: 'Female' };
 
+// Display abbreviation per Rank.Hierarchy (1 = DGP … 12 = PC).
+export const RANK_ABBR = {
+  1: 'DGP', 2: 'ADGP', 3: 'IGP', 4: 'DIGP', 5: 'SP', 6: 'Addl. SP',
+  7: 'DySP', 8: 'PI', 9: 'PSI', 10: 'ASI', 11: 'HC', 12: 'PC',
+};
+
 // mulberry32 — tiny seeded PRNG so derived fields are stable per officer.
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -106,6 +112,7 @@ export async function loadPersonnel() {
       name: e.FirstName || '—',
       kgid: e.KGID || '—',
       rank: rank?.RankName || `Rank ${e.RankID}`,
+      rankAbbr: RANK_ABBR[Number(rank?.Hierarchy)] || rank?.RankName || `Rank ${e.RankID}`,
       rankHierarchy: Number(rank?.Hierarchy ?? 99),
       unit: unit?.UnitName || `Unit ${e.UnitID}`,
       district: district?.DistrictName || `District ${e.DistrictID}`,
@@ -126,9 +133,9 @@ export async function loadPersonnel() {
 
   // Filter options, in a sensible display order.
   const districtOptions = [...new Set(officers.map((o) => o.district))].sort();
-  const rankOptions = [...new Map(officers.map((o) => [o.rank, o.rankHierarchy]))]
+  const rankOptions = [...new Map(officers.map((o) => [o.rankAbbr, o.rankHierarchy]))]
     .sort((a, b) => a[1] - b[1])
-    .map(([name]) => name);
+    .map(([abbr]) => abbr);
 
   return { officers, districtOptions, rankOptions };
 }

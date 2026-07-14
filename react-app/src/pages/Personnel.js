@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { loadPersonnel, SORTS, STATUSES } from '../utils/personnel';
 import TopBar from '../components/TopBar';
+import RankInsignia from '../components/RankInsignia';
 
 const PER_PAGE_OPTIONS = [25, 50, 100];
 
@@ -121,10 +122,10 @@ export default function Personnel() {
     let out = officers;
     if (statusTab !== 'All') out = out.filter((o) => o.status === statusTab);
     if (district !== 'All') out = out.filter((o) => o.district === district);
-    if (rank !== 'All') out = out.filter((o) => o.rank === rank);
+    if (rank !== 'All') out = out.filter((o) => o.rankAbbr === rank);
     if (search) {
       out = out.filter((o) =>
-        [o.name, o.kgid, o.email, o.phone, o.unit, o.district, o.rank]
+        [o.name, o.kgid, o.email, o.phone, o.unit, o.district, o.rank, o.rankAbbr]
           .some((v) => String(v).toLowerCase().includes(search))
       );
     }
@@ -239,7 +240,12 @@ export default function Personnel() {
                           </div>
                         </div>
                       </td>
-                      <td><span className="pp-rank">{o.rank}</span></td>
+                      <td>
+                        <span className="pp-rank" title={o.rank}>
+                          <RankInsignia hierarchy={o.rankHierarchy} size={24} title={o.rank} />
+                          {o.rankAbbr}
+                        </span>
+                      </td>
                       <td>
                         <div className="pp-unit">
                           <span className="pp-unit-name">{o.unit}</span>
@@ -322,7 +328,10 @@ export default function Personnel() {
               <OfficerAvatar officer={selected} size={64} />
               <div>
                 <h2 className="pp-drawer-name">{selected.name}</h2>
-                <span className="pp-rank">{selected.rank}</span>
+                <span className="pp-rank" title={selected.rank}>
+                  <RankInsignia hierarchy={selected.rankHierarchy} size={28} title={selected.rank} />
+                  {selected.rankAbbr}
+                </span>
               </div>
               <span className={statusClass(selected.status)}>{selected.status}</span>
             </div>
