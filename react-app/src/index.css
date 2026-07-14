@@ -1139,7 +1139,7 @@ a:hover { color: var(--blue-500); }
 }
 .cf-select {
   height: 36px;
-  padding: 0 12px;
+  padding: 0 34px 0 12px;
   background: var(--bg-1);
   border: 1px solid var(--border-bright);
   border-radius: 10px;
@@ -1147,6 +1147,12 @@ a:hover { color: var(--blue-500); }
   font-family: var(--font);
   font-size: 13px;
   cursor: pointer;
+  /* Custom chevron so the arrow sits comfortably inside the border. */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
 }
 .cf-select:focus { outline: none; border-color: var(--blue-500); }
 
@@ -3782,17 +3788,6 @@ a:hover { color: var(--blue-500); }
 .ro-weekfield:hover { border-color: var(--blue-500); }
 .ro-weekfield svg { color: var(--text-3); }
 .ro-cal-pop { left: 50%; right: auto; transform: translateX(-50%); }
-.ro-weeknav-today {
-  margin-left: 2px;
-  padding: 5px 10px;
-  border-radius: 8px;
-  background: var(--blue-glow);
-  color: var(--blue-500);
-  font-size: 12px;
-  font-weight: 600;
-}
-[data-theme="dark"] .ro-weeknav-today { color: var(--blue-400); }
-
 .ro-legend {
   display: flex;
   flex-wrap: wrap;
@@ -3812,6 +3807,10 @@ a:hover { color: var(--blue-500); }
 .ro-table tbody td { padding: 4px 4px; text-align: center; }
 .ro-table thead th:not(.ro-officer-col) { min-width: 132px; }
 .ro-table td.ro-today, .ro-table th.ro-today { background: var(--blue-glow); }
+.ro-table th.ro-today .ro-dow { color: var(--blue-500); }
+[data-theme="dark"] .ro-table th.ro-today .ro-dow { color: var(--blue-400); }
+/* Carry the highlight through the cards so the whole column reads as today. */
+.ro-table td.ro-today .ro-chip:not(.ro-off) { background: var(--blue-glow); border-color: rgba(59, 130, 246, 0.35); }
 .ro-table tbody tr:hover td { background: var(--hover-overlay); }
 .ro-table tbody tr:hover td.ro-today { background: var(--blue-glow); }
 

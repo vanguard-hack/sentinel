@@ -10,7 +10,7 @@ import {
 import TopBar from '../components/TopBar';
 import DateRangeCalendar from '../components/DateRangeCalendar';
 
-const PER_PAGE_OPTIONS = [5, 8, 15, 25];
+const PER_PAGE_OPTIONS = [5, 7, 10, 15];
 
 const hueOf = (id) => (Number(id) * 137) % 360;
 const initialsOf = (name) =>
@@ -44,7 +44,7 @@ export default function Roster() {
   const [district, setDistrict] = useState('All');
   const [rank, setRank] = useState('All');
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(8);
+  const [perPage, setPerPage] = useState(7);
   const [calOpen, setCalOpen] = useState(false);
   const calRef = useRef(null);
 
@@ -155,11 +155,6 @@ export default function Roster() {
             >
               <ChevronRight size={16} />
             </button>
-            {week !== mondayOf() && (
-              <button className="ro-weeknav-today" onClick={() => setWeek(mondayOf())}>
-                This week
-              </button>
-            )}
           </div>
 
           <div className="pp-controls">
