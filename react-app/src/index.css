@@ -3735,6 +3735,7 @@ a:hover { color: var(--blue-500); }
   border-radius: 9px;
   font-size: 12.5px;
   font-weight: 500;
+  line-height: 20px; /* fixed row pitch so the stacked curves align exactly */
   color: var(--text-3);
   text-align: left;
   transition: background 0.12s, color 0.12s;
@@ -3758,8 +3759,9 @@ a:hover { color: var(--blue-500); }
 .sb-subitem:hover { color: var(--text-0); }
 .sb-subitem.active {
   background: var(--bg-2);
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  /* inset ring instead of a border — a real border would shift the
+     ::before connector origin and break the curve overlap */
+  box-shadow: inset 0 0 0 1px var(--border), 0 1px 4px rgba(0, 0, 0, 0.06);
   color: var(--text-0);
   font-weight: 600;
 }
