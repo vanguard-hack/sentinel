@@ -3908,6 +3908,7 @@ a:hover { color: var(--blue-500); }
   text-align: left;
 }
 .ps-crew-row:hover { background: var(--hover-overlay); }
+.ps-crew-row { cursor: pointer; user-select: none; }
 .ps-crew-row .pp-avatar { flex-shrink: 0; }
 .ps-crew-name {
   flex: 1;

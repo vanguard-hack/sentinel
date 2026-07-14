@@ -602,10 +602,15 @@ export default function CrimeMap() {
               {stationCrew && (
                 <div className="ps-crew">
                   {stationCrew.map((o) => (
-                    <button
+                    <div
                       key={o.id}
                       className="ps-crew-row"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => navigate(`/personnel?q=${encodeURIComponent(o.name)}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') navigate(`/personnel?q=${encodeURIComponent(o.name)}`);
+                      }}
                       title="Open in Personnel directory"
                     >
                       <span className="pp-avatar" style={{ width: 26, height: 26, fontSize: 10, '--pp-hue': crewHue(o.id) }}>
@@ -622,7 +627,7 @@ export default function CrimeMap() {
                       >
                         <Phone size={13} />
                       </a>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}
