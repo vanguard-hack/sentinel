@@ -26,7 +26,7 @@ export const RANK_ABBR = {
 };
 
 // mulberry32 — tiny seeded PRNG so derived fields are stable per officer.
-function mulberry32(seed) {
+export function mulberry32(seed) {
   let a = seed >>> 0;
   return () => {
     a |= 0; a = (a + 0x6d2b79f5) | 0;

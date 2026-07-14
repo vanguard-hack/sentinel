@@ -10,6 +10,7 @@ import AIAnalytics from './pages/AIAnalytics';
 import Profile from './pages/Profile';
 import Incidents from './pages/Incidents';
 import Personnel from './pages/Personnel';
+import Roster from './pages/Roster';
 import Sidebar from './components/Sidebar';
 import LoadingScreen from './components/LoadingScreen';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -35,6 +36,7 @@ function AppRoutes() {
               <Route path="/profile" element={<Profile />} />
               <Route path="/incidents" element={<Incidents />} />
               <Route path="/personnel" element={<Personnel />} />
+              <Route path="/personnel/roster" element={<Roster />} />
               <Route path="*" element={<Navigate to="/reports" replace />} />
             </Routes>
           </div>

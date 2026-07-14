@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Users, Search, X, ChevronLeft, ChevronRight, RefreshCw, AlertTriangle,
   Mail, Phone, Droplets, CalendarDays, MapPin, BadgeCheck, Accessibility,
-  Copy, Check,
+  Copy, Check, CalendarClock,
 } from 'lucide-react';
 import { loadPersonnel, SORTS, STATUSES } from '../utils/personnel';
 import TopBar from '../components/TopBar';
@@ -65,6 +66,7 @@ function OfficerAvatar({ officer, size = 34 }) {
 }
 
 export default function Personnel() {
+  const navigate = useNavigate();
   const [data, setData] = useState(null); // { officers, districtOptions, rankOptions }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -391,6 +393,13 @@ export default function Personnel() {
                 </div>
               )}
             </div>
+
+            <button
+              className="pp-drawer-roster"
+              onClick={() => navigate(`/personnel/roster?q=${encodeURIComponent(selected.name)}`)}
+            >
+              <CalendarClock size={15} /> View duty roster
+            </button>
           </aside>
         </>
       )}

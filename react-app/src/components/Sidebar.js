@@ -18,7 +18,13 @@ const NAV = [
   { to: '/ai-analytics', Icon: Brain, key: 'aiAnalytics' },
   { to: '/case-files', Icon: Database, key: 'caseFiles' },
   { to: '/assistant', Icon: MessageSquare, key: 'assistant' },
-  { to: '/personnel', Icon: Users, key: 'personnel' },
+  {
+    to: '/personnel', Icon: Users, key: 'personnel',
+    children: [
+      { to: '/personnel', key: 'personnelDirectory', label: 'Directory', exact: true },
+      { to: '/personnel/roster', key: 'dutyRoster', label: 'Duty Roster' },
+    ],
+  },
   { to: null, Icon: Shield, key: 'admin', soon: true },
 ];
 
@@ -83,18 +89,40 @@ export default function Sidebar() {
 
         <nav className="sb-nav">
           {NAV.map((item) => {
-            const active = item.to && pathname.startsWith(item.to);
+            const sectionActive = item.to && pathname.startsWith(item.to);
+            // When a section's children are visible, the active child carries
+            // the highlight; the parent only lights up in the collapsed rail.
+            const active = item.children ? sectionActive && collapsed : sectionActive;
             return (
-              <button
-                key={item.key}
-                className={`sb-item ${active ? 'active' : ''} ${item.soon ? 'soon' : ''}`}
-                onClick={() => go(item)}
-                title={collapsed ? labelFor(item) : undefined}
-                disabled={item.soon}
-              >
-                <item.Icon size={19} strokeWidth={1.8} className="sb-item-icon" />
-                <span className="sb-item-label">{labelFor(item)}</span>
-              </button>
+              <React.Fragment key={item.key}>
+                <button
+                  className={`sb-item ${active ? 'active' : ''} ${item.soon ? 'soon' : ''}`}
+                  onClick={() => go(item)}
+                  title={collapsed ? labelFor(item) : undefined}
+                  disabled={item.soon}
+                >
+                  <item.Icon size={19} strokeWidth={1.8} className="sb-item-icon" />
+                  <span className="sb-item-label">{labelFor(item)}</span>
+                </button>
+                {item.children && !collapsed && sectionActive && (
+                  <div className="sb-subnav">
+                    {item.children.map((c) => {
+                      const childActive = c.exact
+                        ? pathname === c.to
+                        : pathname.startsWith(c.to);
+                      return (
+                        <button
+                          key={c.key}
+                          className={`sb-subitem ${childActive ? 'active' : ''}`}
+                          onClick={() => go(c)}
+                        >
+                          {c.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </React.Fragment>
             );
           })}
         </nav>

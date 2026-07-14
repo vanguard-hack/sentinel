@@ -3708,3 +3708,166 @@ a:hover { color: var(--blue-500); }
 }
 .rp-cal-apply:hover:not(:disabled) { background: var(--blue-600); }
 .rp-cal-apply:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Sidebar sub-navigation (Personnel section) ────────────────────────── */
+.sb-subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 4px;
+  padding-left: 30px;
+}
+.sb-subitem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px 6px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--text-3);
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+}
+.sb-subitem::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+}
+.sb-subitem:hover { background: var(--hover-overlay); color: var(--text-0); }
+.sb-subitem.active { background: var(--blue-glow); color: var(--blue-500); font-weight: 600; }
+[data-theme="dark"] .sb-subitem.active { color: var(--blue-400); }
+
+/* ── Duty roster ───────────────────────────────────────────────────────── */
+.ro-weeknav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.ro-weeknav-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--text-3);
+}
+.ro-weeknav-btn:hover { background: var(--bg-3); color: var(--text-0); }
+.ro-weeknav-label {
+  min-width: 168px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-0);
+}
+.ro-weeknav-today {
+  margin-left: 2px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--blue-glow);
+  color: var(--blue-500);
+  font-size: 12px;
+  font-weight: 600;
+}
+[data-theme="dark"] .ro-weeknav-today { color: var(--blue-400); }
+
+.ro-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.ro-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.ro-legend-dot { width: 9px; height: 9px; border-radius: 3px; }
+.ro-legend-time { color: var(--text-4); font-size: 11px; }
+
+.ro-table thead th { text-align: center; padding: 10px 10px; }
+.ro-table thead th.ro-officer-col { text-align: left; }
+.ro-table .ro-dow { display: block; font-size: 12px; font-weight: 650; color: var(--text-1); }
+.ro-table .ro-date { display: block; font-size: 11px; color: var(--text-4); font-weight: 500; }
+.ro-table tbody td { padding: 8px 6px; text-align: center; }
+.ro-table td.ro-today, .ro-table th.ro-today { background: var(--blue-glow); }
+.ro-table tbody tr:hover td { background: var(--hover-overlay); }
+.ro-table tbody tr:hover td.ro-today { background: var(--blue-glow); }
+
+/* Sticky officer column */
+.ro-officer-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 230px;
+  max-width: 260px;
+  background: var(--bg-1);
+  text-align: left !important;
+}
+.ro-table thead th.ro-officer-col { z-index: 3; background: var(--bg-2); }
+.ro-table tbody tr:hover td.ro-officer-col { background: var(--bg-2); }
+.ro-officer-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* Shift chips — soft colored blocks like the reference rosters */
+.ro-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 92px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  line-height: 1.25;
+}
+.ro-chip-label { font-size: 12px; font-weight: 600; }
+.ro-chip-time { font-size: 10.5px; opacity: 0.75; }
+
+.ro-morning   { background: rgba(217, 119, 6, 0.14);  color: var(--gold-dark); }
+.ro-evening   { background: rgba(5, 150, 105, 0.13);  color: var(--green); }
+.ro-night     { background: rgba(59, 130, 246, 0.15); color: var(--blue-600); }
+.ro-general   { background: rgba(124, 58, 237, 0.12); color: #7c3aed; }
+.ro-training  { background: rgba(8, 145, 178, 0.12);  color: #0891b2; }
+.ro-off       { background: var(--bg-3); color: var(--text-3); border: 1px dashed var(--border-bright); }
+.ro-leave     { background: rgba(217, 119, 6, 0.08);  color: var(--gold); border: 1px dashed rgba(217, 119, 6, 0.4); }
+.ro-suspended { background: rgba(220, 38, 38, 0.08);  color: var(--red); border: 1px dashed rgba(220, 38, 38, 0.4); }
+[data-theme="dark"] .ro-morning { color: var(--gold); }
+[data-theme="dark"] .ro-night { color: var(--blue-400); }
+[data-theme="dark"] .ro-general { color: #a78bfa; }
+[data-theme="dark"] .ro-training { color: #22d3ee; }
+
+/* Drawer → roster shortcut */
+.pp-drawer-roster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 16px;
+  padding: 10px;
+  border-radius: 9px;
+  background: var(--blue-500);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.pp-drawer-roster:hover { background: var(--blue-600); }
