@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Plus, MessageSquare, Trash2,
-  Paperclip, Mic, ArrowUp, X, Bot, FileText, PanelLeft,
+  Paperclip, Mic, ArrowUp, X, Shield, FileText, PanelLeft,
   Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, MoreVertical,
   Star, Pencil, FileDown, CheckSquare,
 } from 'lucide-react';
@@ -581,7 +581,7 @@ export default function Assistant() {
           <div className="as-thread" ref={threadRef}>
             {messages.length === 0 && !sending ? (
               <div className="as-greeting">
-                <Bot size={40} strokeWidth={1.3} />
+                <Shield size={40} strokeWidth={1.3} />
                 <h1>How can I help?</h1>
                 <p>Ask a question, attach a file, or use the mic to speak.</p>
                 <div className="as-suggestions">
@@ -597,7 +597,7 @@ export default function Assistant() {
                 {messages.map((m) => (
                   <div key={m.id} className={`as-msg as-msg-${m.role}`}>
                     <div className="as-avatar">
-                      {m.role === 'user' ? <Avatar user={user} size={28} /> : <Bot size={16} />}
+                      {m.role === 'user' ? <Avatar user={user} size={30} /> : <Shield size={16} />}
                     </div>
                     <div className="as-msg-body">
                       {m.files && m.files.length > 0 && (
@@ -654,7 +654,7 @@ export default function Assistant() {
                 ))}
                 {sending && (
                   <div className="as-msg as-msg-assistant">
-                    <div className="as-avatar"><Bot size={16} /></div>
+                    <div className="as-avatar"><Shield size={16} /></div>
                     <div className="as-msg-body">
                       <Thinking />
                     </div>

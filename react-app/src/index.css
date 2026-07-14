@@ -1902,7 +1902,9 @@ a:hover { color: var(--blue-500); }
   font-weight: 700;
   color: #fff;
 }
-.as-msg-user .as-avatar { background: var(--text-3); }
+/* User bubble: the initials avatar fills the whole tile — no ring/gap. */
+.as-msg-user .as-avatar { background: none; overflow: hidden; }
+.as-avatar .avatar { width: 100%; height: 100%; border-radius: inherit; }
 .as-msg-assistant .as-avatar { background: var(--blue-500); }
 .as-msg-body { flex: 1; min-width: 0; padding-top: 4px; }
 .as-msg-text { color: var(--text-1); font-size: 14.5px; line-height: 1.65; white-space: pre-wrap; word-wrap: break-word; }
@@ -2773,7 +2775,6 @@ a:hover { color: var(--blue-500); }
 }
 .avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .avatar-initials { user-select: none; }
-.as-avatar .avatar { width: 28px; height: 28px; }
 
 /* Delete-conversation inline confirmation */
 .as-session-confirm { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
