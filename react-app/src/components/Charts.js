@@ -159,7 +159,7 @@ export function Donut({ data }) {
   if (!data.length) return <div className="rp-empty">No data</div>;
 
   const size = 168;
-  const stroke = 26;
+  const stroke = 11;
   const c = size / 2;
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
@@ -173,9 +173,9 @@ export function Donut({ data }) {
     return seg;
   });
 
-  const shown = active != null ? data[active] : null;
-  const centerMain = shown ? shown.value.toLocaleString() : total.toLocaleString();
-  const centerCap = shown ? `${Math.round((shown.value / total) * 100)}% · ${shown.label}` : 'total';
+  // Static centre — the total holds steady; identity lives in the legend.
+  const centerMain = total.toLocaleString();
+  const centerCap = 'total';
 
   return (
     <div className="rp-donut-wrap">
@@ -194,7 +194,7 @@ export function Donut({ data }) {
                   r={r}
                   fill="none"
                   stroke={`var(--rp-cat-${s.i})`}
-                  strokeWidth={isActive ? stroke + 5 : stroke}
+                  strokeWidth={isActive ? stroke + 4 : stroke}
                   strokeDasharray={`${dash} ${circ - dash}`}
                   strokeDashoffset={-s.offset}
                   style={{

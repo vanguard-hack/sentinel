@@ -1614,7 +1614,7 @@ a:hover { color: var(--blue-500); }
 .rp-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  gap: 22px;
   /* Cards keep their natural height instead of stretching to the row's tallest. */
   align-items: start;
 }
@@ -1623,7 +1623,7 @@ a:hover { color: var(--blue-500); }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-card);
-  padding: 14px 16px;
+  padding: 12px 14px 14px;
   min-width: 0;
 }
 .rp-card-head { margin-bottom: 10px; }
@@ -1667,11 +1667,13 @@ a:hover { color: var(--blue-500); }
 }
 
 /* ── Donut ── */
+/* Donut: thin centred ring with a static total; legend stacked underneath
+   with dotted separators (reference: summary-card style). */
 .rp-donut-wrap {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 22px;
-  flex-wrap: wrap;
+  gap: 10px;
   padding-top: 4px;
 }
 .rp-donut {
@@ -1683,21 +1685,29 @@ a:hover { color: var(--blue-500); }
 }
 .rp-donut-hole {
   position: absolute;
-  inset: 26px;
+  inset: 18px;
   border-radius: 50%;
-  background: var(--bg-1);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
 }
-.rp-donut-total { font-size: 22px; font-weight: 680; color: var(--text-0); font-variant-numeric: tabular-nums; }
+.rp-donut-total { font-size: 24px; font-weight: 680; color: var(--text-0); font-variant-numeric: tabular-nums; }
 .rp-donut-cap { font-size: 11px; color: var(--text-3); letter-spacing: 0.04em; }
-.rp-legend { flex: 1; min-width: 150px; display: flex; flex-direction: column; gap: 7px; }
-.rp-legend li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
-.rp-legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
-.rp-legend-label { color: var(--text-2); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rp-legend-val { color: var(--text-1); font-weight: 600; font-variant-numeric: tabular-nums; }
+.rp-legend { width: 100%; display: flex; flex-direction: column; }
+.rp-legend li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  padding: 8px 2px;
+  border-bottom: 1px dotted var(--border-bright);
+}
+.rp-legend li:last-child { border-bottom: none; }
+.rp-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.rp-legend-label { color: var(--text-1); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-legend-val { color: var(--text-2); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .rp-footnote { margin-top: 18px; font-size: 12px; color: var(--text-4); }
 .rp-footnote code { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
@@ -4150,7 +4160,8 @@ a:hover { color: var(--blue-500); }
   color: var(--text-3);
 }
 
-.rp-legend-row { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; }
+.rp-legend-row { display: flex; flex-direction: row; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; }
+.rp-legend-row li { border-bottom: none; padding: 0; }
 .ml-cursor { stroke: var(--border-bright); stroke-width: 1; }
 
 /* Heat grid */
