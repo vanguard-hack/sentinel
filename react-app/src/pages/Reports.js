@@ -289,7 +289,7 @@ export default function Reports() {
             </div>
 
             {/* Crime trend with day/month/year/5-year filter */}
-            <section className="rp-card rp-card-wide">
+            <section className="rp-card rp-card-wide rp-standalone">
               <div className="rp-card-head">
                 <h2>Crime trend</h2>
                 <span className="rp-card-sub">{data.rangeLabel} · cases registered</span>

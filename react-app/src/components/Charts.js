@@ -163,7 +163,7 @@ export function Donut({ data }) {
   const c = size / 2;
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
-  const gap = data.length > 1 ? 2 : 0;
+  const gap = 0; // seamless ring — no visible cuts between slices
 
   let offset = 0;
   const segs = data.map((d, i) => {
@@ -210,7 +210,7 @@ export function Donut({ data }) {
           </g>
         </svg>
         <div className="rp-donut-hole">
-          <span className="rp-donut-cap">{shown ? shown.label : 'Total'}</span>
+          {!shown && <span className="rp-donut-cap">Total</span>}
           <span className="rp-donut-total">{(shown ? shown.value : total).toLocaleString()}</span>
           {shown && <span className="rp-donut-pct">{Math.round((shown.value / total) * 100)}%</span>}
         </div>

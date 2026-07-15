@@ -1704,7 +1704,7 @@ a:hover { color: var(--blue-500); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.rp-donut-pct { font-size: 12px; font-weight: 650; color: var(--text-2); }
+.rp-donut-pct { font-size: 12px; font-weight: 600; color: var(--text-3); }
 .rp-legend { width: 100%; display: flex; flex-direction: column; }
 .rp-legend li {
   display: flex;
@@ -4161,8 +4161,11 @@ a:hover { color: var(--blue-500); }
 .oc-officer-rank { font-size: 10.5px; color: var(--text-3); }
 
 /* ── Extended Home analytics ───────────────────────────────────────────── */
+/* Standalone cards (outside a grid) need their own breathing room. */
+.rp-standalone { margin-bottom: 24px; }
+
 .rp-section-title {
-  margin: 26px 2px 12px;
+  margin: 30px 2px 14px;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.07em;
