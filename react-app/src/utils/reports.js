@@ -284,6 +284,9 @@ function capOther(arr, limit) {
   if (!limit || arr.length <= limit) return arr;
   const head = arr.slice(0, limit);
   const rest = arr.slice(limit).reduce((s, d) => s + d.value, 0);
+  // When the long tail out-sums the biggest real category, an "Other" bar
+  // would dominate the scale and squash everything else — drop it instead.
+  if (rest > (head[0]?.value || 0)) return head;
   return rest > 0 ? [...head, { label: 'Other', value: rest }] : head;
 }
 
