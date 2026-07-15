@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react';
-import { ArrowDown, ArrowUp } from 'lucide-react';
 
 // Area trend — one series over ordered periods (e.g. cases per month). SVG with
 // a filled area under the line; hovering (or focusing) a period highlights its
@@ -90,60 +89,117 @@ export function TrendArea({ data, height = 150, labelEvery = 1 }) {
   );
 }
 
-// Horizontal bar list — single-series magnitude. One hue (identity is the row
-// label, so no legend); every bar carries a direct value label. Interactive:
-// a segmented sort control (desc / asc) and per-bar hover that reveals the share
-// of total. Pass percent={false} when the value is already a percentage.
-export function BarList({ data, format = (v) => v.toLocaleString(), suffix = '', percent = true }) {
-  const [dir, setDir] = useState('desc');
-
-  // Sort every row — including any "Other" bucket — by the chosen direction.
-  const sorted = useMemo(
-    () => [...data].sort((a, b) => (dir === 'desc' ? b.value - a.value : a.value - b.value)),
-    [data, dir]
-  );
-
-  const max = Math.max(1, ...data.map((d) => d.value));
-  const total = data.reduce((s, d) => s + d.value, 0) || 1;
+// Column chart — vertical bars with rounded tops and a gradient fill, dashed
+// y-gridlines with tick values, and a hover readout (label · value · share).
+// Long category labels angle at -30° and truncate; the full label lives in the
+// readout and tooltip. Keeps the row order it is given (callers pre-sort).
+let colSeq = 0;
+export function BarList({ data, format = (v) => v.toLocaleString(), suffix = '', percent = true, height = 215 }) {
+  const [active, setActive] = useState(null);
+  const gradId = useMemo(() => `colgrad-${++colSeq}`, []);
   if (!data.length) return <div className="rp-empty">No data</div>;
 
+  const total = data.reduce((s, d) => s + d.value, 0) || 1;
+  const rawMax = Math.max(1, ...data.map((d) => d.value));
+  // Nice axis ceiling: 1/2/2.5/5 × 10^k just above the max.
+  const pow = 10 ** Math.floor(Math.log10(rawMax));
+  const niceMax = [1, 2, 2.5, 5, 10].map((m) => m * pow).find((m) => m >= rawMax) || rawMax;
+
+  const n = data.length;
+  const w = 600;
+  const padL = 36;
+  const padR = 8;
+  const padT = 8;
+  const longest = Math.max(...data.map((d) => d.label.length));
+  const angled = longest > 7 || n > 8;
+  const padB = angled ? 52 : 26;
+  const innerW = w - padL - padR;
+  const innerH = height - padT - padB;
+  const slot = innerW / n;
+  const barW = Math.min(56, slot * 0.6);
+  const yOf = (v) => padT + innerH * (1 - v / niceMax);
+  const base = padT + innerH;
+
+  const trunc = (s, m) => (s.length > m ? s.slice(0, m - 1) + '…' : s);
+  const shown = active != null ? data[active] : null;
+
   return (
-    <div>
-      <div className="rp-bar-toolbar">
-        <button
-          className="rp-sort-btn"
-          onClick={() => setDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
-          aria-label={`Sorted ${dir === 'desc' ? 'descending' : 'ascending'} — click to flip`}
-          title={dir === 'desc' ? 'Sorted high → low' : 'Sorted low → high'}
-        >
-          {dir === 'desc' ? <ArrowDown size={16} /> : <ArrowUp size={16} />}
-        </button>
+    <div className="trend-wrap">
+      <div className="trend-readout">
+        <span className="trend-readout-cap">
+          {shown
+            ? `${shown.label} · ${format(shown.value)}${suffix}${percent ? ` · ${Math.round((shown.value / total) * 100)}%` : ''}`
+            : `${n} categories${percent ? ` · ${format(total)}${suffix} total` : ''}`}
+        </span>
       </div>
-      <div className="rp-bars">
-        {sorted.map((d) => {
-          const pct = Math.round((d.value / total) * 100);
+      <svg viewBox={`0 0 ${w} ${height}`} className="col-svg" role="img" onMouseLeave={() => setActive(null)}>
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--rp-cat-0)" />
+            <stop offset="100%" stopColor="var(--rp-cat-0)" stopOpacity="0.55" />
+          </linearGradient>
+        </defs>
+        {[0.25, 0.5, 0.75, 1].map((f) => (
+          <g key={f}>
+            <line x1={padL} x2={w - padR} y1={yOf(niceMax * f)} y2={yOf(niceMax * f)} className="col-grid" />
+            <text x={padL - 6} y={yOf(niceMax * f) + 3} textAnchor="end" className="col-tick">
+              {niceMax * f >= 1000 ? `${(niceMax * f) / 1000}k` : Math.round(niceMax * f * 10) / 10}
+            </text>
+          </g>
+        ))}
+        <line x1={padL} x2={w - padR} y1={base} y2={base} className="col-grid col-grid-base" />
+        {data.map((d, i) => {
+          const x0 = padL + i * slot + (slot - barW) / 2;
+          const yTop = yOf(d.value);
+          const h = Math.max(0, base - yTop);
+          const r = Math.min(7, barW / 2, h);
+          const path = h === 0
+            ? ''
+            : `M${x0},${base} V${yTop + r} Q${x0},${yTop} ${x0 + r},${yTop} H${x0 + barW - r} Q${x0 + barW},${yTop} ${x0 + barW},${yTop + r} V${base} Z`;
+          const cx = x0 + barW / 2;
           return (
-            <div
-              className="rp-bar-row"
-              key={d.label}
-              tabIndex={0}
-              title={`${d.label}: ${format(d.value)}${suffix}${percent ? ` · ${pct}% of total` : ''}`}
-            >
-              <div className="rp-bar-label" title={d.label}>{d.label}</div>
-              <div className="rp-bar-track">
-                <div
-                  className="rp-bar-fill"
-                  style={{ width: `${Math.max(2, (d.value / max) * 100)}%` }}
+            <g key={d.label}>
+              {path && (
+                <path
+                  d={path}
+                  fill={`url(#${gradId})`}
+                  className={`col-bar ${active != null && active !== i ? 'dim' : ''}`}
                 />
-              </div>
-              <div className="rp-bar-val">
-                <span className="rp-bar-count">{format(d.value)}{suffix}</span>
-                {percent && <span className="rp-bar-pct">{pct}%</span>}
-              </div>
-            </div>
+              )}
+              {n <= 8 && h > 0 && (
+                <text x={cx} y={yTop - 5} textAnchor="middle" className="col-val">
+                  {format(d.value)}
+                </text>
+              )}
+              {angled ? (
+                <text
+                  x={cx}
+                  y={base + 12}
+                  textAnchor="end"
+                  transform={`rotate(-30 ${cx} ${base + 12})`}
+                  className="col-label"
+                >
+                  {trunc(d.label, 14)}
+                </text>
+              ) : (
+                <text x={cx} y={base + 16} textAnchor="middle" className="col-label">
+                  {trunc(d.label, 10)}
+                </text>
+              )}
+              <rect
+                x={padL + i * slot}
+                y={0}
+                width={slot}
+                height={height}
+                fill="transparent"
+                onMouseEnter={() => setActive(i)}
+              >
+                <title>{`${d.label}: ${format(d.value)}${suffix}${percent ? ` · ${Math.round((d.value / total) * 100)}% of total` : ''}`}</title>
+              </rect>
+            </g>
           );
         })}
-      </div>
+      </svg>
     </div>
   );
 }

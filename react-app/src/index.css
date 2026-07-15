@@ -4295,3 +4295,13 @@ a:hover { color: var(--blue-500); }
 .fc-notes { list-style: none; display: flex; flex-direction: column; gap: 9px; font-size: 12.5px; color: var(--text-2); }
 .fc-notes li { display: flex; gap: 8px; align-items: flex-start; line-height: 1.5; }
 .fc-notes svg { flex-shrink: 0; margin-top: 3px; color: var(--text-3); }
+
+/* ── Column chart (BarList v2) ─────────────────────────────────────────── */
+.col-svg { width: 100%; height: auto; overflow: visible; }
+.col-grid { stroke: var(--border); stroke-dasharray: 4 4; stroke-width: 1; }
+.col-grid-base { stroke-dasharray: none; stroke: var(--border-bright); }
+.col-tick { fill: var(--text-4); font-size: 10px; font-family: var(--font); }
+.col-label { fill: var(--text-3); font-size: 10.5px; font-family: var(--font); }
+.col-val { fill: var(--text-2); font-size: 10.5px; font-weight: 600; font-family: var(--font); }
+.col-bar { transition: opacity 0.15s; }
+.col-bar.dim { opacity: 0.35; }
