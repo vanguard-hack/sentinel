@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Network, RefreshCw, AlertTriangle, Plus, Minus, Maximize2 } from 'lucide-react';
+import { Network, RefreshCw, AlertTriangle, Plus, Minus, Maximize2, Users } from 'lucide-react';
 import { loadPersonnel } from '../utils/personnel';
 import TopBar from '../components/TopBar';
 import RankInsignia from '../components/RankInsignia';
@@ -36,12 +36,17 @@ function OfficerLine({ o, onOpen }) {
   );
 }
 
-function Card({ title, officers, hierarchy, root, onOpen }) {
+function Card({ title, officers, hierarchy, root, reports, onOpen }) {
   return (
     <div className={`oc-card ${root ? 'oc-root-card' : ''}`}>
       <div className="oc-card-head">
         {hierarchy && <RankInsignia hierarchy={hierarchy} size={22} />}
         <span className="oc-card-title">{title}</span>
+        {reports > 0 && (
+          <span className="oc-card-count" title={`${reports.toLocaleString()} personnel report below this level`}>
+            <Users size={12} /> {reports.toLocaleString()}
+          </span>
+        )}
       </div>
       {officers.map((o) => <OfficerLine key={o.id} o={o} onOpen={onOpen} />)}
     </div>
@@ -174,13 +179,20 @@ export default function OrgChart() {
     const inDistrict = all.filter((o) => o.district === district);
 
     // District command tiers, top → bottom. Empty tiers are skipped.
+    // `reports` = personnel below that level (district-scoped; statewide for
+    // the DGP and ADGP tiers).
     const tiers = [
       { title: 'Inspector General', hierarchy: 3, officers: inDistrict.filter((o) => o.rankHierarchy === 3) },
       { title: 'Deputy Inspector General', hierarchy: 4, officers: inDistrict.filter((o) => o.rankHierarchy === 4) },
       { title: 'Superintendent of Police', hierarchy: 5, officers: inDistrict.filter((o) => o.rankHierarchy === 5) },
       { title: 'Additional SP', hierarchy: 6, officers: inDistrict.filter((o) => o.rankHierarchy === 6) },
       { title: 'Deputy SPs', hierarchy: 7, officers: inDistrict.filter((o) => o.rankHierarchy === 7) },
-    ].filter((t) => t.officers.length);
+    ]
+      .filter((t) => t.officers.length)
+      .map((t) => ({
+        ...t,
+        reports: inDistrict.filter((o) => o.rankHierarchy > t.hierarchy).length,
+      }));
 
     // Station houses: subordinate ranks grouped by unit, PI first.
     const byUnit = new Map();
@@ -197,7 +209,14 @@ export default function OrgChart() {
       }))
       .sort((a, b) => a.unit.localeCompare(b.unit));
 
-    return { dgp, adgps, tiers, stations };
+    return {
+      dgp,
+      adgps,
+      tiers,
+      stations,
+      dgpReports: all.length - 1,
+      adgpReports: all.length - 1 - adgps.length,
+    };
   }, [data, district]);
 
   // The district chain nests one tier under the previous; the last tier fans
@@ -211,7 +230,7 @@ export default function OrgChart() {
         <ul>
           {stations.map((st) => (
             <li key={st.unit}>
-              <Card title={st.unit} officers={st.officers} onOpen={onOpen} />
+              <Card title={st.unit} officers={st.officers} reports={st.officers.length - 1} onOpen={onOpen} />
             </li>
           ))}
         </ul>
@@ -275,6 +294,7 @@ export default function OrgChart() {
                       title="Director General & IGP"
                       hierarchy={1}
                       officers={[chart.dgp]}
+                      reports={chart.dgpReports}
                       root
                       onOpen={openOfficer}
                     />
@@ -282,7 +302,7 @@ export default function OrgChart() {
                   {/* ADGPs outrank IGPs — they sit in the spine, not aside. */}
                   <ul>
                     <li>
-                      <Card title="Additional DGPs" hierarchy={2} officers={chart.adgps} onOpen={openOfficer} />
+                      <Card title="Additional DGPs" hierarchy={2} officers={chart.adgps} reports={chart.adgpReports} onOpen={openOfficer} />
                       {chart.tiers.length > 0 && (
                         <ul>{renderChain(chart.tiers, chart.stations, 0, openOfficer)}</ul>
                       )}
