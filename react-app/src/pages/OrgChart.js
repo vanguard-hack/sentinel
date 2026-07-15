@@ -5,9 +5,9 @@ import { loadPersonnel } from '../utils/personnel';
 import TopBar from '../components/TopBar';
 import RankInsignia from '../components/RankInsignia';
 
-// Organisation chart: the chain of command, one district at a time.
-//   DGP → [State ADGPs | district IGP tier → DIG tier → SP → Addl. SP →
-//   DySPs] → station house cards (PI + crew).
+// Organisation chart: the chain of command, one district at a time, in true
+// rank order: DGP → ADGPs → IGP tier → DIG tier → SP → Addl. SP → DySPs →
+// station house cards (PI + crew).
 // Tiers with several officers render as one card with stacked rows, so the
 // chart stays a narrow spine until it fans out into stations.
 
@@ -56,8 +56,6 @@ export default function OrgChart() {
   const DEFAULT_ZOOM = 0.75;
   const [district, setDistrict] = useState('Bengaluru City');
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
-  const zoomBy = (dir) =>
-    setZoom((z) => Math.round(Math.min(1.6, Math.max(0.4, z + dir * 0.15)) * 100) / 100);
 
   // Free panning: drag anywhere to translate the canvas (independent of any
   // scroll overflow, so it works at every zoom level).
@@ -90,6 +88,52 @@ export default function OrgChart() {
     };
   }, []);
 
+  // Zoom anchored to a point (so the spot under the cursor stays put).
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const offRef = useRef(off);
+  offRef.current = off;
+  const zoomTo = useCallback((next, anchor) => {
+    const z = zoomRef.current;
+    const nz = Math.round(Math.min(1.6, Math.max(0.4, next)) * 100) / 100;
+    if (nz === z) return;
+    if (anchor) {
+      const o = offRef.current;
+      setOff({
+        x: anchor.x - ((anchor.x - o.x) * nz) / z,
+        y: anchor.y - ((anchor.y - o.y) * nz) / z,
+      });
+    }
+    setZoom(nz);
+  }, []);
+  const zoomBy = (dir) => {
+    const el = scrollRef.current;
+    const anchor = el ? { x: el.clientWidth / 2, y: el.clientHeight / 2 } : null;
+    zoomTo(zoomRef.current + dir * 0.15, anchor);
+  };
+
+  // Trackpad: pinch (ctrl+wheel) zooms about the cursor; two-finger scroll pans.
+  const ready = !loading && !error;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !ready) return undefined;
+    const onWheel = (e) => {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        const r = el.getBoundingClientRect();
+        zoomTo(
+          zoomRef.current * Math.exp(-e.deltaY * 0.01),
+          { x: e.clientX - r.left, y: e.clientY - r.top }
+        );
+      } else {
+        const o = offRef.current;
+        setOff({ x: o.x - e.deltaX, y: o.y - e.deltaY });
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [ready, zoomTo]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -109,12 +153,18 @@ export default function OrgChart() {
     [navigate]
   );
 
-  // Centre the chart whenever its size changes (data, district or zoom).
+  // Centre the chart on load, district change, or an explicit reset (not on
+  // every zoom change — pinch zoom anchors to the cursor instead).
+  const [recenter, setRecenter] = useState(0);
   useEffect(() => {
     const el = scrollRef.current;
     const cv = canvasRef.current;
     if (el && cv) setOff({ x: (el.clientWidth - cv.offsetWidth) / 2, y: 0 });
-  }, [data, district, zoom]);
+  }, [data, district, recenter]);
+  const resetView = () => {
+    setZoom(DEFAULT_ZOOM);
+    setRecenter((c) => c + 1);
+  };
 
   const chart = useMemo(() => {
     if (!data) return null;
@@ -194,7 +244,7 @@ export default function OrgChart() {
             <button onClick={() => zoomBy(1)} title="Zoom in" aria-label="Zoom in"><Plus size={15} /></button>
             <span className="oc-zoom-pct">{Math.round(zoom * 100)}%</span>
             <button onClick={() => zoomBy(-1)} title="Zoom out" aria-label="Zoom out"><Minus size={15} /></button>
-            <button onClick={() => setZoom(DEFAULT_ZOOM)} title="Reset zoom" aria-label="Reset zoom"><Maximize2 size={14} /></button>
+            <button onClick={resetView} title="Reset view" aria-label="Reset view"><Maximize2 size={14} /></button>
           </div>
           {error ? (
             <div className="cf-state cf-error">
@@ -229,11 +279,14 @@ export default function OrgChart() {
                       onOpen={openOfficer}
                     />
                   )}
+                  {/* ADGPs outrank IGPs — they sit in the spine, not aside. */}
                   <ul>
                     <li>
-                      <Card title="State ADGPs" hierarchy={2} officers={chart.adgps} onOpen={openOfficer} />
+                      <Card title="Additional DGPs" hierarchy={2} officers={chart.adgps} onOpen={openOfficer} />
+                      {chart.tiers.length > 0 && (
+                        <ul>{renderChain(chart.tiers, chart.stations, 0, openOfficer)}</ul>
+                      )}
                     </li>
-                    {chart.tiers.length > 0 && renderChain(chart.tiers, chart.stations, 0, openOfficer)}
                   </ul>
                 </li>
                 </ul>
