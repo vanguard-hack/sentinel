@@ -158,8 +158,8 @@ export function Donut({ data }) {
   const total = data.reduce((s, d) => s + d.value, 0) || 1;
   if (!data.length) return <div className="rp-empty">No data</div>;
 
-  const size = 168;
-  const stroke = 11;
+  const size = 136;
+  const stroke = 10;
   const c = size / 2;
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;

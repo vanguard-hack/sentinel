@@ -1613,8 +1613,9 @@ a:hover { color: var(--blue-500); }
 /* ── Chart cards ── */
 .rp-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 22px;
+  /* Narrower, compact cards — three abreast on a typical screen. */
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 24px;
   /* Cards keep their natural height instead of stretching to the row's tallest. */
   align-items: start;
 }
@@ -1623,7 +1624,7 @@ a:hover { color: var(--blue-500); }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-card);
-  padding: 12px 14px 14px;
+  padding: 10px 13px 12px;
   min-width: 0;
 }
 .rp-card-head { margin-bottom: 10px; }
@@ -1693,15 +1694,15 @@ a:hover { color: var(--blue-500); }
   justify-content: center;
   pointer-events: none;
 }
-.rp-donut-total { font-size: 24px; font-weight: 680; color: var(--text-0); font-variant-numeric: tabular-nums; }
+.rp-donut-total { font-size: 20px; font-weight: 680; color: var(--text-0); font-variant-numeric: tabular-nums; }
 .rp-donut-cap { font-size: 11px; color: var(--text-3); letter-spacing: 0.04em; }
 .rp-legend { width: 100%; display: flex; flex-direction: column; }
 .rp-legend li {
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 12.5px;
-  padding: 8px 2px;
+  font-size: 12px;
+  padding: 6px 2px;
   border-bottom: 1px dotted var(--border-bright);
 }
 .rp-legend li:last-child { border-bottom: none; }
