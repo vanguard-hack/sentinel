@@ -7,7 +7,7 @@ import {
 import { fetchReports, computeReport, buildTrend, TREND_RANGES, customLabel } from '../utils/reports';
 import { exportReportPdf } from '../utils/reportPdf';
 import DateRangeCalendar from '../components/DateRangeCalendar';
-import { BarList, HBarList, Donut, TrendArea, MultiLine, HeatGrid, Funnel, Scatter, Pyramid } from '../components/Charts';
+import { BarList, HBarList, Donut, TrendArea, MultiLine, HeatGrid, Funnel, Pyramid } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
 import TopBar from '../components/TopBar';
 import { useAuth } from '../context/AuthContext';
@@ -419,9 +419,6 @@ export default function Reports() {
               </Card>
               <Card title="Court load" subtitle="Chargesheets filed per court (top 8)">
                 <BarList data={data.courtLoad} />
-              </Card>
-              <Card title="Staffing vs caseload" subtitle="Each dot is a police station — sanctioned staff (x) against registered cases (y)">
-                <Scatter data={data.staffingVsCases} xLabel="staff" yLabel="cases" />
               </Card>
             </div>
 

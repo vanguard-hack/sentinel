@@ -425,13 +425,40 @@ export function computeReport(raw, masters, rangeKey, custom) {
   const gravitySplit = groupCount(wcases, (c) => c.gravity,
     (id) => (String(id) === '1' ? 'Heinous' : 'Non-heinous'));
   const categorySplit = groupCount(wcases, (c) => c.category, (id) => categoryName(id));
+  // Compact section labels: "IPC 354 — Outraging modesty". Long statutory
+  // descriptions shrink to their operative words.
+  const SECTION_SHORT = {
+    'Assault on woman with intent to outrage modesty': 'Outraging modesty',
+    'Insult to modesty of woman': 'Insulting modesty',
+    'Cruelty by husband or relatives': 'Domestic cruelty',
+    'Voluntarily causing hurt': 'Causing hurt',
+    'Hurt by dangerous weapons': 'Hurt by weapon',
+    'Theft in dwelling house': 'House theft',
+    'Criminal breach of trust': 'Breach of trust',
+    'Criminal intimidation': 'Intimidation',
+    'Death by negligence': 'Negligent death',
+    'Rash driving on public way': 'Rash driving',
+    'Possession of cannabis': 'Cannabis',
+    'Possession of manufactured drugs': 'Manufactured drugs',
+    'Possession of psychotropic substances': 'Psychotropics',
+    'Possession of illegal arms': 'Illegal arms',
+    'Computer-related offences': 'Computer offences',
+    'Cheating by personation using computer': 'Online personation',
+    'Obscene material online': 'Online obscenity',
+    'Penetrative sexual assault': 'Penetrative assault',
+    'Illegal sale of liquor': 'Illicit liquor',
+    'Gambling in public place': 'Public gambling',
+    'Taking dowry': 'Taking dowry',
+    'Demanding dowry': 'Demanding dowry',
+  };
   const topSections = capOther(
     groupCount(
       raw.actSections.filter((a) => idSet.has(a.caseId)),
       (a) => `${a.act}|${a.section}`,
       (k) => {
         const [act, sec] = k.split('|');
-        return `${sectionName(sec)} · ${actName(act)}`;
+        const desc = sectionName(sec);
+        return `${String(actName(act)).replace(' Act', '')} ${sec} — ${SECTION_SHORT[desc] || desc}`;
       }
     ),
     8
