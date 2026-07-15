@@ -168,44 +168,99 @@ export function windowFor(rangeKey, custom) {
 
 // ── Raw fetch (once per load) ───────────────────────────────────────────────
 export async function fetchReports() {
-  const [headName, statusName, unitName, unitDistrict, districtName, subHeadName] =
-    await Promise.all([
-      lookup('CrimeHead', 'CrimeHeadID', 'CrimeGroupName'),
-      lookup('CaseStatusMaster', 'CaseStatusID', 'CaseStatusName'),
-      lookup('Unit', 'UnitID', 'UnitName'),
-      lookup('Unit', 'UnitID', 'DistrictID'),
-      lookup('District', 'DistrictID', 'DistrictName'),
-      lookup('CrimeSubHead', 'CrimeSubHeadID', 'CrimeHeadName'),
-    ]);
-
-  const [caseRows, victimRows, accusedRows, arrestRows, csRows] = await Promise.all([
-    fetchAll('SELECT CaseMasterID, CrimeRegisteredDate, PoliceStationID, CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, GravityOffenceID FROM CaseMaster', 'CaseMaster'),
-    fetchAll('SELECT CaseMasterID FROM Victim', 'Victim'),
-    fetchAll('SELECT CaseMasterID, AgeYear FROM Accused', 'Accused'),
-    fetchAll('SELECT CaseMasterID FROM ArrestSurrender', 'ArrestSurrender'),
-    fetchAll('SELECT CaseMasterID FROM ChargesheetDetails', 'ChargesheetDetails'),
+  const [
+    headName, statusName, unitName, unitDistrict, districtName, subHeadName,
+    categoryName, courtName, occupationName, sectionName, actName, rankName,
+  ] = await Promise.all([
+    lookup('CrimeHead', 'CrimeHeadID', 'CrimeGroupName'),
+    lookup('CaseStatusMaster', 'CaseStatusID', 'CaseStatusName'),
+    lookup('Unit', 'UnitID', 'UnitName'),
+    lookup('Unit', 'UnitID', 'DistrictID'),
+    lookup('District', 'DistrictID', 'DistrictName'),
+    lookup('CrimeSubHead', 'CrimeSubHeadID', 'CrimeHeadName'),
+    lookup('CaseCategory', 'CaseCategoryID', 'LookupValue'),
+    lookup('Court', 'CourtID', 'CourtName'),
+    lookup('OccupationMaster', 'OccupationID', 'OccupationName'),
+    lookup('Section', 'SectionCode', 'SectionDescription'),
+    lookup('Act', 'ActCode', 'ShortName'),
+    lookup('Rank', 'RankID', 'RankName'),
   ]);
 
+  const [caseRows, victimRows, accusedRows, arrestRows, csRows, asaRows, complRows, empRows] =
+    await Promise.all([
+      fetchAll('SELECT CaseMasterID, CrimeRegisteredDate, PoliceStationID, CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, GravityOffenceID, CaseCategoryID, PolicePersonID, CourtID FROM CaseMaster', 'CaseMaster'),
+      fetchAll('SELECT CaseMasterID, VictimPolice FROM Victim', 'Victim'),
+      fetchAll('SELECT CaseMasterID, AgeYear, GenderID, PersonID, AccusedName FROM Accused', 'Accused'),
+      fetchAll('SELECT CaseMasterID, ArrestSurrenderTypeID, ArrestSurrenderDate FROM ArrestSurrender', 'ArrestSurrender'),
+      fetchAll('SELECT CaseMasterID, csdate FROM ChargesheetDetails', 'ChargesheetDetails'),
+      fetchAll('SELECT CaseMasterID, ActID, SectionID FROM ActSectionAssociation', 'ActSectionAssociation'),
+      fetchAll('SELECT CaseMasterID, AgeYear, GenderID, OccupationID FROM ComplainantDetails', 'ComplainantDetails'),
+      fetchAll('SELECT EmployeeID, FirstName, RankID, UnitID FROM Employee', 'Employee'),
+    ]);
+
+  const day = (v) => String(v || '').slice(0, 10);
   const cases = caseRows.map((c) => ({
     id: String(c.CaseMasterID),
-    date: String(c.CrimeRegisteredDate || '').slice(0, 10),
-    ts: Date.parse(String(c.CrimeRegisteredDate || '').slice(0, 10)),
+    date: day(c.CrimeRegisteredDate),
+    ts: Date.parse(day(c.CrimeRegisteredDate)),
     station: c.PoliceStationID,
     major: c.CrimeMajorHeadID,
     minor: c.CrimeMinorHeadID,
     status: c.CaseStatusID,
     gravity: c.GravityOffenceID,
+    category: c.CaseCategoryID,
+    io: c.PolicePersonID,
+    court: c.CourtID,
   }));
 
   return {
-    masters: { headName, statusName, unitName, unitDistrict, districtName, subHeadName },
+    masters: {
+      headName, statusName, unitName, unitDistrict, districtName, subHeadName,
+      categoryName, courtName, occupationName, sectionName, actName, rankName,
+    },
     raw: {
       cases,
       caseDates: cases.map((c) => c.date).filter(Boolean),
+      victims: victimRows.map((r) => ({
+        caseId: String(r.CaseMasterID),
+        police: String(r.VictimPolice) === 'true' || String(r.VictimPolice) === '1',
+      })),
       victimCases: victimRows.map((r) => String(r.CaseMasterID)),
-      accused: accusedRows.map((r) => ({ caseId: String(r.CaseMasterID), age: Number(r.AgeYear) || 0 })),
+      accused: accusedRows.map((r) => ({
+        caseId: String(r.CaseMasterID),
+        age: Number(r.AgeYear) || 0,
+        gender: String(r.GenderID),
+        person: String(r.PersonID || ''),
+        name: r.AccusedName || '',
+      })),
+      arrests: arrestRows.map((r) => ({
+        caseId: String(r.CaseMasterID),
+        type: String(r.ArrestSurrenderTypeID),
+        ts: Date.parse(day(r.ArrestSurrenderDate)),
+      })),
       arrestCases: arrestRows.map((r) => String(r.CaseMasterID)),
+      chargesheets: csRows.map((r) => ({
+        caseId: String(r.CaseMasterID),
+        ts: Date.parse(day(r.csdate)),
+      })),
       chargesheetCases: csRows.map((r) => String(r.CaseMasterID)),
+      actSections: asaRows.map((r) => ({
+        caseId: String(r.CaseMasterID),
+        act: String(r.ActID),
+        section: String(r.SectionID),
+      })),
+      complainants: complRows.map((r) => ({
+        caseId: String(r.CaseMasterID),
+        age: Number(r.AgeYear) || 0,
+        gender: String(r.GenderID),
+        occupation: String(r.OccupationID),
+      })),
+      employees: empRows.map((r) => ({
+        id: String(r.EmployeeID),
+        name: r.FirstName || '',
+        rank: String(r.RankID),
+        unit: String(r.UnitID),
+      })),
     },
   };
 }
@@ -233,7 +288,10 @@ function capOther(arr, limit) {
 }
 
 export function computeReport(raw, masters, rangeKey, custom) {
-  const { headName, statusName, unitName, unitDistrict, districtName, subHeadName } = masters;
+  const {
+    headName, statusName, unitName, unitDistrict, districtName, subHeadName,
+    categoryName, courtName, occupationName, sectionName, actName, rankName,
+  } = masters;
   const { from, to } = windowFor(rangeKey, custom);
   const span = to - from;
 
@@ -275,6 +333,195 @@ export function computeReport(raw, masters, rangeKey, custom) {
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([y, v]) => ({ label: y, value: v }));
 
+  // ── Extended analytics (all window-scoped unless noted) ──────────────────
+
+  // Month buckets spanning the window, for the multi-series time charts.
+  const buckets = [];
+  {
+    const s = new Date(from);
+    const d = new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), 1));
+    while (d.getTime() <= to && buckets.length < 80) {
+      buckets.push({
+        key: `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`,
+        label: `${MON[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`,
+      });
+      d.setUTCMonth(d.getUTCMonth() + 1);
+    }
+  }
+  const bucketIdx = new Map(buckets.map((b, i) => [b.key, i]));
+  const monthKeyOf = (ts) => {
+    const d = new Date(ts);
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`;
+  };
+  const caseById = new Map(wcases.map((c) => [c.id, c]));
+
+  // Crime trend split by head — the 5 biggest heads in the window.
+  const topHeads = groupCount(wcases, (c) => c.major, (id) => headName(id)).slice(0, 5);
+  const headIds = new Map(); // head label -> series row
+  const trendByHead = topHeads.map((h) => ({
+    name: h.label,
+    points: buckets.map((b) => ({ label: b.label, value: 0 })),
+  }));
+  topHeads.forEach((h, i) => headIds.set(h.label, i));
+  wcases.forEach((c) => {
+    const row = headIds.get(headName(c.major));
+    const bi = bucketIdx.get(monthKeyOf(c.ts));
+    if (row != null && bi != null) trendByHead[row].points[bi].value++;
+  });
+
+  // Arrests vs surrenders over time (by the event's own date).
+  const AS_TYPE = { 1: 'Arrest', 2: 'Surrender' };
+  const arrestSeries = ['1', '2'].map((t) => ({
+    name: AS_TYPE[t] || `Type ${t}`,
+    points: buckets.map((b) => ({ label: b.label, value: 0 })),
+  }));
+  raw.arrests.forEach((a) => {
+    if (!Number.isFinite(a.ts) || a.ts < from || a.ts > to) return;
+    const bi = bucketIdx.get(monthKeyOf(a.ts));
+    const row = a.type === '2' ? 1 : 0;
+    if (bi != null) arrestSeries[row].points[bi].value++;
+  });
+
+  // Seasonality: calendar month × top 6 crime heads.
+  const seasonHeads = groupCount(wcases, (c) => c.major, (id) => headName(id)).slice(0, 6);
+  const seasonIdx = new Map(seasonHeads.map((h, i) => [h.label, i]));
+  const seasonality = {
+    rows: seasonHeads.map((h) => h.label),
+    cols: MON,
+    values: seasonHeads.map(() => Array(12).fill(0)),
+  };
+  wcases.forEach((c) => {
+    const r = seasonIdx.get(headName(c.major));
+    if (r != null) seasonality.values[r][new Date(c.ts).getUTCMonth()]++;
+  });
+
+  // Chargesheet filing lag + average investigation time by head.
+  const LAG_BUCKETS = [
+    { label: '≤ 30 days', to: 30 }, { label: '31–60', to: 60 }, { label: '61–90', to: 90 },
+    { label: '91–180', to: 180 }, { label: '180+ days', to: Infinity },
+  ];
+  const csLag = LAG_BUCKETS.map((b) => ({ label: b.label, value: 0 }));
+  const headLag = new Map(); // head -> { sum, n }
+  raw.chargesheets.forEach((cs) => {
+    const c = caseById.get(cs.caseId);
+    if (!c || !Number.isFinite(cs.ts) || !Number.isFinite(c.ts)) return;
+    const days = Math.max(0, Math.round((cs.ts - c.ts) / 86400000));
+    csLag[LAG_BUCKETS.findIndex((b) => days <= b.to)].value++;
+    const h = headName(c.major);
+    const agg = headLag.get(h) || { sum: 0, n: 0 };
+    agg.sum += days; agg.n++;
+    headLag.set(h, agg);
+  });
+  const investTimeByHead = [...headLag.entries()]
+    .filter(([, a]) => a.n >= 3)
+    .map(([label, a]) => ({ label, value: Math.round(a.sum / a.n) }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8);
+
+  // Composition splits.
+  const gravitySplit = groupCount(wcases, (c) => c.gravity,
+    (id) => (String(id) === '1' ? 'Heinous' : 'Non-heinous'));
+  const categorySplit = groupCount(wcases, (c) => c.category, (id) => categoryName(id));
+  const topSections = capOther(
+    groupCount(
+      raw.actSections.filter((a) => idSet.has(a.caseId)),
+      (a) => `${a.act}|${a.section}`,
+      (k) => {
+        const [act, sec] = k.split('|');
+        return `${sectionName(sec)} · ${actName(act)}`;
+      }
+    ),
+    8
+  );
+
+  // Lifecycle: ordered funnel + pendency ageing of open cases.
+  const FUNNEL_ORDER = ['Under Investigation', 'Charge Sheeted', 'Pending Trial', 'Convicted', 'Acquitted'];
+  const statusCounts = new Map(byStatus.map((d) => [d.label, d.value]));
+  groupCount(wcases, (c) => c.status, (id) => statusName(id)).forEach((d) => {
+    if (!statusCounts.has(d.label)) statusCounts.set(d.label, d.value);
+  });
+  const statusFunnel = FUNNEL_ORDER
+    .map((label) => ({ label, value: statusCounts.get(label) || 0 }))
+    .filter((d) => d.value > 0);
+
+  const AGEING = [
+    { label: '< 3 months', to: 91 }, { label: '3–6 months', to: 183 },
+    { label: '6–12 months', to: 366 }, { label: '1–2 years', to: 731 },
+    { label: '2+ years', to: Infinity },
+  ];
+  const pendencyAgeing = AGEING.map((b) => ({ label: b.label, value: 0 }));
+  const nowTs = Date.now();
+  wcases.forEach((c) => {
+    if (String(c.status) !== '1' || !Number.isFinite(c.ts)) return;
+    const days = (nowTs - c.ts) / 86400000;
+    pendencyAgeing[AGEING.findIndex((b) => days <= b.to)].value++;
+  });
+
+  // People & demographics.
+  const wcompl = raw.complainants.filter((p) => idSet.has(p.caseId));
+  const complainantOccupations = capOther(
+    groupCount(wcompl, (p) => p.occupation, (id) => occupationName(id)), 8);
+  const complainantAges = AGE_BUCKETS.map((b) => ({
+    label: b.label,
+    value: wcompl.filter((p) => p.age >= b.from && p.age <= b.to).length,
+  }));
+  const GENDER = { 1: 'Male', 2: 'Female' };
+  const accusedGender = groupCount(accusedRows, (a) => a.gender, (id) => GENDER[id] || 'Other');
+
+  const personAgg = new Map();
+  accusedRows.forEach((a) => {
+    if (!a.person) return;
+    const agg = personAgg.get(a.person) || { name: a.name, cases: new Set() };
+    agg.cases.add(a.caseId);
+    personAgg.set(a.person, agg);
+  });
+  const repeatOffenders = [...personAgg.entries()]
+    .map(([person, a]) => ({ label: `${a.name || person}`, value: a.cases.size }))
+    .filter((d) => d.value >= 2)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8);
+
+  const wvictims = raw.victims.filter((v) => idSet.has(v.caseId));
+  const victimPoliceSplit = [
+    { label: 'Civilians', value: wvictims.filter((v) => !v.police).length },
+    { label: 'Police personnel', value: wvictims.filter((v) => v.police).length },
+  ].filter((d) => d.value > 0);
+
+  const arrestOutcome = groupCount(
+    raw.arrests.filter((a) => idSet.has(a.caseId)),
+    (a) => a.type,
+    (id) => AS_TYPE[id] || `Type ${id}`
+  );
+
+  // Personnel & workload. Rank mix and staffing are force-wide (not windowed).
+  const empName = new Map(raw.employees.map((e) => [e.id, e.name]));
+  const ioCaseload = capOther(
+    groupCount(wcases, (c) => c.io, (id) => empName.get(String(id)) || `Officer ${id}`), 8);
+
+  const rankDistribution = capOther(
+    groupCount(raw.employees, (e) => e.rank, (id) => rankName(id)), 5);
+
+  const unitStaff = new Map();
+  raw.employees.forEach((e) => unitStaff.set(e.unit, (unitStaff.get(e.unit) || 0) + 1));
+  const unitCases = new Map();
+  wcases.forEach((c) => unitCases.set(String(c.station), (unitCases.get(String(c.station)) || 0) + 1));
+  const staffingVsCases = [...unitCases.entries()]
+    .filter(([u]) => unitStaff.has(u))
+    .map(([u, cases]) => ({
+      x: unitStaff.get(u),
+      y: cases,
+      label: String(unitName(u)).replace(' Police Station', ' PS'),
+    }));
+
+  const courtLoad = capOther(
+    groupCount(
+      raw.chargesheets.filter((cs) => idSet.has(cs.caseId)),
+      (cs) => caseById.get(cs.caseId)?.court,
+      (id) => String(courtName(id)).replace(' District & Sessions Court', ' Sessions')
+    ),
+    8
+  );
+
   // vs the immediately-preceding window of the same length.
   const prevFirs = raw.cases.reduce(
     (n, c) => n + (Number.isFinite(c.ts) && c.ts >= from - span && c.ts < from ? 1 : 0), 0
@@ -304,5 +551,26 @@ export function computeReport(raw, masters, rangeKey, custom) {
     yearly,
     accusedAges,
     caseDates: raw.caseDates,
+    // extended analytics
+    trendByHead,
+    arrestSeries,
+    seasonality,
+    csLag,
+    investTimeByHead,
+    gravitySplit,
+    categorySplit,
+    topSections,
+    statusFunnel,
+    pendencyAgeing,
+    complainantOccupations,
+    complainantAges,
+    accusedGender,
+    repeatOffenders,
+    victimPoliceSplit,
+    arrestOutcome,
+    ioCaseload,
+    rankDistribution,
+    staffingVsCases,
+    courtLoad,
   };
 }

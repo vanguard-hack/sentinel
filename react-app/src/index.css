@@ -4139,3 +4139,57 @@ a:hover { color: var(--blue-500); }
   text-overflow: ellipsis;
 }
 .oc-officer-rank { font-size: 10.5px; color: var(--text-3); }
+
+/* ── Extended Home analytics ───────────────────────────────────────────── */
+.rp-section-title {
+  margin: 26px 2px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.rp-legend-row { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; }
+.ml-cursor { stroke: var(--border-bright); stroke-width: 1; }
+
+/* Heat grid */
+.rp-heat { display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
+.rp-heat-row { display: flex; align-items: center; gap: 3px; }
+.rp-heat-label {
+  width: 118px;
+  flex-shrink: 0;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-heat-col { flex: 1; text-align: center; color: var(--text-4); font-size: 10px; }
+.rp-heat-cell {
+  flex: 1;
+  height: 22px;
+  border-radius: 4px;
+  background: var(--blue-500);
+}
+
+/* Funnel */
+.rp-funnel { display: flex; flex-direction: column; gap: 7px; padding: 4px 0; }
+.rp-funnel-row { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.rp-funnel-bar {
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  transition: width 0.3s;
+}
+.rp-funnel-val { color: #fff; font-size: 12px; font-weight: 650; text-shadow: 0 1px 2px rgba(0,0,0,0.25); }
+.rp-funnel-label { font-size: 11.5px; color: var(--text-3); }
+
+/* Scatter */
+.rp-scatter { width: 100%; height: auto; }
+.rp-scatter-axis { stroke: var(--border-bright); stroke-width: 1; }
+.rp-scatter-tick { fill: var(--text-4); font-size: 10px; font-family: var(--font); }
+.rp-scatter-dot { fill: var(--blue-500); opacity: 0.55; }
+.rp-scatter-dot:hover { opacity: 1; }

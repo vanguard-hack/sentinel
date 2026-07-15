@@ -240,3 +240,179 @@ export function Donut({ data }) {
     </div>
   );
 }
+
+// Multi-line trend — several series over the same ordered periods. Colours use
+// the categorical slots; a legend beneath carries identity. Hovering a period
+// column reads out every series' value for it.
+export function MultiLine({ series, height = 170, labelEvery = 1 }) {
+  const [active, setActive] = useState(null);
+  const rows = (series || []).filter((s) => s.points && s.points.length);
+  if (!rows.length) return <div className="rp-empty">No data</div>;
+
+  const n = rows[0].points.length;
+  const w = 600;
+  const padX = 8;
+  const padTop = 12;
+  const padBottom = 8;
+  const max = Math.max(1, ...rows.flatMap((s) => s.points.map((p) => p.value)));
+  const innerW = w - padX * 2;
+  const innerH = height - padTop - padBottom;
+  const x = (i) => padX + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+  const y = (v) => padTop + innerH - (v / max) * innerH;
+
+  return (
+    <div className="trend-wrap">
+      <div className="trend-readout">
+        {active != null ? (
+          <span className="trend-readout-cap">
+            {rows[0].points[active].label} ·{' '}
+            {rows.map((s) => `${s.name}: ${s.points[active].value}`).join(' · ')}
+          </span>
+        ) : (
+          <span className="trend-readout-cap">{n} periods · hover for values</span>
+        )}
+      </div>
+      <svg
+        viewBox={`0 0 ${w} ${height}`}
+        className="trend-svg"
+        preserveAspectRatio="none"
+        role="img"
+        onMouseLeave={() => setActive(null)}
+      >
+        {active != null && (
+          <line x1={x(active)} x2={x(active)} y1={padTop} y2={padTop + innerH} className="ml-cursor" />
+        )}
+        {rows.map((s, si) => (
+          <polyline
+            key={s.name}
+            fill="none"
+            points={s.points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ')}
+            style={{ stroke: `var(--rp-cat-${si % 6})`, strokeWidth: 1.8 }}
+          />
+        ))}
+        {rows.map((s, si) =>
+          s.points.map((p, i) => (
+            <circle
+              key={`${si}-${i}`}
+              cx={x(i)}
+              cy={y(p.value)}
+              r={active === i ? 3.4 : 1.6}
+              style={{ fill: `var(--rp-cat-${si % 6})` }}
+            />
+          ))
+        )}
+        {rows[0].points.map((p, i) => (
+          <rect
+            key={i}
+            x={x(i) - innerW / n / 2}
+            y={0}
+            width={innerW / n}
+            height={height}
+            fill="transparent"
+            onMouseEnter={() => setActive(i)}
+          />
+        ))}
+      </svg>
+      <div className="trend-labels">
+        {rows[0].points.map((p, i) => (
+          <span key={i} className={active === i ? 'active' : ''}>
+            {i % labelEvery === 0 ? p.label : ''}
+          </span>
+        ))}
+      </div>
+      <ul className="rp-legend rp-legend-row">
+        {rows.map((s, si) => (
+          <li key={s.name}>
+            <span className="rp-legend-dot" style={{ background: `var(--rp-cat-${si % 6})` }} />
+            <span className="rp-legend-label">{s.name}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// Heat grid — rows × cols intensity matrix (e.g. crime head × month).
+export function HeatGrid({ rows, cols, values }) {
+  if (!rows?.length) return <div className="rp-empty">No data</div>;
+  const max = Math.max(1, ...values.flat());
+  return (
+    <div className="rp-heat">
+      <div className="rp-heat-row rp-heat-head">
+        <span className="rp-heat-label" />
+        {cols.map((c) => <span key={c} className="rp-heat-col">{c}</span>)}
+      </div>
+      {rows.map((r, ri) => (
+        <div key={r} className="rp-heat-row">
+          <span className="rp-heat-label" title={r}>{r}</span>
+          {values[ri].map((v, ci) => (
+            <span
+              key={ci}
+              className="rp-heat-cell"
+              style={{ opacity: v ? 0.15 + 0.85 * (v / max) : 0.04 }}
+              title={`${r} · ${cols[ci]}: ${v}`}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Funnel — ordered lifecycle stages as centred, narrowing bars.
+export function Funnel({ data }) {
+  if (!data?.length) return <div className="rp-empty">No data</div>;
+  const first = Math.max(1, data[0].value);
+  return (
+    <div className="rp-funnel">
+      {data.map((d, i) => (
+        <div key={d.label} className="rp-funnel-row" title={`${d.label}: ${d.value.toLocaleString()}`}>
+          <div
+            className="rp-funnel-bar"
+            style={{
+              width: `${Math.max(12, (d.value / first) * 100)}%`,
+              background: `var(--rp-cat-${i % 6})`,
+            }}
+          >
+            <span className="rp-funnel-val">{d.value.toLocaleString()}</span>
+          </div>
+          <span className="rp-funnel-label">
+            {d.label} · {Math.round((d.value / first) * 100)}%
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Scatter — one dot per item, with linear axes and hover tooltips.
+export function Scatter({ data, xLabel = 'x', yLabel = 'y', height = 200 }) {
+  if (!data?.length) return <div className="rp-empty">No data</div>;
+  const w = 600;
+  const padL = 34;
+  const padB = 24;
+  const padT = 10;
+  const padR = 12;
+  const maxX = Math.max(1, ...data.map((d) => d.x));
+  const maxY = Math.max(1, ...data.map((d) => d.y));
+  const x = (v) => padL + (v / maxX) * (w - padL - padR);
+  const y = (v) => padT + (height - padT - padB) * (1 - v / maxY);
+  const ticks = (max) => [0, Math.round(max / 2), max];
+  return (
+    <svg viewBox={`0 0 ${w} ${height}`} className="rp-scatter" role="img">
+      <line x1={padL} y1={height - padB} x2={w - padR} y2={height - padB} className="rp-scatter-axis" />
+      <line x1={padL} y1={padT} x2={padL} y2={height - padB} className="rp-scatter-axis" />
+      {ticks(maxX).map((t) => (
+        <text key={`x${t}`} x={x(t)} y={height - 8} textAnchor="middle" className="rp-scatter-tick">{t}</text>
+      ))}
+      {ticks(maxY).map((t) => (
+        <text key={`y${t}`} x={padL - 6} y={y(t) + 3} textAnchor="end" className="rp-scatter-tick">{t}</text>
+      ))}
+      {data.map((d, i) => (
+        <circle key={i} cx={x(d.x)} cy={y(d.y)} r="3.4" className="rp-scatter-dot">
+          <title>{`${d.label}: ${d.x} ${xLabel}, ${d.y} ${yLabel}`}</title>
+        </circle>
+      ))}
+    </svg>
+  );
+}

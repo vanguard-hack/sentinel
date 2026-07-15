@@ -7,7 +7,7 @@ import {
 import { fetchReports, computeReport, buildTrend, TREND_RANGES, customLabel } from '../utils/reports';
 import { exportReportPdf } from '../utils/reportPdf';
 import DateRangeCalendar from '../components/DateRangeCalendar';
-import { BarList, Donut, TrendArea } from '../components/Charts';
+import { BarList, Donut, TrendArea, MultiLine, HeatGrid, Funnel, Scatter } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
 import TopBar from '../components/TopBar';
 import { useAuth } from '../context/AuthContext';
@@ -331,6 +331,97 @@ export default function Reports() {
                 wide
               >
                 <SocioCrimeMap crimeByDistrict={data.crimeByDistrict} />
+              </Card>
+            </div>
+
+            {/* ── Trends ── */}
+            <h2 className="rp-section-title">Trends</h2>
+            <div className="rp-grid">
+              <Card title="Crime trend by head" subtitle="Monthly registrations · top 5 crime heads" wide>
+                <MultiLine
+                  series={data.trendByHead}
+                  labelEvery={Math.max(1, Math.ceil((data.trendByHead[0]?.points.length || 1) / 14))}
+                />
+              </Card>
+              <Card title="Arrests & surrenders" subtitle="Monthly events by type">
+                <MultiLine
+                  series={data.arrestSeries}
+                  labelEvery={Math.max(1, Math.ceil((data.arrestSeries[0]?.points.length || 1) / 8))}
+                />
+              </Card>
+              <Card title="Seasonality" subtitle="Registrations by calendar month × crime head">
+                <HeatGrid rows={data.seasonality.rows} cols={data.seasonality.cols} values={data.seasonality.values} />
+              </Card>
+            </div>
+
+            {/* ── Crime composition ── */}
+            <h2 className="rp-section-title">Crime composition</h2>
+            <div className="rp-grid">
+              <Card title="Heinous vs non-heinous" subtitle="Gravity of registered offences">
+                <Donut data={data.gravitySplit} />
+              </Card>
+              <Card title="Case category" subtitle="FIR · UDR · PAR · Zero FIR">
+                <Donut data={data.categorySplit} />
+              </Card>
+              <Card title="Most-charged sections" subtitle="Top legal sections across charged cases" wide>
+                <BarList data={data.topSections} />
+              </Card>
+            </div>
+
+            {/* ── Case lifecycle ── */}
+            <h2 className="rp-section-title">Case lifecycle</h2>
+            <div className="rp-grid">
+              <Card title="Case status funnel" subtitle="Registered → investigated → chargesheeted → decided">
+                <Funnel data={data.statusFunnel} />
+              </Card>
+              <Card title="Pendency ageing" subtitle="Open investigations by age of case">
+                <BarList data={data.pendencyAgeing} />
+              </Card>
+              <Card title="Chargesheet filing lag" subtitle="Days from registration to chargesheet">
+                <BarList data={data.csLag} />
+              </Card>
+              <Card title="Investigation time by head" subtitle="Average days to chargesheet per crime head">
+                <BarList data={data.investTimeByHead} suffix=" days" percent={false} />
+              </Card>
+            </div>
+
+            {/* ── People & demographics ── */}
+            <h2 className="rp-section-title">People & demographics</h2>
+            <div className="rp-grid">
+              <Card title="Complainant occupations" subtitle="Who is filing FIRs">
+                <BarList data={data.complainantOccupations} />
+              </Card>
+              <Card title="Complainant age profile" subtitle="Complainants by age band">
+                <BarList data={data.complainantAges} />
+              </Card>
+              <Card title="Accused gender split" subtitle="Accused on record">
+                <Donut data={data.accusedGender} />
+              </Card>
+              <Card title="Repeat offenders" subtitle="Distinct FIRs per offender (2+ cases)">
+                <BarList data={data.repeatOffenders} suffix=" FIRs" percent={false} />
+              </Card>
+              <Card title="Victim profile" subtitle="Police personnel vs civilian victims">
+                <Donut data={data.victimPoliceSplit} />
+              </Card>
+              <Card title="Arrest outcome" subtitle="Arrests vs surrenders">
+                <Donut data={data.arrestOutcome} />
+              </Card>
+            </div>
+
+            {/* ── Personnel & workload ── */}
+            <h2 className="rp-section-title">Personnel & workload</h2>
+            <div className="rp-grid">
+              <Card title="IO caseload" subtitle="Cases per investigating officer (top 8)">
+                <BarList data={data.ioCaseload} />
+              </Card>
+              <Card title="Rank distribution" subtitle="Force composition by rank">
+                <Donut data={data.rankDistribution} />
+              </Card>
+              <Card title="Court load" subtitle="Chargesheets filed per court (top 8)">
+                <BarList data={data.courtLoad} />
+              </Card>
+              <Card title="Staffing vs caseload" subtitle="Each dot is a police station — sanctioned staff (x) against registered cases (y)">
+                <Scatter data={data.staffingVsCases} xLabel="staff" yLabel="cases" />
               </Card>
             </div>
 
