@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Network, RefreshCw, AlertTriangle, Plus, Minus, Maximize2 } from 'lucide-react';
 import { loadPersonnel } from '../utils/personnel';
@@ -53,10 +53,43 @@ export default function OrgChart() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const DEFAULT_ZOOM = 0.75;
   const [district, setDistrict] = useState('Bengaluru City');
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const zoomBy = (dir) =>
     setZoom((z) => Math.round(Math.min(1.6, Math.max(0.4, z + dir * 0.15)) * 100) / 100);
+
+  // Drag anywhere on the canvas to pan (scrolls the container).
+  const scrollRef = useRef(null);
+  const panRef = useRef(null);
+  const [panning, setPanning] = useState(false);
+  const panStart = (e) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    panRef.current = { x: e.clientX, y: e.clientY, sl: el.scrollLeft, st: el.scrollTop, moved: false };
+  };
+  useEffect(() => {
+    const move = (e) => {
+      const pan = panRef.current;
+      const el = scrollRef.current;
+      if (!pan || !el) return;
+      const dx = e.clientX - pan.x;
+      const dy = e.clientY - pan.y;
+      if (Math.abs(dx) + Math.abs(dy) > 4) pan.moved = true;
+      if (pan.moved) {
+        setPanning(true);
+        el.scrollLeft = pan.sl - dx;
+        el.scrollTop = pan.st - dy;
+      }
+    };
+    const up = () => { panRef.current = null; setPanning(false); };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,6 +109,12 @@ export default function OrgChart() {
     (o) => navigate(`/personnel?q=${encodeURIComponent(o.name)}`),
     [navigate]
   );
+
+  // Centre the chart horizontally whenever it re-renders wider than the view.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+  }, [data, district, zoom]);
 
   const chart = useMemo(() => {
     if (!data) return null;
@@ -155,7 +194,7 @@ export default function OrgChart() {
             <button onClick={() => zoomBy(1)} title="Zoom in" aria-label="Zoom in"><Plus size={15} /></button>
             <span className="oc-zoom-pct">{Math.round(zoom * 100)}%</span>
             <button onClick={() => zoomBy(-1)} title="Zoom out" aria-label="Zoom out"><Minus size={15} /></button>
-            <button onClick={() => setZoom(1)} title="Reset zoom" aria-label="Reset zoom"><Maximize2 size={14} /></button>
+            <button onClick={() => setZoom(DEFAULT_ZOOM)} title="Reset zoom" aria-label="Reset zoom"><Maximize2 size={14} /></button>
           </div>
           {error ? (
             <div className="cf-state cf-error">
@@ -169,7 +208,11 @@ export default function OrgChart() {
               <p>Loading organisation…</p>
             </div>
           ) : (
-            <div className="oc-scroll">
+            <div
+              className={`oc-scroll ${panning ? 'panning' : ''}`}
+              ref={scrollRef}
+              onMouseDown={panStart}
+            >
               <ul className="oc-tree" style={{ zoom }}>
                 <li>
                   {chart.dgp && (
