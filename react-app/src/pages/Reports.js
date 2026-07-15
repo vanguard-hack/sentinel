@@ -298,10 +298,6 @@ export default function Reports() {
 
             {/* Charts */}
             <div className="rp-grid">
-              <Card title="Crimes per year" subtitle="Total cases registered each year">
-                <TrendArea data={data.yearly} />
-              </Card>
-
               <Card title="Case status" subtitle="Distribution of FIR outcomes">
                 <Donut data={data.byStatus} />
               </Card>

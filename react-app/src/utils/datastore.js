@@ -112,10 +112,26 @@ function flatten(resp, table) {
   });
 }
 
-function buildWhere(column, search) {
+// Type-aware WHERE clause. ZCQL's LIKE is case-sensitive and doesn't apply to
+// numeric columns, so: numeric columns filter by equality (using the sampled
+// value to detect the type), text columns OR together common capitalisation
+// variants of the query for a case-insensitive feel.
+const NUM_RE = /^-?\d+(\.\d+)?$/;
+function buildWhere(column, search, sampleValue) {
   const q = (search || '').trim();
   if (!q || !column || column === 'ALL') return '';
-  return ` WHERE ${column} LIKE '%${escLiteral(q)}%'`;
+
+  const sample = sampleValue == null ? '' : String(sampleValue);
+  const numericColumn = typeof sampleValue === 'number' || (sample !== '' && NUM_RE.test(sample));
+  if (numericColumn) {
+    // Equality on numbers; a non-numeric query can't match a numeric column,
+    // so use a sentinel that matches no rows instead of erroring.
+    return NUM_RE.test(q) ? ` WHERE ${column} = ${q}` : ` WHERE ${column} = -987654321`;
+  }
+
+  const title = q.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+  const variants = [...new Set([q, q.toLowerCase(), q.toUpperCase(), title])];
+  return ' WHERE ' + variants.map((v) => `${column} LIKE '%${escLiteral(v)}%'`).join(' OR ');
 }
 
 // Run an arbitrary ZCQL query and return flattened row objects. Used by the
@@ -126,18 +142,22 @@ export async function runQuery(sql, table) {
   return flatten(resp, table);
 }
 
-// Fetch the column list for a table (from one sample row). Returns [] if empty.
+// Fetch the column list for a table plus one sample row (used to infer the
+// column types when filtering). Returns { columns: [], sample: {} } if empty.
 export async function fetchColumns(table) {
   const resp = await zcql().executeQuery(`SELECT * FROM ${table} LIMIT 0, 1`);
   const rows = flatten(resp, table);
-  return rows.length ? Object.keys(rows[0]) : [];
+  return {
+    columns: rows.length ? Object.keys(rows[0]) : [],
+    sample: rows[0] || {},
+  };
 }
 
 // Fetch one page. Returns { rows, hasNext }. Asks for perPage+1 to detect a
 // following page without a COUNT query.
-export async function fetchPage({ table, page = 1, perPage = 50, column = 'ALL', search = '' }) {
+export async function fetchPage({ table, page = 1, perPage = 50, column = 'ALL', search = '', sample }) {
   const offset = (page - 1) * perPage;
-  const where = buildWhere(column, search);
+  const where = buildWhere(column, search, sample?.[column]);
   const query = `SELECT * FROM ${table}${where} LIMIT ${offset}, ${perPage + 1}`;
   const resp = await zcql().executeQuery(query);
   const rows = flatten(resp, table);
@@ -161,9 +181,9 @@ export async function fetchAllRows(table, { cap = 10000 } = {}) {
 
 // Best-effort total row count (drives the "N records" label). Returns null on
 // failure so the UI can still paginate via hasNext.
-export async function fetchCount({ table, column = 'ALL', search = '' }) {
+export async function fetchCount({ table, column = 'ALL', search = '', sample }) {
   try {
-    const where = buildWhere(column, search);
+    const where = buildWhere(column, search, sample?.[column]);
     const resp = await zcql().executeQuery(`SELECT COUNT(ROWID) AS cnt FROM ${table}${where}`);
     const rows = flatten(resp, table);
     const r = rows[0] || {};

@@ -39,6 +39,7 @@ function orderColumns(cols) {
 export default function CaseFiles() {
   const [activeTable, setActiveTable] = useState(ALL_TABLES[0].name);
   const [columns, setColumns] = useState([]);
+  const [sampleRow, setSampleRow] = useState({});
   const [rows, setRows] = useState([]);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
@@ -127,8 +128,11 @@ export default function CaseFiles() {
     setError(null);
     (async () => {
       try {
-        const cols = await fetchColumns(activeTable);
-        if (!cancelled) setColumns(orderColumns(cols));
+        const { columns: cols, sample } = await fetchColumns(activeTable);
+        if (!cancelled) {
+          setColumns(orderColumns(cols));
+          setSampleRow(sample);
+        }
       } catch (e) {
         if (!cancelled) setError(e.message || String(e));
       }
@@ -151,8 +155,8 @@ export default function CaseFiles() {
     setError(null);
     try {
       const [{ rows: r, hasNext: hn }, count] = await Promise.all([
-        fetchPage({ table: activeTable, page, perPage, column: filterColumn, search }),
-        fetchCount({ table: activeTable, column: filterColumn, search }),
+        fetchPage({ table: activeTable, page, perPage, column: filterColumn, search, sample: sampleRow }),
+        fetchCount({ table: activeTable, column: filterColumn, search, sample: sampleRow }),
       ]);
       // Derive/refresh columns from data if the sample-row lookup came back empty.
       setRows(r);
@@ -165,7 +169,7 @@ export default function CaseFiles() {
     } finally {
       setLoading(false);
     }
-  }, [activeTable, page, perPage, filterColumn, search]);
+  }, [activeTable, page, perPage, filterColumn, search, sampleRow]);
 
   useEffect(() => { load(); }, [load]);
 
