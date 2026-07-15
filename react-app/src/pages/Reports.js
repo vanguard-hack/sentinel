@@ -7,7 +7,7 @@ import {
 import { fetchReports, computeReport, buildTrend, TREND_RANGES, customLabel } from '../utils/reports';
 import { exportReportPdf } from '../utils/reportPdf';
 import DateRangeCalendar from '../components/DateRangeCalendar';
-import { BarList, Donut, TrendArea, MultiLine, HeatGrid, Funnel, Scatter, Pyramid } from '../components/Charts';
+import { BarList, HBarList, Donut, TrendArea, MultiLine, HeatGrid, Funnel, Scatter, Pyramid } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
 import TopBar from '../components/TopBar';
 import { useAuth } from '../context/AuthContext';
@@ -349,7 +349,7 @@ export default function Reports() {
                   labelEvery={Math.max(1, Math.ceil((data.arrestSeries[0]?.points.length || 1) / 8))}
                 />
               </Card>
-              <Card title="Seasonality" subtitle="Registrations by calendar month × crime head">
+              <Card title="Seasonality" subtitle="Registrations by calendar month × crime head" wide>
                 <HeatGrid rows={data.seasonality.rows} cols={data.seasonality.cols} values={data.seasonality.values} />
               </Card>
             </div>
@@ -364,7 +364,7 @@ export default function Reports() {
                 <Donut data={data.categorySplit} />
               </Card>
               <Card title="Most-charged sections" subtitle="Top legal sections across charged cases" wide>
-                <BarList data={data.topSections} />
+                <HBarList data={data.topSections} />
               </Card>
             </div>
 

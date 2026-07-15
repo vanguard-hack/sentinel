@@ -219,7 +219,9 @@ export function Donut({ data }) {
   const c = size / 2;
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
-  const gap = 0; // seamless ring — no visible cuts between slices
+  // Slight overlap between segments: butt-cap edges and float rounding leave
+  // hairline cracks at boundaries otherwise; later segments paint over it.
+  const overlap = data.length > 1 ? 1.5 : 0;
 
   let offset = 0;
   const segs = data.map((d, i) => {
@@ -241,7 +243,7 @@ export function Donut({ data }) {
             {segs.map((s) => {
               const isActive = active === s.i;
               const dim = active != null && !isActive;
-              const dash = Math.max(0.001, s.len - gap);
+              const dash = Math.min(circ, Math.max(0.001, s.len + overlap));
               return (
                 <circle
                   key={s.i}
@@ -598,6 +600,38 @@ export function Pyramid({ data, colors = PYRAMID_RAMP }) {
           </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+// Horizontal bar list — for categories with long labels (legal sections,
+// station names) where vertical columns would truncate the identity away.
+export function HBarList({ data, format = (v) => v.toLocaleString(), suffix = '', percent = true }) {
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const total = data.reduce((s, d) => s + d.value, 0) || 1;
+  if (!data.length) return <div className="rp-empty">No data</div>;
+  return (
+    <div className="rp-bars">
+      {data.map((d) => {
+        const pct = Math.round((d.value / total) * 100);
+        return (
+          <div
+            className="rp-bar-row"
+            key={d.label}
+            tabIndex={0}
+            title={`${d.label}: ${format(d.value)}${suffix}${percent ? ` · ${pct}% of total` : ''}`}
+          >
+            <div className="rp-bar-label" title={d.label}>{d.label}</div>
+            <div className="rp-bar-track">
+              <div className="rp-bar-fill" style={{ width: `${Math.max(2, (d.value / max) * 100)}%` }} />
+            </div>
+            <div className="rp-bar-val">
+              <span className="rp-bar-count">{format(d.value)}{suffix}</span>
+              {percent && <span className="rp-bar-pct">{pct}%</span>}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

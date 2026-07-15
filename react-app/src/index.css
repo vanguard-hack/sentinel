@@ -4178,21 +4178,21 @@ a:hover { color: var(--blue-500); }
 .ml-cursor { stroke: var(--border-bright); stroke-width: 1; }
 
 /* Heat grid */
-.rp-heat { display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
-.rp-heat-row { display: flex; align-items: center; gap: 3px; }
+.rp-heat { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.rp-heat-row { display: flex; align-items: center; gap: 5px; }
 .rp-heat-label {
-  width: 118px;
+  width: 200px;
   flex-shrink: 0;
-  color: var(--text-3);
+  color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.rp-heat-col { flex: 1; text-align: center; color: var(--text-4); font-size: 10px; }
+.rp-heat-col { flex: 1; text-align: center; color: var(--text-4); font-size: 11px; }
 .rp-heat-cell {
   flex: 1;
-  height: 22px;
-  border-radius: 4px;
+  height: 28px;
+  border-radius: 5px;
   background: var(--blue-500);
 }
 
