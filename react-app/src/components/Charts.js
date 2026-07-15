@@ -159,7 +159,7 @@ export function Donut({ data }) {
   if (!data.length) return <div className="rp-empty">No data</div>;
 
   const size = 136;
-  const stroke = 10;
+  const stroke = 15;
   const c = size / 2;
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
@@ -173,9 +173,9 @@ export function Donut({ data }) {
     return seg;
   });
 
-  // Static centre — the total holds steady; identity lives in the legend.
-  const centerMain = total.toLocaleString();
-  const centerCap = 'total';
+  // Centre: "Total" over the count at rest; hovering a slice or legend row
+  // swaps in that slice's label, count and share.
+  const shown = active != null ? data[active] : null;
 
   return (
     <div className="rp-donut-wrap">
@@ -210,8 +210,9 @@ export function Donut({ data }) {
           </g>
         </svg>
         <div className="rp-donut-hole">
-          <span className="rp-donut-total">{centerMain}</span>
-          <span className="rp-donut-cap">{centerCap}</span>
+          <span className="rp-donut-cap">{shown ? shown.label : 'Total'}</span>
+          <span className="rp-donut-total">{(shown ? shown.value : total).toLocaleString()}</span>
+          {shown && <span className="rp-donut-pct">{Math.round((shown.value / total) * 100)}%</span>}
         </div>
       </div>
       <ul className="rp-legend">
