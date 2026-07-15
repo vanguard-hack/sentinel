@@ -142,7 +142,10 @@ export default function Reports() {
             <p className="rp-hero-sub">Here’s the latest crime overview.</p>
           </div>
           <div className="rp-hero-controls">
-            <label className="rp-range" title="Trend granularity">
+            {/* div, not label: a label-wrapped select can open-and-instantly-
+                close its dropdown in Chrome, making it unswitchable. The
+                select is the full clickable surface; icons are decorative. */}
+            <div className="rp-range" title="Trend granularity">
               <CalendarDays size={15} className="rp-range-icon" />
               <select
                 value={customRange ? '' : trendRange}
@@ -154,7 +157,7 @@ export default function Reports() {
                 ))}
               </select>
               <ChevronDown size={15} className="rp-range-caret" />
-            </label>
+            </div>
 
             {/* Custom date-range picker */}
             <div className="rp-cal" ref={calRef}>

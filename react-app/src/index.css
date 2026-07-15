@@ -1541,9 +1541,7 @@ a:hover { color: var(--blue-500); }
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
   height: 38px;
-  padding: 0 34px 0 12px;
   border: 1px solid var(--border-bright);
   border-radius: 10px;
   background: var(--bg-1);
@@ -1551,10 +1549,17 @@ a:hover { color: var(--blue-500); }
   cursor: pointer;
 }
 .rp-range:hover { background: var(--bg-2); }
-.rp-range-icon { color: var(--text-3); flex-shrink: 0; }
+.rp-range-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+/* The select spans the whole control, so any click opens the dropdown. */
 .rp-range select {
   appearance: none;
   -webkit-appearance: none;
+  height: 100%;
   border: none;
   background: none;
   color: var(--text-1);
@@ -1563,7 +1568,7 @@ a:hover { color: var(--blue-500); }
   font-weight: 500;
   cursor: pointer;
   outline: none;
-  padding-right: 2px;
+  padding: 0 34px 0 37px;
 }
 .rp-range-caret {
   position: absolute;

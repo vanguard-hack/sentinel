@@ -55,7 +55,7 @@ export default function Sidebar() {
   const displayName =
     [user?.first_name, user?.last_name].filter(Boolean).join(' ') ||
     user?.email_id || 'Officer';
-  const role = user?.role_details?.role_name || 'Officer';
+  const role = (user?.role_details?.role_name || 'Officer').replace(/^App Administrator$/i, 'Admin');
 
   const labelFor = (item) =>
     item.label || t(`modules.${item.key}.label`, item.key);

@@ -141,7 +141,8 @@ export function buildTrend(dates, rangeKey, custom) {
       d.setUTCMonth(d.getUTCMonth() + 1)
     ) {
       const k = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`;
-      out.push({ label: `${MON[d.getUTCMonth()]}${d.getUTCMonth() === 0 ? " '" + String(d.getUTCFullYear()).slice(2) : ''}`, value: counts.get(k) || 0 });
+      // Month labels always carry the year: "Jan 24".
+      out.push({ label: `${MON[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`, value: counts.get(k) || 0 });
     }
   } else {
     for (let y = start.getUTCFullYear(); y <= end.getUTCFullYear(); y++) {
