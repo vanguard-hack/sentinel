@@ -152,6 +152,76 @@ export function buildTrend(dates, rangeKey, custom) {
   return out;
 }
 
+// ── Standalone trend chart (independent of the global card filter) ─────────
+// Multi-year windows overlay one line per calendar year (Jan–Dec, nulls for
+// months outside the window/data); shorter windows are a single line, daily
+// under ~2 months, monthly otherwise.
+export function trendSeries(dates, from, to) {
+  const inWin = dates.filter((d) => {
+    const t = Date.parse(d);
+    return Number.isFinite(t) && t >= from && t <= to;
+  });
+
+  if (to - from > 400 * 86400000) {
+    const fromY = new Date(from).getUTCFullYear();
+    const toY = new Date(to).getUTCFullYear();
+    const years = [];
+    for (let y = Math.max(fromY, toY - 5); y <= toY; y++) years.push(y);
+    const series = years.map((y) => ({
+      name: String(y),
+      points: MON.map((m, i) => {
+        const mid = Date.UTC(y, i, 15);
+        return { label: m, value: mid >= from && mid <= to ? 0 : null };
+      }),
+    }));
+    const idx = new Map(years.map((y, i) => [y, i]));
+    inWin.forEach((d) => {
+      const s = series[idx.get(+d.slice(0, 4))];
+      if (!s) return;
+      const p = s.points[+d.slice(5, 7) - 1];
+      if (p.value != null) p.value++;
+      else p.value = 1;
+    });
+    return { multi: true, series };
+  }
+
+  if (to - from <= 62 * 86400000) {
+    const counts = new Map();
+    inWin.forEach((d) => counts.set(d, (counts.get(d) || 0) + 1));
+    const points = [];
+    for (let t = from; t <= to; t += 86400000) {
+      const iso = new Date(t).toISOString().slice(0, 10);
+      points.push({ label: `${+iso.slice(8, 10)}/${+iso.slice(5, 7)}`, value: counts.get(iso) || 0 });
+    }
+    return { multi: false, points };
+  }
+
+  const counts = new Map();
+  inWin.forEach((d) => counts.set(d.slice(0, 7), (counts.get(d.slice(0, 7)) || 0) + 1));
+  const points = [];
+  const s = new Date(from);
+  const d0 = new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), 1));
+  while (d0.getTime() <= to) {
+    const k = `${d0.getUTCFullYear()}-${pad(d0.getUTCMonth() + 1)}`;
+    points.push({
+      label: `${MON[d0.getUTCMonth()]} ${String(d0.getUTCFullYear()).slice(2)}`,
+      value: counts.get(k) || 0,
+    });
+    d0.setUTCMonth(d0.getUTCMonth() + 1);
+  }
+  return { multi: false, points };
+}
+
+// Earliest registered date in the data (ms) — the "All time" window start.
+export const earliestTs = (dates) => {
+  let min = Infinity;
+  dates.forEach((d) => {
+    const t = Date.parse(d);
+    if (Number.isFinite(t) && t < min) min = t;
+  });
+  return Number.isFinite(min) ? min : Date.now();
+};
+
 // The [from, to] window (ms) a range covers — the custom range verbatim
 // (inclusive of the whole `to` day), or the preset's span ending now.
 export function windowFor(rangeKey, custom) {

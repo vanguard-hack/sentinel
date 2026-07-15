@@ -313,7 +313,9 @@ export function MultiLine({ series, height = 170, labelEvery = 1 }) {
   const padX = 8;
   const padTop = 12;
   const padBottom = 8;
-  const max = Math.max(1, ...rows.flatMap((s) => s.points.map((p) => p.value)));
+  // Null values are gaps (e.g. months outside a partial year) — excluded from
+  // the scale and the drawn segments.
+  const max = Math.max(1, ...rows.flatMap((s) => s.points.map((p) => p.value ?? 0)));
   const innerW = w - padX * 2;
   const innerH = height - padTop - padBottom;
   const x = (i) => padX + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
@@ -325,7 +327,10 @@ export function MultiLine({ series, height = 170, labelEvery = 1 }) {
         {active != null ? (
           <span className="trend-readout-cap">
             {rows[0].points[active].label} ·{' '}
-            {rows.map((s) => `${s.name}: ${s.points[active].value}`).join(' · ')}
+            {rows
+              .filter((s) => s.points[active].value != null)
+              .map((s) => `${s.name}: ${s.points[active].value}`)
+              .join(' · ') || '—'}
           </span>
         ) : (
           <span className="trend-readout-cap">{n} periods · hover for values</span>
@@ -341,24 +346,39 @@ export function MultiLine({ series, height = 170, labelEvery = 1 }) {
         {active != null && (
           <line x1={x(active)} x2={x(active)} y1={padTop} y2={padTop + innerH} className="ml-cursor" />
         )}
-        {rows.map((s, si) => (
-          <polyline
-            key={s.name}
-            fill="none"
-            points={s.points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ')}
-            style={{ stroke: `var(--rp-cat-${si % 6})`, strokeWidth: 1.8 }}
-          />
-        ))}
-        {rows.map((s, si) =>
-          s.points.map((p, i) => (
-            <circle
-              key={`${si}-${i}`}
-              cx={x(i)}
-              cy={y(p.value)}
-              r={active === i ? 3.4 : 1.6}
-              style={{ fill: `var(--rp-cat-${si % 6})` }}
+        {rows.map((s, si) => {
+          const segs = [];
+          let cur = [];
+          s.points.forEach((p, i) => {
+            if (p.value == null) {
+              if (cur.length) segs.push(cur);
+              cur = [];
+            } else {
+              cur.push(`${x(i)},${y(p.value)}`);
+            }
+          });
+          if (cur.length) segs.push(cur);
+          return segs.map((seg, k) => (
+            <polyline
+              key={`${s.name}-${k}`}
+              fill="none"
+              points={seg.join(' ')}
+              style={{ stroke: `var(--rp-cat-${si % 6})`, strokeWidth: 1.8 }}
             />
-          ))
+          ));
+        })}
+        {rows.map((s, si) =>
+          s.points.map((p, i) =>
+            p.value == null ? null : (
+              <circle
+                key={`${si}-${i}`}
+                cx={x(i)}
+                cy={y(p.value)}
+                r={active === i ? 3.4 : 1.6}
+                style={{ fill: `var(--rp-cat-${si % 6})` }}
+              />
+            )
+          )
         )}
         {rows[0].points.map((p, i) => (
           <rect

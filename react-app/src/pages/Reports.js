@@ -4,7 +4,7 @@ import {
   FileText, Users, HeartPulse, PackageCheck, FolderOpen, Gavel,
   Flame, Siren, TrendingUp, TrendingDown, FileDown,
 } from 'lucide-react';
-import { fetchReports, computeReport, buildTrend, TREND_RANGES, customLabel } from '../utils/reports';
+import { fetchReports, computeReport, trendSeries, earliestTs, TREND_RANGES, customLabel } from '../utils/reports';
 import { exportReportPdf } from '../utils/reportPdf';
 import DateRangeCalendar from '../components/DateRangeCalendar';
 import { BarList, HBarList, Donut, TrendArea, MultiLine, HeatGrid, Funnel, Pyramid } from '../components/Charts';
@@ -106,13 +106,54 @@ export default function Reports() {
     }
   }, [data, pdfBusy]);
 
-  const trendSeries = useMemo(
-    () => (data?.caseDates ? buildTrend(data.caseDates, trendRange, customRange) : []),
-    [data, trendRange, customRange]
+  // ── Crime-trend chart: its own window, independent of the global filter ──
+  const [chartPreset, setChartPreset] = useState('ALL');
+  const [chartCustom, setChartCustom] = useState(null);
+  const [chartCalOpen, setChartCalOpen] = useState(false);
+  const [chartFrom, setChartFrom] = useState('');
+  const [chartTo, setChartTo] = useState('');
+  const chartCalRef = useRef(null);
+
+  useEffect(() => {
+    if (!chartCalOpen) return undefined;
+    const onDown = (e) => {
+      if (chartCalRef.current && !chartCalRef.current.contains(e.target)) setChartCalOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setChartCalOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [chartCalOpen]);
+
+  const chartWin = useMemo(() => {
+    const now = Date.now();
+    if (chartCustom) {
+      return {
+        from: Date.parse(chartCustom.from + 'T00:00:00Z'),
+        to: Date.parse(chartCustom.to + 'T00:00:00Z') + 86399999,
+      };
+    }
+    switch (chartPreset) {
+      case '1M': return { from: now - 30 * 86400000, to: now };
+      case '6M': return { from: now - 183 * 86400000, to: now };
+      case 'YTD': return { from: Date.UTC(new Date().getUTCFullYear(), 0, 1), to: now };
+      case '1Y': return { from: now - 365 * 86400000, to: now };
+      default: return { from: bundle ? earliestTs(bundle.raw.caseDates) : now, to: now };
+    }
+  }, [chartPreset, chartCustom, bundle]);
+
+  const chartData = useMemo(
+    () => (bundle ? trendSeries(bundle.raw.caseDates, chartWin.from, chartWin.to) : null),
+    [bundle, chartWin]
   );
-  const trendLabelEvery = customRange
-    ? Math.max(1, Math.ceil(trendSeries.length / 14))
-    : trendRange === 'day' ? 5 : trendRange === 'year' ? 4 : 1;
+  const chartLabelEvery = chartData && !chartData.multi
+    ? Math.max(1, Math.ceil(chartData.points.length / 13))
+    : 1;
+  const fmtTs = (ts) =>
+    new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -290,12 +331,73 @@ export default function Reports() {
 
             {/* Crime trend with day/month/year/5-year filter */}
             <section className="rp-card rp-card-wide rp-standalone">
-              <div className="rp-card-head">
-                <h2>Crime trend</h2>
-                <span className="rp-card-sub">{data.rangeLabel} · cases registered</span>
+              <div className="rp-card-head rp-trend-head">
+                <div>
+                  <h2>Crime trend</h2>
+                  <span className="rp-card-sub">
+                    {fmtTs(chartWin.from)} – {fmtTs(chartWin.to)} · cases registered
+                    {chartData?.multi ? ' · one line per year' : ''}
+                  </span>
+                </div>
+                <div className="rp-trend-controls">
+                  {['1M', '6M', 'YTD', '1Y', 'ALL'].map((p) => (
+                    <button
+                      key={p}
+                      className={`fc-horizon ${!chartCustom && chartPreset === p ? 'active' : ''}`}
+                      onClick={() => { setChartCustom(null); setChartPreset(p); }}
+                    >
+                      {p === 'ALL' ? 'All' : p}
+                    </button>
+                  ))}
+                  <div className="rp-cal" ref={chartCalRef}>
+                    <button
+                      className={`cf-icon-btn rp-cal-btn ${chartCustom ? 'active' : ''}`}
+                      onClick={() => {
+                        setChartFrom(chartCustom?.from || '');
+                        setChartTo(chartCustom?.to || '');
+                        setChartCalOpen((o) => !o);
+                      }}
+                      title="Custom range for this chart"
+                    >
+                      <CalendarDays size={15} />
+                      {chartCustom && <span className="rp-cal-label">{customLabel(chartCustom)}</span>}
+                    </button>
+                    {chartCalOpen && (
+                      <div className="rp-cal-pop" role="dialog" aria-label="Chart date range">
+                        <DateRangeCalendar
+                          from={chartFrom}
+                          to={chartTo}
+                          onSelect={(f, t) => { setChartFrom(f); setChartTo(t); }}
+                        />
+                        <div className="rp-cal-actions">
+                          <button
+                            className="rp-cal-clear"
+                            onClick={() => { setChartFrom(''); setChartTo(''); if (chartCustom) setChartCustom(null); }}
+                          >
+                            Clear
+                          </button>
+                          <button
+                            className="rp-cal-apply"
+                            disabled={!chartFrom || !chartTo || chartFrom > chartTo}
+                            onClick={() => {
+                              setChartCustom({ from: chartFrom, to: chartTo });
+                              setChartCalOpen(false);
+                            }}
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
               <div className="rp-card-body">
-                <TrendArea data={trendSeries} labelEvery={trendLabelEvery} height={180} />
+                {chartData?.multi ? (
+                  <MultiLine series={chartData.series} height={200} labelEvery={1} />
+                ) : (
+                  <TrendArea data={chartData?.points || []} labelEvery={chartLabelEvery} height={180} />
+                )}
               </div>
             </section>
 
