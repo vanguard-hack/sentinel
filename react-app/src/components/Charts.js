@@ -512,3 +512,36 @@ export function ForecastChart({ history, forecast, height = 190, labelEvery = 1 
     </div>
   );
 }
+
+// Pyramid — ordered buckets as centred bars scaled to the largest bucket,
+// coloured along a severity ramp (calm → alarming). Suits ageing profiles.
+const PYRAMID_RAMP = ['#1baf7a', '#eda100', '#e8720c', '#e34948', '#b91c1c'];
+export function Pyramid({ data, colors = PYRAMID_RAMP }) {
+  if (!data?.length) return <div className="rp-empty">No data</div>;
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const total = data.reduce((s, d) => s + d.value, 0) || 1;
+  return (
+    <div className="rp-funnel">
+      {data.map((d, i) => (
+        <div
+          key={d.label}
+          className="rp-funnel-row"
+          title={`${d.label}: ${d.value.toLocaleString()} (${Math.round((d.value / total) * 100)}% of open cases)`}
+        >
+          <div
+            className="rp-funnel-bar"
+            style={{
+              width: `${Math.max(10, (d.value / max) * 100)}%`,
+              background: colors[i % colors.length],
+            }}
+          >
+            <span className="rp-funnel-val">{d.value.toLocaleString()}</span>
+          </div>
+          <span className="rp-funnel-label">
+            {d.label} · {Math.round((d.value / total) * 100)}%
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}

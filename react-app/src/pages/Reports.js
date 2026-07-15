@@ -7,7 +7,7 @@ import {
 import { fetchReports, computeReport, buildTrend, TREND_RANGES, customLabel } from '../utils/reports';
 import { exportReportPdf } from '../utils/reportPdf';
 import DateRangeCalendar from '../components/DateRangeCalendar';
-import { BarList, Donut, TrendArea, MultiLine, HeatGrid, Funnel, Scatter } from '../components/Charts';
+import { BarList, Donut, TrendArea, MultiLine, HeatGrid, Funnel, Scatter, Pyramid } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
 import TopBar from '../components/TopBar';
 import { useAuth } from '../context/AuthContext';
@@ -374,8 +374,8 @@ export default function Reports() {
               <Card title="Case status funnel" subtitle="Registered → investigated → chargesheeted → decided">
                 <Funnel data={data.statusFunnel} />
               </Card>
-              <Card title="Pendency ageing" subtitle="Open investigations by age of case">
-                <BarList data={data.pendencyAgeing} />
+              <Card title="Pendency ageing" subtitle="Open investigations by age of case — green fresh, red long-pending">
+                <Pyramid data={data.pendencyAgeing} />
               </Card>
               <Card title="Chargesheet filing lag" subtitle="Days from registration to chargesheet">
                 <BarList data={data.csLag} />
