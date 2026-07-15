@@ -59,27 +59,26 @@ export default function OrgChart() {
   const zoomBy = (dir) =>
     setZoom((z) => Math.round(Math.min(1.6, Math.max(0.4, z + dir * 0.15)) * 100) / 100);
 
-  // Drag anywhere on the canvas to pan (scrolls the container).
+  // Free panning: drag anywhere to translate the canvas (independent of any
+  // scroll overflow, so it works at every zoom level).
   const scrollRef = useRef(null);
+  const canvasRef = useRef(null);
   const panRef = useRef(null);
+  const [off, setOff] = useState({ x: 0, y: 0 });
   const [panning, setPanning] = useState(false);
   const panStart = (e) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    panRef.current = { x: e.clientX, y: e.clientY, sl: el.scrollLeft, st: el.scrollTop, moved: false };
+    panRef.current = { x: e.clientX, y: e.clientY, ox: off.x, oy: off.y, moved: false };
   };
   useEffect(() => {
     const move = (e) => {
       const pan = panRef.current;
-      const el = scrollRef.current;
-      if (!pan || !el) return;
+      if (!pan) return;
       const dx = e.clientX - pan.x;
       const dy = e.clientY - pan.y;
       if (Math.abs(dx) + Math.abs(dy) > 4) pan.moved = true;
       if (pan.moved) {
         setPanning(true);
-        el.scrollLeft = pan.sl - dx;
-        el.scrollTop = pan.st - dy;
+        setOff({ x: pan.ox + dx, y: pan.oy + dy });
       }
     };
     const up = () => { panRef.current = null; setPanning(false); };
@@ -110,10 +109,11 @@ export default function OrgChart() {
     [navigate]
   );
 
-  // Centre the chart horizontally whenever it re-renders wider than the view.
+  // Centre the chart whenever its size changes (data, district or zoom).
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+    const cv = canvasRef.current;
+    if (el && cv) setOff({ x: (el.clientWidth - cv.offsetWidth) / 2, y: 0 });
   }, [data, district, zoom]);
 
   const chart = useMemo(() => {
@@ -213,7 +213,12 @@ export default function OrgChart() {
               ref={scrollRef}
               onMouseDown={panStart}
             >
-              <ul className="oc-tree" style={{ zoom }}>
+              <div
+                ref={canvasRef}
+                className="oc-canvas"
+                style={{ transform: `translate(${off.x}px, ${off.y}px)` }}
+              >
+                <ul className="oc-tree" style={{ zoom }}>
                 <li>
                   {chart.dgp && (
                     <Card
@@ -231,7 +236,8 @@ export default function OrgChart() {
                     {chart.tiers.length > 0 && renderChain(chart.tiers, chart.stations, 0, openOfficer)}
                   </ul>
                 </li>
-              </ul>
+                </ul>
+              </div>
             </div>
           )}
         </div>

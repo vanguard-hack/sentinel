@@ -3978,11 +3978,20 @@ a:hover { color: var(--blue-500); }
 /* ── Organisation chart ────────────────────────────────────────────────── */
 .oc-intro { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); font-weight: 550; }
 .oc-wrap { background: var(--bg-1); position: relative; }
-.oc-scroll { overflow: auto; padding: 28px 20px 36px; cursor: grab; }
+.oc-scroll {
+  flex: 1;
+  min-height: 420px;
+  overflow: hidden;
+  padding: 28px 0 36px;
+  cursor: grab;
+  /* Dotted canvas background, whiteboard-style. */
+  background-image: radial-gradient(var(--bg-4) 1.1px, transparent 1.4px);
+  background-size: 22px 22px;
+}
 .oc-scroll.panning { cursor: grabbing; user-select: none; }
-/* max-content + auto margins keep the tree centred when narrower than the
-   view; when wider, the scroll position is centred programmatically. */
-.oc-tree { width: max-content; margin: 0 auto; }
+/* The canvas is translated for panning; centring sets the initial offset. */
+.oc-canvas { width: max-content; will-change: transform; }
+.oc-tree { width: max-content; }
 
 /* Floating zoom controls */
 .oc-zoom {
