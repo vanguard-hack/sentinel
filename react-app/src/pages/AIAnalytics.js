@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   RefreshCw, AlertTriangle,
-  Brain, TrendingUp, TrendingDown, Lightbulb, Activity, Share2,
+  Brain, TrendingUp, TrendingDown, Lightbulb, Activity, Share2, LineChart,
 } from 'lucide-react';
 import {
   fetchIncidents, hourlyProfile, dayOfMonthProfile, weekdayProfile,
@@ -9,6 +9,7 @@ import {
 } from '../utils/aianalytics';
 import { TrendArea, BarList } from '../components/Charts';
 import CrimeLinks from '../components/CrimeLinks';
+import Forecasts from '../components/Forecasts';
 import TopBar from '../components/TopBar';
 
 function Card({ title, subtitle, wide, children }) {
@@ -37,7 +38,7 @@ export default function AIAnalytics() {
   const [error, setError] = useState(null);
   const [dim, setDim] = useState('hour');
   const [head, setHead] = useState('ALL');
-  const [view, setView] = useState('patterns'); // 'patterns' | 'links'
+  const [view, setView] = useState('patterns'); // 'patterns' | 'links' | 'forecasts'
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -167,9 +168,18 @@ export default function AIAnalytics() {
           >
             <Share2 size={15} /> Crime links
           </button>
+          <button
+            className={`ai-viewtab ${view === 'forecasts' ? 'active' : ''}`}
+            onClick={() => setView('forecasts')}
+            role="tab" aria-selected={view === 'forecasts'}
+          >
+            <LineChart size={15} /> Forecasts
+          </button>
         </div>
 
-        {view === 'links' ? (
+        {view === 'forecasts' ? (
+          <Forecasts />
+        ) : view === 'links' ? (
           <CrimeLinks />
         ) : error ? (
           <div className="cf-state cf-error">

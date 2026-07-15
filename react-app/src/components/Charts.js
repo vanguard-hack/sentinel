@@ -416,3 +416,98 @@ export function Scatter({ data, xLabel = 'x', yLabel = 'y', height = 200 }) {
     </svg>
   );
 }
+
+// Forecast chart — historical weekly actuals as a solid line, forecast mean as
+// a dashed line, and the confidence interval as a shaded band. Hover reads out
+// the value (with the CI range on forecast periods).
+export function ForecastChart({ history, forecast, height = 190, labelEvery = 1 }) {
+  const [active, setActive] = useState(null);
+  if (!history?.length || !forecast?.points?.length) {
+    return <div className="rp-empty">Not enough history to forecast</div>;
+  }
+
+  const all = [
+    ...history.map((p) => ({ ...p, kind: 'actual' })),
+    ...forecast.points.map((p) => ({ ...p, kind: 'forecast' })),
+  ];
+  const n = all.length;
+  const w = 600;
+  const padX = 8;
+  const padTop = 12;
+  const padBottom = 8;
+  const max = Math.max(1, ...all.map((p) => p.hi ?? p.value));
+  const innerW = w - padX * 2;
+  const innerH = height - padTop - padBottom;
+  const x = (i) => padX + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+  const y = (v) => padTop + innerH - (v / max) * innerH;
+
+  const hStart = history.length - 1; // forecast joins the last actual
+  const actualPts = history.map((p, i) => `${x(i)},${y(p.value)}`).join(' ');
+  const fcPts = [
+    `${x(hStart)},${y(history[hStart].value)}`,
+    ...forecast.points.map((p, i) => `${x(hStart + 1 + i)},${y(p.value)}`),
+  ].join(' ');
+  const band = [
+    `${x(hStart)},${y(history[hStart].value)}`,
+    ...forecast.points.map((p, i) => `${x(hStart + 1 + i)},${y(p.hi)}`),
+    ...forecast.points.map((p, i) => `${x(hStart + forecast.points.length - i)},${y(forecast.points[forecast.points.length - 1 - i].lo)}`),
+  ].join(' ');
+
+  const shown = active != null ? all[active] : null;
+
+  return (
+    <div className="trend-wrap">
+      <div className="trend-readout">
+        {shown ? (
+          <span className="trend-readout-cap">
+            {shown.label} · {shown.kind === 'forecast'
+              ? `predicted ${shown.value} (${shown.lo}–${shown.hi} @95%)`
+              : `${shown.value} registered`}
+          </span>
+        ) : (
+          <span className="trend-readout-cap">
+            {history.length} weeks history · {forecast.points.length} weeks predicted · shaded = 95% interval
+          </span>
+        )}
+      </div>
+      <svg
+        viewBox={`0 0 ${w} ${height}`}
+        className="trend-svg"
+        preserveAspectRatio="none"
+        role="img"
+        onMouseLeave={() => setActive(null)}
+      >
+        <polygon points={band} className="fc-band" />
+        <polyline points={actualPts} fill="none" className="trend-line" />
+        <polyline points={fcPts} fill="none" className="trend-line trend-line-forecast" />
+        {all.map((p, i) => (
+          <g key={i}>
+            <rect
+              x={x(i) - innerW / n / 2}
+              y={0}
+              width={innerW / n}
+              height={height}
+              fill="transparent"
+              onMouseEnter={() => setActive(i)}
+            />
+            {(active === i || p.kind === 'forecast') && (
+              <circle
+                cx={x(i)}
+                cy={y(p.value)}
+                r={active === i ? 4 : 2}
+                className={`trend-dot ${p.kind === 'forecast' ? 'forecast' : ''} ${active === i ? 'active' : ''}`}
+              />
+            )}
+          </g>
+        ))}
+      </svg>
+      <div className="trend-labels">
+        {all.map((p, i) => (
+          <span key={i} className={active === i ? 'active' : ''}>
+            {i % labelEvery === 0 ? p.label : ''}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}

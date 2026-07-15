@@ -4193,3 +4193,81 @@ a:hover { color: var(--blue-500); }
 .rp-scatter-tick { fill: var(--text-4); font-size: 10px; font-family: var(--font); }
 .rp-scatter-dot { fill: var(--blue-500); opacity: 0.55; }
 .rp-scatter-dot:hover { opacity: 1; }
+
+/* ── AI Analytics: Forecasts tab ───────────────────────────────────────── */
+.fc-band { fill: var(--blue-glow); stroke: none; }
+
+.fc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 12px;
+}
+.fc-toolbar-label { font-size: 12px; font-weight: 600; color: var(--text-3); margin-right: 4px; }
+.fc-horizon {
+  padding: 6px 13px;
+  border: 1px solid var(--border-bright);
+  border-radius: 999px;
+  background: var(--bg-1);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 550;
+}
+.fc-horizon.active { background: var(--blue-500); border-color: var(--blue-500); color: #fff; }
+
+.fc-select { margin-bottom: 10px; max-width: 100%; }
+
+.fc-alerts { display: flex; flex-direction: column; gap: 8px; }
+.fc-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-left: 3px solid var(--red);
+  border-radius: 8px;
+  background: rgba(220, 38, 38, 0.05);
+}
+.fc-alert svg { color: var(--red); margin-top: 2px; flex-shrink: 0; }
+.fc-alert strong { display: block; font-size: 13px; color: var(--text-0); }
+.fc-alert span { font-size: 12px; color: var(--text-2); }
+
+.fc-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.fc-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.fc-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text-1); white-space: nowrap; }
+.fc-table tbody tr:last-child td { border-bottom: none; }
+.fc-table tbody tr:hover td { background: var(--hover-overlay); }
+.fc-up { color: var(--red); font-weight: 600; }
+.fc-down { color: var(--green); font-weight: 600; }
+.fc-pid { color: var(--text-4); font-size: 10.5px; font-family: var(--font-mono); margin-left: 5px; }
+
+.fc-tier {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+}
+.fc-tier-high { background: rgba(220, 38, 38, 0.12); color: var(--red); }
+.fc-tier-medium { background: rgba(217, 119, 6, 0.13); color: var(--gold-dark); }
+.fc-tier-low { background: rgba(5, 150, 105, 0.12); color: var(--green); }
+[data-theme="dark"] .fc-tier-medium { color: var(--gold); }
+
+.fc-why { display: flex; width: 130px; height: 10px; border-radius: 4px; overflow: hidden; background: var(--bg-3); }
+.fc-why-seg { height: 100%; }
+.fc-why-legend { display: flex; gap: 14px; margin-top: 10px; font-size: 11.5px; color: var(--text-3); }
+.fc-why-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; }
+
+.fc-notes { list-style: none; display: flex; flex-direction: column; gap: 9px; font-size: 12.5px; color: var(--text-2); }
+.fc-notes li { display: flex; gap: 8px; align-items: flex-start; line-height: 1.5; }
+.fc-notes svg { flex-shrink: 0; margin-top: 3px; color: var(--text-3); }
