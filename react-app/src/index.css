@@ -4323,7 +4323,7 @@ a:hover { color: var(--blue-500); }
 
 /* ── Line-chart chrome (TrendArea / MultiLine v2) ──────────────────────── */
 .lc-wrap { position: relative; }
-.lc-line { stroke-width: 2; stroke: var(--rp-cat-0); }
+.lc-line { stroke-width: 2.2; stroke: var(--rp-cat-0); stroke-linecap: round; stroke-linejoin: round; }
 .lc-line-dashed { stroke-dasharray: 5 4; }
 .lc-vgrid { stroke: var(--border); stroke-dasharray: 3 5; stroke-width: 1; }
 .lc-cursor { stroke: var(--blue-500); stroke-width: 1.2; }

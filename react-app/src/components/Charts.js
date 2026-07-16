@@ -11,6 +11,25 @@ const niceCeil = (raw) => {
 };
 const fmtTick = (v) => (v >= 1000 ? `${Math.round((v / 1000) * 10) / 10}k` : Math.round(v * 10) / 10);
 
+// Catmull-Rom → cubic bezier: the smooth curves the BRIX chart kit uses.
+// Control-point y is clamped so counts never dip below the baseline.
+const smoothPath = (pts, yMin, yMax) => {
+  if (!pts.length) return '';
+  if (pts.length === 1) return `M${pts[0].x},${pts[0].y}`;
+  const cl = (v) => Math.max(yMin, Math.min(yMax, v));
+  let d = `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    d += ` C${(p1.x + (p2.x - p0.x) / 6).toFixed(2)},${cl(p1.y + (p2.y - p0.y) / 6).toFixed(2)}`
+      + ` ${(p2.x - (p3.x - p1.x) / 6).toFixed(2)},${cl(p2.y - (p3.y - p1.y) / 6).toFixed(2)}`
+      + ` ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`;
+  }
+  return d;
+};
+
 let areaSeq = 0;
 export function TrendArea({ data, height = 190, labelEvery = 1 }) {
   const [active, setActive] = useState(null);
@@ -33,9 +52,11 @@ export function TrendArea({ data, height = 190, labelEvery = 1 }) {
   const fcStart = data.findIndex((d) => d.forecast);
   const solid = fcStart === -1 ? data : data.slice(0, fcStart);
   const dashed = fcStart === -1 ? [] : data.slice(Math.max(0, fcStart - 1));
-  const pts = (arr, off) => arr.map((d, i) => `${x(i + off)},${y(d.value)}`).join(' ');
-  const areaPts = solid.length > 1
-    ? `${x(0)},${base} ${pts(solid, 0)} ${x(solid.length - 1)},${base}`
+  const xy = (arr, off) => arr.map((d, i) => ({ x: x(i + off), y: y(d.value) }));
+  const solidPath = smoothPath(xy(solid, 0), padT, base);
+  const dashedPath = smoothPath(xy(dashed, Math.max(0, fcStart - 1)), padT, base);
+  const areaPath = solid.length > 1
+    ? `${solidPath} L${x(solid.length - 1)},${base} L${x(0)},${base} Z`
     : '';
 
   const shown = active != null ? data[active] : null;
@@ -63,20 +84,9 @@ export function TrendArea({ data, height = 190, labelEvery = 1 }) {
           </g>
         ))}
         <line x1={padL} x2={w - padR} y1={base} y2={base} className="col-grid col-grid-base" />
-        {data.map((d, i) =>
-          i % labelEvery === 0 ? (
-            <line key={`v${i}`} x1={x(i)} x2={x(i)} y1={padT} y2={base} className="lc-vgrid" />
-          ) : null
-        )}
-        {areaPts && <polygon points={areaPts} fill={`url(#${gradId})`} />}
-        {solid.length > 1 && <polyline points={pts(solid, 0)} className="lc-line" fill="none" />}
-        {dashed.length > 1 && (
-          <polyline
-            points={pts(dashed, Math.max(0, fcStart - 1))}
-            className="lc-line lc-line-dashed"
-            fill="none"
-          />
-        )}
+        {areaPath && <path d={areaPath} fill={`url(#${gradId})`} />}
+        {solid.length > 1 && <path d={solidPath} className="lc-line" fill="none" />}
+        {dashed.length > 1 && <path d={dashedPath} className="lc-line lc-line-dashed" fill="none" />}
         {active != null && (
           <>
             <line x1={x(active)} x2={x(active)} y1={padT} y2={base} className="lc-cursor" />
@@ -371,11 +381,6 @@ export function MultiLine({ series, height = 210, labelEvery = 1 }) {
           </g>
         ))}
         <line x1={padL} x2={w - padR} y1={base} y2={base} className="col-grid col-grid-base" />
-        {rows[0].points.map((p, i) =>
-          i % labelEvery === 0 ? (
-            <line key={`v${i}`} x1={x(i)} x2={x(i)} y1={padT} y2={base} className="lc-vgrid" />
-          ) : null
-        )}
         {rows.map((s, si) => {
           const segs = [];
           let cur = [];
@@ -384,15 +389,15 @@ export function MultiLine({ series, height = 210, labelEvery = 1 }) {
               if (cur.length) segs.push(cur);
               cur = [];
             } else {
-              cur.push(`${x(i)},${y(p.value)}`);
+              cur.push({ x: x(i), y: y(p.value) });
             }
           });
           if (cur.length) segs.push(cur);
           return segs.map((seg, k) => (
-            <polyline
+            <path
               key={`${s.name}-${k}`}
               fill="none"
-              points={seg.join(' ')}
+              d={smoothPath(seg, padT, base)}
               className="lc-line"
               style={{ stroke: `var(--rp-cat-${si % 6})` }}
             />
@@ -575,16 +580,23 @@ export function ForecastChart({ history, forecast, height = 190, labelEvery = 1 
   const y = (v) => padTop + innerH - (v / max) * innerH;
 
   const hStart = history.length - 1; // forecast joins the last actual
-  const actualPts = history.map((p, i) => `${x(i)},${y(p.value)}`).join(' ');
-  const fcPts = [
-    `${x(hStart)},${y(history[hStart].value)}`,
-    ...forecast.points.map((p, i) => `${x(hStart + 1 + i)},${y(p.value)}`),
-  ].join(' ');
-  const band = [
-    `${x(hStart)},${y(history[hStart].value)}`,
-    ...forecast.points.map((p, i) => `${x(hStart + 1 + i)},${y(p.hi)}`),
-    ...forecast.points.map((p, i) => `${x(hStart + forecast.points.length - i)},${y(forecast.points[forecast.points.length - 1 - i].lo)}`),
-  ].join(' ');
+  const base = padTop + innerH;
+  const actualPath = smoothPath(history.map((p, i) => ({ x: x(i), y: y(p.value) })), padTop, base);
+  const fcXY = [
+    { x: x(hStart), y: y(history[hStart].value) },
+    ...forecast.points.map((p, i) => ({ x: x(hStart + 1 + i), y: y(p.value) })),
+  ];
+  const fcPath = smoothPath(fcXY, padTop, base);
+  // Band outline: joint → hi edge forward, jump to the far lo point, then the
+  // lo edge backwards to the joint.
+  const joint = { x: x(hStart), y: y(history[hStart].value) };
+  const hiXY = [joint, ...forecast.points.map((p, i) => ({ x: x(hStart + 1 + i), y: y(p.hi) }))];
+  const loReturn = [
+    ...forecast.points.map((p, i) => ({ x: x(hStart + 1 + i), y: y(p.lo) })).reverse(),
+    joint,
+  ];
+  const loPath = smoothPath(loReturn, padTop, base);
+  const bandPath = `${smoothPath(hiXY, padTop, base)} L${loReturn[0].x.toFixed(2)},${loReturn[0].y.toFixed(2)} ${loPath.replace(/^M[^ ]+/, '').trim()} Z`;
 
   const shown = active != null ? all[active] : null;
 
@@ -610,9 +622,9 @@ export function ForecastChart({ history, forecast, height = 190, labelEvery = 1 
         role="img"
         onMouseLeave={() => setActive(null)}
       >
-        <polygon points={band} className="fc-band" />
-        <polyline points={actualPts} fill="none" className="trend-line" />
-        <polyline points={fcPts} fill="none" className="trend-line trend-line-forecast" />
+        <path d={bandPath} className="fc-band" />
+        <path d={actualPath} fill="none" className="lc-line" />
+        <path d={fcPath} fill="none" className="lc-line lc-line-dashed" />
         {all.map((p, i) => (
           <g key={i}>
             <rect
