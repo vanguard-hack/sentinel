@@ -4377,3 +4377,8 @@ a:hover { color: var(--blue-500); }
 .seg-btn:hover:not(.active) { background: var(--hover-overlay); color: var(--text-0); }
 .seg-btn.active { background: var(--blue-500); color: #fff; border-left-color: var(--blue-500); }
 .seg-btn.active + .seg-btn { border-left-color: transparent; }
+
+/* BRIX "Line Gradient" underfill: multiply @ 0.33 in light; multiply would
+   vanish on a dark surface, so dark mode screens it in softly instead. */
+.lc-area { mix-blend-mode: multiply; opacity: 0.33; }
+[data-theme="dark"] .lc-area { mix-blend-mode: screen; opacity: 0.16; }

@@ -72,9 +72,11 @@ export function TrendArea({ data, height = 190, labelEvery = 1 }) {
         onMouseLeave={() => setActive(null)}
       >
         <defs>
+          {/* BRIX "Line Gradient": #765DFF → #CFCAFF → #FFF, multiply @ 0.33 */}
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--rp-cat-0)" stopOpacity="0.22" />
-            <stop offset="100%" stopColor="var(--rp-cat-0)" stopOpacity="0" />
+            <stop offset="0%" stopColor="#765DFF" />
+            <stop offset="48.25%" stopColor="#CFCAFF" />
+            <stop offset="100%" stopColor="#FFFFFF" />
           </linearGradient>
         </defs>
         {[0.25, 0.5, 0.75, 1].map((f) => (
@@ -84,13 +86,13 @@ export function TrendArea({ data, height = 190, labelEvery = 1 }) {
           </g>
         ))}
         <line x1={padL} x2={w - padR} y1={base} y2={base} className="col-grid col-grid-base" />
-        {areaPath && <path d={areaPath} fill={`url(#${gradId})`} />}
-        {solid.length > 1 && <path d={solidPath} className="lc-line" fill="none" />}
-        {dashed.length > 1 && <path d={dashedPath} className="lc-line lc-line-dashed" fill="none" />}
+        {areaPath && <path d={areaPath} fill={`url(#${gradId})`} className="lc-area" />}
+        {solid.length > 1 && <path d={solidPath} className="lc-line" fill="none" style={{ stroke: '#765DFF' }} />}
+        {dashed.length > 1 && <path d={dashedPath} className="lc-line lc-line-dashed" fill="none" style={{ stroke: '#765DFF' }} />}
         {active != null && (
           <>
             <line x1={x(active)} x2={x(active)} y1={padT} y2={base} className="lc-cursor" />
-            <circle cx={x(active)} cy={y(data[active].value)} r="4.5" className="lc-ring" style={{ stroke: 'var(--rp-cat-0)' }} />
+            <circle cx={x(active)} cy={y(data[active].value)} r="4.5" className="lc-ring" style={{ stroke: '#765DFF' }} />
           </>
         )}
         {data.map((d, i) =>
@@ -116,7 +118,7 @@ export function TrendArea({ data, height = 190, labelEvery = 1 }) {
         <div className="lc-tip" style={{ left: `${tipLeft}%` }}>
           <div className="lc-tip-title">{shown.label}{shown.forecast ? ' · projected' : ''}</div>
           <div className="lc-tip-row">
-            <span className="lc-tip-dot" style={{ background: 'var(--rp-cat-0)' }} />
+            <span className="lc-tip-dot" style={{ background: '#765DFF' }} />
             <span className="lc-tip-name">Cases</span>
             <b>{shown.value.toLocaleString()}</b>
           </div>
@@ -341,8 +343,10 @@ export function Donut({ data }) {
 // same chrome as TrendArea: gridlines + ticks, hover cursor with ring markers
 // on every series, a floating tooltip card listing each series (and total),
 // and a centred legend. Null values are gaps (partial years).
+let mlSeq = 0;
 export function MultiLine({ series, height = 210, labelEvery = 1 }) {
   const [active, setActive] = useState(null);
+  const gradBase = useMemo(() => `mlgrad-${++mlSeq}`, []);
   const rows = (series || []).filter((s) => s.points && s.points.length);
   if (!rows.length) return <div className="rp-empty">No data</div>;
 
@@ -381,6 +385,15 @@ export function MultiLine({ series, height = 210, labelEvery = 1 }) {
           </g>
         ))}
         <line x1={padL} x2={w - padR} y1={base} y2={base} className="col-grid col-grid-base" />
+        <defs>
+          {rows.map((s, si) => (
+            <linearGradient key={si} id={`${gradBase}-${si}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={`var(--rp-cat-${si % 6})`} />
+              <stop offset="60%" stopColor={`var(--rp-cat-${si % 6})`} stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+            </linearGradient>
+          ))}
+        </defs>
         {rows.map((s, si) => {
           const segs = [];
           let cur = [];
@@ -394,13 +407,21 @@ export function MultiLine({ series, height = 210, labelEvery = 1 }) {
           });
           if (cur.length) segs.push(cur);
           return segs.map((seg, k) => (
-            <path
-              key={`${s.name}-${k}`}
-              fill="none"
-              d={smoothPath(seg, padT, base)}
-              className="lc-line"
-              style={{ stroke: `var(--rp-cat-${si % 6})` }}
-            />
+            <g key={`${s.name}-${k}`}>
+              {seg.length > 1 && (
+                <path
+                  d={`${smoothPath(seg, padT, base)} L${seg[seg.length - 1].x},${base} L${seg[0].x},${base} Z`}
+                  fill={`url(#${gradBase}-${si})`}
+                  className="lc-area"
+                />
+              )}
+              <path
+                fill="none"
+                d={smoothPath(seg, padT, base)}
+                className="lc-line"
+                style={{ stroke: `var(--rp-cat-${si % 6})` }}
+              />
+            </g>
           ));
         })}
         {active != null && (
