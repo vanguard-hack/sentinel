@@ -30,14 +30,33 @@ const smoothPath = (pts, yMin, yMax) => {
   return d;
 };
 
+// Measure the wrapper so the viewBox matches real pixels — text renders at
+// its natural size instead of being stretched by preserveAspectRatio="none".
+function useMeasuredWidth(initial = 600) {
+  const ref = React.useRef(null);
+  const [w, setW] = useState(initial);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver((entries) => {
+      const cw = entries[0]?.contentRect?.width;
+      if (cw) setW(Math.max(320, Math.round(cw)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w];
+}
+
 let areaSeq = 0;
 export function TrendArea({ data, height = 190, labelEvery = 1 }) {
   const [active, setActive] = useState(null);
+  const [wrapRef, mw] = useMeasuredWidth();
   const gradId = useMemo(() => `areagrad-${++areaSeq}`, []);
   if (!data || !data.length) return <div className="rp-empty">No data</div>;
 
   const n = data.length;
-  const w = 600;
+  const w = mw;
   const padL = 36;
   const padR = 10;
   const padT = 10;
@@ -63,12 +82,11 @@ export function TrendArea({ data, height = 190, labelEvery = 1 }) {
   const tipLeft = active != null ? Math.min(84, Math.max(16, (x(active) / w) * 100)) : 0;
 
   return (
-    <div className="trend-wrap lc-wrap">
+    <div className="trend-wrap lc-wrap" ref={wrapRef}>
       <svg
         viewBox={`0 0 ${w} ${height}`}
         className="trend-svg"
         role="img"
-        preserveAspectRatio="none"
         onMouseLeave={() => setActive(null)}
       >
         <defs>
@@ -343,15 +361,14 @@ export function Donut({ data }) {
 // same chrome as TrendArea: gridlines + ticks, hover cursor with ring markers
 // on every series, a floating tooltip card listing each series (and total),
 // and a centred legend. Null values are gaps (partial years).
-let mlSeq = 0;
 export function MultiLine({ series, height = 210, labelEvery = 1 }) {
   const [active, setActive] = useState(null);
-  const gradBase = useMemo(() => `mlgrad-${++mlSeq}`, []);
+  const [wrapRef, mw] = useMeasuredWidth();
   const rows = (series || []).filter((s) => s.points && s.points.length);
   if (!rows.length) return <div className="rp-empty">No data</div>;
 
   const n = rows[0].points.length;
-  const w = 600;
+  const w = mw;
   const padL = 36;
   const padR = 10;
   const padT = 10;
@@ -370,11 +387,10 @@ export function MultiLine({ series, height = 210, labelEvery = 1 }) {
   const tipLeft = active != null ? Math.min(80, Math.max(20, (x(active) / w) * 100)) : 0;
 
   return (
-    <div className="trend-wrap lc-wrap">
+    <div className="trend-wrap lc-wrap" ref={wrapRef}>
       <svg
         viewBox={`0 0 ${w} ${height}`}
         className="trend-svg"
-        preserveAspectRatio="none"
         role="img"
         onMouseLeave={() => setActive(null)}
       >
@@ -385,15 +401,6 @@ export function MultiLine({ series, height = 210, labelEvery = 1 }) {
           </g>
         ))}
         <line x1={padL} x2={w - padR} y1={base} y2={base} className="col-grid col-grid-base" />
-        <defs>
-          {rows.map((s, si) => (
-            <linearGradient key={si} id={`${gradBase}-${si}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={`var(--rp-cat-${si % 6})`} />
-              <stop offset="60%" stopColor={`var(--rp-cat-${si % 6})`} stopOpacity="0.25" />
-              <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
-            </linearGradient>
-          ))}
-        </defs>
         {rows.map((s, si) => {
           const segs = [];
           let cur = [];
@@ -407,21 +414,13 @@ export function MultiLine({ series, height = 210, labelEvery = 1 }) {
           });
           if (cur.length) segs.push(cur);
           return segs.map((seg, k) => (
-            <g key={`${s.name}-${k}`}>
-              {seg.length > 1 && (
-                <path
-                  d={`${smoothPath(seg, padT, base)} L${seg[seg.length - 1].x},${base} L${seg[0].x},${base} Z`}
-                  fill={`url(#${gradBase}-${si})`}
-                  className="lc-area"
-                />
-              )}
-              <path
-                fill="none"
-                d={smoothPath(seg, padT, base)}
-                className="lc-line"
-                style={{ stroke: `var(--rp-cat-${si % 6})` }}
-              />
-            </g>
+            <path
+              key={`${s.name}-${k}`}
+              fill="none"
+              d={smoothPath(seg, padT, base)}
+              className="lc-line"
+              style={{ stroke: `var(--rp-cat-${si % 6})` }}
+            />
           ));
         })}
         {active != null && (
@@ -581,6 +580,7 @@ export function Scatter({ data, xLabel = 'x', yLabel = 'y', height = 200 }) {
 // the value (with the CI range on forecast periods).
 export function ForecastChart({ history, forecast, height = 190, labelEvery = 1 }) {
   const [active, setActive] = useState(null);
+  const [wrapRef, mw] = useMeasuredWidth();
   if (!history?.length || !forecast?.points?.length) {
     return <div className="rp-empty">Not enough history to forecast</div>;
   }
@@ -590,7 +590,7 @@ export function ForecastChart({ history, forecast, height = 190, labelEvery = 1 
     ...forecast.points.map((p) => ({ ...p, kind: 'forecast' })),
   ];
   const n = all.length;
-  const w = 600;
+  const w = mw;
   const padX = 8;
   const padTop = 12;
   const padBottom = 8;
@@ -622,7 +622,7 @@ export function ForecastChart({ history, forecast, height = 190, labelEvery = 1 
   const shown = active != null ? all[active] : null;
 
   return (
-    <div className="trend-wrap">
+    <div className="trend-wrap lc-wrap" ref={wrapRef}>
       <div className="trend-readout">
         {shown ? (
           <span className="trend-readout-cap">
@@ -639,7 +639,6 @@ export function ForecastChart({ history, forecast, height = 190, labelEvery = 1 
       <svg
         viewBox={`0 0 ${w} ${height}`}
         className="trend-svg"
-        preserveAspectRatio="none"
         role="img"
         onMouseLeave={() => setActive(null)}
       >
