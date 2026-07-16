@@ -49,7 +49,7 @@ function useMeasuredWidth(initial = 600) {
 }
 
 let areaSeq = 0;
-export function TrendArea({ data, height = 190, labelEvery = 1 }) {
+export function TrendArea({ data, height = 230, labelEvery = 1 }) {
   const [active, setActive] = useState(null);
   const [wrapRef, mw] = useMeasuredWidth();
   const gradId = useMemo(() => `areagrad-${++areaSeq}`, []);
@@ -60,7 +60,7 @@ export function TrendArea({ data, height = 190, labelEvery = 1 }) {
   const padL = 36;
   const padR = 10;
   const padT = 10;
-  const padB = 24;
+  const padB = 30;
   const innerW = w - padL - padR;
   const innerH = height - padT - padB;
   const maxV = niceCeil(Math.max(1, ...data.map((d) => d.value)));
@@ -361,7 +361,7 @@ export function Donut({ data }) {
 // same chrome as TrendArea: gridlines + ticks, hover cursor with ring markers
 // on every series, a floating tooltip card listing each series (and total),
 // and a centred legend. Null values are gaps (partial years).
-export function MultiLine({ series, height = 210, labelEvery = 1 }) {
+export function MultiLine({ series, height = 250, labelEvery = 1 }) {
   const [active, setActive] = useState(null);
   const [wrapRef, mw] = useMeasuredWidth();
   const rows = (series || []).filter((s) => s.points && s.points.length);
@@ -372,7 +372,7 @@ export function MultiLine({ series, height = 210, labelEvery = 1 }) {
   const padL = 36;
   const padR = 10;
   const padT = 10;
-  const padB = 24;
+  const padB = 30;
   const innerW = w - padL - padR;
   const innerH = height - padT - padB;
   const maxV = niceCeil(Math.max(1, ...rows.flatMap((s) => s.points.map((p) => p.value ?? 0))));
@@ -548,7 +548,7 @@ export function Scatter({ data, xLabel = 'x', yLabel = 'y', height = 200 }) {
   if (!data?.length) return <div className="rp-empty">No data</div>;
   const w = 600;
   const padL = 34;
-  const padB = 24;
+  const padB = 30;
   const padT = 10;
   const padR = 12;
   const maxX = Math.max(1, ...data.map((d) => d.x));
@@ -578,7 +578,7 @@ export function Scatter({ data, xLabel = 'x', yLabel = 'y', height = 200 }) {
 // Forecast chart — historical weekly actuals as a solid line, forecast mean as
 // a dashed line, and the confidence interval as a shaded band. Hover reads out
 // the value (with the CI range on forecast periods).
-export function ForecastChart({ history, forecast, height = 190, labelEvery = 1 }) {
+export function ForecastChart({ history, forecast, height = 240, labelEvery = 1 }) {
   const [active, setActive] = useState(null);
   const [wrapRef, mw] = useMeasuredWidth();
   if (!history?.length || !forecast?.points?.length) {

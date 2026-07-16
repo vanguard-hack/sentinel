@@ -334,10 +334,7 @@ export default function Reports() {
               <div className="rp-card-head rp-trend-head">
                 <div>
                   <h2>Crime trend</h2>
-                  <span className="rp-card-sub">
-                    {fmtTs(chartWin.from)} – {fmtTs(chartWin.to)} · cases registered
-                    {chartData?.multi ? ' · one line per year' : ''}
-                  </span>
+                  <span className="rp-card-sub">{fmtTs(chartWin.from)} – {fmtTs(chartWin.to)}</span>
                 </div>
                 <div className="rp-trend-controls">
                   <div className="seg-group" role="tablist" aria-label="Chart range">
@@ -398,9 +395,9 @@ export default function Reports() {
               </div>
               <div className="rp-card-body">
                 {chartData?.multi ? (
-                  <MultiLine series={chartData.series} height={200} labelEvery={1} />
+                  <MultiLine series={chartData.series} height={340} labelEvery={1} />
                 ) : (
-                  <TrendArea data={chartData?.points || []} labelEvery={chartLabelEvery} height={180} />
+                  <TrendArea data={chartData?.points || []} labelEvery={chartLabelEvery} height={320} />
                 )}
               </div>
             </section>
