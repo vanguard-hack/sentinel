@@ -1,51 +1,48 @@
 import React, { useState, useMemo } from 'react';
 
-// Area trend — one series over ordered periods (e.g. cases per month). SVG with
-// a filled area under the line; hovering (or focusing) a period highlights its
-// dot and shows value + label in the header readout. Colours come from the
-// validated viz tokens (--rp-series), so it adapts to theme automatically.
-// `labelEvery` thins the x-axis labels for dense series (hours, days).
-// Points flagged `forecast: true` (must be a suffix of the series) render as a
-// dashed line segment with hollow dots — visually distinct from observations.
-export function TrendArea({ data, height = 150, labelEvery = 1 }) {
+// Area trend — one series over ordered periods, with reference-grade chrome:
+// dashed gridlines with y-ticks, a vertical hover cursor with a ring marker,
+// a floating tooltip card, and a soft gradient fill under the line. Points
+// flagged `forecast: true` (a suffix of the series) render dashed.
+const niceCeil = (raw) => {
+  const r = Math.max(1, raw);
+  const pow = 10 ** Math.floor(Math.log10(r));
+  return [1, 1.5, 2, 2.5, 5, 10].map((m) => m * pow).find((m) => m >= r) || r;
+};
+const fmtTick = (v) => (v >= 1000 ? `${Math.round((v / 1000) * 10) / 10}k` : Math.round(v * 10) / 10);
+
+let areaSeq = 0;
+export function TrendArea({ data, height = 190, labelEvery = 1 }) {
   const [active, setActive] = useState(null);
+  const gradId = useMemo(() => `areagrad-${++areaSeq}`, []);
   if (!data || !data.length) return <div className="rp-empty">No data</div>;
 
+  const n = data.length;
   const w = 600;
-  const padX = 8;
-  const padTop = 12;
-  const padBottom = 22;
-  const max = Math.max(1, ...data.map((d) => d.value));
-  const innerW = w - padX * 2;
-  const innerH = height - padTop - padBottom;
-  const x = (i) => padX + (data.length === 1 ? innerW / 2 : (i / (data.length - 1)) * innerW);
-  const y = (v) => padTop + innerH - (v / max) * innerH;
+  const padL = 36;
+  const padR = 10;
+  const padT = 10;
+  const padB = 24;
+  const innerW = w - padL - padR;
+  const innerH = height - padT - padB;
+  const maxV = niceCeil(Math.max(1, ...data.map((d) => d.value)));
+  const x = (i) => padL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+  const y = (v) => padT + innerH * (1 - v / maxV);
+  const base = padT + innerH;
 
   const fcStart = data.findIndex((d) => d.forecast);
   const solid = fcStart === -1 ? data : data.slice(0, fcStart);
-  // The dashed segment starts at the last observed point for continuity.
   const dashed = fcStart === -1 ? [] : data.slice(Math.max(0, fcStart - 1));
-
-  const pts = (arr, offset) => arr.map((d, i) => `${x(i + offset)},${y(d.value)}`).join(' ');
-  const solidPts = pts(solid, 0);
-  const dashedPts = pts(dashed, fcStart === -1 ? 0 : Math.max(0, fcStart - 1));
-  const areaPts = `${padX},${padTop + innerH} ${pts(solid, 0)} ${x(solid.length - 1)},${padTop + innerH}`;
+  const pts = (arr, off) => arr.map((d, i) => `${x(i + off)},${y(d.value)}`).join(' ');
+  const areaPts = solid.length > 1
+    ? `${x(0)},${base} ${pts(solid, 0)} ${x(solid.length - 1)},${base}`
+    : '';
 
   const shown = active != null ? data[active] : null;
-  const totalVal = data.filter((d) => !d.forecast).reduce((s, d) => s + d.value, 0);
+  const tipLeft = active != null ? Math.min(84, Math.max(16, (x(active) / w) * 100)) : 0;
 
   return (
-    <div className="trend-wrap">
-      <div className="trend-readout">
-        <span className="trend-readout-value">
-          {(shown ? shown.value : totalVal).toLocaleString()}
-        </span>
-        <span className="trend-readout-cap">
-          {shown
-            ? `${shown.label}${shown.forecast ? ' · projected' : ''}`
-            : `total · ${data.filter((d) => !d.forecast).length} periods`}
-        </span>
-      </div>
+    <div className="trend-wrap lc-wrap">
       <svg
         viewBox={`0 0 ${w} ${height}`}
         className="trend-svg"
@@ -53,38 +50,68 @@ export function TrendArea({ data, height = 150, labelEvery = 1 }) {
         preserveAspectRatio="none"
         onMouseLeave={() => setActive(null)}
       >
-        {solid.length > 1 && <polygon points={areaPts} className="trend-area" />}
-        {solid.length > 1 && <polyline points={solidPts} className="trend-line" fill="none" />}
-        {dashed.length > 1 && (
-          <polyline points={dashedPts} className="trend-line trend-line-forecast" fill="none" />
-        )}
-        {data.map((d, i) => (
-          <g key={i}>
-            {/* generous invisible hit target per period */}
-            <rect
-              x={x(i) - innerW / data.length / 2}
-              y={0}
-              width={innerW / data.length}
-              height={height}
-              fill="transparent"
-              onMouseEnter={() => setActive(i)}
-            />
-            <circle
-              cx={x(i)}
-              cy={y(d.value)}
-              r={active === i ? 4.5 : 2.5}
-              className={`trend-dot ${d.forecast ? 'forecast' : ''} ${active === i ? 'active' : ''}`}
-            />
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--rp-cat-0)" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="var(--rp-cat-0)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0.25, 0.5, 0.75, 1].map((f) => (
+          <g key={f}>
+            <line x1={padL} x2={w - padR} y1={y(maxV * f)} y2={y(maxV * f)} className="col-grid" />
+            <text x={padL - 6} y={y(maxV * f) + 3} textAnchor="end" className="col-tick">{fmtTick(maxV * f)}</text>
           </g>
         ))}
-      </svg>
-      <div className="trend-labels">
+        <line x1={padL} x2={w - padR} y1={base} y2={base} className="col-grid col-grid-base" />
+        {data.map((d, i) =>
+          i % labelEvery === 0 ? (
+            <line key={`v${i}`} x1={x(i)} x2={x(i)} y1={padT} y2={base} className="lc-vgrid" />
+          ) : null
+        )}
+        {areaPts && <polygon points={areaPts} fill={`url(#${gradId})`} />}
+        {solid.length > 1 && <polyline points={pts(solid, 0)} className="lc-line" fill="none" />}
+        {dashed.length > 1 && (
+          <polyline
+            points={pts(dashed, Math.max(0, fcStart - 1))}
+            className="lc-line lc-line-dashed"
+            fill="none"
+          />
+        )}
+        {active != null && (
+          <>
+            <line x1={x(active)} x2={x(active)} y1={padT} y2={base} className="lc-cursor" />
+            <circle cx={x(active)} cy={y(data[active].value)} r="4.5" className="lc-ring" style={{ stroke: 'var(--rp-cat-0)' }} />
+          </>
+        )}
+        {data.map((d, i) =>
+          i % labelEvery === 0 ? (
+            <text key={`l${i}`} x={x(i)} y={height - 6} textAnchor="middle" className="col-label">
+              {d.label}
+            </text>
+          ) : null
+        )}
         {data.map((d, i) => (
-          <span key={i} className={active === i ? 'active' : ''}>
-            {i % labelEvery === 0 ? d.label : ''}
-          </span>
+          <rect
+            key={`h${i}`}
+            x={x(i) - innerW / n / 2}
+            y={0}
+            width={innerW / n}
+            height={height}
+            fill="transparent"
+            onMouseEnter={() => setActive(i)}
+          />
         ))}
-      </div>
+      </svg>
+      {shown && (
+        <div className="lc-tip" style={{ left: `${tipLeft}%` }}>
+          <div className="lc-tip-title">{shown.label}{shown.forecast ? ' · projected' : ''}</div>
+          <div className="lc-tip-row">
+            <span className="lc-tip-dot" style={{ background: 'var(--rp-cat-0)' }} />
+            <span className="lc-tip-name">Cases</span>
+            <b>{shown.value.toLocaleString()}</b>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -300,42 +327,36 @@ export function Donut({ data }) {
   );
 }
 
-// Multi-line trend — several series over the same ordered periods. Colours use
-// the categorical slots; a legend beneath carries identity. Hovering a period
-// column reads out every series' value for it.
-export function MultiLine({ series, height = 170, labelEvery = 1 }) {
+// Multi-line trend — several series over the same ordered periods, with the
+// same chrome as TrendArea: gridlines + ticks, hover cursor with ring markers
+// on every series, a floating tooltip card listing each series (and total),
+// and a centred legend. Null values are gaps (partial years).
+export function MultiLine({ series, height = 210, labelEvery = 1 }) {
   const [active, setActive] = useState(null);
   const rows = (series || []).filter((s) => s.points && s.points.length);
   if (!rows.length) return <div className="rp-empty">No data</div>;
 
   const n = rows[0].points.length;
   const w = 600;
-  const padX = 8;
-  const padTop = 12;
-  const padBottom = 8;
-  // Null values are gaps (e.g. months outside a partial year) — excluded from
-  // the scale and the drawn segments.
-  const max = Math.max(1, ...rows.flatMap((s) => s.points.map((p) => p.value ?? 0)));
-  const innerW = w - padX * 2;
-  const innerH = height - padTop - padBottom;
-  const x = (i) => padX + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
-  const y = (v) => padTop + innerH - (v / max) * innerH;
+  const padL = 36;
+  const padR = 10;
+  const padT = 10;
+  const padB = 24;
+  const innerW = w - padL - padR;
+  const innerH = height - padT - padB;
+  const maxV = niceCeil(Math.max(1, ...rows.flatMap((s) => s.points.map((p) => p.value ?? 0))));
+  const x = (i) => padL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+  const y = (v) => padT + innerH * (1 - v / maxV);
+  const base = padT + innerH;
+
+  const activeRows = active != null
+    ? rows.filter((s) => s.points[active].value != null)
+    : [];
+  const activeTotal = activeRows.reduce((s, r) => s + r.points[active].value, 0);
+  const tipLeft = active != null ? Math.min(80, Math.max(20, (x(active) / w) * 100)) : 0;
 
   return (
-    <div className="trend-wrap">
-      <div className="trend-readout">
-        {active != null ? (
-          <span className="trend-readout-cap">
-            {rows[0].points[active].label} ·{' '}
-            {rows
-              .filter((s) => s.points[active].value != null)
-              .map((s) => `${s.name}: ${s.points[active].value}`)
-              .join(' · ') || '—'}
-          </span>
-        ) : (
-          <span className="trend-readout-cap">{n} periods · hover for values</span>
-        )}
-      </div>
+    <div className="trend-wrap lc-wrap">
       <svg
         viewBox={`0 0 ${w} ${height}`}
         className="trend-svg"
@@ -343,8 +364,17 @@ export function MultiLine({ series, height = 170, labelEvery = 1 }) {
         role="img"
         onMouseLeave={() => setActive(null)}
       >
-        {active != null && (
-          <line x1={x(active)} x2={x(active)} y1={padTop} y2={padTop + innerH} className="ml-cursor" />
+        {[0.25, 0.5, 0.75, 1].map((f) => (
+          <g key={f}>
+            <line x1={padL} x2={w - padR} y1={y(maxV * f)} y2={y(maxV * f)} className="col-grid" />
+            <text x={padL - 6} y={y(maxV * f) + 3} textAnchor="end" className="col-tick">{fmtTick(maxV * f)}</text>
+          </g>
+        ))}
+        <line x1={padL} x2={w - padR} y1={base} y2={base} className="col-grid col-grid-base" />
+        {rows[0].points.map((p, i) =>
+          i % labelEvery === 0 ? (
+            <line key={`v${i}`} x1={x(i)} x2={x(i)} y1={padT} y2={base} className="lc-vgrid" />
+          ) : null
         )}
         {rows.map((s, si) => {
           const segs = [];
@@ -363,26 +393,37 @@ export function MultiLine({ series, height = 170, labelEvery = 1 }) {
               key={`${s.name}-${k}`}
               fill="none"
               points={seg.join(' ')}
-              style={{ stroke: `var(--rp-cat-${si % 6})`, strokeWidth: 1.8 }}
+              className="lc-line"
+              style={{ stroke: `var(--rp-cat-${si % 6})` }}
             />
           ));
         })}
-        {rows.map((s, si) =>
-          s.points.map((p, i) =>
-            p.value == null ? null : (
+        {active != null && (
+          <line x1={x(active)} x2={x(active)} y1={padT} y2={base} className="lc-cursor" />
+        )}
+        {active != null &&
+          rows.map((s, si) =>
+            s.points[active].value == null ? null : (
               <circle
-                key={`${si}-${i}`}
-                cx={x(i)}
-                cy={y(p.value)}
-                r={active === i ? 3.4 : 1.6}
-                style={{ fill: `var(--rp-cat-${si % 6})` }}
+                key={`r${si}`}
+                cx={x(active)}
+                cy={y(s.points[active].value)}
+                r="4.5"
+                className="lc-ring"
+                style={{ stroke: `var(--rp-cat-${si % 6})` }}
               />
             )
-          )
+          )}
+        {rows[0].points.map((p, i) =>
+          i % labelEvery === 0 ? (
+            <text key={`l${i}`} x={x(i)} y={height - 6} textAnchor="middle" className="col-label">
+              {p.label}
+            </text>
+          ) : null
         )}
         {rows[0].points.map((p, i) => (
           <rect
-            key={i}
+            key={`h${i}`}
             x={x(i) - innerW / n / 2}
             y={0}
             width={innerW / n}
@@ -392,14 +433,27 @@ export function MultiLine({ series, height = 170, labelEvery = 1 }) {
           />
         ))}
       </svg>
-      <div className="trend-labels">
-        {rows[0].points.map((p, i) => (
-          <span key={i} className={active === i ? 'active' : ''}>
-            {i % labelEvery === 0 ? p.label : ''}
-          </span>
-        ))}
-      </div>
-      <ul className="rp-legend rp-legend-row">
+      {active != null && activeRows.length > 0 && (
+        <div className="lc-tip" style={{ left: `${tipLeft}%` }}>
+          <div className="lc-tip-title">{rows[0].points[active].label}</div>
+          {rows.map((s, si) =>
+            s.points[active].value == null ? null : (
+              <div className="lc-tip-row" key={s.name}>
+                <span className="lc-tip-dot" style={{ background: `var(--rp-cat-${si % 6})` }} />
+                <span className="lc-tip-name">{s.name}</span>
+                <b>{s.points[active].value.toLocaleString()}</b>
+              </div>
+            )
+          )}
+          {activeRows.length > 1 && (
+            <div className="lc-tip-row lc-tip-total">
+              <span className="lc-tip-name">Total</span>
+              <b>{activeTotal.toLocaleString()}</b>
+            </div>
+          )}
+        </div>
+      )}
+      <ul className="rp-legend rp-legend-row lc-legend">
         {rows.map((s, si) => (
           <li key={s.name}>
             <span className="rp-legend-dot" style={{ background: `var(--rp-cat-${si % 6})` }} />

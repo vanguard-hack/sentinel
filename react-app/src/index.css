@@ -4320,3 +4320,60 @@ a:hover { color: var(--blue-500); }
   gap: 6px;
   flex-wrap: wrap;
 }
+
+/* ── Line-chart chrome (TrendArea / MultiLine v2) ──────────────────────── */
+.lc-wrap { position: relative; }
+.lc-line { stroke-width: 2; stroke: var(--rp-cat-0); }
+.lc-line-dashed { stroke-dasharray: 5 4; }
+.lc-vgrid { stroke: var(--border); stroke-dasharray: 3 5; stroke-width: 1; }
+.lc-cursor { stroke: var(--blue-500); stroke-width: 1.2; }
+.lc-ring { fill: var(--bg-1); stroke-width: 2.2; }
+
+.lc-tip {
+  position: absolute;
+  top: 10px;
+  transform: translateX(-50%);
+  z-index: 6;
+  min-width: 158px;
+  padding: 10px 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  pointer-events: none;
+}
+.lc-tip-title { font-size: 12px; font-weight: 650; color: var(--text-0); margin-bottom: 6px; }
+.lc-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-2);
+  padding: 2px 0;
+}
+.lc-tip-row b { margin-left: auto; color: var(--text-0); font-variant-numeric: tabular-nums; }
+.lc-tip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.lc-tip-name { white-space: nowrap; }
+.lc-tip-total { border-top: 1px dotted var(--border-bright); margin-top: 4px; padding-top: 5px; }
+.lc-legend { justify-content: center; margin-top: 10px; }
+
+/* Joined segmented range control */
+.seg-group {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border-bright);
+  border-radius: 999px;
+  background: var(--bg-1);
+  overflow: hidden;
+}
+.seg-btn {
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  border-left: 1px solid var(--border);
+}
+.seg-btn:first-child { border-left: none; }
+.seg-btn:hover:not(.active) { background: var(--hover-overlay); color: var(--text-0); }
+.seg-btn.active { background: var(--blue-500); color: #fff; border-left-color: var(--blue-500); }
+.seg-btn.active + .seg-btn { border-left-color: transparent; }

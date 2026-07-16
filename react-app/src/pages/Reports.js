@@ -340,15 +340,19 @@ export default function Reports() {
                   </span>
                 </div>
                 <div className="rp-trend-controls">
-                  {['1M', '6M', 'YTD', '1Y', 'ALL'].map((p) => (
-                    <button
-                      key={p}
-                      className={`fc-horizon ${!chartCustom && chartPreset === p ? 'active' : ''}`}
-                      onClick={() => { setChartCustom(null); setChartPreset(p); }}
-                    >
-                      {p === 'ALL' ? 'All' : p}
-                    </button>
-                  ))}
+                  <div className="seg-group" role="tablist" aria-label="Chart range">
+                    {['1M', '6M', 'YTD', '1Y', 'ALL'].map((p) => (
+                      <button
+                        key={p}
+                        role="tab"
+                        aria-selected={!chartCustom && chartPreset === p}
+                        className={`seg-btn ${!chartCustom && chartPreset === p ? 'active' : ''}`}
+                        onClick={() => { setChartCustom(null); setChartPreset(p); }}
+                      >
+                        {p === 'ALL' ? 'All' : p}
+                      </button>
+                    ))}
+                  </div>
                   <div className="rp-cal" ref={chartCalRef}>
                     <button
                       className={`cf-icon-btn rp-cal-btn ${chartCustom ? 'active' : ''}`}
