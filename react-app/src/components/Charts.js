@@ -78,6 +78,7 @@ export function TrendArea({ data, height = 230, labelEvery = 1 }) {
     ? `${solidPath} L${x(solid.length - 1)},${base} L${x(0)},${base} Z`
     : '';
 
+  const every = Math.max(labelEvery, Math.ceil(n / Math.max(2, Math.floor(innerW / 80))));
   const shown = active != null ? data[active] : null;
   // Beside the cursor, never on top of it: right of it on the left half,
   // left of it on the right half.
@@ -119,7 +120,7 @@ export function TrendArea({ data, height = 230, labelEvery = 1 }) {
           </>
         )}
         {data.map((d, i) =>
-          i % labelEvery === 0 ? (
+          i % every === 0 ? (
             <text key={`l${i}`} x={x(i)} y={height - 6} textAnchor="middle" className="col-label">
               {d.label}
             </text>
@@ -385,6 +386,7 @@ export function MultiLine({ series, height = 250, labelEvery = 1 }) {
   const y = (v) => padT + innerH * (1 - v / maxV);
   const base = padT + innerH;
 
+  const every = Math.max(labelEvery, Math.ceil(n / Math.max(2, Math.floor(innerW / 80))));
   const activeRows = active != null
     ? rows.filter((s) => s.points[active].value != null)
     : [];
@@ -448,7 +450,7 @@ export function MultiLine({ series, height = 250, labelEvery = 1 }) {
             )
           )}
         {rows[0].points.map((p, i) =>
-          i % labelEvery === 0 ? (
+          i % every === 0 ? (
             <text key={`l${i}`} x={x(i)} y={height - 6} textAnchor="middle" className="col-label">
               {p.label}
             </text>
@@ -627,6 +629,7 @@ export function ForecastChart({ history, forecast, height = 240, labelEvery = 1 
   const loPath = smoothPath(loReturn, padTop, base);
   const bandPath = `${smoothPath(hiXY, padTop, base)} L${loReturn[0].x.toFixed(2)},${loReturn[0].y.toFixed(2)} ${loPath.replace(/^M[^ ]+/, '').trim()} Z`;
 
+  const every = Math.max(labelEvery, Math.ceil(n / Math.max(2, Math.floor(innerW / 80))));
   const shown = active != null ? all[active] : null;
 
   return (
@@ -677,7 +680,7 @@ export function ForecastChart({ history, forecast, height = 240, labelEvery = 1 
       <div className="trend-labels">
         {all.map((p, i) => (
           <span key={i} className={active === i ? 'active' : ''}>
-            {i % labelEvery === 0 ? p.label : ''}
+            {i % every === 0 ? p.label : ''}
           </span>
         ))}
       </div>
