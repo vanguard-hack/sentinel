@@ -2479,6 +2479,98 @@ a:hover { color: var(--blue-500); }
   .cl-detail-grid { grid-template-columns: 1fr; }
 }
 
+/* ── Behavioural case linkage ───────────────────────────────────────────── */
+.lk-valnote {
+  display: flex; align-items: flex-start; gap: 6px;
+  margin: 12px 0 0;
+  font-size: 0.76rem; color: var(--text-3); line-height: 1.5;
+}
+.lk-valnote svg { flex: none; margin-top: 2px; color: #148f63; }
+
+.lk-workbench { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+
+.lk-search {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 10px; margin-bottom: 8px;
+  border: 1px solid var(--border-1, var(--border));
+  border-radius: 9px; background: var(--bg-1); color: var(--text-3);
+}
+.lk-search input {
+  flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+  font-size: 0.8rem; color: var(--text-0);
+}
+.lk-case-list {
+  list-style: none; margin: 0; padding: 0 4px 0 0;
+  max-height: 520px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.lk-case {
+  display: flex; flex-direction: column; gap: 1px;
+  width: 100%; padding: 8px 11px; text-align: left; cursor: pointer;
+  border: 1px solid var(--border-1, var(--border));
+  border-radius: 9px; background: var(--bg-1);
+  transition: border-color 0.15s, background 0.15s;
+}
+.lk-case:hover { background: var(--bg-2); }
+.lk-case.active { border-color: var(--rp-series, #2a78d6); background: var(--bg-2); }
+.lk-case-type { font-size: 0.82rem; font-weight: 600; color: var(--text-0); }
+.lk-case-meta { font-size: 0.7rem; color: var(--text-3); }
+.lk-nomatch { font-size: 0.78rem; color: var(--text-3); padding: 10px; }
+
+.lk-results { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.lk-index {
+  border: 1px solid var(--border-1, var(--border));
+  border-left: 3px solid var(--rp-series, #2a78d6);
+  border-radius: 9px; padding: 10px 13px; background: var(--bg-1);
+}
+.lk-index-head { display: flex; flex-direction: column; gap: 1px; margin-bottom: 8px; }
+.lk-index-head strong { font-size: 0.92rem; color: var(--text-0); }
+.lk-index-head span { font-size: 0.75rem; color: var(--text-3); }
+.lk-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.lk-chip {
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--bg-3); color: var(--text-2);
+  font-size: 0.69rem; font-weight: 600; white-space: nowrap;
+}
+.lk-chip-hit { background: rgba(42, 120, 214, 0.16); color: #2a78d6; }
+.lk-none { font-size: 0.72rem; color: var(--text-3); }
+
+.lk-controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+  font-size: 0.78rem; color: var(--text-2);
+}
+.lk-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.lk-check input { accent-color: var(--rp-series, #2a78d6); }
+.lk-threshold { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; white-space: nowrap; }
+.lk-threshold input[type="range"] { width: 110px; accent-color: var(--rp-series, #2a78d6); }
+
+.lk-scroll { max-height: 460px; }
+.lk-table td { vertical-align: middle; }
+.lk-rank { color: var(--text-3); font-weight: 700; font-size: 0.74rem; }
+.lk-num { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.lk-score { font-weight: 700; color: var(--text-0); font-variant-numeric: tabular-nums; }
+tr.lk-flagged td { background: rgba(42, 120, 214, 0.05); }
+tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
+.lk-shared { max-width: 240px; }
+.lk-shared .lk-chip { margin: 1px 3px 1px 0; }
+.lk-confirmed {
+  display: inline-flex; align-items: center; gap: 4px; margin-top: 3px;
+  padding: 2px 8px; border-radius: 999px;
+  background: rgba(20, 143, 99, 0.14); color: #148f63;
+  font-size: 0.69rem; font-weight: 700;
+}
+
+.lk-breakdown { display: flex; flex-direction: column; gap: 3px; min-width: 110px; }
+.lk-bd-row { display: flex; align-items: center; gap: 6px; }
+.lk-bd-label { font-size: 0.62rem; font-weight: 700; color: var(--text-3); width: 28px; text-transform: uppercase; }
+.lk-bd-track { flex: 1; height: 5px; border-radius: 3px; background: var(--bg-3); overflow: hidden; }
+.lk-bd-fill { display: block; height: 100%; border-radius: 3px; background: var(--rp-series, #2a78d6); }
+
+@media (max-width: 960px) {
+  .lk-workbench { grid-template-columns: 1fr; }
+  .lk-case-list { max-height: 220px; }
+}
+
 .ai-fc-note {
   display: flex;
   align-items: center;

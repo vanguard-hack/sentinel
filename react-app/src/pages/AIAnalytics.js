@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   RefreshCw, AlertTriangle,
-  Brain, TrendingUp, TrendingDown, Lightbulb, Activity, Share2, LineChart,
+  Brain, TrendingUp, TrendingDown, Lightbulb, Activity, Share2, LineChart, Fingerprint,
 } from 'lucide-react';
 import {
   fetchIncidents, hourlyProfile, dayOfMonthProfile, weekdayProfile,
@@ -9,6 +9,7 @@ import {
 } from '../utils/aianalytics';
 import { TrendArea, BarList } from '../components/Charts';
 import CrimeLinks from '../components/CrimeLinks';
+import CaseLinkage from '../components/CaseLinkage';
 import Forecasts from '../components/Forecasts';
 import TopBar from '../components/TopBar';
 
@@ -38,7 +39,7 @@ export default function AIAnalytics() {
   const [error, setError] = useState(null);
   const [dim, setDim] = useState('hour');
   const [head, setHead] = useState('ALL');
-  const [view, setView] = useState('patterns'); // 'patterns' | 'links' | 'forecasts'
+  const [view, setView] = useState('patterns'); // 'patterns' | 'links' | 'linkage' | 'forecasts'
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -169,6 +170,13 @@ export default function AIAnalytics() {
             <Share2 size={15} /> Crime links
           </button>
           <button
+            className={`ai-viewtab ${view === 'linkage' ? 'active' : ''}`}
+            onClick={() => setView('linkage')}
+            role="tab" aria-selected={view === 'linkage'}
+          >
+            <Fingerprint size={15} /> Case linkage
+          </button>
+          <button
             className={`ai-viewtab ${view === 'forecasts' ? 'active' : ''}`}
             onClick={() => setView('forecasts')}
             role="tab" aria-selected={view === 'forecasts'}
@@ -181,6 +189,8 @@ export default function AIAnalytics() {
           <Forecasts />
         ) : view === 'links' ? (
           <CrimeLinks />
+        ) : view === 'linkage' ? (
+          <CaseLinkage />
         ) : error ? (
           <div className="cf-state cf-error">
             <AlertTriangle size={22} />

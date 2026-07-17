@@ -3,6 +3,6 @@
   "operation": "insert",
   "object_details": {
     "bucket_name": "accused",
-    "object_key": "/Users/dejohn/Projects/sentinel/ksp/fir/Accused.csv"
+    "object_key": "imports/Accused.csv"
   }
 }
