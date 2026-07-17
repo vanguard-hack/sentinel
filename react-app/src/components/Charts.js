@@ -501,20 +501,13 @@ export function MultiLine({ series, height = 250, labelEvery = 1 }) {
 }
 
 // Heat grid — rows × cols intensity matrix (e.g. crime head × month).
-// Hovering a cell reads its count out above the grid and inside the cell.
+// Hovering a cell shows its count inside the cell.
 export function HeatGrid({ rows, cols, values }) {
   const [hover, setHover] = useState(null); // { r, c }
   if (!rows?.length) return <div className="rp-empty">No data</div>;
   const max = Math.max(1, ...values.flat());
   return (
     <div>
-      <div className="trend-readout">
-        <span className="trend-readout-cap">
-          {hover
-            ? `${rows[hover.r]} · ${cols[hover.c]}: ${values[hover.r][hover.c].toLocaleString()} crime${values[hover.r][hover.c] === 1 ? '' : 's'}`
-            : 'hover a cell for the month\u2019s count'}
-        </span>
-      </div>
       <div className="rp-heat" onMouseLeave={() => setHover(null)}>
         <div className="rp-heat-row rp-heat-head">
           <span className="rp-heat-label" />
