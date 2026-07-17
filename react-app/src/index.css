@@ -4385,3 +4385,24 @@ a:hover { color: var(--blue-500); }
    vanish on a dark surface, so dark mode screens it in softly instead. */
 .lc-area { mix-blend-mode: multiply; opacity: 0.33; }
 [data-theme="dark"] .lc-area { mix-blend-mode: screen; opacity: 0.16; }
+
+/* Calendar month/year zoom pickers */
+.drc-title-btn { padding: 3px 8px; border-radius: 7px; }
+.drc-title-btn:hover { background: var(--bg-3); }
+.drc-mgrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 8px 2px 4px;
+  width: 252px;
+}
+.drc-mcell {
+  padding: 11px 0;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-1);
+  text-align: center;
+}
+.drc-mcell:hover { background: var(--bg-3); }
+.drc-mcell.active { background: var(--blue-500); color: #fff; font-weight: 650; }
