@@ -9,6 +9,7 @@ import { exportReportPdf } from '../utils/reportPdf';
 import DateRangeCalendar from '../components/DateRangeCalendar';
 import { BarList, HBarList, Donut, TrendArea, MultiLine, HeatGrid, Funnel, Pyramid } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
+import GeoHeatMap from '../components/GeoHeatMap';
 import TopBar from '../components/TopBar';
 import { useAuth } from '../context/AuthContext';
 
@@ -31,9 +32,9 @@ function Kpi({ Icon, label, value, sub, trend }) {
   );
 }
 
-function Card({ title, subtitle, wide, children }) {
+function Card({ title, subtitle, wide, two, children }) {
   return (
-    <section className={`rp-card ${wide ? 'rp-card-wide' : ''}`}>
+    <section className={`rp-card ${wide ? 'rp-card-wide' : ''} ${two ? 'rp-card-2' : ''}`}>
       <div className="rp-card-head">
         <h2>{title}</h2>
         {subtitle && <span className="rp-card-sub">{subtitle}</span>}
@@ -105,6 +106,8 @@ export default function Reports() {
       setPdfBusy(false);
     }
   }, [data, pdfBusy]);
+
+  const [topK, setTopK] = useState(10); // districts shown on the geo heatmap
 
   // ── Crime-trend chart: its own window, independent of the global filter ──
   const [chartPreset, setChartPreset] = useState('ALL');
@@ -408,24 +411,37 @@ export default function Reports() {
                 <Donut data={data.byStatus} />
               </Card>
 
-              <Card title="Crime by category" subtitle="FIR classifications by major head">
-                <BarList data={data.byCategory} />
+              <Card title="Crime by category" subtitle="FIR classifications by major head" two>
+                <HBarList data={data.byCategory} />
               </Card>
 
-              <Card title="Top districts" subtitle="FIRs registered per district">
-                <BarList data={data.byDistrict} />
+              <Card title="Top districts" subtitle="FIRs registered per district — shading intensity follows crime volume" wide>
+                <div className="rp-geo-controls">
+                  <span>Show top</span>
+                  <select className="cf-select pp-perpage" value={topK} onChange={(e) => setTopK(e.target.value)}>
+                    {[5, 10, 15, 20].map((k) => <option key={k} value={k}>{k} districts</option>)}
+                    <option value="all">All districts</option>
+                  </select>
+                </div>
+                <GeoHeatMap
+                  spec={{
+                    title: 'FIRs registered',
+                    data: (topK === 'all' ? data.crimeByDistrict : data.crimeByDistrict.slice(0, Number(topK)))
+                      .map((d) => ({ district: d.label, value: d.value })),
+                  }}
+                />
               </Card>
 
-              <Card title="Station load" subtitle="Open investigations by police station (top 8)">
-                <BarList data={data.openByStation} />
+              <Card title="Station load" subtitle="Open investigations by police station (top 8)" two>
+                <HBarList data={data.openByStation} />
               </Card>
 
               <Card title="Accused age profile" subtitle="Accused on record by age band">
                 <BarList data={data.accusedAges} />
               </Card>
 
-              <Card title="Top crime types" subtitle="Cases by crime sub-head">
-                <BarList data={data.bySubHead} />
+              <Card title="Top crime types" subtitle="Cases by crime sub-head" two>
+                <HBarList data={data.bySubHead} />
               </Card>
 
               <Card
@@ -491,8 +507,8 @@ export default function Reports() {
             {/* ── People & demographics ── */}
             <h2 className="rp-section-title">People & demographics</h2>
             <div className="rp-grid">
-              <Card title="Complainant occupations" subtitle="Who is filing FIRs">
-                <BarList data={data.complainantOccupations} />
+              <Card title="Complainant occupations" subtitle="Who is filing FIRs" two>
+                <HBarList data={data.complainantOccupations} />
               </Card>
               <Card title="Complainant age profile" subtitle="Complainants by age band">
                 <BarList data={data.complainantAges} />
@@ -500,8 +516,8 @@ export default function Reports() {
               <Card title="Accused gender split" subtitle="Accused on record">
                 <Donut data={data.accusedGender} />
               </Card>
-              <Card title="Repeat offenders" subtitle="Distinct FIRs per offender (2+ cases)">
-                <BarList data={data.repeatOffenders} suffix=" FIRs" percent={false} />
+              <Card title="Repeat offenders" subtitle="Distinct FIRs per offender (2+ cases)" two>
+                <HBarList data={data.repeatOffenders} suffix=" FIRs" percent={false} />
               </Card>
               <Card title="Victim profile" subtitle="Police personnel vs civilian victims">
                 <Donut data={data.victimPoliceSplit} />
@@ -514,14 +530,14 @@ export default function Reports() {
             {/* ── Personnel & workload ── */}
             <h2 className="rp-section-title">Personnel & workload</h2>
             <div className="rp-grid">
-              <Card title="IO caseload" subtitle="Cases per investigating officer (top 8)">
-                <BarList data={data.ioCaseload} />
+              <Card title="IO caseload" subtitle="Cases per investigating officer (top 8)" two>
+                <HBarList data={data.ioCaseload} />
               </Card>
               <Card title="Rank distribution" subtitle="Force composition by rank">
                 <Donut data={data.rankDistribution} />
               </Card>
-              <Card title="Court load" subtitle="Chargesheets filed per court (top 8)">
-                <BarList data={data.courtLoad} />
+              <Card title="Court load" subtitle="Chargesheets filed per court (top 8)" two>
+                <HBarList data={data.courtLoad} />
               </Card>
             </div>
 

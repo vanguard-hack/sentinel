@@ -501,28 +501,41 @@ export function MultiLine({ series, height = 250, labelEvery = 1 }) {
 }
 
 // Heat grid — rows × cols intensity matrix (e.g. crime head × month).
+// Hovering a cell reads its count out above the grid and inside the cell.
 export function HeatGrid({ rows, cols, values }) {
+  const [hover, setHover] = useState(null); // { r, c }
   if (!rows?.length) return <div className="rp-empty">No data</div>;
   const max = Math.max(1, ...values.flat());
   return (
-    <div className="rp-heat">
-      <div className="rp-heat-row rp-heat-head">
-        <span className="rp-heat-label" />
-        {cols.map((c) => <span key={c} className="rp-heat-col">{c}</span>)}
+    <div>
+      <div className="trend-readout">
+        <span className="trend-readout-cap">
+          {hover
+            ? `${rows[hover.r]} · ${cols[hover.c]}: ${values[hover.r][hover.c].toLocaleString()} crime${values[hover.r][hover.c] === 1 ? '' : 's'}`
+            : 'hover a cell for the month\u2019s count'}
+        </span>
       </div>
-      {rows.map((r, ri) => (
-        <div key={r} className="rp-heat-row">
-          <span className="rp-heat-label" title={r}>{r}</span>
-          {values[ri].map((v, ci) => (
-            <span
-              key={ci}
-              className="rp-heat-cell"
-              style={{ opacity: v ? 0.15 + 0.85 * (v / max) : 0.04 }}
-              title={`${r} · ${cols[ci]}: ${v}`}
-            />
-          ))}
+      <div className="rp-heat" onMouseLeave={() => setHover(null)}>
+        <div className="rp-heat-row rp-heat-head">
+          <span className="rp-heat-label" />
+          {cols.map((c) => <span key={c} className="rp-heat-col">{c}</span>)}
         </div>
-      ))}
+        {rows.map((r, ri) => (
+          <div key={r} className="rp-heat-row">
+            <span className="rp-heat-label" title={r}>{r}</span>
+            {values[ri].map((v, ci) => (
+              <span
+                key={ci}
+                className={`rp-heat-cell ${hover && hover.r === ri && hover.c === ci ? 'hot' : ''}`}
+                style={{ opacity: v ? 0.15 + 0.85 * (v / max) : 0.04 }}
+                onMouseEnter={() => setHover({ r: ri, c: ci })}
+              >
+                {hover && hover.r === ri && hover.c === ci ? v : ''}
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

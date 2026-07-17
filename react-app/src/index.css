@@ -4406,3 +4406,36 @@ a:hover { color: var(--blue-500); }
 }
 .drc-mcell:hover { background: var(--bg-3); }
 .drc-mcell.active { background: var(--blue-500); color: #fff; font-weight: 650; }
+
+/* Double-width cards for the big horizontal bar charts */
+.rp-card-2 { grid-column: span 2; }
+@media (max-width: 720px) { .rp-card-2 { grid-column: auto; } }
+
+/* Bigger horizontal bars */
+.rp-bar-row { grid-template-columns: 200px 1fr 76px; gap: 12px; }
+.rp-bars { gap: 11px; }
+.rp-bar-label { font-size: 12.5px; }
+.rp-bar-track { height: 18px; border-radius: 6px; }
+.rp-bar-count { font-size: 12.5px; }
+
+/* Geo heatmap card controls */
+.rp-geo-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+
+/* Heat cell hover: show the count in-cell */
+.rp-heat-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: default;
+}
+.rp-heat-cell.hot { outline: 2px solid var(--text-0); outline-offset: -1px; }
