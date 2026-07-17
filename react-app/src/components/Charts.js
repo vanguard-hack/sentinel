@@ -79,7 +79,12 @@ export function TrendArea({ data, height = 230, labelEvery = 1 }) {
     : '';
 
   const shown = active != null ? data[active] : null;
-  const tipLeft = active != null ? Math.min(84, Math.max(16, (x(active) / w) * 100)) : 0;
+  // Beside the cursor, never on top of it: right of it on the left half,
+  // left of it on the right half.
+  const tipStyle = active == null ? null
+    : x(active) < w / 2
+      ? { left: x(active) + 14 }
+      : { left: x(active) - 14, transform: 'translateX(-100%)' };
 
   return (
     <div className="trend-wrap lc-wrap" ref={wrapRef}>
@@ -133,7 +138,7 @@ export function TrendArea({ data, height = 230, labelEvery = 1 }) {
         ))}
       </svg>
       {shown && (
-        <div className="lc-tip" style={{ left: `${tipLeft}%` }}>
+        <div className="lc-tip" style={tipStyle}>
           <div className="lc-tip-title">{shown.label}{shown.forecast ? ' · projected' : ''}</div>
           <div className="lc-tip-row">
             <span className="lc-tip-dot" style={{ background: '#765DFF' }} />
@@ -384,7 +389,10 @@ export function MultiLine({ series, height = 250, labelEvery = 1 }) {
     ? rows.filter((s) => s.points[active].value != null)
     : [];
   const activeTotal = activeRows.reduce((s, r) => s + r.points[active].value, 0);
-  const tipLeft = active != null ? Math.min(80, Math.max(20, (x(active) / w) * 100)) : 0;
+  const tipStyle = active == null ? null
+    : x(active) < w / 2
+      ? { left: x(active) + 14 }
+      : { left: x(active) - 14, transform: 'translateX(-100%)' };
 
   return (
     <div className="trend-wrap lc-wrap" ref={wrapRef}>
@@ -459,7 +467,7 @@ export function MultiLine({ series, height = 250, labelEvery = 1 }) {
         ))}
       </svg>
       {active != null && activeRows.length > 0 && (
-        <div className="lc-tip" style={{ left: `${tipLeft}%` }}>
+        <div className="lc-tip" style={tipStyle}>
           <div className="lc-tip-title">{rows[0].points[active].label}</div>
           {rows.map((s, si) =>
             s.points[active].value == null ? null : (
