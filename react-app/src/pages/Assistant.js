@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Plus, MessageSquare, Trash2,
   Paperclip, Mic, ArrowUp, X, Shield, FileText, PanelLeft,
-  Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, MoreVertical,
+  Copy, Check, ThumbsUp, ThumbsDown, MoreVertical,
   Star, Pencil, FileDown, CheckSquare,
 } from 'lucide-react';
 import {
@@ -206,20 +206,6 @@ export default function Assistant() {
     setAttachments([]);
     histRef.current = { idx: null, draft: '' };
   };
-
-  // Wipe the active conversation's messages but keep the session itself.
-  const resetConversation = useCallback(() => {
-    if (!activeId) return;
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.id === activeId ? { ...s, title: 'New chat', messages: [] } : s
-      )
-    );
-    setInput('');
-    setAttachments([]);
-    histRef.current = { idx: null, draft: '' };
-    textareaRef.current?.focus();
-  }, [activeId]);
 
   const deleteSession = (id) => {
     setSessions((prev) => prev.filter((s) => s.id !== id));
@@ -493,11 +479,11 @@ export default function Assistant() {
         {messages.length > 0 && (
           <button
             className="nav-icon-btn"
-            onClick={resetConversation}
-            title="Reset conversation"
-            aria-label="Reset conversation"
+            onClick={startNewChat}
+            title="New chat (keeps this conversation in history)"
+            aria-label="New chat"
           >
-            <RotateCcw size={17} />
+            <Plus size={17} />
           </button>
         )}
       </TopBar>

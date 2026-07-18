@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { MessageSquare, X, ArrowUp, Bot, Maximize2, RotateCcw, Mic } from 'lucide-react';
+import { MessageSquare, X, ArrowUp, Bot, Maximize2, Plus, Mic } from 'lucide-react';
 import {
   generateReply, uid, transcribeAudio, saveSessionRemote, upsertLocalSession, loadSessions,
 } from '../utils/assistant';
@@ -163,7 +163,7 @@ export default function ChatWidget() {
             <div className="cw-head-title"><Bot size={16} /><span>Sentinel Assistant</span></div>
             <div className="cw-head-actions">
               <button onClick={resetChat} title="New conversation" disabled={!messages.length}>
-                <RotateCcw size={14} />
+                <Plus size={15} />
               </button>
               <button onClick={maximize} title="Open in full assistant">
                 <Maximize2 size={14} />
