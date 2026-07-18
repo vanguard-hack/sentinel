@@ -4,10 +4,13 @@ import { useTranslation } from 'react-i18next';
 import {
   Shield, Home, AlertTriangle, Map, Brain, Database,
   MessageSquare, Users, ChevronLeft, ChevronRight, Sun, Moon, LogOut,
-  UserCircle, PanelLeftClose,
+  UserCircle, PanelLeftClose, ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useAccess } from '../context/AccessContext';
 import { useLayout, useThemeMode } from '../context/LayoutContext';
+import { canAccess, ROLE_LABELS } from '../utils/access';
+import { logAudit } from '../utils/audit';
 import Avatar from './Avatar';
 
 // Every feature lives here. `soon` items are shown disabled.
@@ -21,11 +24,12 @@ const NAV = [
   {
     to: '/personnel', Icon: Users, key: 'personnel',
     children: [
-      { to: '/personnel', key: 'personnelDirectory', label: 'Directory', exact: true },
+      { to: '/personnel', key: 'personnel', label: 'Directory', exact: true },
       { to: '/personnel/roster', key: 'dutyRoster', label: 'Duty Roster' },
       { to: '/personnel/org-chart', key: 'orgChart', label: 'Org Chart' },
     ],
   },
+  { to: '/access', Icon: ShieldCheck, key: 'access', label: 'Access & Audit' },
 ];
 
 export default function Sidebar() {
@@ -33,6 +37,7 @@ export default function Sidebar() {
   const { pathname } = useLocation();
   const { t } = useTranslation();
   const { user, signOut } = useAuth();
+  const { role: appRole, isAdmin, ready } = useAccess();
   const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen } = useLayout();
   const [isDark, setIsDark] = useThemeMode();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -55,7 +60,18 @@ export default function Sidebar() {
   const displayName =
     [user?.first_name, user?.last_name].filter(Boolean).join(' ') ||
     user?.email_id || 'Officer';
-  const role = (user?.role_details?.role_name || 'Officer').replace(/^App Administrator$/i, 'Admin');
+  const role = isAdmin ? 'Admin' : ROLE_LABELS[appRole] || 'Officer';
+
+  // Hide what the route guard would block anyway. Until roles load the full
+  // list shows (the guard still protects every route), so the sidebar never
+  // renders empty.
+  const nav = NAV
+    .filter((item) => (item.key === 'access' ? isAdmin : !ready || canAccess(appRole, item.key)))
+    .map((item) =>
+      item.children && ready
+        ? { ...item, children: item.children.filter((c) => canAccess(appRole, c.key)) }
+        : item
+    );
 
   const labelFor = (item) =>
     item.label || t(`modules.${item.key}.label`, item.key);
@@ -88,7 +104,7 @@ export default function Sidebar() {
         </div>
 
         <nav className="sb-nav">
-          {NAV.map((item) => {
+          {nav.map((item) => {
             const sectionActive = item.to && pathname.startsWith(item.to);
             // When a section's children are visible, the active child carries
             // the highlight; the parent only lights up in the collapsed rail.
@@ -176,7 +192,10 @@ export default function Sidebar() {
                 <button className="sb-menu-item" onClick={() => { setMenuOpen(false); navigate('/profile'); setMobileOpen(false); }}>
                   <UserCircle size={16} /> View profile
                 </button>
-                <button className="sb-menu-item sb-menu-danger" onClick={signOut}>
+                <button
+                  className="sb-menu-item sb-menu-danger"
+                  onClick={() => { logAudit('sign-out', 'Sign in'); signOut(); }}
+                >
                   <LogOut size={16} /> {t('action.signOut', 'Sign out')}
                 </button>
               </div>

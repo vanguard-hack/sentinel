@@ -593,6 +593,223 @@ async function handleProfile(req, res, action) {
   return json(res, 200, { profile });
 }
 
+// ── Access control & audit trail (Stratus blobs — no Data Store table) ──────
+// Roles live in ONE JSON object (email → { role, rank }); audit events are
+// appended as small per-flush objects under audit/logs/<day>/ so writes never
+// contend and reads can be scoped to a date range.
+const ROLES_KEY = 'access/roles.json';
+const AUDIT_PREFIX = 'audit/logs/';
+const APP_ROLES = ['investigator', 'analyst', 'supervisor', 'policymaker', 'admin'];
+
+async function loadRolesBlob(bucket) {
+  try {
+    const parsed = JSON.parse((await streamToString(await bucket.getObject(ROLES_KEY))) || '{}');
+    return parsed && parsed.users && typeof parsed.users === 'object' ? parsed : { users: {} };
+  } catch {
+    return { users: {} };
+  }
+}
+
+// The caller's identity comes from the Catalyst session cookie forwarded with
+// every /server/ call — never from the request body — so admin-only endpoints
+// can't be reached by editing a JSON payload.
+async function requestUser(app) {
+  try {
+    return await app.userManagement().getCurrentUser();
+  } catch {
+    return null;
+  }
+}
+const isAdminUser = (u) => /admin/i.test(u?.role_details?.role_name || '');
+
+async function handleAccess(req, res, action) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+
+  if (action === 'me') {
+    const email = String(body.email || '').trim().toLowerCase();
+    if (!email) return json(res, 400, { error: 'email is required' });
+    const roles = await loadRolesBlob(bucket);
+    const rec = roles.users[email] || {};
+    return json(res, 200, {
+      role: APP_ROLES.includes(rec.role) ? rec.role : 'investigator',
+      rank: rec.rank || '',
+    });
+  }
+
+  const caller = await requestUser(app);
+  if (!isAdminUser(caller)) return json(res, 403, { error: 'admin only' });
+
+  if (action === 'users') {
+    const [all, roles] = await Promise.all([
+      app.userManagement().getAllUsers(),
+      loadRolesBlob(bucket),
+    ]);
+    const users = (all || []).map((u) => {
+      const email = String(u.email_id || '').toLowerCase();
+      const rec = roles.users[email] || {};
+      return {
+        email,
+        name: [u.first_name, u.last_name].filter(Boolean).join(' '),
+        status: u.status || '',
+        catalystRole: u.role_details?.role_name || '',
+        role: APP_ROLES.includes(rec.role) ? rec.role : isAdminUser(u) ? 'admin' : 'investigator',
+        rank: rec.rank || '',
+      };
+    });
+    return json(res, 200, { users });
+  }
+
+  // save — assign role + rank to one user, and audit the change itself.
+  const email = String(body.email || '').trim().toLowerCase();
+  const role = String(body.role || '');
+  const rank = String(body.rank || '').slice(0, 20);
+  if (!email) return json(res, 400, { error: 'email is required' });
+  if (!APP_ROLES.includes(role)) return json(res, 400, { error: 'invalid role' });
+  const roles = await loadRolesBlob(bucket);
+  roles.users[email] = {
+    role,
+    rank,
+    updatedAt: Date.now(),
+    updatedBy: String(caller?.email_id || ''),
+  };
+  await bucket.putObject(ROLES_KEY, Buffer.from(JSON.stringify(roles)));
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'role-change',
+    feature: 'Access & Audit',
+    path: '/access',
+    detail: `${email} → ${role}${rank ? ` (${rank})` : ''}`,
+  }], caller);
+  return json(res, 200, { ok: true });
+}
+
+// IP → rough location via ip-api.com. Best-effort: private/unknown IPs and
+// lookup failures record an empty location; results are cached per instance.
+const geoCache = new Map();
+async function geoLocate(ip) {
+  if (!ip || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|::1|f[ce])/.test(ip)) return '';
+  if (geoCache.has(ip)) return geoCache.get(ip);
+  let loc = '';
+  try {
+    const r = await fetch(
+      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,regionName,city`,
+      { signal: AbortSignal.timeout(1500) }
+    );
+    const j = await r.json();
+    if (j.status === 'success') loc = [j.city, j.regionName, j.country].filter(Boolean).join(', ');
+  } catch {}
+  geoCache.set(ip, loc);
+  return loc;
+}
+
+const clientIp = (req) =>
+  String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
+  req.socket?.remoteAddress ||
+  '';
+
+const IST_FMT = new Intl.DateTimeFormat('en-IN', {
+  timeZone: 'Asia/Kolkata',
+  year: 'numeric', month: 'short', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+});
+
+async function storeAuditEvents(req, app, bucket, events, sessionUser) {
+  if (!events.length) return;
+  const ip = clientIp(req);
+  const [location, roles, user] = await Promise.all([
+    geoLocate(ip),
+    loadRolesBlob(bucket),
+    sessionUser ? Promise.resolve(sessionUser) : requestUser(app),
+  ]);
+  // Identity is resolved server-side (session user + roles blob); the client
+  // payload only fills gaps when the SDK can't confirm the session.
+  const email = String(user?.email_id || events[0].email || '').toLowerCase().slice(0, 120);
+  const rec = roles.users[email] || {};
+  const role = isAdminUser(user)
+    ? 'admin'
+    : APP_ROLES.includes(rec.role) ? rec.role : 'investigator';
+  const name =
+    [user?.first_name, user?.last_name].filter(Boolean).join(' ') ||
+    String(events[0].name || '').slice(0, 120);
+  const device = String(req.headers['user-agent'] || '').slice(0, 160);
+  const now = Date.now();
+  const enriched = events.slice(0, 50).map((e) => {
+    const ts = Number.isFinite(e.ts) && Math.abs(now - e.ts) < 86_400_000 ? e.ts : now;
+    return {
+      ts,
+      istTime: IST_FMT.format(new Date(ts)),
+      email,
+      name,
+      role,
+      rank: rec.rank || '',
+      feature: String(e.feature || '').slice(0, 60),
+      action: String(e.action || 'view').slice(0, 40),
+      path: String(e.path || '').slice(0, 120),
+      detail: String(e.detail || '').slice(0, 300),
+      session: String(e.session || '').slice(0, 40),
+      ip,
+      location,
+      device,
+    };
+  });
+  const day = new Date(now).toISOString().slice(0, 10);
+  const key = `${AUDIT_PREFIX}${day}/${now}-${Math.random().toString(36).slice(2, 8)}.json`;
+  await bucket.putObject(key, Buffer.from(JSON.stringify({ events: enriched })));
+}
+
+async function handleAudit(req, res, action) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+
+  if (action === 'log') {
+    const events = Array.isArray(body.events) ? body.events : [];
+    await storeAuditEvents(req, app, bucket, events);
+    return json(res, 200, { ok: true, stored: Math.min(events.length, 50) });
+  }
+
+  // list — admin only; bounded to 31 days / 5000 events per request.
+  const caller = await requestUser(app);
+  if (!isAdminUser(caller)) return json(res, 403, { error: 'admin only' });
+  const today = new Date().toISOString().slice(0, 10);
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(body.to || '') ? body.to : today;
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(body.from || '') ? body.from : to;
+  const days = [];
+  for (let t = Date.parse(from); t <= Date.parse(to) && days.length < 31; t += 86_400_000) {
+    days.push(new Date(t).toISOString().slice(0, 10));
+  }
+  const events = [];
+  for (const day of days) {
+    let token;
+    do {
+      const page = await bucket.listPagedObjects({
+        prefix: `${AUDIT_PREFIX}${day}/`,
+        maxKeys: '200',
+        continuationToken: token,
+      });
+      const keys = (page?.contents || []).map((o) => o.key).filter(Boolean);
+      const blobs = await Promise.all(
+        keys.map(async (k) => {
+          try {
+            return JSON.parse((await streamToString(await bucket.getObject(k))) || '{}');
+          } catch {
+            return {};
+          }
+        })
+      );
+      blobs.forEach((b) => Array.isArray(b.events) && events.push(...b.events));
+      token =
+        page?.truncated === 'true' || page?.truncated === true
+          ? page?.next_continuation_token
+          : undefined;
+    } while (token && events.length < 5000);
+    if (events.length >= 5000) break;
+  }
+  events.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  return json(res, 200, { events: events.slice(0, 5000) });
+}
+
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return json(res, 405, { error: 'Use POST' });
@@ -605,6 +822,11 @@ module.exports = async (req, res) => {
     if (path.endsWith('/profile/photo')) return await handleProfilePhoto(req, res);
     if (path.endsWith('/profile/get')) return await handleProfile(req, res, 'get');
     if (path.endsWith('/profile/save')) return await handleProfile(req, res, 'save');
+    if (path.endsWith('/access/me')) return await handleAccess(req, res, 'me');
+    if (path.endsWith('/access/users')) return await handleAccess(req, res, 'users');
+    if (path.endsWith('/access/save')) return await handleAccess(req, res, 'save');
+    if (path.endsWith('/audit/log')) return await handleAudit(req, res, 'log');
+    if (path.endsWith('/audit/list')) return await handleAudit(req, res, 'list');
 
     const body = JSON.parse((await readBody(req)) || '{}');
     const query = (body.query || '').trim();

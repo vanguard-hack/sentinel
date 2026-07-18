@@ -1,5 +1,7 @@
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { AccessProvider } from './context/AccessContext';
 import { LayoutProvider } from './context/LayoutContext';
 import Dashboard from './pages/Dashboard';
 import CrimeMap from './pages/CrimeMap';
@@ -12,9 +14,18 @@ import Incidents from './pages/Incidents';
 import Personnel from './pages/Personnel';
 import Roster from './pages/Roster';
 import OrgChart from './pages/OrgChart';
+import AccessAudit from './pages/AccessAudit';
 import Sidebar from './components/Sidebar';
 import LoadingScreen from './components/LoadingScreen';
 import ErrorBoundary from './components/ErrorBoundary';
+import RequireAccess from './components/RequireAccess';
+import AuditTracker from './components/AuditTracker';
+
+// Every feature route is wrapped in a role guard (see utils/access.js for the
+// feature → roles matrix) and every route change lands in the audit trail.
+const guarded = (feature: string, el: React.ReactNode) => (
+  <RequireAccess feature={feature}>{el}</RequireAccess>
+);
 
 function AppRoutes() {
   const { loading, signingOut } = useAuth();
@@ -25,20 +36,22 @@ function AppRoutes() {
     <ErrorBoundary>
       <LayoutProvider>
         <div className="app-shell">
+          <AuditTracker />
           <Sidebar />
           <div className="app-main">
             <Routes>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/crime-map" element={<CrimeMap />} />
-              <Route path="/case-files" element={<CaseFiles />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/assistant" element={<Assistant />} />
-              <Route path="/ai-analytics" element={<AIAnalytics />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/incidents" element={<Incidents />} />
-              <Route path="/personnel" element={<Personnel />} />
-              <Route path="/personnel/roster" element={<Roster />} />
-              <Route path="/personnel/org-chart" element={<OrgChart />} />
+              <Route path="/dashboard" element={guarded('dashboard', <Dashboard />)} />
+              <Route path="/crime-map" element={guarded('crimeMap', <CrimeMap />)} />
+              <Route path="/case-files" element={guarded('caseFiles', <CaseFiles />)} />
+              <Route path="/reports" element={guarded('reports', <Reports />)} />
+              <Route path="/assistant" element={guarded('assistant', <Assistant />)} />
+              <Route path="/ai-analytics" element={guarded('aiAnalytics', <AIAnalytics />)} />
+              <Route path="/profile" element={guarded('profile', <Profile />)} />
+              <Route path="/incidents" element={guarded('incidents', <Incidents />)} />
+              <Route path="/personnel" element={guarded('personnel', <Personnel />)} />
+              <Route path="/personnel/roster" element={guarded('dutyRoster', <Roster />)} />
+              <Route path="/personnel/org-chart" element={guarded('orgChart', <OrgChart />)} />
+              <Route path="/access" element={guarded('access', <AccessAudit />)} />
               <Route path="*" element={<Navigate to="/reports" replace />} />
             </Routes>
           </div>
@@ -51,9 +64,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <Router basename="/app">
-        <AppRoutes />
-      </Router>
+      <AccessProvider>
+        <Router basename="/app">
+          <AppRoutes />
+        </Router>
+      </AccessProvider>
     </AuthProvider>
   );
 }
