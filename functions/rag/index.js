@@ -1120,8 +1120,8 @@ module.exports = async (req, res) => {
     components = promoteDistrictCharts(components);
     const answer = stripDuplicatedLists(text, components);
 
-    // Attribution: knowledge-base document titles for RAG answers, the model
-    // name for general-knowledge fallbacks.
+    // Attribution: knowledge-base document titles, and only for RAG answers —
+    // conversational/general-knowledge replies carry no sources row at all.
     const sources =
       source === 'rag'
         ? [
@@ -1131,7 +1131,7 @@ module.exports = async (req, res) => {
                 .filter(Boolean)
             ),
           ]
-        : [`General knowledge (${GROQ_MODEL})`];
+        : [];
 
     return json(res, 200, {
       answer,
