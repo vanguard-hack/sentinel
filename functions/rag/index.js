@@ -129,6 +129,14 @@ const EXPAND_PROMPT =
   'Preserve every specific detail (names, codes, places, dates); expand abbreviations; ' +
   'do NOT invent details or add assumptions. Output ONLY the rewritten question.';
 
+const CHAT_SYSTEM =
+  'You are Sentinel Assistant, a friendly assistant inside a Karnataka police ' +
+  'crime-analytics platform. The user is making casual conversation (a greeting, ' +
+  'thanks, small talk, or a question about you). Reply naturally and warmly in ' +
+  '1-3 short sentences. When it fits, you may mention you can answer questions ' +
+  'about FIR data, crime statistics, law and procedure — but never push it, and ' +
+  'never invent data.';
+
 const FALLBACK_SYSTEM =
   'You are Sentinel Assistant, helping Indian police analysts. The internal knowledge ' +
   'base had no answer, so answer from general knowledge — Indian law, police procedure, ' +
@@ -903,18 +911,41 @@ module.exports = async (req, res) => {
       : null;
     const searchQuery = (expanded || '').trim() || query;
 
-    // ── Router: relational question → ZCQL over the Data Store; otherwise RAG.
-    // Groq decides; any failure in the ZCQL path falls through to RAG so the
-    // assistant always answers.
+    // ── Router: casual message → direct Groq chat; relational question →
+    // ZCQL over the Data Store; otherwise RAG. Groq decides; any failure in
+    // the CHAT/ZCQL paths falls through to RAG so the assistant always answers.
     let zcqlDebug; // populated when the ZCQL path was tried but abandoned
     if (process.env.GROQ_API_KEY) {
+      // CHAT must be judged on the user's ORIGINAL wording — expansion can
+      // rewrite a bare "thanks!" into a restated data question.
       const routed = await callGroq(
         [
           { role: 'system', content: zcql.ROUTER_PROMPT },
-          { role: 'user', content: searchQuery },
+          {
+            role: 'user',
+            content:
+              searchQuery === query
+                ? query
+                : `Original message: ${query}\n(With context resolved: ${searchQuery})`,
+          },
         ],
         { maxTokens: 4, temperature: 0, timeoutMs: 5_000, model: GROQ_MODEL_FAST }
       );
+      if (routed && /chat/i.test(routed)) {
+        const chat = await callGroq(
+          [{ role: 'system', content: CHAT_SYSTEM }, ...history, { role: 'user', content: query }],
+          { maxTokens: 220, temperature: 0.6, timeoutMs: 12_000 }
+        );
+        if (chat && chat.trim()) {
+          return json(res, 200, {
+            answer: chat.trim(),
+            components: [],
+            source: 'chat',
+            sources: [],
+          });
+        }
+        // Groq unavailable mid-request — fall through to the RAG path below.
+      }
       if (routed && /zcql/i.test(routed)) {
         try {
           const app = catalystSDK.initialize(req);

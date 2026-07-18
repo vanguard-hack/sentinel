@@ -32,7 +32,12 @@ for (const [uid, u] of Object.entries(MASTERS.units)) {
 // ── router ──────────────────────────────────────────────────────────────────
 const ROUTER_PROMPT =
   'You are a router for a police crime-analytics assistant. Decide how a ' +
-  'question should be answered and reply with EXACTLY one word: ZCQL or RAG.\n\n' +
+  'message should be answered and reply with EXACTLY one word: CHAT, ZCQL or RAG.\n\n' +
+  'Answer CHAT when the ORIGINAL message is casual conversation rather than a ' +
+  'lookup: greetings, thanks, goodbyes, small talk, jokes, feelings, or ' +
+  'questions about the assistant itself ("who are you", "what can you do"). ' +
+  'If the message asks for ANY police data, statistic, record, law or ' +
+  'procedure, it is NOT chat.\n\n' +
   'Answer ZCQL when the question asks about records, counts, statistics, lists, ' +
   'rankings, trends or lookups over the FIR relational database, which contains: ' +
   'FIR cases 2023-2026 (CaseMaster with station, district, category, status, crime ' +
@@ -48,7 +53,9 @@ const ROUTER_PROMPT =
   'the database is the authoritative, current source.\n' +
   'Examples: "How many FIRs in 2024?" → ZCQL. "Top 5 districts by cases" → ZCQL. ' +
   '"Which officer registered the most cases?" → ZCQL. "What is a cognizable ' +
-  'offence?" → RAG. "What does Section 379 IPC say?" → RAG.';
+  'offence?" → RAG. "What does Section 379 IPC say?" → RAG. ' +
+  '"Hey, how are you?" → CHAT. "thanks, that helped!" → CHAT. ' +
+  '"good morning" → CHAT. "what all can you do?" → CHAT.';
 
 // ── schema + rules for the generator ────────────────────────────────────────
 const districtLines = Object.entries(DISTRICT_IDS)
