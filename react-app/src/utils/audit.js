@@ -3,7 +3,9 @@
 // never blocked. The server enriches each batch with the caller's verified
 // identity, IP, geo-location and IST timestamp before storing it.
 
-const FLUSH_URL = '/server/rag/audit/log';
+// Bland path on purpose — "/audit/log"-style URLs match ad-blocker privacy
+// lists and the requests die silently in the browser.
+const FLUSH_URL = '/server/rag/access/record';
 const FLUSH_MS = 4000;
 
 let identity = { email: '', name: '' };

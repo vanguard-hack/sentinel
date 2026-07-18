@@ -11,7 +11,7 @@ const AccessContext = createContext(null);
 
 export function AccessProvider({ children }) {
   const { user } = useAuth();
-  const [state, setState] = useState({ role: null, rank: '', ready: false });
+  const [state, setState] = useState({ role: null, ready: false });
 
   const isAdmin = /admin/i.test(user?.role_details?.role_name || '');
 
@@ -23,9 +23,9 @@ export function AccessProvider({ children }) {
     setAuditIdentity({ email, name });
 
     (async () => {
-      const mine = isAdmin ? { role: 'admin', rank: '' } : await fetchMyAccess(email);
+      const mine = isAdmin ? { role: 'admin' } : await fetchMyAccess(email);
       if (cancelled) return;
-      setState({ role: mine.role, rank: mine.rank, ready: true });
+      setState({ role: mine.role, ready: true });
       logAudit('session-start', 'Sign in', `role=${mine.role}`);
     })();
     return () => { cancelled = true; };

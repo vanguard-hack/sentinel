@@ -3,12 +3,10 @@ import {
   ShieldCheck, RefreshCw, Download, FileSpreadsheet, AlertTriangle, Check,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
-import {
-  ROLE_LABELS, ASSIGNABLE_ROLES, RANK_OPTIONS, RANK_ROLE_SUGGEST,
-} from '../utils/access';
+import { ROLE_LABELS, ASSIGNABLE_ROLES } from '../utils/access';
 import { logAudit } from '../utils/audit';
 
-// Admin console: assign app roles/ranks to users, and browse/export the audit
+// Admin console: assign app roles to users, and browse/export the audit
 // trail (who opened what, from where, when — in IST).
 
 const isoDay = (d) => d.toISOString().slice(0, 10);
@@ -19,7 +17,6 @@ const AUDIT_COLUMNS = [
   ['name', 'Name'],
   ['email', 'Email'],
   ['role', 'Role'],
-  ['rank', 'Rank'],
   ['feature', 'Feature'],
   ['action', 'Action'],
   ['path', 'Path'],
@@ -59,10 +56,10 @@ function RolesTab() {
       .catch((e) => setError(e.message));
   }, []);
 
-  const save = async (email, role, rank) => {
-    setUsers((us) => us.map((u) => (u.email === email ? { ...u, role, rank } : u)));
+  const save = async (email, role) => {
+    setUsers((us) => us.map((u) => (u.email === email ? { ...u, role } : u)));
     try {
-      await post('/server/rag/access/save', { email, role, rank });
+      await post('/server/rag/access/save', { email, role });
       setSavedFlash((f) => ({ ...f, [email]: true }));
       setTimeout(() => setSavedFlash((f) => ({ ...f, [email]: false })), 1800);
     } catch (e) {
@@ -78,15 +75,16 @@ function RolesTab() {
   return (
     <>
       <p className="aa-hint">
-        Access is tied to the KSP rank hierarchy — picking a rank suggests the
-        matching role (DGP–IGP → Policymaker, DIGP–DySP → Supervisor, PI–ASI →
-        Investigator, HC/PC → Analyst), which you can override. Admin comes from
-        the Catalyst project role and cannot be assigned here.
+        Each user carries one role that decides which features open for them —
+        Investigators get the case-level tools, Analysts the analytics views,
+        Supervisors both plus personnel management, Policymakers the strategic
+        views. Admin comes from the Catalyst project role and cannot be
+        assigned here.
       </p>
       <div className="aa-table-wrap">
         <table className="aa-table">
           <thead>
-            <tr><th>User</th><th>Platform role</th><th>Rank</th><th>App role</th><th /></tr>
+            <tr><th>User</th><th>Status</th><th>Role</th><th /></tr>
           </thead>
           <tbody>
             {users.map((u) => {
@@ -99,21 +97,7 @@ function RolesTab() {
                       <span className="aa-user-email">{u.email}</span>
                     </div>
                   </td>
-                  <td><span className={`aa-chip ${isAdmin ? 'admin' : ''}`}>{u.catalystRole || '—'}</span></td>
-                  <td>
-                    <select
-                      className="cf-select aa-select"
-                      value={u.rank}
-                      disabled={isAdmin}
-                      onChange={(e) => {
-                        const rank = e.target.value;
-                        save(u.email, RANK_ROLE_SUGGEST[rank] || u.role, rank);
-                      }}
-                    >
-                      <option value="">— rank —</option>
-                      {RANK_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-                    </select>
-                  </td>
+                  <td><span className="aa-chip">{u.status || '—'}</span></td>
                   <td>
                     {isAdmin ? (
                       <span className="aa-chip admin">Admin</span>
@@ -121,7 +105,7 @@ function RolesTab() {
                       <select
                         className="cf-select aa-select"
                         value={u.role}
-                        onChange={(e) => save(u.email, e.target.value, u.rank)}
+                        onChange={(e) => save(u.email, e.target.value)}
                       >
                         {ASSIGNABLE_ROLES.filter((r) => r !== 'admin').map((r) => (
                           <option key={r} value={r}>{ROLE_LABELS[r]}</option>
@@ -154,7 +138,7 @@ function AuditTab() {
     setLoading(true);
     setError(null);
     try {
-      const d = await post('/server/rag/audit/list', { from, to });
+      const d = await post('/server/rag/access/records', { from, to });
       setEvents(d.events || []);
     } catch (e) {
       setError(e.message);
@@ -180,14 +164,18 @@ function AuditTab() {
     [events, fUser, fFeature, fAction]
   );
 
+  const roleName = (e) => ROLE_LABELS[e.role] || e.role || '';
+
   const exportRows = () => [
     AUDIT_COLUMNS.map(([, label]) => label),
-    ...shown.map((e) => AUDIT_COLUMNS.map(([k]) => String(e[k] ?? ''))),
+    ...shown.map((e) =>
+      AUDIT_COLUMNS.map(([k]) => (k === 'role' ? roleName(e) : String(e[k] ?? '')))
+    ),
   ];
 
   const exportCsv = () => {
-    // \ufeff BOM so Excel opens the file as UTF-8.
-    const csv = '\ufeff' + exportRows()
+    // ﻿ BOM so Excel opens the file as UTF-8.
+    const csv = '﻿' + exportRows()
       .map((row) => row.map((c) => `"${c.replace(/"/g, '""')}"`).join(','))
       .join('\r\n');
     download(
@@ -259,7 +247,7 @@ function AuditTab() {
             <table className="aa-table aa-audit">
               <thead>
                 <tr>
-                  <th>Time (IST)</th><th>Officer</th><th>Role</th><th>Rank</th>
+                  <th>Time (IST)</th><th>Officer</th><th>Role</th>
                   <th>Feature</th><th>Action</th><th>IP</th><th>Location</th>
                 </tr>
               </thead>
@@ -273,8 +261,11 @@ function AuditTab() {
                         <span className="aa-user-email">{e.email}</span>
                       </div>
                     </td>
-                    <td>{ROLE_LABELS[e.role] || e.role || '—'}</td>
-                    <td>{e.rank || '—'}</td>
+                    <td>
+                      {e.role === 'admin'
+                        ? <span className="aa-chip admin">Admin</span>
+                        : (roleName(e) || '—')}
+                    </td>
                     <td>{e.feature}</td>
                     <td>
                       <span className={`aa-chip act-${e.action === 'denied' ? 'denied' : e.action === 'view' ? 'view' : 'other'}`}>
@@ -309,7 +300,7 @@ export default function AccessAudit() {
             <ShieldCheck size={20} strokeWidth={1.9} />
             <div>
               <h1>Access &amp; audit</h1>
-              <p>Role-based access tied to the KSP rank hierarchy, with a full activity trail.</p>
+              <p>Role-based access with a full activity trail.</p>
             </div>
           </div>
           <div className="seg-group" role="tablist">

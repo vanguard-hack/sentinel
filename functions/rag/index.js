@@ -634,7 +634,6 @@ async function handleAccess(req, res, action) {
     const rec = roles.users[email] || {};
     return json(res, 200, {
       role: APP_ROLES.includes(rec.role) ? rec.role : 'investigator',
-      rank: rec.rank || '',
     });
   }
 
@@ -655,22 +654,19 @@ async function handleAccess(req, res, action) {
         status: u.status || '',
         catalystRole: u.role_details?.role_name || '',
         role: APP_ROLES.includes(rec.role) ? rec.role : isAdminUser(u) ? 'admin' : 'investigator',
-        rank: rec.rank || '',
       };
     });
     return json(res, 200, { users });
   }
 
-  // save — assign role + rank to one user, and audit the change itself.
+  // save — assign a role to one user, and audit the change itself.
   const email = String(body.email || '').trim().toLowerCase();
   const role = String(body.role || '');
-  const rank = String(body.rank || '').slice(0, 20);
   if (!email) return json(res, 400, { error: 'email is required' });
   if (!APP_ROLES.includes(role)) return json(res, 400, { error: 'invalid role' });
   const roles = await loadRolesBlob(bucket);
   roles.users[email] = {
     role,
-    rank,
     updatedAt: Date.now(),
     updatedBy: String(caller?.email_id || ''),
   };
@@ -679,7 +675,7 @@ async function handleAccess(req, res, action) {
     action: 'role-change',
     feature: 'Access & Audit',
     path: '/access',
-    detail: `${email} → ${role}${rank ? ` (${rank})` : ''}`,
+    detail: `${email} → ${role}`,
   }], caller);
   return json(res, 200, { ok: true });
 }
@@ -742,7 +738,6 @@ async function storeAuditEvents(req, app, bucket, events, sessionUser) {
       email,
       name,
       role,
-      rank: rec.rank || '',
       feature: String(e.feature || '').slice(0, 60),
       action: String(e.action || 'view').slice(0, 40),
       path: String(e.path || '').slice(0, 120),
@@ -788,7 +783,11 @@ async function handleAudit(req, res, action) {
         maxKeys: '200',
         continuationToken: token,
       });
-      const keys = (page?.contents || []).map((o) => o.key).filter(Boolean);
+      // listPagedObjects wraps each entry in a StratusObject — the key sits
+      // on .keyDetails, not on the instance itself.
+      const keys = (page?.contents || [])
+        .map((o) => o?.keyDetails?.key || o?.key)
+        .filter(Boolean);
       const blobs = await Promise.all(
         keys.map(async (k) => {
           try {
@@ -825,8 +824,10 @@ module.exports = async (req, res) => {
     if (path.endsWith('/access/me')) return await handleAccess(req, res, 'me');
     if (path.endsWith('/access/users')) return await handleAccess(req, res, 'users');
     if (path.endsWith('/access/save')) return await handleAccess(req, res, 'save');
-    if (path.endsWith('/audit/log')) return await handleAudit(req, res, 'log');
-    if (path.endsWith('/audit/list')) return await handleAudit(req, res, 'list');
+    // Deliberately bland paths: "/audit/log" matches ad-blocker privacy lists,
+    // which silently kill the fetch in the browser.
+    if (path.endsWith('/access/record')) return await handleAudit(req, res, 'log');
+    if (path.endsWith('/access/records')) return await handleAudit(req, res, 'list');
 
     const body = JSON.parse((await readBody(req)) || '{}');
     const query = (body.query || '').trim();

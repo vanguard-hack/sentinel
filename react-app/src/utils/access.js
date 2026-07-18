@@ -53,21 +53,6 @@ export function featureForPath(pathname) {
   return best;
 }
 
-// Rank → suggested role (KSP hierarchy 1 = DGP … 12 = PC). The admin can
-// always override; this only pre-fills the role when a rank is picked.
-// DGP–IGP set policy; DIGP–DySP supervise; PI–ASI investigate; HC/PC assist
-// with records and analysis.
-export const RANK_ROLE_SUGGEST = {
-  DGP: 'policymaker', ADGP: 'policymaker', IGP: 'policymaker',
-  DIGP: 'supervisor', SP: 'supervisor', 'Addl. SP': 'supervisor', DySP: 'supervisor',
-  PI: 'investigator', PSI: 'investigator', ASI: 'investigator',
-  HC: 'analyst', PC: 'analyst',
-};
-
-export const RANK_OPTIONS = [
-  'DGP', 'ADGP', 'IGP', 'DIGP', 'SP', 'Addl. SP', 'DySP', 'PI', 'PSI', 'ASI', 'HC', 'PC',
-];
-
 export async function fetchMyAccess(email) {
   try {
     const res = await fetch('/server/rag/access/me', {
@@ -77,9 +62,9 @@ export async function fetchMyAccess(email) {
       signal: AbortSignal.timeout(8000),
     });
     const data = await res.json().catch(() => ({}));
-    if (res.ok && data.role) return { role: data.role, rank: data.rank || '' };
+    if (res.ok && data.role) return { role: data.role };
   } catch {}
   // Fail open to the least-privileged field role so a cold function start
   // never locks a user out of the whole app.
-  return { role: 'investigator', rank: '' };
+  return { role: 'investigator' };
 }
