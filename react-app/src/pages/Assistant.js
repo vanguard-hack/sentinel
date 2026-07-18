@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Plus, MessageSquare, Trash2,
   Paperclip, Mic, ArrowUp, X, Shield, FileText, PanelLeft,
-  Copy, Check, ThumbsUp, ThumbsDown, MoreVertical,
+  Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, MoreVertical,
   Star, Pencil, FileDown, CheckSquare,
 } from 'lucide-react';
 import {
@@ -206,6 +206,26 @@ export default function Assistant() {
     setAttachments([]);
     histRef.current = { idx: null, draft: '' };
   };
+
+  // Wipe the active conversation's messages but keep the session itself.
+  // The server copy is deleted too — otherwise the reload union restores the
+  // old messages from the server snapshot and the reset silently undoes.
+  const resetConversation = useCallback(() => {
+    if (!activeId) return;
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeId
+          ? { ...s, title: 'New chat', messages: [], updatedAt: Date.now() }
+          : s
+      )
+    );
+    dirtyRef.current.delete(activeId);
+    deleteSessionRemote(activeId, email);
+    setInput('');
+    setAttachments([]);
+    histRef.current = { idx: null, draft: '' };
+    textareaRef.current?.focus();
+  }, [activeId, email]);
 
   const deleteSession = (id) => {
     setSessions((prev) => prev.filter((s) => s.id !== id));
@@ -479,11 +499,11 @@ export default function Assistant() {
         {messages.length > 0 && (
           <button
             className="nav-icon-btn"
-            onClick={startNewChat}
-            title="New chat (keeps this conversation in history)"
-            aria-label="New chat"
+            onClick={resetConversation}
+            title="Reset conversation"
+            aria-label="Reset conversation"
           >
-            <Plus size={17} />
+            <RotateCcw size={17} />
           </button>
         )}
       </TopBar>
