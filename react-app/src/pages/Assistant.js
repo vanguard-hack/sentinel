@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import {
   loadSessions, saveSessions, makeTitle, newSession, generateReply, uid,
-  transcribeAudio, loadSessionsRemote, saveSessionRemote, deleteSessionRemote,
+  transcribeAudio, loadSessionsRemote, saveSessionRemote, saveSessionBeacon, deleteSessionRemote,
 } from '../utils/assistant';
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
@@ -109,12 +109,21 @@ export default function Assistant() {
       const remote = await loadSessionsRemote(email);
       if (cancelled || !remote) return; // offline → keep local cache
       setSessions((local) => {
-        // Union by id: server records are the base; any local session that
-        // has messages and isn't on the server yet (in-flight / just-sent) is
-        // preserved so the current conversation is never dropped.
+        // Union by id, keeping the FRESHEST copy of each conversation. The
+        // server may hold an older snapshot (the debounced save can miss the
+        // last exchange before a refresh) — blindly preferring it rewound
+        // conversations, so the copy with more messages / a newer timestamp
+        // wins instead.
         const byId = new Map(remote.map((r) => [r.id, r]));
         local.forEach((s) => {
-          if (s.messages?.length && !byId.has(s.id)) byId.set(s.id, s);
+          if (!s.messages?.length) return;
+          const r = byId.get(s.id);
+          const localFresher =
+            !r ||
+            s.messages.length > (r.messages?.length || 0) ||
+            (s.messages.length === (r.messages?.length || 0) &&
+              (s.updatedAt || s.createdAt || 0) > (r.updatedAt || r.createdAt || 0));
+          if (localFresher) byId.set(s.id, s);
         });
         return [...byId.values()].sort(
           (a, b) =>
@@ -131,20 +140,38 @@ export default function Assistant() {
   const renamedRef = useRef(new Set());
 
   // Debounced push of a changed session to the server; adopts the server's
-  // AI-generated title (unless the user renamed the conversation).
+  // AI-generated title (unless the user renamed the conversation). Sessions
+  // stay in dirtyRef until a save is confirmed so the tab-hide beacon below
+  // can rescue anything the debounce hasn't sent yet.
   const saveTimers = useRef({});
+  const dirtyRef = useRef(new Map()); // id → latest unsaved session
   const pushSession = useCallback((session) => {
     if (!email || !session?.messages?.length) return;
     const renamed = renamedRef.current.has(session.id);
+    dirtyRef.current.set(session.id, session);
     clearTimeout(saveTimers.current[session.id]);
     saveTimers.current[session.id] = setTimeout(async () => {
       const out = await saveSessionRemote(session, email, renamed ? {} : { autotitle: true });
+      if (out) dirtyRef.current.delete(session.id);
       if (out?.title && !renamed) {
         setSessions((prev) =>
           prev.map((s) => (s.id === session.id ? { ...s, title: out.title } : s))
         );
       }
     }, 700);
+  }, [email]);
+
+  // Refresh/close/navigate-away kills in-flight debounced saves — flush any
+  // unsaved conversation as a beacon so the last exchange survives reload.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState !== 'hidden') return;
+      dirtyRef.current.forEach((s) => {
+        if (saveSessionBeacon(s, email)) dirtyRef.current.delete(s.id);
+      });
+    };
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
   }, [email]);
 
   // Autoscroll the thread on new messages / typing.
@@ -265,7 +292,9 @@ export default function Assistant() {
     setSessions((prev) => {
       const base = created ? [created, ...prev] : prev;
       return base.map((s) =>
-        s.id === sessionId ? { ...s, messages: [...s.messages, userMsg] } : s
+        s.id === sessionId
+          ? { ...s, messages: [...s.messages, userMsg], updatedAt: Date.now() }
+          : s
       );
     });
     setActiveId(sessionId);
@@ -296,7 +325,12 @@ export default function Assistant() {
       setSessions((prev) =>
         prev.map((s) =>
           s.id === sessionId
-            ? { ...s, title: renamedRef.current.has(s.id) ? s.title : interimTitle, messages: fullMessages }
+            ? {
+                ...s,
+                title: renamedRef.current.has(s.id) ? s.title : interimTitle,
+                messages: fullMessages,
+                updatedAt: Date.now(),
+              }
             : s
         )
       );
@@ -311,7 +345,11 @@ export default function Assistant() {
         ts: Date.now(),
       };
       setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, messages: [...s.messages, botMsg] } : s))
+        prev.map((s) =>
+          s.id === sessionId
+            ? { ...s, messages: [...s.messages, botMsg], updatedAt: Date.now() }
+            : s
+        )
       );
     } finally {
       setSending(false);

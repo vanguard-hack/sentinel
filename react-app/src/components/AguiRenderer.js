@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { BarList, Donut } from './Charts';
+import { HBarList, Donut } from './Charts';
 import GeoHeatMap from './GeoHeatMap';
 import NetworkGraph from './NetworkGraph';
 
@@ -100,7 +100,7 @@ function AguiComponent({ spec }) {
   let body = null;
   if (spec.type === 'bar-chart') {
     const data = cleanSeries(spec.data);
-    body = data.length ? <BarList data={data} /> : null;
+    body = data.length ? <HBarList data={data} /> : null;
   } else if (spec.type === 'pie-chart') {
     const data = cleanSeries(spec.data);
     body = data.length ? <Donut data={data} /> : null;

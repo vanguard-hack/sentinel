@@ -135,6 +135,23 @@ export async function saveSessionRemote(session, email, extra = {}) {
   }
 }
 
+// Last-chance save when the tab hides (refresh/close/navigate away) — the
+// debounced fetch save doesn't survive unload, a beacon does.
+export function saveSessionBeacon(session, email) {
+  if (!email || !session?.messages?.length || !navigator.sendBeacon) return false;
+  const body = JSON.stringify({
+    email,
+    id: session.id,
+    title: session.title,
+    messages: session.messages.map(slimMsg),
+    ...(typeof session.starred === 'boolean' ? { starred: session.starred } : {}),
+  });
+  return navigator.sendBeacon(
+    '/server/rag/conversations/save',
+    new Blob([body], { type: 'application/json' })
+  );
+}
+
 export async function deleteSessionRemote(id, email) {
   if (!email || !id) return;
   try {
