@@ -7,10 +7,12 @@
 // lists and the requests die silently in the browser.
 const FLUSH_URL = '/server/rag/access/record';
 const FLUSH_MS = 4000;
+const MAX_QUEUE = 200;
 
 let identity = { email: '', name: '' };
 let queue = [];
 let timer = null;
+let lastError = '';
 
 const SESSION_KEY = 'sentinel_audit_session';
 function sessionId() {
@@ -30,24 +32,48 @@ export function setAuditIdentity(next) {
   identity = { ...identity, ...next };
 }
 
-function payload() {
-  return JSON.stringify({ events: queue.splice(0, 50) });
-}
-
 function flush(useBeacon) {
-  if (!queue.length) return;
-  const body = payload();
+  if (!queue.length) return Promise.resolve({ ok: true, sent: 0 });
+  const events = queue.splice(0, 50);
+  const body = JSON.stringify({ events });
+
   if (useBeacon && navigator.sendBeacon) {
-    navigator.sendBeacon(FLUSH_URL, new Blob([body], { type: 'application/json' }));
-    return;
+    const ok = navigator.sendBeacon(FLUSH_URL, new Blob([body], { type: 'application/json' }));
+    if (!ok && queue.length + events.length <= MAX_QUEUE) queue.unshift(...events);
+    return Promise.resolve({ ok, sent: events.length });
   }
-  fetch(FLUSH_URL, {
+
+  return fetch(FLUSH_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body,
     keepalive: true,
-  }).catch(() => {});
+  })
+    .then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      lastError = '';
+      return { ok: true, sent: events.length };
+    })
+    .catch((e) => {
+      // Failed sends go back on the queue (bounded) so a transient failure
+      // doesn't lose the trail; the error is kept for the self-test UI.
+      lastError = e?.message || 'network error';
+      if (queue.length + events.length <= MAX_QUEUE) queue.unshift(...events);
+      return { ok: false, error: lastError };
+    });
 }
+
+// Force an immediate flush and report the outcome — used by the audit page's
+// capture self-test so a blocked request becomes visible instead of silent.
+export function flushNow() {
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+  return flush(false);
+}
+
+export const auditLastError = () => lastError;
 
 export function logAudit(action, feature, detail = '') {
   queue.push({

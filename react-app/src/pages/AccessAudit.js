@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { ROLE_LABELS, ASSIGNABLE_ROLES } from '../utils/access';
-import { logAudit } from '../utils/audit';
+import { logAudit, flushNow } from '../utils/audit';
 
 // Admin console: assign app roles to users, and browse/export the audit
 // trail (who opened what, from where, when — in IST).
@@ -133,6 +133,7 @@ function AuditTab() {
   const [fUser, setFUser] = useState('All');
   const [fFeature, setFFeature] = useState('All');
   const [fAction, setFAction] = useState('All');
+  const [health, setHealth] = useState(null); // capture self-test outcome
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -148,6 +149,22 @@ function AuditTab() {
   }, [from, to]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Capture self-test: push a real event through the exact client pipeline,
+  // force the flush, surface the outcome, then re-load so it (and anything
+  // else captured this session) shows up without hunting for Refresh.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      logAudit('self-test', 'Access & Audit', 'capture health check');
+      const r = await flushNow();
+      if (cancelled) return;
+      setHealth(r);
+      if (r.ok) setTimeout(() => { if (!cancelled) load(); }, 900);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const options = useMemo(() => {
     const uniq = (k) => ['All', ...[...new Set((events || []).map((e) => e[k]).filter(Boolean))].sort()];
@@ -233,6 +250,14 @@ function AuditTab() {
         </button>
       </div>
 
+      {health && (
+        <div className={`aa-health ${health.ok ? 'ok' : 'bad'}`}>
+          {health.ok
+            ? 'Capture check passed — events from this browser are reaching the server.'
+            : `Capture check FAILED (${health.error}) — this browser is blocking the audit call. ` +
+              'An ad-blocker or privacy shield is the usual cause; whitelist this site and reload.'}
+        </div>
+      )}
       {error && <div className="aa-error"><AlertTriangle size={16} /> {error}</div>}
       {!events && !error && <div className="aa-loading">Loading audit trail…</div>}
 
