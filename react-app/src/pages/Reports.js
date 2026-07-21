@@ -499,8 +499,8 @@ export default function Reports() {
               <Card title="Chargesheet filing lag" subtitle="Days from registration to chargesheet">
                 <BarList data={data.csLag} />
               </Card>
-              <Card title="Investigation time by head" subtitle="Average days to chargesheet per crime head">
-                <BarList data={data.investTimeByHead} suffix=" days" percent={false} />
+              <Card title="Investigation time by head" subtitle="Average days to chargesheet per crime head" two>
+                <HBarList data={data.investTimeByHead} suffix=" days" percent={false} />
               </Card>
             </div>
 

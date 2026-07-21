@@ -4269,8 +4269,11 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   color: var(--text-3);
 }
 
-.rp-legend-row { display: flex; flex-direction: row; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; }
-.rp-legend-row li { border-bottom: none; padding: 0; }
+.rp-legend-row { display: flex; flex-direction: row; flex-wrap: wrap; gap: 4px 22px; margin-top: 8px; }
+/* The base .rp-legend li rule adds a -6px margin (a hover affordance for the
+   donut's vertical legend) which ate most of the row gap here — reset it so
+   the 22px gap actually shows between labels. */
+.rp-legend-row li { border-bottom: none; padding: 3px 6px; margin: 0; }
 .ml-cursor { stroke: var(--border-bright); stroke-width: 1; }
 
 /* Heat grid */
