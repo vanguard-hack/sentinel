@@ -436,8 +436,8 @@ export default function Reports() {
                 <HBarList data={data.openByStation} />
               </Card>
 
-              <Card title="Accused age profile" subtitle="Accused on record by age band">
-                <BarList data={data.accusedAges} />
+              <Card title="Accused age profile" two>
+                <BarList data={data.accusedAges} height={300} />
               </Card>
 
               <Card title="Top crime types" subtitle="Cases by crime sub-head" two>
@@ -496,8 +496,8 @@ export default function Reports() {
               <Card title="Pendency ageing" subtitle="Open investigations by age of case — green fresh, red long-pending">
                 <Pyramid data={data.pendencyAgeing} />
               </Card>
-              <Card title="Chargesheet filing lag" subtitle="Days from registration to chargesheet">
-                <BarList data={data.csLag} />
+              <Card title="Chargesheet filing lag" subtitle="Days from registration to chargesheet" two>
+                <BarList data={data.csLag} height={300} />
               </Card>
               <Card title="Investigation time by head" subtitle="Average days to chargesheet per crime head" two>
                 <HBarList data={data.investTimeByHead} suffix=" days" percent={false} />
@@ -510,8 +510,8 @@ export default function Reports() {
               <Card title="Complainant occupations" subtitle="Who is filing FIRs" two>
                 <HBarList data={data.complainantOccupations} />
               </Card>
-              <Card title="Complainant age profile" subtitle="Complainants by age band">
-                <BarList data={data.complainantAges} />
+              <Card title="Complainant age profile" subtitle="Complainants by age band" two>
+                <BarList data={data.complainantAges} height={300} />
               </Card>
               <Card title="Accused gender split" subtitle="Accused on record">
                 <Donut data={data.accusedGender} />
