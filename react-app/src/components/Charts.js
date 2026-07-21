@@ -157,7 +157,10 @@ export function TrendArea({ data, height = 230, labelEvery = 1 }) {
 // Long category labels angle at -30° and truncate; the full label lives in the
 // readout and tooltip. Keeps the row order it is given (callers pre-sort).
 let colSeq = 0;
-export function BarList({ data, format = (v) => v.toLocaleString(), suffix = '', percent = true, height = 215 }) {
+export function BarList({
+  data, format = (v) => v.toLocaleString(), suffix = '', percent = true, height = 215,
+  straightLabels = false, caption = true,
+}) {
   const [active, setActive] = useState(null);
   const gradId = useMemo(() => `colgrad-${++colSeq}`, []);
   if (!data.length) return <div className="rp-empty">No data</div>;
@@ -174,7 +177,7 @@ export function BarList({ data, format = (v) => v.toLocaleString(), suffix = '',
   const padR = 8;
   const padT = 8;
   const longest = Math.max(...data.map((d) => d.label.length));
-  const angled = longest > 7 || n > 8;
+  const angled = !straightLabels && (longest > 7 || n > 8);
   const padB = angled ? 52 : 26;
   const innerW = w - padL - padR;
   const innerH = height - padT - padB;
@@ -188,13 +191,15 @@ export function BarList({ data, format = (v) => v.toLocaleString(), suffix = '',
 
   return (
     <div className="trend-wrap">
-      <div className="trend-readout">
-        <span className="trend-readout-cap">
-          {shown
-            ? `${shown.label} · ${format(shown.value)}${suffix}${percent ? ` · ${Math.round((shown.value / total) * 100)}%` : ''}`
-            : `${n} categories${percent ? ` · ${format(total)}${suffix} total` : ''}`}
-        </span>
-      </div>
+      {caption && (
+        <div className="trend-readout">
+          <span className="trend-readout-cap">
+            {shown
+              ? `${shown.label} · ${format(shown.value)}${suffix}${percent ? ` · ${Math.round((shown.value / total) * 100)}%` : ''}`
+              : `${n} categories${percent ? ` · ${format(total)}${suffix} total` : ''}`}
+          </span>
+        </div>
+      )}
       <svg viewBox={`0 0 ${w} ${height}`} className="col-svg" role="img" onMouseLeave={() => setActive(null)}>
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
@@ -246,7 +251,7 @@ export function BarList({ data, format = (v) => v.toLocaleString(), suffix = '',
                 </text>
               ) : (
                 <text x={cx} y={base + 16} textAnchor="middle" className="col-label">
-                  {trunc(d.label, 10)}
+                  {trunc(d.label, straightLabels ? 16 : 10)}
                 </text>
               )}
               <rect

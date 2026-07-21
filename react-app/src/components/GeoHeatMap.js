@@ -149,22 +149,19 @@ export default function GeoHeatMap({ spec }) {
         })}
       </svg>
       <div className="geo-side">
-        <div className="geo-readout">
-          {sel && sel.value != null ? (
-            <>
-              <div className="geo-readout-name">{sel.topo}</div>
-              <div className="geo-readout-val">{sel.value.toLocaleString()}</div>
-              <div className="geo-readout-cap">{spec.title || 'incidents'}{hot(sel.value) ? ' · hotspot' : ''}</div>
-            </>
-          ) : (
-            <div className="geo-readout-hint">Hover or tap a district</div>
-          )}
+        {sel && sel.value != null && (
+          <div className="geo-tip">
+            <div className="geo-tip-name">{sel.topo}</div>
+            <div className="geo-tip-val">{sel.value.toLocaleString()}</div>
+            <div className="geo-tip-cap">{spec.title || 'incidents'}{hot(sel.value) ? ' · hotspot' : ''}</div>
+          </div>
+        )}
+        <div className="geo-legend-v">
+          <span className="geo-legend-lbl">high</span>
+          <span className="geo-legend-bar-v" />
+          <span className="geo-legend-lbl">low</span>
         </div>
-        <div className="geo-legend">
-          <span className="geo-legend-bar" />
-          <div className="geo-legend-ends"><span>low</span><span>high</span></div>
-          <div className="geo-legend-hot"><span className="geo-hot-dot" /> hotspot (top 30%)</div>
-        </div>
+        <div className="geo-legend-hot"><span className="geo-hot-dot" /> Hotspot<br />(top 30%)</div>
       </div>
     </div>
   );

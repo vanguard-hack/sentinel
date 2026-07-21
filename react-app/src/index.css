@@ -3006,7 +3006,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .as-new-btn:disabled { opacity: 0.45; cursor: default; }
 
 /* ── AG-UI geo heatmap ──────────────────────────────────────────────────── */
-.geo-map { display: grid; grid-template-columns: minmax(0,1fr) 160px; gap: 14px; align-items: start; }
+.geo-map { display: grid; grid-template-columns: minmax(0,1fr) 68px; gap: 16px; align-items: stretch; }
 .geo-svg { width: 100%; height: auto; }
 .geo-shape { fill: var(--rp-series); stroke: #9ca3af; stroke-width: 0.6; cursor: pointer; transition: fill-opacity .15s; }
 .geo-shape.active { stroke: var(--text-1); stroke-width: 1.4; }
@@ -3016,17 +3016,34 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .geo-hot-core { fill: #e34948; }
 @keyframes geo-pulse { 0% { transform: scale(0.7); opacity: 0.5; } 100% { transform: scale(1.5); opacity: 0; } }
 .geo-hot-pulse { transform-box: fill-box; transform-origin: center; }
-.geo-side { display: flex; flex-direction: column; gap: 14px; }
-.geo-readout { border: 1px solid var(--border-1); border-radius: 8px; padding: 12px; min-height: 84px; }
-.geo-readout-name { font-weight: 650; color: var(--text-1); font-size: 0.9rem; }
-.geo-readout-val { font-size: 1.5rem; font-weight: 700; color: var(--text-0); }
-.geo-readout-cap { font-size: 0.72rem; color: var(--text-3); }
-.geo-readout-hint { color: var(--text-4); font-size: 0.8rem; }
-.geo-legend { font-size: 0.72rem; color: var(--text-3); display: flex; flex-direction: column; gap: 5px; }
-.geo-legend-bar { height: 10px; border-radius: 3px; background: linear-gradient(90deg, color-mix(in srgb, var(--rp-series) 14%, transparent), var(--rp-series)); }
-.geo-legend-ends { display: flex; justify-content: space-between; }
-.geo-legend-hot { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-.geo-hot-dot { width: 10px; height: 10px; border-radius: 50%; background: #e34948; }
+
+/* Side panel: a tall vertical intensity bar (replaces the old empty
+   "hover or tap a district" placeholder box — the reading now appears only
+   on hover, as a compact chip, and takes no space when nothing is selected). */
+.geo-side { display: flex; flex-direction: column; align-items: center; gap: 10px; height: 100%; }
+.geo-tip { text-align: center; line-height: 1.25; }
+.geo-tip-name { font-weight: 650; color: var(--text-1); font-size: 0.74rem; white-space: nowrap; }
+.geo-tip-val { font-size: 1.15rem; font-weight: 700; color: var(--text-0); }
+.geo-tip-cap { font-size: 0.66rem; color: var(--text-3); }
+.geo-legend-v { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; min-height: 110px; }
+.geo-legend-bar-v {
+  flex: 1;
+  width: 16px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--rp-series), color-mix(in srgb, var(--rp-series) 14%, transparent));
+}
+.geo-legend-lbl { font-size: 0.72rem; color: var(--text-3); }
+.geo-legend-hot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.66rem;
+  line-height: 1.25;
+  color: var(--text-3);
+  text-align: center;
+}
+.geo-hot-dot { width: 10px; height: 10px; border-radius: 50%; background: #e34948; flex-shrink: 0; }
 
 /* ── AG-UI network graph ────────────────────────────────────────────────── */
 .net-graph { display: flex; flex-direction: column; gap: 8px; }

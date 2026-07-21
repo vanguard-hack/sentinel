@@ -415,7 +415,7 @@ export default function Reports() {
                 <HBarList data={data.byCategory} />
               </Card>
 
-              <Card title="Top districts" subtitle="FIRs registered per district — shading intensity follows crime volume" wide>
+              <Card title="Top districts" subtitle="FIRs registered per district — shading intensity follows crime volume" two>
                 <div className="rp-geo-controls">
                   <span>Show top</span>
                   <select className="cf-select pp-perpage" value={topK} onChange={(e) => setTopK(e.target.value)}>
@@ -497,7 +497,7 @@ export default function Reports() {
                 <Pyramid data={data.pendencyAgeing} />
               </Card>
               <Card title="Chargesheet filing lag" subtitle="Days from registration to chargesheet" two>
-                <BarList data={data.csLag} height={300} />
+                <BarList data={data.csLag} height={300} straightLabels caption={false} />
               </Card>
               <Card title="Investigation time by head" subtitle="Average days to chargesheet per crime head" two>
                 <HBarList data={data.investTimeByHead} suffix=" days" percent={false} />
@@ -540,10 +540,6 @@ export default function Reports() {
                 <HBarList data={data.courtLoad} />
               </Card>
             </div>
-
-            <p className="rp-footnote">
-              Live from the Data Store via ZCQL aggregates over the Police FIR schema.
-            </p>
           </div>
         )}
       </main>
