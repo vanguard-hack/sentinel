@@ -3,20 +3,22 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   NotebookPen, AlertTriangle, Plus, Sparkles, ListChecks, Users, Fingerprint,
   MessageSquareQuote, Clock, Link2, ChevronDown, ChevronLeft, ChevronRight,
-  Mic, Upload, Paperclip, Play, FileText, Pencil, Trash2, GripVertical,
+  Mic, Upload, Paperclip, Play, FileText, Pencil, Trash2, FileDown,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import {
   getInvestigation, setInvestigationStatus, appendInvestigationItem, summarizeInvestigation,
-  updateInvestigationItem, deleteInvestigationItem, reorderInvestigationItems,
-  coldCaseFlag, statusColor, IIF_LABELS,
+  updateInvestigationItem, deleteInvestigationItem,
+  statusColor, IIF_LABELS,
   STATUS_OPTIONS, PERSON_ROLES, PERSON_STATUSES, EVIDENCE_TYPES, FSL_STATUSES, TIMELINE_TYPES, FINDING_TYPES,
   uploadEvidenceMedia, fetchEvidenceMediaUrl, ocrExtractText,
 } from '../utils/investigation';
 import { transcribeAudio } from '../utils/assistant';
+import { exportInvestigationDiaryPdf } from '../utils/reportPdf';
 import i18n from '../i18n';
 
 const fmtDate = (ts) => (ts ? new Date(ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+const fmtDateTime = (ts) => (ts ? new Date(ts).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 
 // A collapsible "add entry" form. `fields` describe simple inputs; the parent
 // owns submission (so the section-specific append call + optimistic refresh
@@ -138,7 +140,7 @@ function StatusPicker({ status, onChange }) {
 // swaps the row for a field form built from `fields` (same config as
 // AddEntryForm). Every write is a PutObject of the case record — no
 // DeleteObject needed, so it works under the Get/Put-only bucket policy.
-function EntryRow({ entry, section, fields, title, date, children, onUpdate, onDelete, drag }) {
+function EntryRow({ entry, section, fields, title, date, children, onUpdate, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [vals, setVals] = useState({});
@@ -197,20 +199,9 @@ function EntryRow({ entry, section, fields, title, date, children, onUpdate, onD
   }
 
   return (
-    <li
-      className={`inv-entry ${drag ? 'inv-draggable' : ''} ${drag?.over ? 'drag-over' : ''}`}
-      draggable={drag ? true : undefined}
-      onDragStart={drag?.onDragStart}
-      onDragOver={drag?.onDragOver}
-      onDragLeave={drag?.onDragLeave}
-      onDrop={drag?.onDrop}
-      onDragEnd={drag?.onDragEnd}
-    >
+    <li className="inv-entry">
       <div className="inv-entry-head">
-        <span className="inv-entry-serial">
-          {drag && <GripVertical size={15} className="inv-drag-handle" />}
-          {title}
-        </span>
+        <span className="inv-entry-serial">{title}</span>
         <span className="inv-entry-tools">
           {date != null && <span className="inv-entry-date">{fmtDate(date)}</span>}
           <button type="button" className="inv-icon-btn" title="Edit" onClick={startEdit}><Pencil size={14} /></button>
@@ -233,7 +224,6 @@ function EntryRow({ entry, section, fields, title, date, children, onUpdate, onD
 }
 
 function OverviewTab({ rec }) {
-  const cold = coldCaseFlag(rec);
   return (
     <div className="inv-overview">
       <IifBadge>{IIF_LABELS.overview}</IifBadge>
@@ -249,11 +239,6 @@ function OverviewTab({ rec }) {
         <div><span>Date of registration</span><b>{rec.registeredDate || '—'}</b></div>
         <div><span>Last diary entry</span><b>{rec.lastDiaryDate || 'None yet'}</b></div>
       </div>
-      {cold && (
-        <div className="inv-status-row">
-          <span className={`inv-cold-badge inv-cold-${cold.level}`}>{cold.label}</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -751,51 +736,95 @@ const TIMELINE_FIELDS = [
   { key: 'detail', label: 'Detail', type: 'textarea', wide: true, required: true },
 ];
 
-function TimelineTab({ rec, onAdd, onUpdate, onDelete, onReorder }) {
-  // The timeline is a manually-curated, reorderable chronology (rec.timeline).
-  // Local copy so a drag reorders instantly; reverts if the server save fails.
-  const [items, setItems] = useState(rec.timeline || []);
-  useEffect(() => { setItems(rec.timeline || []); }, [rec.timeline]);
-  const fromIdx = useRef(null);
-  const [overId, setOverId] = useState(null);
+function TimelineRow({ t, onUpdate, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [type, setType] = useState(t.type || '');
+  const [detail, setDetail] = useState(t.detail || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
 
-  const move = async (from, to) => {
-    if (from == null || from === to) return;
-    const next = [...items];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    setItems(next);
-    try { await onReorder('timeline', next.map((t) => t.id)); }
-    catch { setItems(rec.timeline || []); }
+  const save = async () => {
+    if (!detail.trim()) { setError('Detail is required.'); return; }
+    setBusy(true);
+    setError(null);
+    try { await onUpdate('timeline', t.id, { type, detail }); setEditing(false); }
+    catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  const del = async () => {
+    setBusy(true);
+    setError(null);
+    try { await onDelete('timeline', t.id); } catch (e) { setError(e.message); setBusy(false); }
   };
 
+  if (editing) {
+    return (
+      <li className="inv-timeline-row">
+        <span className="inv-timeline-dot" />
+        <div className="inv-timeline-body">
+          <div className="inv-add-form inv-timeline-edit">
+            <label className="inv-field">
+              Event type
+              <select className="cf-select" value={type} onChange={(e) => setType(e.target.value)}>
+                <option value="">— select —</option>
+                {TIMELINE_TYPES.map((o) => <option key={o}>{o}</option>)}
+              </select>
+            </label>
+            <label className="inv-field wide">
+              Detail
+              <textarea className="inv-textarea" rows={3} value={detail} onChange={(e) => setDetail(e.target.value)} />
+            </label>
+            {error && <div className="aa-error"><AlertTriangle size={16} /> {error}</div>}
+            <div className="inv-add-actions">
+              <button type="button" className="aa-btn" onClick={() => { setEditing(false); setError(null); }}>Cancel</button>
+              <button type="button" className="aa-btn primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
+            </div>
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li className="inv-timeline-row">
+      <span className="inv-timeline-dot" />
+      <div className="inv-timeline-body">
+        <div className="inv-timeline-head">
+          <b>{t.type || 'Event'}</b>
+          <span className="inv-timeline-tools">
+            <span>{fmtDateTime(t.ts)}</span>
+            <button type="button" className="inv-icon-btn" title="Edit" onClick={() => setEditing(true)}><Pencil size={13} /></button>
+            <button type="button" className="inv-icon-btn danger" title="Delete" onClick={() => setConfirmDel(true)}><Trash2 size={13} /></button>
+          </span>
+        </div>
+        <p>{t.detail}</p>
+        {confirmDel && (
+          <div className="inv-confirm">
+            <span>Delete this event? This can’t be undone.</span>
+            {error && <span className="inv-confirm-err"><AlertTriangle size={13} /> {error}</span>}
+            <div className="inv-confirm-actions">
+              <button type="button" className="aa-btn" onClick={() => { setConfirmDel(false); setError(null); }} disabled={busy}>Cancel</button>
+              <button type="button" className="aa-btn danger" onClick={del} disabled={busy}>{busy ? 'Deleting…' : 'Delete'}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function TimelineTab({ rec, onAdd, onUpdate, onDelete }) {
+  const items = [...(rec.timeline || [])].sort((a, b) => b.ts - a.ts);
   return (
     <div className="inv-tab">
       <IifBadge>{IIF_LABELS.timeline}</IifBadge>
-      <p className="aa-hint">
-        Key events on this case. Drag the handle to rearrange the chronology; edit or delete any event.
-      </p>
+      <p className="aa-hint">Chronology of key events on this case, most recent first.</p>
       <AddEntryForm
         label="Add timeline event" submitLabel="Save event" fields={TIMELINE_FIELDS}
         onSubmit={(v) => { if (!v.detail?.trim()) throw new Error('Detail is required.'); return onAdd('timeline', v); }}
       />
-      <ul className="inv-entry-list">
-        {items.map((t, i) => (
-          <EntryRow
-            key={t.id} entry={t} section="timeline" fields={TIMELINE_FIELDS}
-            title={t.type || 'Event'} date={t.ts} onUpdate={onUpdate} onDelete={onDelete}
-            drag={{
-              over: overId === t.id,
-              onDragStart: () => { fromIdx.current = i; },
-              onDragOver: (e) => { e.preventDefault(); if (overId !== t.id) setOverId(t.id); },
-              onDragLeave: () => setOverId((id) => (id === t.id ? null : id)),
-              onDrop: (e) => { e.preventDefault(); const f = fromIdx.current; fromIdx.current = null; setOverId(null); move(f, i); },
-              onDragEnd: () => { fromIdx.current = null; setOverId(null); },
-            }}
-          >
-            <p className="inv-entry-narrative">{t.detail}</p>
-          </EntryRow>
-        ))}
+      <ul className="inv-timeline">
+        {items.map((t) => <TimelineRow key={t.id} t={t} onUpdate={onUpdate} onDelete={onDelete} />)}
         {!items.length && <div className="aa-loading">No events yet.</div>}
       </ul>
     </div>
@@ -912,12 +941,17 @@ export default function InvestigationCase() {
   const onDelete = async (section, entryId) => {
     setRec(await deleteInvestigationItem(caseMasterId, section, entryId));
   };
-  const onReorder = async (section, orderedIds) => {
-    setRec(await reorderInvestigationItems(caseMasterId, section, orderedIds));
-  };
   const onStatusChange = async (status) => {
     const updated = await setInvestigationStatus(caseMasterId, status);
     setRec(updated);
+  };
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState(null);
+  const exportPdf = async () => {
+    setExporting(true);
+    setExportError(null);
+    try { await exportInvestigationDiaryPdf(rec); }
+    catch (e) { setExportError(e.message); } finally { setExporting(false); }
   };
 
   if (error) {
@@ -949,8 +983,14 @@ export default function InvestigationCase() {
             <h1>{rec.crimeNo || `Case ${rec.caseMasterId}`}</h1>
             <p>{rec.caseType || 'Uncategorised'}{rec.sections ? ` · ${rec.sections}` : ''}</p>
           </div>
-          <StatusPicker status={rec.status} onChange={onStatusChange} />
+          <div className="inv-head-actions">
+            <button type="button" className="aa-btn" onClick={exportPdf} disabled={exporting}>
+              <FileDown size={14} /> {exporting ? 'Preparing…' : 'Export PDF'}
+            </button>
+            <StatusPicker status={rec.status} onChange={onStatusChange} />
+          </div>
         </div>
+        {exportError && <div className="aa-error"><AlertTriangle size={16} /> {exportError}</div>}
 
         <div className="inv-tabbar">
           {TABS.map((t) => (
@@ -979,7 +1019,7 @@ export default function InvestigationCase() {
         {tab === 'statements' && <StatementsTab rec={rec} caseMasterId={rec.caseMasterId} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab === 'evidence' && <EvidenceTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab === 'persons' && <PersonsTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
-        {tab === 'timeline' && <TimelineTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} onReorder={onReorder} />}
+        {tab === 'timeline' && <TimelineTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab === 'findings' && <FindingsTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab === 'summary' && <SummaryTab caseMasterId={rec.caseMasterId} />}
       </div>

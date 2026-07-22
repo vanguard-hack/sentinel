@@ -5228,3 +5228,11 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .inv-page-btn:hover:not(:disabled) { background: var(--bg-3); }
 .inv-page-btn:disabled { opacity: 0.45; cursor: default; }
 .inv-page-info { font-size: 12.5px; color: var(--text-3); }
+
+/* Investigation: header actions + timeline edit/delete */
+.inv-head-actions { display: flex; align-items: center; gap: 10px; }
+.inv-timeline-body { flex: 1; min-width: 0; }
+.inv-timeline-tools { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.inv-timeline-tools > span { font-size: 11.5px; color: var(--text-4); }
+.inv-timeline-edit { margin: 2px 0 4px; }
+.inv-timeline-edit.inv-add-form { border: 1px solid var(--border-bright); background: var(--bg-2); padding: 12px; }
