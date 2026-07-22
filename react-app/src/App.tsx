@@ -15,6 +15,8 @@ import Personnel from './pages/Personnel';
 import Roster from './pages/Roster';
 import OrgChart from './pages/OrgChart';
 import AccessAudit from './pages/AccessAudit';
+import InvestigationDiary from './pages/InvestigationDiary';
+import InvestigationCase from './pages/InvestigationCase';
 import Sidebar from './components/Sidebar';
 import LoadingScreen from './components/LoadingScreen';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -52,6 +54,8 @@ function AppRoutes() {
               <Route path="/personnel/roster" element={guarded('dutyRoster', <Roster />)} />
               <Route path="/personnel/org-chart" element={guarded('orgChart', <OrgChart />)} />
               <Route path="/access" element={guarded('access', <AccessAudit />)} />
+              <Route path="/investigation-diary" element={guarded('investigationDiary', <InvestigationDiary />)} />
+              <Route path="/investigation-diary/:caseMasterId" element={guarded('investigationDiary', <InvestigationCase />)} />
               <Route path="*" element={<Navigate to="/reports" replace />} />
             </Routes>
           </div>

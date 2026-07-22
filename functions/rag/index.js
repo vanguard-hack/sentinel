@@ -817,6 +817,283 @@ async function handleAudit(req, res, action) {
   return json(res, 200, { events: events.slice(0, 5000) });
 }
 
+// ── Investigation Diary (Case Diary under BNSS Section 172) ─────────────────
+// One JSON blob per case (Stratus, no new Data Store table) plus a light
+// index for the list page and a flattened person index for cross-case lead
+// detection. Mirrors the CCTNS Case Diary / IIF1-5 structure the user
+// specified: diary entries (S.172 BNSS), statements (S.161 BNSS), evidence &
+// chain of custody, persons involved, timeline, findings.
+const INV_PREFIX = 'investigation/diary/';
+const INV_INDEX_KEY = 'investigation/index.json';
+const INV_PERSON_INDEX_KEY = 'investigation/persons-index.json';
+const INV_SECTIONS = ['diaryEntries', 'statements', 'evidence', 'persons', 'timeline', 'findings'];
+const INV_STATUSES = ['Open', 'Under Investigation', 'Chargesheet Filed', 'Cold', 'Closed', 'Reopened'];
+const invKey = (id) => `${INV_PREFIX}${id}.json`;
+
+// Case-record access is need-to-know: investigators, supervisors and admin
+// only (analysts/policymakers work with aggregates, not identifiable case
+// diaries — the Puttaswamy proportionality point from the feature brief).
+const canInvestigate = (role) => ['admin', 'supervisor', 'investigator'].includes(role);
+
+async function myRole(app, bucket) {
+  const caller = await requestUser(app);
+  if (isAdminUser(caller)) return { role: 'admin', caller };
+  const email = String(caller?.email_id || '').toLowerCase();
+  const roles = await loadRolesBlob(bucket);
+  const rec = roles.users[email] || {};
+  return { role: APP_ROLES.includes(rec.role) ? rec.role : 'investigator', caller };
+}
+
+async function loadInvIndex(bucket) {
+  try {
+    const parsed = JSON.parse((await streamToString(await bucket.getObject(INV_INDEX_KEY))) || '{}');
+    return Array.isArray(parsed.cases) ? parsed.cases : [];
+  } catch {
+    return [];
+  }
+}
+async function saveInvIndex(bucket, cases) {
+  await bucket.putObject(INV_INDEX_KEY, Buffer.from(JSON.stringify({ cases, updatedAt: Date.now() })));
+}
+const invSummary = (rec) => ({
+  caseMasterId: rec.caseMasterId,
+  investigationId: rec.investigationId,
+  crimeNo: rec.crimeNo || '',
+  caseNo: rec.caseNo || '',
+  ioName: rec.ioName || '',
+  ioRank: rec.ioRank || '',
+  station: rec.station || '',
+  district: rec.district || '',
+  status: rec.status,
+  sections: rec.sections || '',
+  caseType: rec.caseType || '',
+  registeredDate: rec.registeredDate || '',
+  lastDiaryDate: rec.lastDiaryDate || '',
+  diaryCount: (rec.diaryEntries || []).length,
+  statementCount: (rec.statements || []).length,
+  evidenceCount: (rec.evidence || []).length,
+  personCount: (rec.persons || []).length,
+  updatedAt: rec.updatedAt,
+});
+async function upsertInvIndex(bucket, rec) {
+  const idx = await loadInvIndex(bucket);
+  const i = idx.findIndex((c) => c.caseMasterId === rec.caseMasterId);
+  if (i >= 0) idx[i] = invSummary(rec);
+  else idx.unshift(invSummary(rec));
+  await saveInvIndex(bucket, idx);
+}
+
+async function handleInvestigation(req, res, action) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+
+  if (action === 'list') {
+    return json(res, 200, { cases: await loadInvIndex(bucket) });
+  }
+
+  const caseMasterId = String(body.caseMasterId || '').trim();
+  if (!caseMasterId) return json(res, 400, { error: 'caseMasterId is required' });
+
+  if (action === 'get') {
+    try {
+      const rec = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
+      return json(res, 200, { record: rec });
+    } catch {
+      return json(res, 200, { record: null });
+    }
+  }
+
+  if (action === 'create') {
+    let existing = null;
+    try {
+      existing = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
+    } catch { /* not created yet */ }
+    if (existing) return json(res, 200, { record: existing, created: false });
+
+    const rec = {
+      caseMasterId,
+      investigationId: `INV-${caseMasterId}-${Date.now().toString(36).toUpperCase()}`,
+      crimeNo: String(body.crimeNo || ''),
+      caseNo: String(body.caseNo || ''),
+      ioEmployeeId: String(body.ioEmployeeId || ''),
+      ioName: String(body.ioName || ''),
+      ioRank: String(body.ioRank || ''),
+      station: String(body.station || ''),
+      district: String(body.district || ''),
+      caseType: String(body.caseType || ''),
+      sections: String(body.sections || ''),
+      registeredDate: String(body.registeredDate || ''),
+      status: 'Under Investigation',
+      lastDiaryDate: '',
+      diaryEntries: [], statements: [], evidence: [], persons: [], timeline: [], findings: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      createdBy: String(caller?.email_id || ''),
+    };
+    await bucket.putObject(invKey(caseMasterId), Buffer.from(JSON.stringify(rec)));
+    await upsertInvIndex(bucket, rec);
+    await storeAuditEvents(req, app, bucket, [{
+      action: 'open-investigation', feature: 'Investigation Diary', path: '/investigation-diary',
+      detail: rec.crimeNo || caseMasterId,
+    }], caller);
+    return json(res, 200, { record: rec, created: true });
+  }
+
+  // Every action below operates on an existing record.
+  let rec;
+  try {
+    rec = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
+  } catch {
+    rec = null;
+  }
+  if (!rec) return json(res, 404, { error: 'Investigation record not found' });
+
+  if (action === 'status') {
+    const status = String(body.status || '');
+    if (!INV_STATUSES.includes(status)) return json(res, 400, { error: 'invalid status' });
+    rec.status = status;
+    rec.updatedAt = Date.now();
+    await bucket.putObject(invKey(caseMasterId), Buffer.from(JSON.stringify(rec)));
+    await upsertInvIndex(bucket, rec);
+    await storeAuditEvents(req, app, bucket, [{
+      action: 'status-change', feature: 'Investigation Diary', path: '/investigation-diary',
+      detail: `${rec.crimeNo || caseMasterId} → ${status}`,
+    }], caller);
+    return json(res, 200, { record: rec });
+  }
+
+  if (action === 'append') {
+    const section = String(body.section || '');
+    if (!INV_SECTIONS.includes(section)) return json(res, 400, { error: 'invalid section' });
+    const item = body.item && typeof body.item === 'object' ? body.item : {};
+    const list = rec[section] || (rec[section] = []);
+    const entry = {
+      ...item,
+      id: `${section.slice(0, 3)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      ts: Number.isFinite(item.ts) ? item.ts : Date.now(),
+      ioId: String(caller?.email_id || ''),
+      ioName: [caller?.first_name, caller?.last_name].filter(Boolean).join(' ') || rec.ioName || '',
+    };
+    if (section === 'diaryEntries') {
+      entry.serial = list.length + 1; // sequential Case Diary serial number (legally required)
+    }
+
+    // Lead generation, lite: flatten persons by name across every case so a
+    // recurring name surfaces as a lead the moment it's entered. Advisory
+    // only — framed as "appears in" in the UI, never as an accusation.
+    if (section === 'persons') {
+      const norm = String(entry.name || '').trim().toLowerCase();
+      if (norm) {
+        let pidx;
+        try {
+          pidx = JSON.parse((await streamToString(await bucket.getObject(INV_PERSON_INDEX_KEY))) || '{}');
+        } catch {
+          pidx = {};
+        }
+        if (!pidx.people) pidx.people = {};
+        const arr = pidx.people[norm] || (pidx.people[norm] = []);
+        if (!arr.some((a) => a.caseMasterId === caseMasterId)) {
+          arr.push({ caseMasterId, crimeNo: rec.crimeNo || caseMasterId, role: entry.role || '', name: entry.name || '' });
+          await bucket.putObject(INV_PERSON_INDEX_KEY, Buffer.from(JSON.stringify(pidx)));
+        }
+        entry.connections = arr.filter((a) => a.caseMasterId !== caseMasterId);
+      }
+    }
+
+    list.push(entry);
+    rec.updatedAt = Date.now();
+    if (section === 'diaryEntries') rec.lastDiaryDate = new Date(entry.ts).toISOString().slice(0, 10);
+    await bucket.putObject(invKey(caseMasterId), Buffer.from(JSON.stringify(rec)));
+    await upsertInvIndex(bucket, rec);
+    await storeAuditEvents(req, app, bucket, [{
+      action: `add-${section}`, feature: 'Investigation Diary', path: '/investigation-diary',
+      detail: rec.crimeNo || caseMasterId,
+    }], caller);
+    return json(res, 200, { record: rec, entry });
+  }
+
+  return json(res, 400, { error: 'unknown action' });
+}
+
+// AI case summarisation: a "state of the investigation" brief drafted ONLY
+// from the case's own structured entries, with numbered citations back to
+// the exact diary entry / statement / finding it drew from — advisory, never
+// a black box, per the guardrails in the feature brief.
+async function handleInvestigationSummary(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+  const caseMasterId = String(body.caseMasterId || '').trim();
+  if (!caseMasterId) return json(res, 400, { error: 'caseMasterId is required' });
+
+  let rec;
+  try {
+    rec = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
+  } catch {
+    rec = null;
+  }
+  if (!rec) return json(res, 404, { error: 'Investigation record not found' });
+
+  const sources = [];
+  (rec.diaryEntries || []).forEach((e) => sources.push({
+    label: `Diary #${e.serial}`, date: e.ts,
+    text: [e.narrative, e.placesVisited && `Places visited: ${e.placesVisited}`, e.personsExamined && `Persons examined: ${e.personsExamined}`]
+      .filter(Boolean).join(' — '),
+  }));
+  (rec.statements || []).forEach((s) => sources.push({
+    label: `Statement — ${s.personName || 'unknown'} (${s.role || 'witness'})`, date: s.ts, text: s.text || '',
+  }));
+  (rec.timeline || []).forEach((t) => sources.push({ label: `Event — ${t.type || 'event'}`, date: t.ts, text: t.detail || '' }));
+  (rec.findings || []).forEach((f) => sources.push({ label: `Finding (${f.type || 'note'})`, date: f.ts, text: f.note || '' }));
+  sources.sort((a, b) => (a.date || 0) - (b.date || 0));
+
+  if (!sources.length) {
+    return json(res, 200, {
+      summary: 'No diary entries, statements, timeline events or findings recorded yet — nothing to summarise.',
+      citations: [],
+    });
+  }
+
+  const srcText = sources.slice(0, 120)
+    .map((s, i) => `[${i + 1}] ${s.label} (${new Date(s.date).toISOString().slice(0, 10)}): ${String(s.text).slice(0, 500)}`)
+    .join('\n');
+  const prose = await callGroq(
+    [
+      {
+        role: 'system',
+        content:
+          'You are drafting a "state of the investigation" brief for a police Case Diary, for handover between ' +
+          'Investigating Officers or when a case is reopened. Use ONLY the numbered source entries given — never ' +
+          'invent facts, names, dates or outcomes not present in them. Write 4-8 sentences covering what has been ' +
+          'done, key findings so far, and what remains open. Cite the source number in brackets after any sentence ' +
+          'that draws on it, e.g. "The complainant was examined on-site [2]." This is an advisory draft only — the ' +
+          'IO must verify it against the source entries before relying on it.',
+      },
+      { role: 'user', content: `Case ${rec.crimeNo || caseMasterId}, current status: ${rec.status}.\n\nSources:\n${srcText}` },
+    ],
+    { maxTokens: 500, temperature: 0.2, timeoutMs: 15_000 }
+  );
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'ai-summary', feature: 'Investigation Diary', path: '/investigation-diary',
+    detail: rec.crimeNo || caseMasterId,
+  }], caller);
+
+  return json(res, 200, {
+    summary: (prose || 'Summary unavailable right now — try again shortly.').trim(),
+    citations: sources.slice(0, 120).map((s, i) => ({ n: i + 1, label: s.label, date: s.date })),
+  });
+}
+
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return json(res, 405, { error: 'Use POST' });
@@ -836,6 +1113,12 @@ module.exports = async (req, res) => {
     // which silently kill the fetch in the browser.
     if (path.endsWith('/access/record')) return await handleAudit(req, res, 'log');
     if (path.endsWith('/access/records')) return await handleAudit(req, res, 'list');
+    if (path.endsWith('/investigation/list')) return await handleInvestigation(req, res, 'list');
+    if (path.endsWith('/investigation/get')) return await handleInvestigation(req, res, 'get');
+    if (path.endsWith('/investigation/create')) return await handleInvestigation(req, res, 'create');
+    if (path.endsWith('/investigation/status')) return await handleInvestigation(req, res, 'status');
+    if (path.endsWith('/investigation/append')) return await handleInvestigation(req, res, 'append');
+    if (path.endsWith('/investigation/summarize')) return await handleInvestigationSummary(req, res);
 
     const body = JSON.parse((await readBody(req)) || '{}');
     const query = (body.query || '').trim();
