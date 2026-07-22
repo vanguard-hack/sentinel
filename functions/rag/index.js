@@ -719,6 +719,16 @@ const IST_FMT = new Intl.DateTimeFormat('en-IN', {
 });
 
 async function storeAuditEvents(req, app, bucket, events, sessionUser) {
+  try {
+    await writeAuditEvents(req, app, bucket, events, sessionUser);
+  } catch (e) {
+    // Audit logging is best-effort and must NEVER block or fail the operation
+    // it accompanies (saving evidence, a diary entry, etc.). Swallow and log.
+    console.error('audit write failed (non-fatal):', e && e.message);
+  }
+}
+
+async function writeAuditEvents(req, app, bucket, events, sessionUser) {
   if (!events.length) return;
   const ip = clientIp(req);
   const [location, roles, user] = await Promise.all([
@@ -1052,8 +1062,9 @@ async function handleInvestigation(req, res, action) {
     let record, entry;
     try {
       ({ record, entry } = await appendInvestigationEntry(bucket, caseMasterId, section, item, ioIdentity));
-    } catch {
-      return json(res, 404, { error: 'Investigation record not found' });
+    } catch (e) {
+      if (/not found/i.test(e.message || '')) return json(res, 404, { error: 'Investigation record not found' });
+      return json(res, 500, { error: 'Could not save entry — ' + (e.message || e) });
     }
     await storeAuditEvents(req, app, bucket, [{
       action: `add-${section}`, feature: 'Investigation Diary', path: '/investigation-diary',
@@ -1198,7 +1209,11 @@ async function handleMediaUpload(req, res) {
   if (buf.length > 12 * 1024 * 1024) return json(res, 413, { error: 'file too large (12MB max)' });
 
   const key = mediaKey(caseMasterId, mediaId(), mime);
-  await bucket.putObject(key, buf);
+  try {
+    await bucket.putObject(key, buf);
+  } catch (e) {
+    return json(res, 500, { error: 'Could not store the recording — ' + (e.message || e) });
+  }
   await storeAuditEvents(req, app, bucket, [{
     action: 'evidence-upload', feature: 'Investigation Diary', path: '/investigation-diary',
     detail: `${filename} (case ${caseMasterId})`,
