@@ -5123,3 +5123,36 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   font-weight: 600;
 }
 .inv-media-btn:hover { background: var(--blue-glow); color: var(--blue-500); }
+
+/* Investigation statement edit/delete controls */
+.inv-entry-tools { display: flex; align-items: center; gap: 4px; }
+.inv-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  color: var(--text-4);
+}
+.inv-icon-btn:hover { background: var(--bg-3); color: var(--text-1); }
+.inv-icon-btn.danger:hover { background: color-mix(in srgb, #d64550 14%, transparent); color: #d64550; }
+.inv-entry-editing { border-color: var(--border-bright); }
+.inv-entry-editing .inv-add-form { margin: 0; border: none; background: transparent; padding: 0; }
+.inv-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: color-mix(in srgb, #d64550 8%, transparent);
+  border: 1px solid color-mix(in srgb, #d64550 30%, transparent);
+  font-size: 12.5px;
+  color: var(--text-1);
+}
+.inv-confirm-err { display: inline-flex; align-items: center; gap: 4px; color: #d64550; font-size: 12px; }
+.inv-confirm-actions { display: flex; gap: 8px; margin-left: auto; }
+.aa-btn.danger { background: #d64550; border-color: #d64550; color: #fff; }
+.aa-btn.danger:hover { filter: brightness(1.07); }

@@ -3,11 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   NotebookPen, AlertTriangle, Plus, Sparkles, ListChecks, Users, Fingerprint,
   MessageSquareQuote, Clock, ShieldAlert, Link2, ChevronDown,
-  Mic, Keyboard, Upload, Paperclip, Play, FileText,
+  Mic, Keyboard, Upload, Paperclip, Play, FileText, Pencil, Trash2,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import {
   getInvestigation, setInvestigationStatus, appendInvestigationItem, summarizeInvestigation,
+  updateInvestigationItem, deleteInvestigationItem,
   coldCaseFlag, nextStepSuggestions, statusColor, IIF_LABELS,
   STATUS_OPTIONS, PERSON_ROLES, PERSON_STATUSES, EVIDENCE_TYPES, FSL_STATUSES, TIMELINE_TYPES, FINDING_TYPES,
   uploadEvidenceMedia, fetchEvidenceMediaUrl, ocrExtractText,
@@ -402,7 +403,99 @@ function StatementForm({ caseMasterId, onSubmit }) {
   );
 }
 
-function StatementsTab({ rec, caseMasterId, onAdd }) {
+function StatementItem({ s, onUpdate, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [personName, setPersonName] = useState(s.personName || '');
+  const [role, setRole] = useState(s.role || 'Witness');
+  const [text, setText] = useState(s.text || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const save = async () => {
+    if (!personName.trim() || !text.trim()) { setError('Person and testimony text are required.'); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      await onUpdate('statements', s.id, { personName, role, text });
+      setEditing(false);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const del = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onDelete('statements', s.id);
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <li className="inv-entry inv-entry-editing">
+        <div className="inv-add-form">
+          <label className="inv-field">
+            Person examined
+            <input className="cf-search-input inv-input" value={personName} onChange={(e) => setPersonName(e.target.value)} />
+          </label>
+          <label className="inv-field">
+            Role
+            <select className="cf-select" value={role} onChange={(e) => setRole(e.target.value)}>
+              {PERSON_ROLES.map((r) => <option key={r}>{r}</option>)}
+            </select>
+          </label>
+          <label className="inv-field wide">
+            Testimony text
+            <textarea className="inv-textarea" rows={4} value={text} onChange={(e) => setText(e.target.value)} />
+          </label>
+          {error && <div className="aa-error"><AlertTriangle size={16} /> {error}</div>}
+          <div className="inv-add-actions">
+            <button type="button" className="aa-btn" onClick={() => { setEditing(false); setError(null); }}>Cancel</button>
+            <button type="button" className="aa-btn primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li className="inv-entry">
+      <div className="inv-entry-head">
+        <span className="inv-entry-serial">{s.personName} <span className="inv-role-chip">{s.role}</span></span>
+        <span className="inv-entry-tools">
+          <span className="inv-entry-date">{fmtDate(s.ts)}</span>
+          <button type="button" className="inv-icon-btn" title="Edit statement" onClick={() => setEditing(true)}><Pencil size={14} /></button>
+          <button type="button" className="inv-icon-btn danger" title="Delete statement" onClick={() => setConfirmDel(true)}><Trash2 size={14} /></button>
+        </span>
+      </div>
+      <p className="inv-entry-narrative">{s.text}</p>
+      <div className="inv-entry-meta">
+        <span>recorded by {s.ioName || 'IO'}{s.editedAt ? ' · edited' : ''}</span>
+        {s.audioKey && <EvidenceMediaLink label="Play recording" mediaKey={s.audioKey} mime={s.audioMime} />}
+        {s.fileKey && <EvidenceMediaLink label={`View source (${s.fileName || 'file'})`} mediaKey={s.fileKey} mime={s.fileMime} />}
+      </div>
+      {confirmDel && (
+        <div className="inv-confirm">
+          <span>Delete this statement? This can’t be undone.</span>
+          {error && <span className="inv-confirm-err"><AlertTriangle size={13} /> {error}</span>}
+          <div className="inv-confirm-actions">
+            <button type="button" className="aa-btn" onClick={() => { setConfirmDel(false); setError(null); }} disabled={busy}>Cancel</button>
+            <button type="button" className="aa-btn danger" onClick={del} disabled={busy}>{busy ? 'Deleting…' : 'Delete'}</button>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function StatementsTab({ rec, caseMasterId, onAdd, onUpdate, onDelete }) {
   const items = [...(rec.statements || [])].sort((a, b) => b.ts - a.ts);
   return (
     <div className="inv-tab">
@@ -414,18 +507,7 @@ function StatementsTab({ rec, caseMasterId, onAdd }) {
       <StatementForm caseMasterId={caseMasterId} onSubmit={(item) => onAdd('statements', item)} />
       <ul className="inv-entry-list">
         {items.map((s) => (
-          <li key={s.id} className="inv-entry">
-            <div className="inv-entry-head">
-              <span className="inv-entry-serial">{s.personName} <span className="inv-role-chip">{s.role}</span></span>
-              <span className="inv-entry-date">{fmtDate(s.ts)}</span>
-            </div>
-            <p className="inv-entry-narrative">{s.text}</p>
-            <div className="inv-entry-meta">
-              <span>recorded by {s.ioName || 'IO'}</span>
-              {s.audioKey && <EvidenceMediaLink label="Play recording" mediaKey={s.audioKey} mime={s.audioMime} />}
-              {s.fileKey && <EvidenceMediaLink label={`View source (${s.fileName || 'file'})`} mediaKey={s.fileKey} mime={s.fileMime} />}
-            </div>
-          </li>
+          <StatementItem key={s.id} s={s} onUpdate={onUpdate} onDelete={onDelete} />
         ))}
         {!items.length && <div className="aa-loading">No statements recorded yet.</div>}
       </ul>
@@ -693,6 +775,12 @@ export default function InvestigationCase() {
     const d = await appendInvestigationItem(caseMasterId, section, item);
     setRec(d.record);
   };
+  const onUpdate = async (section, entryId, patch) => {
+    setRec(await updateInvestigationItem(caseMasterId, section, entryId, patch));
+  };
+  const onDelete = async (section, entryId) => {
+    setRec(await deleteInvestigationItem(caseMasterId, section, entryId));
+  };
   const onStatusChange = async (status) => {
     const updated = await setInvestigationStatus(caseMasterId, status);
     setRec(updated);
@@ -754,7 +842,7 @@ export default function InvestigationCase() {
 
         {tab === 'overview' && <OverviewTab rec={rec} onStatusChange={onStatusChange} />}
         {tab === 'diary' && <DiaryTab rec={rec} onAdd={onAdd} />}
-        {tab === 'statements' && <StatementsTab rec={rec} caseMasterId={rec.caseMasterId} onAdd={onAdd} />}
+        {tab === 'statements' && <StatementsTab rec={rec} caseMasterId={rec.caseMasterId} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab === 'evidence' && <EvidenceTab rec={rec} onAdd={onAdd} />}
         {tab === 'persons' && <PersonsTab rec={rec} onAdd={onAdd} />}
         {tab === 'timeline' && <TimelineTab rec={rec} onAdd={onAdd} />}

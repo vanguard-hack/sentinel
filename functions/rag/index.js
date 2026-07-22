@@ -998,6 +998,62 @@ async function appendInvestigationEntry(bucket, caseMasterId, section, item, ioI
   return { record: rec, entry };
 }
 
+// Editing/removing an entry is just a read-modify-write of the case record
+// (a PutObject) — no Stratus DeleteObject needed, which matters because the
+// bucket policy only grants Get/Put. Only the specific text fields of an
+// entry can be changed; structural fields (id, ts, serial, media keys) are
+// preserved so a diary serial or an evidence pointer can't be rewritten.
+const EDITABLE_FIELDS = [
+  'personName', 'role', 'text', 'narrative', 'placesVisited', 'personsExamined',
+  'description', 'type', 'seizureMemoRef', 'location', 'fslStatus',
+  'name', 'status', 'notes', 'detail', 'note',
+];
+async function updateInvestigationEntry(bucket, caseMasterId, section, entryId, patch, ioIdentity) {
+  if (!INV_SECTIONS.includes(section)) throw new Error('invalid section');
+  let rec;
+  try {
+    rec = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
+  } catch {
+    rec = null;
+  }
+  if (!rec) throw new Error('Investigation record not found');
+  const list = rec[section] || [];
+  const idx = list.findIndex((e) => e.id === entryId);
+  if (idx < 0) throw new Error('entry not found');
+  const updated = { ...list[idx] };
+  for (const k of EDITABLE_FIELDS) if (k in (patch || {})) updated[k] = patch[k];
+  updated.editedAt = Date.now();
+  updated.editedBy = ioIdentity?.name || list[idx].ioName || '';
+  list[idx] = updated;
+  rec[section] = list;
+  rec.updatedAt = Date.now();
+  await bucket.putObject(invKey(caseMasterId), Buffer.from(JSON.stringify(rec)));
+  await upsertInvIndex(bucket, rec);
+  return { record: rec, entry: updated };
+}
+
+async function deleteInvestigationEntry(bucket, caseMasterId, section, entryId) {
+  if (!INV_SECTIONS.includes(section)) throw new Error('invalid section');
+  let rec;
+  try {
+    rec = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
+  } catch {
+    rec = null;
+  }
+  if (!rec) throw new Error('Investigation record not found');
+  const list = rec[section] || [];
+  const next = list.filter((e) => e.id !== entryId);
+  if (next.length === list.length) throw new Error('entry not found');
+  // Any Stratus media attached to the removed entry (audioKey/fileKey) is left
+  // in place — the bucket policy grants no DeleteObject — so the object is
+  // simply dereferenced (orphaned, harmless).
+  rec[section] = next;
+  rec.updatedAt = Date.now();
+  await bucket.putObject(invKey(caseMasterId), Buffer.from(JSON.stringify(rec)));
+  await upsertInvIndex(bucket, rec);
+  return { record: rec };
+}
+
 async function handleInvestigation(req, res, action) {
   const body = JSON.parse((await readBody(req)) || '{}');
   const app = catalystSDK.initialize(req);
@@ -1071,6 +1127,43 @@ async function handleInvestigation(req, res, action) {
       detail: record.crimeNo || caseMasterId,
     }], caller);
     return json(res, 200, { record, entry });
+  }
+
+  if (action === 'update') {
+    const section = String(body.section || '');
+    if (!INV_SECTIONS.includes(section)) return json(res, 400, { error: 'invalid section' });
+    const entryId = String(body.entryId || '');
+    const patch = body.patch && typeof body.patch === 'object' ? body.patch : {};
+    let record, entry;
+    try {
+      ({ record, entry } = await updateInvestigationEntry(bucket, caseMasterId, section, entryId, patch, ioIdentity));
+    } catch (e) {
+      if (/not found/i.test(e.message || '')) return json(res, 404, { error: e.message });
+      return json(res, 500, { error: 'Could not update entry — ' + (e.message || e) });
+    }
+    await storeAuditEvents(req, app, bucket, [{
+      action: `edit-${section}`, feature: 'Investigation Diary', path: '/investigation-diary',
+      detail: record.crimeNo || caseMasterId,
+    }], caller);
+    return json(res, 200, { record, entry });
+  }
+
+  if (action === 'delete') {
+    const section = String(body.section || '');
+    if (!INV_SECTIONS.includes(section)) return json(res, 400, { error: 'invalid section' });
+    const entryId = String(body.entryId || '');
+    let record;
+    try {
+      ({ record } = await deleteInvestigationEntry(bucket, caseMasterId, section, entryId));
+    } catch (e) {
+      if (/not found/i.test(e.message || '')) return json(res, 404, { error: e.message });
+      return json(res, 500, { error: 'Could not delete entry — ' + (e.message || e) });
+    }
+    await storeAuditEvents(req, app, bucket, [{
+      action: `delete-${section}`, feature: 'Investigation Diary', path: '/investigation-diary',
+      detail: record.crimeNo || caseMasterId,
+    }], caller);
+    return json(res, 200, { record });
   }
 
   return json(res, 400, { error: 'unknown action' });
@@ -1312,6 +1405,8 @@ module.exports = async (req, res) => {
     if (path.endsWith('/investigation/create')) return await handleInvestigation(req, res, 'create');
     if (path.endsWith('/investigation/status')) return await handleInvestigation(req, res, 'status');
     if (path.endsWith('/investigation/append')) return await handleInvestigation(req, res, 'append');
+    if (path.endsWith('/investigation/update')) return await handleInvestigation(req, res, 'update');
+    if (path.endsWith('/investigation/delete')) return await handleInvestigation(req, res, 'delete');
     if (path.endsWith('/investigation/summarize')) return await handleInvestigationSummary(req, res);
     if (path.endsWith('/investigation/media/upload')) return await handleMediaUpload(req, res);
     if (path.endsWith('/investigation/media/get')) return await handleMediaGet(req, res);
