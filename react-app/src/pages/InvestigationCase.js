@@ -336,17 +336,24 @@ function StatementForm({ caseMasterId, onSubmit }) {
   return (
     <div className="inv-add-form inv-stmt-form">
       <div className="inv-mode-tabs inv-field wide">
-        <button type="button" className={mode === 'type' ? 'active' : ''} onClick={() => setMode('type')}>
-          <Keyboard size={13} /> Type / paste
+        <button
+          type="button" className={`inv-mode-icon ${mode === 'type' ? 'active' : ''}`} onClick={() => setMode('type')}
+          title="Type / paste" aria-label="Type or paste"
+        >
+          <Keyboard size={17} />
         </button>
         <button
-          type="button" className={mode === 'record' ? 'active' : ''} onClick={() => setMode('record')}
-          disabled={!canRecordAudio} title={!canRecordAudio ? 'Microphone recording not supported in this browser' : undefined}
+          type="button" className={`inv-mode-icon ${mode === 'record' ? 'active' : ''}`} onClick={() => setMode('record')}
+          disabled={!canRecordAudio}
+          title={canRecordAudio ? 'Record live' : 'Microphone recording not supported in this browser'} aria-label="Record live"
         >
-          <Mic size={13} /> Record live
+          <Mic size={17} />
         </button>
-        <button type="button" className={mode === 'upload' ? 'active' : ''} onClick={() => setMode('upload')}>
-          <Upload size={13} /> Upload file
+        <button
+          type="button" className={`inv-mode-icon ${mode === 'upload' ? 'active' : ''}`} onClick={() => setMode('upload')}
+          title="Upload file" aria-label="Upload file"
+        >
+          <Upload size={17} />
         </button>
       </div>
 

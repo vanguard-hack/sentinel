@@ -5060,23 +5060,21 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .inv-citations ol { margin: 6px 0 0; padding-left: 20px; font-size: 12px; color: var(--text-3); display: flex; flex-direction: column; gap: 3px; }
 
 /* ── Investigation Diary: testimony capture (record / upload) ───────────── */
-.inv-mode-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
-.inv-mode-tabs button {
+.inv-mode-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.inv-mode-icon {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
+  justify-content: center;
+  width: 40px;
+  height: 36px;
   border: 1px solid var(--border-bright);
-  border-radius: 999px;
+  border-radius: 10px;
   background: var(--bg-1);
   color: var(--text-3);
-  font-size: 12px;
-  font-weight: 600;
 }
-.inv-mode-tabs button:hover { color: var(--text-0); }
-.inv-mode-tabs button.active { background: var(--blue-500); border-color: var(--blue-500); color: #fff; }
-.inv-mode-tabs button:disabled { opacity: 0.45; cursor: default; }
+.inv-mode-icon:hover { color: var(--text-0); background: var(--bg-3); }
+.inv-mode-icon.active { background: var(--blue-500); border-color: var(--blue-500); color: #fff; }
+.inv-mode-icon:disabled { opacity: 0.45; cursor: default; }
 
 .inv-recorder { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .inv-record-btn {
