@@ -1143,6 +1143,137 @@ async function handleInvestigationSummary(req, res) {
   });
 }
 
+// ── Investigation media (audio/image/doc evidence) ───────────────────────────
+// Recordings and scanned documents attached to a testimony/statement are
+// stored as individual Stratus objects (not embedded in the case JSON blob,
+// which stays lean) under investigation/media/<caseMasterId>/<id>.<ext>, and
+// referenced by key from the statement entry that owns them. Playback/view
+// always goes through an authenticated endpoint — evidence media is never
+// publicly reachable by URL.
+const MEDIA_PREFIX = 'investigation/media/';
+const MEDIA_EXT_BY_MIME = {
+  'audio/webm': 'webm', 'audio/wav': 'wav', 'audio/mpeg': 'mp3', 'audio/ogg': 'ogg',
+  'image/jpeg': 'jpg', 'image/png': 'png', 'text/plain': 'txt',
+};
+const MEDIA_MIME_BY_EXT = Object.fromEntries(Object.entries(MEDIA_EXT_BY_MIME).map(([m, e]) => [e, m]));
+const mediaId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+const mediaKey = (caseMasterId, id, mime) => `${MEDIA_PREFIX}${caseMasterId}/${id}.${MEDIA_EXT_BY_MIME[mime] || 'bin'}`;
+
+async function requireInvestigator(app, bucket) {
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) return null;
+  return caller;
+}
+function urlParam(req, k) {
+  const q = (req.url || '').split('?')[1] || '';
+  const m = q.match(new RegExp(`(?:^|&)${k}=([^&]*)`));
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+// POST /investigation/media/upload — audio arrives as a raw octet-stream body
+// (same trick /transcribe uses: sidesteps the gateway's JSON-body content
+// scan); images/text arrive hex-encoded (same trick as /profile/photo, since
+// raw binary/base64 trips that same scanner on cookie-authenticated calls).
+// Query string: caseMasterId, mime, filename.
+async function handleMediaUpload(req, res) {
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const caller = await requireInvestigator(app, bucket);
+  if (!caller) return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+
+  const caseMasterId = urlParam(req, 'caseMasterId');
+  const mime = urlParam(req, 'mime') || 'application/octet-stream';
+  const filename = urlParam(req, 'filename') || 'file';
+  if (!caseMasterId) return json(res, 400, { error: 'caseMasterId is required' });
+
+  const ctype = String(req.headers['content-type'] || '');
+  let buf;
+  if (ctype.includes('application/octet-stream')) {
+    buf = await readBinaryBody(req);
+  } else {
+    const hex = (await readBody(req)).trim();
+    if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) return json(res, 400, { error: 'invalid encoding' });
+    buf = Buffer.from(hex, 'hex');
+  }
+  if (!buf.length) return json(res, 400, { error: 'empty file' });
+  if (buf.length > 12 * 1024 * 1024) return json(res, 413, { error: 'file too large (12MB max)' });
+
+  const key = mediaKey(caseMasterId, mediaId(), mime);
+  await bucket.putObject(key, buf);
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'evidence-upload', feature: 'Investigation Diary', path: '/investigation-diary',
+    detail: `${filename} (case ${caseMasterId})`,
+  }], caller);
+  return json(res, 200, { key, mime, size: buf.length });
+}
+
+// POST /investigation/media/get  { key }  →  { data: <base64>, mime } — the
+// client turns this into a Blob + object URL for playback, so recordings are
+// never served from a bare, unauthenticated URL.
+async function handleMediaGet(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const key = String(body.key || '');
+  if (!key.startsWith(MEDIA_PREFIX)) return json(res, 400, { error: 'invalid key' });
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const caller = await requireInvestigator(app, bucket);
+  if (!caller) return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+
+  try {
+    const stream = await bucket.getObject(key);
+    const chunks = [];
+    for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+    const buf = Buffer.concat(chunks);
+    const ext = key.split('.').pop();
+    const mime = MEDIA_MIME_BY_EXT[ext] || 'application/octet-stream';
+    await storeAuditEvents(req, app, bucket, [{
+      action: 'evidence-view', feature: 'Investigation Diary', path: '/investigation-diary', detail: key,
+    }], caller);
+    return json(res, 200, { data: buf.toString('base64'), mime });
+  } catch {
+    return json(res, 404, { error: 'file not found' });
+  }
+}
+
+// POST /investigation/ocr — hex-encoded image body, query: caseMasterId,
+// filename, mime. Runs Zia OCR AND keeps the source scan in Stratus (same
+// media store as recordings) so the extracted text is always traceable back
+// to the document it came from.
+async function handleOcr(req, res) {
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const caller = await requireInvestigator(app, bucket);
+  if (!caller) return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+
+  const caseMasterId = urlParam(req, 'caseMasterId');
+  const filename = urlParam(req, 'filename') || 'document.jpg';
+  const mimeParam = urlParam(req, 'mime');
+  const mime = /^image\/(jpeg|png)$/.test(mimeParam) ? mimeParam : 'image/jpeg';
+  if (!caseMasterId) return json(res, 400, { error: 'caseMasterId is required' });
+
+  const hex = (await readBody(req)).trim();
+  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) return json(res, 400, { error: 'invalid encoding' });
+  const buf = Buffer.from(hex, 'hex');
+  if (!buf.length) return json(res, 400, { error: 'empty file' });
+  if (buf.length > 8 * 1024 * 1024) return json(res, 413, { error: 'image too large (8MB max)' });
+
+  const key = mediaKey(caseMasterId, mediaId(), mime);
+  await bucket.putObject(key, buf);
+
+  let text = '';
+  try {
+    const result = await app.zia().extractOpticalCharacters(buf, { modelType: 'OCR', language: 'eng' });
+    text = (result && result.text) || '';
+  } catch (e) {
+    return json(res, 502, { error: 'OCR failed: ' + (e.message || e), key });
+  }
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'ocr', feature: 'Investigation Diary', path: '/investigation-diary', detail: filename,
+  }], caller);
+  return json(res, 200, { text, key });
+}
+
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return json(res, 405, { error: 'Use POST' });
@@ -1168,6 +1299,9 @@ module.exports = async (req, res) => {
     if (path.endsWith('/investigation/status')) return await handleInvestigation(req, res, 'status');
     if (path.endsWith('/investigation/append')) return await handleInvestigation(req, res, 'append');
     if (path.endsWith('/investigation/summarize')) return await handleInvestigationSummary(req, res);
+    if (path.endsWith('/investigation/media/upload')) return await handleMediaUpload(req, res);
+    if (path.endsWith('/investigation/media/get')) return await handleMediaGet(req, res);
+    if (path.endsWith('/investigation/ocr')) return await handleOcr(req, res);
 
     const body = JSON.parse((await readBody(req)) || '{}');
     const query = (body.query || '').trim();

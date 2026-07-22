@@ -224,7 +224,7 @@ export default function InvestigationDiary() {
                   </div>
                   <div className="inv-card-foot">
                     <span>{c.diaryCount} diary {c.diaryCount === 1 ? 'entry' : 'entries'}</span>
-                    <span>Last: {c.lastDiaryDate || 'none yet'}</span>
+                    <span>Last updated: {c.lastDiaryDate || 'none yet'}</span>
                     {cold && <span className={`inv-cold-badge inv-cold-${cold.level}`}>{cold.label}</span>}
                   </div>
                 </button>

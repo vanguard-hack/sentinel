@@ -1,15 +1,19 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   NotebookPen, AlertTriangle, Plus, Sparkles, ListChecks, Users, Fingerprint,
   MessageSquareQuote, Clock, ShieldAlert, Link2, ChevronDown,
+  Mic, Keyboard, Upload, Paperclip, Play, FileText,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import {
   getInvestigation, setInvestigationStatus, appendInvestigationItem, summarizeInvestigation,
   coldCaseFlag, nextStepSuggestions, statusColor, IIF_LABELS,
   STATUS_OPTIONS, PERSON_ROLES, PERSON_STATUSES, EVIDENCE_TYPES, FSL_STATUSES, TIMELINE_TYPES, FINDING_TYPES,
+  uploadEvidenceMedia, fetchEvidenceMediaUrl, ocrExtractText,
 } from '../utils/investigation';
+import { transcribeAudio } from '../utils/assistant';
+import i18n from '../i18n';
 
 const fmtDate = (ts) => (ts ? new Date(ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 const fmtDateTime = (ts) => (ts ? new Date(ts).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
@@ -165,25 +169,249 @@ function DiaryTab({ rec, onAdd }) {
   );
 }
 
-function StatementsTab({ rec, onAdd }) {
+// Lazy-loaded playback/view control for a stored recording or scanned
+// document — nothing is fetched until the officer actually asks for it, and
+// every fetch goes through the authenticated /media/get endpoint.
+function EvidenceMediaLink({ label, mediaKey, mime }) {
+  const [url, setUrl] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const load = async () => {
+    if (url || loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setUrl(await fetchEvidenceMediaUrl(mediaKey));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (url && mime?.startsWith('audio/')) return <audio controls src={url} className="inv-audio-preview" />;
+  if (url) return <a href={url} target="_blank" rel="noreferrer" className="inv-media-btn"><FileText size={13} /> {label}</a>;
+  return (
+    <button type="button" className="inv-media-btn" onClick={load} disabled={loading}>
+      {mime?.startsWith('audio/') ? <Play size={13} /> : <FileText size={13} />}
+      {loading ? 'Loading…' : error ? `Failed: ${error}` : label}
+    </button>
+  );
+}
+
+const canRecordAudio =
+  typeof window !== 'undefined' &&
+  typeof window.MediaRecorder !== 'undefined' &&
+  navigator.mediaDevices &&
+  typeof navigator.mediaDevices.getUserMedia === 'function';
+
+// Three ways to capture a testimony: type/paste, record live (audio is kept
+// as playable evidence AND transcribed live via the same Zia STT pipeline
+// the Assistant's voice input uses), or upload a .txt / scanned image (OCR
+// via Zia extracts the text; the source file is kept for provenance).
+function StatementForm({ caseMasterId, onSubmit }) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState('type');
+  const [personName, setPersonName] = useState('');
+  const [role, setRole] = useState('');
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const [listening, setListening] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [audioBlob, setAudioBlob] = useState(null);
+  const [audioUrl, setAudioUrl] = useState(null);
+  const recRef = useRef(null);
+
+  const [pendingFile, setPendingFile] = useState(null); // { blob?, key?, name, kind, mime }
+  const [ocrBusy, setOcrBusy] = useState(false);
+
+  const reset = () => {
+    setPersonName(''); setRole(''); setText('');
+    setAudioBlob(null); setAudioUrl(null); setPendingFile(null);
+    setMode('type'); setOpen(false); setError(null);
+  };
+
+  const toggleMic = async () => {
+    if (!canRecordAudio || transcribing) return;
+    if (listening) { recRef.current?.stop(); return; }
+    setError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      const chunks = [];
+      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setListening(false);
+        const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+        if (blob.size < 800) return; // skip sub-second blips
+        setAudioBlob(blob);
+        setAudioUrl(URL.createObjectURL(blob));
+        setTranscribing(true);
+        try {
+          const t = await transcribeAudio(blob, i18n.resolvedLanguage || 'en');
+          setText((cur) => (cur ? cur.replace(/\s+$/, '') + ' ' + t : t));
+        } catch (e2) {
+          setError('Transcription failed: ' + (e2.message || e2));
+        } finally {
+          setTranscribing(false);
+        }
+      };
+      recRef.current = rec;
+      setListening(true);
+      rec.start();
+    } catch (e) {
+      setError('Microphone unavailable: ' + (e.message || e));
+      setListening(false);
+    }
+  };
+
+  const onFilePick = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError(null);
+    if (file.type === 'text/plain' || /\.txt$/i.test(file.name)) {
+      const t = await file.text();
+      setText((cur) => (cur ? `${cur}\n${t}` : t));
+      setPendingFile({ blob: file, name: file.name, kind: 'txt' });
+      return;
+    }
+    if (/^image\/(jpeg|png)$/.test(file.type)) {
+      setOcrBusy(true);
+      try {
+        const { text: extracted, key } = await ocrExtractText(caseMasterId, file, file.name);
+        setText((cur) => (cur ? `${cur}\n${extracted}` : extracted));
+        setPendingFile({ key, name: file.name, kind: 'image', mime: file.type });
+      } catch (e2) {
+        setError(e2.message);
+      } finally {
+        setOcrBusy(false);
+      }
+      return;
+    }
+    setError('Only .txt, .jpg or .png are supported — export scanned PDFs as an image first.');
+  };
+
+  const submit = async () => {
+    if (!personName.trim() || !text.trim()) { setError('Person and testimony text are required.'); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      const item = { personName, role: role || 'Witness', text, source: mode };
+      if (audioBlob) {
+        const up = await uploadEvidenceMedia(caseMasterId, audioBlob, `${personName || 'testimony'}.webm`);
+        item.audioKey = up.key;
+        item.audioMime = up.mime;
+      }
+      if (pendingFile) {
+        if (pendingFile.kind === 'txt') {
+          const up = await uploadEvidenceMedia(caseMasterId, pendingFile.blob, pendingFile.name);
+          item.fileKey = up.key; item.fileMime = up.mime; item.fileName = pendingFile.name;
+        } else {
+          item.fileKey = pendingFile.key; item.fileMime = pendingFile.mime; item.fileName = pendingFile.name;
+        }
+      }
+      await onSubmit(item);
+      reset();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button type="button" className="inv-add-btn" onClick={() => setOpen(true)}>
+        <Plus size={15} /> Record statement
+      </button>
+    );
+  }
+
+  return (
+    <div className="inv-add-form inv-stmt-form">
+      <div className="inv-mode-tabs inv-field wide">
+        <button type="button" className={mode === 'type' ? 'active' : ''} onClick={() => setMode('type')}>
+          <Keyboard size={13} /> Type / paste
+        </button>
+        <button
+          type="button" className={mode === 'record' ? 'active' : ''} onClick={() => setMode('record')}
+          disabled={!canRecordAudio} title={!canRecordAudio ? 'Microphone recording not supported in this browser' : undefined}
+        >
+          <Mic size={13} /> Record live
+        </button>
+        <button type="button" className={mode === 'upload' ? 'active' : ''} onClick={() => setMode('upload')}>
+          <Upload size={13} /> Upload file
+        </button>
+      </div>
+
+      <label className="inv-field">
+        Person examined
+        <input className="cf-search-input inv-input" value={personName} onChange={(e) => setPersonName(e.target.value)} placeholder="Full name" />
+      </label>
+      <label className="inv-field">
+        Role
+        <select className="cf-select" value={role} onChange={(e) => setRole(e.target.value)}>
+          <option value="">— select —</option>
+          {PERSON_ROLES.map((r) => <option key={r}>{r}</option>)}
+        </select>
+      </label>
+
+      {mode === 'record' && (
+        <div className="inv-field wide inv-recorder">
+          <button type="button" className={`inv-record-btn ${listening ? 'live' : ''}`} onClick={toggleMic} disabled={transcribing}>
+            <Mic size={16} /> {listening ? 'Stop recording' : transcribing ? 'Transcribing…' : 'Start recording'}
+          </button>
+          {listening && <span className="inv-record-live">● recording — speak now</span>}
+          {audioUrl && !listening && <audio controls src={audioUrl} className="inv-audio-preview" />}
+          <p className="inv-file-hint">
+            Recorded audio is kept as playable evidence and transcribed live below — review and edit the
+            transcript before saving.
+          </p>
+        </div>
+      )}
+      {mode === 'upload' && (
+        <div className="inv-field wide">
+          <input type="file" accept=".txt,image/jpeg,image/png" onChange={onFilePick} className="inv-file-input" />
+          <p className="inv-file-hint">
+            .txt is read directly; .jpg/.png is scanned with Zia OCR to extract the testimony text. Scanned
+            PDFs aren't supported yet — export the page as an image first.
+          </p>
+          {ocrBusy && <div className="aa-loading">Extracting text…</div>}
+          {pendingFile && <div className="inv-file-attached"><Paperclip size={13} /> {pendingFile.name} will be attached</div>}
+        </div>
+      )}
+
+      <label className="inv-field wide">
+        Testimony text {mode !== 'type' && '— review and edit as needed'}
+        <textarea className="inv-textarea" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="Statement summary…" />
+      </label>
+
+      {error && <div className="aa-error"><AlertTriangle size={16} /> {error}</div>}
+      <div className="inv-add-actions">
+        <button type="button" className="aa-btn" onClick={reset}>Cancel</button>
+        <button type="button" className="aa-btn primary" onClick={submit} disabled={busy}>
+          {busy ? 'Saving…' : 'Save statement'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StatementsTab({ rec, caseMasterId, onAdd }) {
   const items = [...(rec.statements || [])].sort((a, b) => b.ts - a.ts);
   return (
     <div className="inv-tab">
       <IifBadge>{IIF_LABELS.statements}</IifBadge>
-      <p className="aa-hint">Statements recorded from witnesses, suspects and complainants during examination.</p>
-      <AddEntryForm
-        label="Record statement"
-        submitLabel="Save statement"
-        fields={[
-          { key: 'personName', label: 'Person examined' },
-          { key: 'role', label: 'Role', type: 'select', options: PERSON_ROLES },
-          { key: 'text', label: 'Statement summary', type: 'textarea', wide: true },
-        ]}
-        onSubmit={(v) => {
-          if (!v.personName?.trim() || !v.text?.trim()) throw new Error('Person and statement text are required.');
-          return onAdd('statements', v);
-        }}
-      />
+      <p className="aa-hint">
+        Statements recorded from witnesses, suspects and complainants during examination — type it, record it
+        live, or upload a written/scanned testimony.
+      </p>
+      <StatementForm caseMasterId={caseMasterId} onSubmit={(item) => onAdd('statements', item)} />
       <ul className="inv-entry-list">
         {items.map((s) => (
           <li key={s.id} className="inv-entry">
@@ -192,7 +420,11 @@ function StatementsTab({ rec, onAdd }) {
               <span className="inv-entry-date">{fmtDate(s.ts)}</span>
             </div>
             <p className="inv-entry-narrative">{s.text}</p>
-            <div className="inv-entry-meta"><span>recorded by {s.ioName || 'IO'}</span></div>
+            <div className="inv-entry-meta">
+              <span>recorded by {s.ioName || 'IO'}</span>
+              {s.audioKey && <EvidenceMediaLink label="Play recording" mediaKey={s.audioKey} mime={s.audioMime} />}
+              {s.fileKey && <EvidenceMediaLink label={`View source (${s.fileName || 'file'})`} mediaKey={s.fileKey} mime={s.fileMime} />}
+            </div>
           </li>
         ))}
         {!items.length && <div className="aa-loading">No statements recorded yet.</div>}
@@ -522,7 +754,7 @@ export default function InvestigationCase() {
 
         {tab === 'overview' && <OverviewTab rec={rec} onStatusChange={onStatusChange} />}
         {tab === 'diary' && <DiaryTab rec={rec} onAdd={onAdd} />}
-        {tab === 'statements' && <StatementsTab rec={rec} onAdd={onAdd} />}
+        {tab === 'statements' && <StatementsTab rec={rec} caseMasterId={rec.caseMasterId} onAdd={onAdd} />}
         {tab === 'evidence' && <EvidenceTab rec={rec} onAdd={onAdd} />}
         {tab === 'persons' && <PersonsTab rec={rec} onAdd={onAdd} />}
         {tab === 'timeline' && <TimelineTab rec={rec} onAdd={onAdd} />}

@@ -112,6 +112,71 @@ export const appendInvestigationItem = (caseMasterId, section, item) =>
 export const summarizeInvestigation = (caseMasterId) =>
   post('/server/rag/investigation/summarize', { caseMasterId });
 
+// ── Evidence media: audio recordings + scanned documents ────────────────────
+// Recordings/scans are stored as individual Stratus objects (see functions/
+// rag), referenced by key from the statement that owns them. Playback always
+// goes through the authenticated /media/get endpoint — never a bare URL.
+
+const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
+async function toHex(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let s = '';
+  for (let i = 0; i < bytes.length; i++) s += HEX[bytes[i]];
+  return s;
+}
+function base64ToBlobUrl(b64, mime) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return URL.createObjectURL(new Blob([bytes], { type: mime }));
+}
+
+// Uploads a recording/scan as evidence and returns { key, mime, size }. Audio
+// goes as a raw octet-stream body (mirrors the assistant's /transcribe call);
+// everything else goes hex-encoded (mirrors the profile-photo upload) — both
+// dodge the API gateway's content scan on binary/base64 JSON bodies.
+export async function uploadEvidenceMedia(caseMasterId, blob, filename) {
+  const mime = blob.type || 'application/octet-stream';
+  const qs = new URLSearchParams({ caseMasterId, mime, filename: filename || 'file' }).toString();
+  const isAudio = mime.startsWith('audio/');
+  const res = await fetch(`/server/rag/investigation/media/upload?${qs}`, {
+    method: 'POST',
+    headers: { 'Content-Type': isAudio ? 'application/octet-stream' : 'text/plain' },
+    body: isAudio ? blob : await toHex(blob),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+// Fetches a stored recording/scan and returns a blob: URL ready for <audio>/
+// <img>/download. Caller should revokeObjectURL when done with it.
+export async function fetchEvidenceMediaUrl(key) {
+  const res = await fetch('/server/rag/investigation/media/get', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return base64ToBlobUrl(data.data, data.mime);
+}
+
+// Extracts text from a scanned testimony (JPEG/PNG) via Catalyst Zia OCR, and
+// keeps the source scan in Stratus for provenance. Returns { text, key }.
+export async function ocrExtractText(caseMasterId, blob, filename) {
+  const mime = /^image\/(jpeg|png)$/.test(blob.type) ? blob.type : 'image/jpeg';
+  const qs = new URLSearchParams({ caseMasterId, mime, filename: filename || 'document.jpg' }).toString();
+  const res = await fetch(`/server/rag/investigation/ocr?${qs}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: await toHex(blob),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
 // ── CaseMaster search (browser ZCQL, same pattern as Case Files) ────────────
 
 function zcql() {
