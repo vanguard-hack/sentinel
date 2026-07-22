@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   NotebookPen, AlertTriangle, Plus, Sparkles, ListChecks, Users, Fingerprint,
-  MessageSquareQuote, Clock, ShieldAlert, Link2, ChevronDown,
-  Mic, Upload, Paperclip, Play, FileText, Pencil, Trash2,
+  MessageSquareQuote, Clock, Link2, ChevronDown, ChevronLeft, ChevronRight,
+  Mic, Upload, Paperclip, Play, FileText, Pencil, Trash2, GripVertical,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import {
   getInvestigation, setInvestigationStatus, appendInvestigationItem, summarizeInvestigation,
-  updateInvestigationItem, deleteInvestigationItem,
-  coldCaseFlag, nextStepSuggestions, statusColor, IIF_LABELS,
+  updateInvestigationItem, deleteInvestigationItem, reorderInvestigationItems,
+  coldCaseFlag, statusColor, IIF_LABELS,
   STATUS_OPTIONS, PERSON_ROLES, PERSON_STATUSES, EVIDENCE_TYPES, FSL_STATUSES, TIMELINE_TYPES, FINDING_TYPES,
   uploadEvidenceMedia, fetchEvidenceMediaUrl, ocrExtractText,
 } from '../utils/investigation';
@@ -17,7 +17,6 @@ import { transcribeAudio } from '../utils/assistant';
 import i18n from '../i18n';
 
 const fmtDate = (ts) => (ts ? new Date(ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
-const fmtDateTime = (ts) => (ts ? new Date(ts).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 
 // A collapsible "add entry" form. `fields` describe simple inputs; the parent
 // owns submission (so the section-specific append call + optimistic refresh
@@ -96,7 +95,144 @@ function IifBadge({ children }) {
   return <span className="inv-iif-badge">{children}</span>;
 }
 
-function OverviewTab({ rec, onStatusChange }) {
+// Clickable status chip → dropdown of statuses; selection is colour-coded and
+// persisted. Lives on the case header (the "main card").
+function StatusPicker({ status, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+  const pick = async (s) => {
+    if (s === status) { setOpen(false); return; }
+    setBusy(true);
+    try { await onChange(s); } finally { setBusy(false); setOpen(false); }
+  };
+  return (
+    <div className="inv-status-picker" ref={ref}>
+      <button
+        type="button" className={`aa-chip inv-status-${statusColor(status)} inv-status-btn`}
+        onClick={() => setOpen((o) => !o)} disabled={busy} title="Change case status"
+      >
+        {status} <ChevronDown size={13} />
+      </button>
+      {open && (
+        <div className="inv-status-menu">
+          {STATUS_OPTIONS.map((s) => (
+            <button key={s} type="button" className={`inv-status-opt ${s === status ? 'active' : ''}`} onClick={() => pick(s)}>
+              <span className={`inv-status-dot inv-status-${statusColor(s)}`} /> {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Generic record row with inline edit + delete (and optional drag). `title` is
+// the head's left content, `date` its right label, `children` the body. Editing
+// swaps the row for a field form built from `fields` (same config as
+// AddEntryForm). Every write is a PutObject of the case record — no
+// DeleteObject needed, so it works under the Get/Put-only bucket policy.
+function EntryRow({ entry, section, fields, title, date, children, onUpdate, onDelete, drag }) {
+  const [editing, setEditing] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [vals, setVals] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const startEdit = () => {
+    const init = {};
+    fields.forEach((f) => { init[f.key] = entry[f.key] ?? ''; });
+    setVals(init);
+    setError(null);
+    setEditing(true);
+  };
+  const save = async () => {
+    for (const f of fields) {
+      if (f.required && !String(vals[f.key] || '').trim()) { setError(`${f.label} is required.`); return; }
+    }
+    setBusy(true);
+    setError(null);
+    try { await onUpdate(section, entry.id, vals); setEditing(false); }
+    catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  const del = async () => {
+    setBusy(true);
+    setError(null);
+    try { await onDelete(section, entry.id); } catch (e) { setError(e.message); setBusy(false); }
+  };
+
+  if (editing) {
+    return (
+      <li className="inv-entry inv-entry-editing">
+        <div className="inv-add-form">
+          {fields.map((f) => (
+            <label key={f.key} className={`inv-field ${f.wide ? 'wide' : ''}`}>
+              {f.label}
+              {f.type === 'select' ? (
+                <select className="cf-select" value={vals[f.key] || ''} onChange={(e) => setVals((v) => ({ ...v, [f.key]: e.target.value }))}>
+                  <option value="">— select —</option>
+                  {f.options.map((o) => <option key={o}>{o}</option>)}
+                </select>
+              ) : f.type === 'textarea' ? (
+                <textarea className="inv-textarea" rows={3} value={vals[f.key] || ''} onChange={(e) => setVals((v) => ({ ...v, [f.key]: e.target.value }))} />
+              ) : (
+                <input className="cf-search-input inv-input" type={f.type || 'text'} value={vals[f.key] || ''} onChange={(e) => setVals((v) => ({ ...v, [f.key]: e.target.value }))} />
+              )}
+            </label>
+          ))}
+          {error && <div className="aa-error"><AlertTriangle size={16} /> {error}</div>}
+          <div className="inv-add-actions">
+            <button type="button" className="aa-btn" onClick={() => { setEditing(false); setError(null); }}>Cancel</button>
+            <button type="button" className="aa-btn primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li
+      className={`inv-entry ${drag ? 'inv-draggable' : ''} ${drag?.over ? 'drag-over' : ''}`}
+      draggable={drag ? true : undefined}
+      onDragStart={drag?.onDragStart}
+      onDragOver={drag?.onDragOver}
+      onDragLeave={drag?.onDragLeave}
+      onDrop={drag?.onDrop}
+      onDragEnd={drag?.onDragEnd}
+    >
+      <div className="inv-entry-head">
+        <span className="inv-entry-serial">
+          {drag && <GripVertical size={15} className="inv-drag-handle" />}
+          {title}
+        </span>
+        <span className="inv-entry-tools">
+          {date != null && <span className="inv-entry-date">{fmtDate(date)}</span>}
+          <button type="button" className="inv-icon-btn" title="Edit" onClick={startEdit}><Pencil size={14} /></button>
+          <button type="button" className="inv-icon-btn danger" title="Delete" onClick={() => setConfirmDel(true)}><Trash2 size={14} /></button>
+        </span>
+      </div>
+      {children}
+      {confirmDel && (
+        <div className="inv-confirm">
+          <span>Delete this entry? This can’t be undone.</span>
+          {error && <span className="inv-confirm-err"><AlertTriangle size={13} /> {error}</span>}
+          <div className="inv-confirm-actions">
+            <button type="button" className="aa-btn" onClick={() => { setConfirmDel(false); setError(null); }} disabled={busy}>Cancel</button>
+            <button type="button" className="aa-btn danger" onClick={del} disabled={busy}>{busy ? 'Deleting…' : 'Delete'}</button>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function OverviewTab({ rec }) {
   const cold = coldCaseFlag(rec);
   return (
     <div className="inv-overview">
@@ -113,19 +249,31 @@ function OverviewTab({ rec, onStatusChange }) {
         <div><span>Date of registration</span><b>{rec.registeredDate || '—'}</b></div>
         <div><span>Last diary entry</span><b>{rec.lastDiaryDate || 'None yet'}</b></div>
       </div>
-      <div className="inv-status-row">
-        <span>Case status</span>
-        <select className="cf-select" value={rec.status} onChange={(e) => onStatusChange(e.target.value)}>
-          {STATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
-        </select>
-        {cold && <span className={`inv-cold-badge inv-cold-${cold.level}`}>{cold.label}</span>}
-      </div>
+      {cold && (
+        <div className="inv-status-row">
+          <span className={`inv-cold-badge inv-cold-${cold.level}`}>{cold.label}</span>
+        </div>
+      )}
     </div>
   );
 }
 
-function DiaryTab({ rec, onAdd }) {
+const DIARY_FIELDS = [
+  { key: 'narrative', label: 'Narrative of investigation steps taken', type: 'textarea', wide: true, required: true, placeholder: 'What was done today, in the officer’s own words…' },
+  { key: 'placesVisited', label: 'Places visited', placeholder: 'e.g. Scene of offence, complainant residence' },
+  { key: 'personsExamined', label: 'Persons examined', placeholder: 'Names / roles' },
+  { key: 'departureTime', label: 'Time of departure', type: 'time' },
+  { key: 'returnTime', label: 'Time of return', type: 'time' },
+];
+const DIARY_PER_PAGE = 6;
+
+function DiaryTab({ rec, onAdd, onUpdate, onDelete }) {
   const entries = [...(rec.diaryEntries || [])].sort((a, b) => b.ts - a.ts);
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(entries.length / DIARY_PER_PAGE));
+  useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
+  const shown = entries.slice((page - 1) * DIARY_PER_PAGE, page * DIARY_PER_PAGE);
+
   return (
     <div className="inv-tab">
       <IifBadge>{IIF_LABELS.diary}</IifBadge>
@@ -136,36 +284,40 @@ function DiaryTab({ rec, onAdd }) {
       <AddEntryForm
         label="Add diary entry"
         submitLabel="File entry"
-        fields={[
-          { key: 'narrative', label: 'Narrative of investigation steps taken', type: 'textarea', wide: true, placeholder: 'What was done today, in the officer’s own words…' },
-          { key: 'placesVisited', label: 'Places visited', placeholder: 'e.g. Scene of offence, complainant residence' },
-          { key: 'personsExamined', label: 'Persons examined', placeholder: 'Names / roles' },
-          { key: 'departureTime', label: 'Time of departure', type: 'time' },
-          { key: 'returnTime', label: 'Time of return', type: 'time' },
-        ]}
+        fields={DIARY_FIELDS}
         onSubmit={(v) => {
           if (!v.narrative?.trim()) throw new Error('Narrative is required.');
           return onAdd('diaryEntries', v);
         }}
       />
       <ul className="inv-entry-list">
-        {entries.map((e) => (
-          <li key={e.id} className="inv-entry">
-            <div className="inv-entry-head">
-              <span className="inv-entry-serial">Diary #{e.serial}</span>
-              <span className="inv-entry-date">{fmtDate(e.ts)}</span>
-            </div>
+        {shown.map((e) => (
+          <EntryRow
+            key={e.id} entry={e} section="diaryEntries" fields={DIARY_FIELDS}
+            title={`Diary #${e.serial}`} date={e.ts} onUpdate={onUpdate} onDelete={onDelete}
+          >
             <p className="inv-entry-narrative">{e.narrative}</p>
             <div className="inv-entry-meta">
               {e.placesVisited && <span>Places: {e.placesVisited}</span>}
               {e.personsExamined && <span>Examined: {e.personsExamined}</span>}
               {(e.departureTime || e.returnTime) && <span>{e.departureTime || '—'} → {e.returnTime || '—'}</span>}
-              <span>by {e.ioName || 'IO'}</span>
+              <span>by {e.ioName || 'IO'}{e.editedAt ? ' · edited' : ''}</span>
             </div>
-          </li>
+          </EntryRow>
         ))}
         {!entries.length && <div className="aa-loading">No diary entries filed yet.</div>}
       </ul>
+      {pages > 1 && (
+        <div className="inv-pagination">
+          <button type="button" className="inv-page-btn" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+            <ChevronLeft size={15} /> Prev
+          </button>
+          <span className="inv-page-info">Page {page} of {pages}</span>
+          <button type="button" className="inv-page-btn" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
+            Next <ChevronRight size={15} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -515,41 +667,37 @@ function StatementsTab({ rec, caseMasterId, onAdd, onUpdate, onDelete }) {
   );
 }
 
-function EvidenceTab({ rec, onAdd }) {
+const EVIDENCE_FIELDS = [
+  { key: 'description', label: 'Description', wide: true, required: true },
+  { key: 'type', label: 'Type', type: 'select', options: EVIDENCE_TYPES },
+  { key: 'seizureMemoRef', label: 'Seizure memo ref.' },
+  { key: 'location', label: 'Stored at' },
+  { key: 'fslStatus', label: 'FSL status', type: 'select', options: FSL_STATUSES },
+];
+
+function EvidenceTab({ rec, onAdd, onUpdate, onDelete }) {
   const items = [...(rec.evidence || [])].sort((a, b) => b.ts - a.ts);
   return (
     <div className="inv-tab">
       <IifBadge>{IIF_LABELS.evidence}</IifBadge>
       <p className="aa-hint">Seizures and forensic exhibits with chain-of-custody and FSL status.</p>
       <AddEntryForm
-        label="Log evidence"
-        submitLabel="Save evidence"
-        fields={[
-          { key: 'description', label: 'Description', wide: true },
-          { key: 'type', label: 'Type', type: 'select', options: EVIDENCE_TYPES },
-          { key: 'seizureMemoRef', label: 'Seizure memo ref.' },
-          { key: 'location', label: 'Stored at' },
-          { key: 'fslStatus', label: 'FSL status', type: 'select', options: FSL_STATUSES },
-        ]}
-        onSubmit={(v) => {
-          if (!v.description?.trim()) throw new Error('Description is required.');
-          return onAdd('evidence', v);
-        }}
+        label="Log evidence" submitLabel="Save evidence" fields={EVIDENCE_FIELDS}
+        onSubmit={(v) => { if (!v.description?.trim()) throw new Error('Description is required.'); return onAdd('evidence', v); }}
       />
       <ul className="inv-entry-list">
         {items.map((e) => (
-          <li key={e.id} className="inv-entry">
-            <div className="inv-entry-head">
-              <span className="inv-entry-serial">{e.description}</span>
-              <span className="inv-entry-date">{fmtDate(e.ts)}</span>
-            </div>
+          <EntryRow
+            key={e.id} entry={e} section="evidence" fields={EVIDENCE_FIELDS}
+            title={e.description} date={e.ts} onUpdate={onUpdate} onDelete={onDelete}
+          >
             <div className="inv-entry-meta">
               {e.type && <span className="inv-role-chip">{e.type}</span>}
               {e.seizureMemoRef && <span>Memo: {e.seizureMemoRef}</span>}
               {e.location && <span>Stored: {e.location}</span>}
               {e.fslStatus && <span>FSL: {e.fslStatus}</span>}
             </div>
-          </li>
+          </EntryRow>
         ))}
         {!items.length && <div className="aa-loading">No evidence logged yet.</div>}
       </ul>
@@ -557,7 +705,14 @@ function EvidenceTab({ rec, onAdd }) {
   );
 }
 
-function PersonsTab({ rec, onAdd }) {
+const PERSON_FIELDS = [
+  { key: 'name', label: 'Name', required: true },
+  { key: 'role', label: 'Role', type: 'select', options: PERSON_ROLES },
+  { key: 'status', label: 'Status', type: 'select', options: PERSON_STATUSES },
+  { key: 'notes', label: 'Notes', type: 'textarea', wide: true },
+];
+
+function PersonsTab({ rec, onAdd, onUpdate, onDelete }) {
   const items = [...(rec.persons || [])].sort((a, b) => b.ts - a.ts);
   return (
     <div className="inv-tab">
@@ -566,26 +721,16 @@ function PersonsTab({ rec, onAdd }) {
         matches are shown as leads to review — never as a conclusion.
       </p>
       <AddEntryForm
-        label="Add person"
-        submitLabel="Save person"
-        fields={[
-          { key: 'name', label: 'Name' },
-          { key: 'role', label: 'Role', type: 'select', options: PERSON_ROLES },
-          { key: 'status', label: 'Status', type: 'select', options: PERSON_STATUSES },
-          { key: 'notes', label: 'Notes', type: 'textarea', wide: true },
-        ]}
-        onSubmit={(v) => {
-          if (!v.name?.trim()) throw new Error('Name is required.');
-          return onAdd('persons', v);
-        }}
+        label="Add person" submitLabel="Save person" fields={PERSON_FIELDS}
+        onSubmit={(v) => { if (!v.name?.trim()) throw new Error('Name is required.'); return onAdd('persons', v); }}
       />
       <ul className="inv-entry-list">
         {items.map((p) => (
-          <li key={p.id} className="inv-entry">
-            <div className="inv-entry-head">
-              <span className="inv-entry-serial">{p.name} <span className="inv-role-chip">{p.role}</span></span>
-              {p.status && <span className={`aa-chip inv-status-${p.status === 'Arrested' ? 'green' : p.status === 'Absconding' || p.status === 'At large' ? 'red' : 'grey'}`}>{p.status}</span>}
-            </div>
+          <EntryRow
+            key={p.id} entry={p} section="persons" fields={PERSON_FIELDS}
+            onUpdate={onUpdate} onDelete={onDelete}
+            title={<>{p.name} <span className="inv-role-chip">{p.role}</span>{p.status && <span className={`aa-chip inv-status-${p.status === 'Arrested' ? 'green' : p.status === 'Absconding' || p.status === 'At large' ? 'red' : 'grey'}`}>{p.status}</span>}</>}
+          >
             {p.notes && <p className="inv-entry-narrative">{p.notes}</p>}
             {p.connections?.length > 0 && (
               <div className="inv-connections">
@@ -593,7 +738,7 @@ function PersonsTab({ rec, onAdd }) {
                 <span>Also appears in: {p.connections.map((c) => c.crimeNo).join(', ')} — review for possible links.</span>
               </div>
             )}
-          </li>
+          </EntryRow>
         ))}
         {!items.length && <div className="aa-loading">No persons recorded yet.</div>}
       </ul>
@@ -601,101 +746,88 @@ function PersonsTab({ rec, onAdd }) {
   );
 }
 
-function TimelineTab({ rec, onAdd }) {
-  // Pure structured extraction — every timestamped sub-record merged and
-  // sorted, no model call involved.
-  const merged = useMemo(() => {
-    const rows = [];
-    (rec.timeline || []).forEach((t) => rows.push({ id: t.id, ts: t.ts, kind: t.type || 'Event', detail: t.detail }));
-    (rec.diaryEntries || []).forEach((e) => rows.push({ id: e.id, ts: e.ts, kind: 'Diary entry', detail: `Diary #${e.serial} filed` }));
-    (rec.statements || []).forEach((s) => rows.push({ id: s.id, ts: s.ts, kind: 'Statement', detail: `${s.personName} (${s.role})` }));
-    (rec.evidence || []).forEach((e) => rows.push({ id: e.id, ts: e.ts, kind: 'Evidence', detail: e.description }));
-    return rows.sort((a, b) => b.ts - a.ts);
-  }, [rec]);
+const TIMELINE_FIELDS = [
+  { key: 'type', label: 'Event type', type: 'select', options: TIMELINE_TYPES },
+  { key: 'detail', label: 'Detail', type: 'textarea', wide: true, required: true },
+];
+
+function TimelineTab({ rec, onAdd, onUpdate, onDelete, onReorder }) {
+  // The timeline is a manually-curated, reorderable chronology (rec.timeline).
+  // Local copy so a drag reorders instantly; reverts if the server save fails.
+  const [items, setItems] = useState(rec.timeline || []);
+  useEffect(() => { setItems(rec.timeline || []); }, [rec.timeline]);
+  const fromIdx = useRef(null);
+  const [overId, setOverId] = useState(null);
+
+  const move = async (from, to) => {
+    if (from == null || from === to) return;
+    const next = [...items];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setItems(next);
+    try { await onReorder('timeline', next.map((t) => t.id)); }
+    catch { setItems(rec.timeline || []); }
+  };
 
   return (
     <div className="inv-tab">
       <IifBadge>{IIF_LABELS.timeline}</IifBadge>
-      <p className="aa-hint">Auto-generated chronology of every timestamped event on this case, newest first.</p>
+      <p className="aa-hint">
+        Key events on this case. Drag the handle to rearrange the chronology; edit or delete any event.
+      </p>
       <AddEntryForm
-        label="Add timeline event"
-        submitLabel="Save event"
-        fields={[
-          { key: 'type', label: 'Event type', type: 'select', options: TIMELINE_TYPES },
-          { key: 'detail', label: 'Detail', type: 'textarea', wide: true },
-        ]}
-        onSubmit={(v) => {
-          if (!v.detail?.trim()) throw new Error('Detail is required.');
-          return onAdd('timeline', v);
-        }}
+        label="Add timeline event" submitLabel="Save event" fields={TIMELINE_FIELDS}
+        onSubmit={(v) => { if (!v.detail?.trim()) throw new Error('Detail is required.'); return onAdd('timeline', v); }}
       />
-      <ul className="inv-timeline">
-        {merged.map((r) => (
-          <li key={r.id} className="inv-timeline-row">
-            <span className="inv-timeline-dot" />
-            <div>
-              <div className="inv-timeline-head"><b>{r.kind}</b><span>{fmtDateTime(r.ts)}</span></div>
-              <p>{r.detail}</p>
-            </div>
-          </li>
+      <ul className="inv-entry-list">
+        {items.map((t, i) => (
+          <EntryRow
+            key={t.id} entry={t} section="timeline" fields={TIMELINE_FIELDS}
+            title={t.type || 'Event'} date={t.ts} onUpdate={onUpdate} onDelete={onDelete}
+            drag={{
+              over: overId === t.id,
+              onDragStart: () => { fromIdx.current = i; },
+              onDragOver: (e) => { e.preventDefault(); if (overId !== t.id) setOverId(t.id); },
+              onDragLeave: () => setOverId((id) => (id === t.id ? null : id)),
+              onDrop: (e) => { e.preventDefault(); const f = fromIdx.current; fromIdx.current = null; setOverId(null); move(f, i); },
+              onDragEnd: () => { fromIdx.current = null; setOverId(null); },
+            }}
+          >
+            <p className="inv-entry-narrative">{t.detail}</p>
+          </EntryRow>
         ))}
-        {!merged.length && <div className="aa-loading">No events yet.</div>}
+        {!items.length && <div className="aa-loading">No events yet.</div>}
       </ul>
     </div>
   );
 }
 
-function FindingsTab({ rec, onAdd }) {
+const FINDING_FIELDS = [
+  { key: 'type', label: 'Type', type: 'select', options: FINDING_TYPES },
+  { key: 'note', label: 'Note', type: 'textarea', wide: true, required: true },
+];
+
+function FindingsTab({ rec, onAdd, onUpdate, onDelete }) {
   const items = [...(rec.findings || [])].sort((a, b) => b.ts - a.ts);
   return (
     <div className="inv-tab">
       <p className="aa-hint">Investigator observations, working theories and pending actions — free-form notes, not part of the formal diary.</p>
       <AddEntryForm
-        label="Add finding"
-        submitLabel="Save finding"
-        fields={[
-          { key: 'type', label: 'Type', type: 'select', options: FINDING_TYPES },
-          { key: 'note', label: 'Note', type: 'textarea', wide: true },
-        ]}
-        onSubmit={(v) => {
-          if (!v.note?.trim()) throw new Error('Note is required.');
-          return onAdd('findings', v);
-        }}
+        label="Add finding" submitLabel="Save finding" fields={FINDING_FIELDS}
+        onSubmit={(v) => { if (!v.note?.trim()) throw new Error('Note is required.'); return onAdd('findings', v); }}
       />
       <ul className="inv-entry-list">
         {items.map((f) => (
-          <li key={f.id} className="inv-entry">
-            <div className="inv-entry-head">
-              <span className="inv-role-chip">{f.type || 'Observation'}</span>
-              <span className="inv-entry-date">{fmtDate(f.ts)}</span>
-            </div>
+          <EntryRow
+            key={f.id} entry={f} section="findings" fields={FINDING_FIELDS}
+            title={<span className="inv-role-chip">{f.type || 'Observation'}</span>} date={f.ts}
+            onUpdate={onUpdate} onDelete={onDelete}
+          >
             <p className="inv-entry-narrative">{f.note}</p>
-          </li>
+          </EntryRow>
         ))}
         {!items.length && <div className="aa-loading">No findings recorded yet.</div>}
       </ul>
-    </div>
-  );
-}
-
-function NextStepsTab({ rec }) {
-  const steps = nextStepSuggestions(rec);
-  return (
-    <div className="inv-tab">
-      <IifBadge>{IIF_LABELS.nextSteps}</IifBadge>
-      <p className="aa-hint">
-        A rule-based checklist of gaps in the record — a reminder, not a decision. Nothing here is generated
-        by a model.
-      </p>
-      {steps.length === 0 ? (
-        <div className="inv-clean">No outstanding gaps detected in the record right now.</div>
-      ) : (
-        <ul className="inv-steps">
-          {steps.map((s) => (
-            <li key={s.id}><ShieldAlert size={15} /> {s.text}</li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }
@@ -751,7 +883,6 @@ const TABS = [
   { key: 'persons', label: 'Persons', Icon: Users },
   { key: 'timeline', label: 'Timeline', Icon: Clock },
   { key: 'findings', label: 'Findings', Icon: ListChecks },
-  { key: 'next-steps', label: 'Next steps', Icon: ShieldAlert },
   { key: 'summary', label: 'AI Summary', Icon: Sparkles },
 ];
 
@@ -780,6 +911,9 @@ export default function InvestigationCase() {
   };
   const onDelete = async (section, entryId) => {
     setRec(await deleteInvestigationItem(caseMasterId, section, entryId));
+  };
+  const onReorder = async (section, orderedIds) => {
+    setRec(await reorderInvestigationItems(caseMasterId, section, orderedIds));
   };
   const onStatusChange = async (status) => {
     const updated = await setInvestigationStatus(caseMasterId, status);
@@ -815,7 +949,7 @@ export default function InvestigationCase() {
             <h1>{rec.crimeNo || `Case ${rec.caseMasterId}`}</h1>
             <p>{rec.caseType || 'Uncategorised'}{rec.sections ? ` · ${rec.sections}` : ''}</p>
           </div>
-          <span className={`aa-chip inv-status-${statusColor(rec.status)}`}>{rec.status}</span>
+          <StatusPicker status={rec.status} onChange={onStatusChange} />
         </div>
 
         <div className="inv-tabbar">
@@ -840,14 +974,13 @@ export default function InvestigationCase() {
           )}
         </div>
 
-        {tab === 'overview' && <OverviewTab rec={rec} onStatusChange={onStatusChange} />}
-        {tab === 'diary' && <DiaryTab rec={rec} onAdd={onAdd} />}
+        {tab === 'overview' && <OverviewTab rec={rec} />}
+        {tab === 'diary' && <DiaryTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab === 'statements' && <StatementsTab rec={rec} caseMasterId={rec.caseMasterId} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
-        {tab === 'evidence' && <EvidenceTab rec={rec} onAdd={onAdd} />}
-        {tab === 'persons' && <PersonsTab rec={rec} onAdd={onAdd} />}
-        {tab === 'timeline' && <TimelineTab rec={rec} onAdd={onAdd} />}
-        {tab === 'findings' && <FindingsTab rec={rec} onAdd={onAdd} />}
-        {tab === 'next-steps' && <NextStepsTab rec={rec} />}
+        {tab === 'evidence' && <EvidenceTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
+        {tab === 'persons' && <PersonsTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
+        {tab === 'timeline' && <TimelineTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} onReorder={onReorder} />}
+        {tab === 'findings' && <FindingsTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab === 'summary' && <SummaryTab caseMasterId={rec.caseMasterId} />}
       </div>
     </div>

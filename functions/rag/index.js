@@ -1057,6 +1057,34 @@ async function deleteInvestigationEntry(bucket, caseMasterId, section, entryId) 
   return { record: rec };
 }
 
+// Reorder a section's entries to match the given list of ids (ids not present
+// are appended in their original relative order). Just a PutObject of the
+// reordered record — used by the draggable timeline.
+async function reorderInvestigationEntries(bucket, caseMasterId, section, orderedIds) {
+  if (!INV_SECTIONS.includes(section)) throw new Error('invalid section');
+  let rec;
+  try {
+    rec = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
+  } catch {
+    rec = null;
+  }
+  if (!rec) throw new Error('Investigation record not found');
+  const list = rec[section] || [];
+  const byId = new Map(list.map((e) => [e.id, e]));
+  const seen = new Set();
+  const next = [];
+  for (const id of Array.isArray(orderedIds) ? orderedIds : []) {
+    const e = byId.get(String(id));
+    if (e && !seen.has(e.id)) { next.push(e); seen.add(e.id); }
+  }
+  for (const e of list) if (!seen.has(e.id)) next.push(e); // keep any missing ones
+  rec[section] = next;
+  rec.updatedAt = Date.now();
+  await bucket.putObject(invKey(caseMasterId), Buffer.from(JSON.stringify(rec)));
+  await upsertInvIndex(bucket, rec);
+  return { record: rec };
+}
+
 async function handleInvestigation(req, res, action) {
   const body = JSON.parse((await readBody(req)) || '{}');
   const app = catalystSDK.initialize(req);
@@ -1166,6 +1194,19 @@ async function handleInvestigation(req, res, action) {
       action: `delete-${section}`, feature: 'Investigation Diary', path: '/investigation-diary',
       detail: record.crimeNo || caseMasterId,
     }], caller);
+    return json(res, 200, { record });
+  }
+
+  if (action === 'reorder') {
+    const section = String(body.section || '');
+    if (!INV_SECTIONS.includes(section)) return json(res, 400, { error: 'invalid section' });
+    let record;
+    try {
+      ({ record } = await reorderInvestigationEntries(bucket, caseMasterId, section, body.orderedIds));
+    } catch (e) {
+      if (/not found/i.test(e.message || '')) return json(res, 404, { error: e.message });
+      return json(res, 500, { error: 'Could not reorder — ' + (e.message || e) });
+    }
     return json(res, 200, { record });
   }
 
@@ -1421,6 +1462,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/investigation/append')) return await handleInvestigation(req, res, 'append');
     if (path.endsWith('/investigation/update')) return await handleInvestigation(req, res, 'update');
     if (path.endsWith('/investigation/delete')) return await handleInvestigation(req, res, 'delete');
+    if (path.endsWith('/investigation/reorder')) return await handleInvestigation(req, res, 'reorder');
     if (path.endsWith('/investigation/summarize')) return await handleInvestigationSummary(req, res);
     if (path.endsWith('/investigation/media/upload')) return await handleMediaUpload(req, res);
     if (path.endsWith('/investigation/media/get')) return await handleMediaGet(req, res);

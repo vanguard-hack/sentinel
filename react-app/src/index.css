@@ -5157,3 +5157,74 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .inv-confirm-actions { display: flex; gap: 8px; margin-left: auto; }
 .aa-btn.danger { background: #d64550; border-color: #d64550; color: #fff; }
 .aa-btn.danger:hover { filter: brightness(1.07); }
+
+/* Investigation: status picker on the case header */
+.inv-status-picker { position: relative; }
+.inv-status-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  border: none;
+  font: inherit;
+  font-weight: 600;
+}
+.inv-status-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 190px;
+  padding: 6px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.inv-status-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: var(--text-1);
+  text-align: left;
+}
+.inv-status-opt:hover { background: var(--bg-3); }
+.inv-status-opt.active { font-weight: 700; }
+.inv-status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+/* Draggable timeline rows */
+.inv-draggable { cursor: default; }
+.inv-draggable .inv-drag-handle { cursor: grab; color: var(--text-4); margin-right: 6px; vertical-align: -3px; }
+.inv-draggable .inv-drag-handle:active { cursor: grabbing; }
+.inv-entry.drag-over { border-color: var(--blue-500); box-shadow: 0 -2px 0 0 var(--blue-500) inset; }
+
+/* Investigation pagination */
+.inv-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 16px;
+}
+.inv-page-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  background: var(--bg-1);
+  color: var(--text-1);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.inv-page-btn:hover:not(:disabled) { background: var(--bg-3); }
+.inv-page-btn:disabled { opacity: 0.45; cursor: default; }
+.inv-page-info { font-size: 12.5px; color: var(--text-3); }

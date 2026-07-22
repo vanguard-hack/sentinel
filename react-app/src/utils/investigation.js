@@ -113,6 +113,8 @@ export const updateInvestigationItem = (caseMasterId, section, entryId, patch) =
   post('/server/rag/investigation/update', { caseMasterId, section, entryId, patch }).then((d) => d.record);
 export const deleteInvestigationItem = (caseMasterId, section, entryId) =>
   post('/server/rag/investigation/delete', { caseMasterId, section, entryId }).then((d) => d.record);
+export const reorderInvestigationItems = (caseMasterId, section, orderedIds) =>
+  post('/server/rag/investigation/reorder', { caseMasterId, section, orderedIds }).then((d) => d.record);
 export const summarizeInvestigation = (caseMasterId) =>
   post('/server/rag/investigation/summarize', { caseMasterId });
 
