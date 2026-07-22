@@ -883,6 +883,111 @@ async function upsertInvIndex(bucket, rec) {
   await saveInvIndex(bucket, idx);
 }
 
+// ── Internal record operations, factored out of the HTTP handler below so
+// they can be unit-tested / reused independently of the request lifecycle ──
+async function createInvestigationRecord(bucket, payload, createdByEmail) {
+  const caseMasterId = String(payload.caseMasterId || '').trim();
+  if (!caseMasterId) throw new Error('caseMasterId is required');
+  let existing = null;
+  try {
+    existing = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
+  } catch { /* not created yet */ }
+  if (existing) return { record: existing, created: false };
+
+  const rec = {
+    caseMasterId,
+    investigationId: `INV-${caseMasterId}-${Date.now().toString(36).toUpperCase()}`,
+    crimeNo: String(payload.crimeNo || ''),
+    caseNo: String(payload.caseNo || ''),
+    ioEmployeeId: String(payload.ioEmployeeId || ''),
+    ioName: String(payload.ioName || ''),
+    ioRank: String(payload.ioRank || ''),
+    station: String(payload.station || ''),
+    district: String(payload.district || ''),
+    caseType: String(payload.caseType || ''),
+    sections: String(payload.sections || ''),
+    registeredDate: String(payload.registeredDate || ''),
+    status: 'Under Investigation',
+    lastDiaryDate: '',
+    diaryEntries: [], statements: [], evidence: [], persons: [], timeline: [], findings: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    createdBy: String(createdByEmail || ''),
+  };
+  await bucket.putObject(invKey(caseMasterId), Buffer.from(JSON.stringify(rec)));
+  await upsertInvIndex(bucket, rec);
+  return { record: rec, created: true };
+}
+
+async function setInvestigationStatusRecord(bucket, caseMasterId, status) {
+  if (!INV_STATUSES.includes(status)) throw new Error('invalid status');
+  let rec;
+  try {
+    rec = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
+  } catch {
+    rec = null;
+  }
+  if (!rec) throw new Error('Investigation record not found');
+  rec.status = status;
+  rec.updatedAt = Date.now();
+  await bucket.putObject(invKey(caseMasterId), Buffer.from(JSON.stringify(rec)));
+  await upsertInvIndex(bucket, rec);
+  return rec;
+}
+
+// `ioIdentity` is { email, name } for the entry's author.
+async function appendInvestigationEntry(bucket, caseMasterId, section, item, ioIdentity) {
+  if (!INV_SECTIONS.includes(section)) throw new Error('invalid section');
+  let rec;
+  try {
+    rec = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
+  } catch {
+    rec = null;
+  }
+  if (!rec) throw new Error('Investigation record not found');
+
+  const list = rec[section] || (rec[section] = []);
+  const entry = {
+    ...item,
+    id: `${section.slice(0, 3)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    ts: Number.isFinite(item.ts) ? item.ts : Date.now(),
+    ioId: String(ioIdentity?.email || ''),
+    ioName: ioIdentity?.name || rec.ioName || '',
+  };
+  if (section === 'diaryEntries') {
+    entry.serial = list.length + 1; // sequential Case Diary serial number (legally required)
+  }
+
+  // Lead generation, lite: flatten persons by name across every case so a
+  // recurring name surfaces as a lead the moment it's entered. Advisory
+  // only — framed as "appears in" in the UI, never as an accusation.
+  if (section === 'persons') {
+    const norm = String(entry.name || '').trim().toLowerCase();
+    if (norm) {
+      let pidx;
+      try {
+        pidx = JSON.parse((await streamToString(await bucket.getObject(INV_PERSON_INDEX_KEY))) || '{}');
+      } catch {
+        pidx = {};
+      }
+      if (!pidx.people) pidx.people = {};
+      const arr = pidx.people[norm] || (pidx.people[norm] = []);
+      if (!arr.some((a) => a.caseMasterId === caseMasterId)) {
+        arr.push({ caseMasterId, crimeNo: rec.crimeNo || caseMasterId, role: entry.role || '', name: entry.name || '' });
+        await bucket.putObject(INV_PERSON_INDEX_KEY, Buffer.from(JSON.stringify(pidx)));
+      }
+      entry.connections = arr.filter((a) => a.caseMasterId !== caseMasterId);
+    }
+  }
+
+  list.push(entry);
+  rec.updatedAt = Date.now();
+  if (section === 'diaryEntries') rec.lastDiaryDate = new Date(entry.ts).toISOString().slice(0, 10);
+  await bucket.putObject(invKey(caseMasterId), Buffer.from(JSON.stringify(rec)));
+  await upsertInvIndex(bucket, rec);
+  return { record: rec, entry };
+}
+
 async function handleInvestigation(req, res, action) {
   const body = JSON.parse((await readBody(req)) || '{}');
   const app = catalystSDK.initialize(req);
@@ -895,6 +1000,7 @@ async function handleInvestigation(req, res, action) {
   if (!caller || !canInvestigate(role)) {
     return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
   }
+  const ioIdentity = { email: caller?.email_id || '', name: [caller?.first_name, caller?.last_name].filter(Boolean).join(' ') };
 
   if (action === 'list') {
     return json(res, 200, { cases: await loadInvIndex(bucket) });
@@ -913,60 +1019,28 @@ async function handleInvestigation(req, res, action) {
   }
 
   if (action === 'create') {
-    let existing = null;
-    try {
-      existing = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
-    } catch { /* not created yet */ }
-    if (existing) return json(res, 200, { record: existing, created: false });
-
-    const rec = {
-      caseMasterId,
-      investigationId: `INV-${caseMasterId}-${Date.now().toString(36).toUpperCase()}`,
-      crimeNo: String(body.crimeNo || ''),
-      caseNo: String(body.caseNo || ''),
-      ioEmployeeId: String(body.ioEmployeeId || ''),
-      ioName: String(body.ioName || ''),
-      ioRank: String(body.ioRank || ''),
-      station: String(body.station || ''),
-      district: String(body.district || ''),
-      caseType: String(body.caseType || ''),
-      sections: String(body.sections || ''),
-      registeredDate: String(body.registeredDate || ''),
-      status: 'Under Investigation',
-      lastDiaryDate: '',
-      diaryEntries: [], statements: [], evidence: [], persons: [], timeline: [], findings: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      createdBy: String(caller?.email_id || ''),
-    };
-    await bucket.putObject(invKey(caseMasterId), Buffer.from(JSON.stringify(rec)));
-    await upsertInvIndex(bucket, rec);
-    await storeAuditEvents(req, app, bucket, [{
-      action: 'open-investigation', feature: 'Investigation Diary', path: '/investigation-diary',
-      detail: rec.crimeNo || caseMasterId,
-    }], caller);
-    return json(res, 200, { record: rec, created: true });
+    const { record, created } = await createInvestigationRecord(bucket, body, caller?.email_id);
+    if (created) {
+      await storeAuditEvents(req, app, bucket, [{
+        action: 'open-investigation', feature: 'Investigation Diary', path: '/investigation-diary',
+        detail: record.crimeNo || caseMasterId,
+      }], caller);
+    }
+    return json(res, 200, { record, created });
   }
-
-  // Every action below operates on an existing record.
-  let rec;
-  try {
-    rec = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
-  } catch {
-    rec = null;
-  }
-  if (!rec) return json(res, 404, { error: 'Investigation record not found' });
 
   if (action === 'status') {
     const status = String(body.status || '');
     if (!INV_STATUSES.includes(status)) return json(res, 400, { error: 'invalid status' });
-    rec.status = status;
-    rec.updatedAt = Date.now();
-    await bucket.putObject(invKey(caseMasterId), Buffer.from(JSON.stringify(rec)));
-    await upsertInvIndex(bucket, rec);
+    let rec;
+    try {
+      rec = await setInvestigationStatusRecord(bucket, caseMasterId, status);
+    } catch {
+      return json(res, 404, { error: 'Investigation record not found' });
+    }
     await storeAuditEvents(req, app, bucket, [{
       action: 'status-change', feature: 'Investigation Diary', path: '/investigation-diary',
-      detail: `${rec.crimeNo || caseMasterId} → ${status}`,
+      detail: `${rec.crimeNo || caseMasterId} → ${rec.status}`,
     }], caller);
     return json(res, 200, { record: rec });
   }
@@ -975,50 +1049,17 @@ async function handleInvestigation(req, res, action) {
     const section = String(body.section || '');
     if (!INV_SECTIONS.includes(section)) return json(res, 400, { error: 'invalid section' });
     const item = body.item && typeof body.item === 'object' ? body.item : {};
-    const list = rec[section] || (rec[section] = []);
-    const entry = {
-      ...item,
-      id: `${section.slice(0, 3)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-      ts: Number.isFinite(item.ts) ? item.ts : Date.now(),
-      ioId: String(caller?.email_id || ''),
-      ioName: [caller?.first_name, caller?.last_name].filter(Boolean).join(' ') || rec.ioName || '',
-    };
-    if (section === 'diaryEntries') {
-      entry.serial = list.length + 1; // sequential Case Diary serial number (legally required)
+    let record, entry;
+    try {
+      ({ record, entry } = await appendInvestigationEntry(bucket, caseMasterId, section, item, ioIdentity));
+    } catch {
+      return json(res, 404, { error: 'Investigation record not found' });
     }
-
-    // Lead generation, lite: flatten persons by name across every case so a
-    // recurring name surfaces as a lead the moment it's entered. Advisory
-    // only — framed as "appears in" in the UI, never as an accusation.
-    if (section === 'persons') {
-      const norm = String(entry.name || '').trim().toLowerCase();
-      if (norm) {
-        let pidx;
-        try {
-          pidx = JSON.parse((await streamToString(await bucket.getObject(INV_PERSON_INDEX_KEY))) || '{}');
-        } catch {
-          pidx = {};
-        }
-        if (!pidx.people) pidx.people = {};
-        const arr = pidx.people[norm] || (pidx.people[norm] = []);
-        if (!arr.some((a) => a.caseMasterId === caseMasterId)) {
-          arr.push({ caseMasterId, crimeNo: rec.crimeNo || caseMasterId, role: entry.role || '', name: entry.name || '' });
-          await bucket.putObject(INV_PERSON_INDEX_KEY, Buffer.from(JSON.stringify(pidx)));
-        }
-        entry.connections = arr.filter((a) => a.caseMasterId !== caseMasterId);
-      }
-    }
-
-    list.push(entry);
-    rec.updatedAt = Date.now();
-    if (section === 'diaryEntries') rec.lastDiaryDate = new Date(entry.ts).toISOString().slice(0, 10);
-    await bucket.putObject(invKey(caseMasterId), Buffer.from(JSON.stringify(rec)));
-    await upsertInvIndex(bucket, rec);
     await storeAuditEvents(req, app, bucket, [{
       action: `add-${section}`, feature: 'Investigation Diary', path: '/investigation-diary',
-      detail: rec.crimeNo || caseMasterId,
+      detail: record.crimeNo || caseMasterId,
     }], caller);
-    return json(res, 200, { record: rec, entry });
+    return json(res, 200, { record, entry });
   }
 
   return json(res, 400, { error: 'unknown action' });
