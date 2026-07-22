@@ -2,6 +2,9 @@
 
 const catalystSDK = require('zcatalyst-sdk-node');
 const zcql = require('./zcql');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 /*
  * RAG proxy — keeps OAuth credentials server-side and calls the Catalyst
@@ -1367,12 +1370,23 @@ async function handleOcr(req, res) {
   const key = mediaKey(caseMasterId, mediaId(), mime);
   await bucket.putObject(key, buf);
 
+  // Zia's extractOpticalCharacters expects an fs.ReadStream — a raw Buffer
+  // gets appended to the multipart form with no filename/content-type and Zia
+  // rejects it as "wrong format". Stage the bytes to a temp file and hand it a
+  // real read stream (its `path` lets form-data set the filename + type).
   let text = '';
+  const tmpPath = path.join(os.tmpdir(), `ocr-${mediaId()}.${MEDIA_EXT_BY_MIME[mime] || 'jpg'}`);
   try {
-    const result = await app.zia().extractOpticalCharacters(buf, { modelType: 'OCR', language: 'eng' });
+    fs.writeFileSync(tmpPath, buf);
+    const result = await app.zia().extractOpticalCharacters(
+      fs.createReadStream(tmpPath),
+      { modelType: 'OCR', language: 'eng' }
+    );
     text = (result && result.text) || '';
   } catch (e) {
     return json(res, 502, { error: 'OCR failed: ' + (e.message || e), key });
+  } finally {
+    try { fs.unlinkSync(tmpPath); } catch { /* temp cleanup best-effort */ }
   }
 
   await storeAuditEvents(req, app, bucket, [{

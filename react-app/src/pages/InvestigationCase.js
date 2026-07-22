@@ -381,10 +381,7 @@ function StatementForm({ caseMasterId, onSubmit }) {
       {mode === 'upload' && (
         <div className="inv-field wide">
           <input type="file" accept=".txt,image/jpeg,image/png" onChange={onFilePick} className="inv-file-input" />
-          <p className="inv-file-hint">
-            .txt is read directly; .jpg/.png is scanned with Zia OCR to extract the testimony text. Scanned
-            PDFs aren't supported yet — export the page as an image first.
-          </p>
+          <p className="inv-file-hint">Upload .txt/.jpg/.png files</p>
           {ocrBusy && <div className="aa-loading">Extracting text…</div>}
           {pendingFile && <div className="inv-file-attached"><Paperclip size={13} /> {pendingFile.name} will be attached</div>}
         </div>
