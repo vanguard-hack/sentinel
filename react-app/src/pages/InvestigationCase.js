@@ -335,7 +335,7 @@ function StatementForm({ caseMasterId, onSubmit }) {
 
   return (
     <div className="inv-add-form inv-stmt-form">
-      <div className="inv-stmt-tools inv-field wide">
+      <div className="inv-stmt-tools">
         <button
           type="button" className={`inv-mode-icon ${mode === 'record' ? 'active' : ''}`}
           onClick={() => setMode((m) => (m === 'record' ? 'type' : 'record'))}
