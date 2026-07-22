@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   NotebookPen, AlertTriangle, Plus, Sparkles, ListChecks, Users, Fingerprint,
   MessageSquareQuote, Clock, ShieldAlert, Link2, ChevronDown,
-  Mic, Keyboard, Upload, Paperclip, Play, FileText, Pencil, Trash2,
+  Mic, Upload, Paperclip, Play, FileText, Pencil, Trash2,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import {
@@ -335,22 +335,18 @@ function StatementForm({ caseMasterId, onSubmit }) {
 
   return (
     <div className="inv-add-form inv-stmt-form">
-      <div className="inv-mode-tabs inv-field wide">
+      <div className="inv-stmt-tools inv-field wide">
         <button
-          type="button" className={`inv-mode-icon ${mode === 'type' ? 'active' : ''}`} onClick={() => setMode('type')}
-          title="Type / paste" aria-label="Type or paste"
-        >
-          <Keyboard size={17} />
-        </button>
-        <button
-          type="button" className={`inv-mode-icon ${mode === 'record' ? 'active' : ''}`} onClick={() => setMode('record')}
+          type="button" className={`inv-mode-icon ${mode === 'record' ? 'active' : ''}`}
+          onClick={() => setMode((m) => (m === 'record' ? 'type' : 'record'))}
           disabled={!canRecordAudio}
           title={canRecordAudio ? 'Record live' : 'Microphone recording not supported in this browser'} aria-label="Record live"
         >
           <Mic size={17} />
         </button>
         <button
-          type="button" className={`inv-mode-icon ${mode === 'upload' ? 'active' : ''}`} onClick={() => setMode('upload')}
+          type="button" className={`inv-mode-icon ${mode === 'upload' ? 'active' : ''}`}
+          onClick={() => setMode((m) => (m === 'upload' ? 'type' : 'upload'))}
           title="Upload file" aria-label="Upload file"
         >
           <Upload size={17} />

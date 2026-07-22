@@ -5060,7 +5060,9 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .inv-citations ol { margin: 6px 0 0; padding-left: 20px; font-size: 12px; color: var(--text-3); display: flex; flex-direction: column; gap: 3px; }
 
 /* ── Investigation Diary: testimony capture (record / upload) ───────────── */
-.inv-mode-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Mic/upload capture toggles, right-aligned at the top of the statement form
+   (overrides .inv-field's column layout). */
+.inv-stmt-tools { flex-direction: row; justify-content: flex-end; gap: 8px; }
 .inv-mode-icon {
   display: inline-flex;
   align-items: center;
