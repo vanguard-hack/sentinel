@@ -888,7 +888,11 @@ async function handleInvestigation(req, res, action) {
   const app = catalystSDK.initialize(req);
   const bucket = app.stratus().bucket(CONV_BUCKET);
   const { role, caller } = await myRole(app, bucket);
-  if (!canInvestigate(role)) {
+  // myRole() falls back to 'investigator' when a signed-in user has no role
+  // record yet (so a freshly-assigned officer isn't locked out) — but that
+  // fallback must never cover an UNAUTHENTICATED caller, so require a
+  // verified session on top of the role check.
+  if (!caller || !canInvestigate(role)) {
     return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
   }
 
@@ -1029,7 +1033,11 @@ async function handleInvestigationSummary(req, res) {
   const app = catalystSDK.initialize(req);
   const bucket = app.stratus().bucket(CONV_BUCKET);
   const { role, caller } = await myRole(app, bucket);
-  if (!canInvestigate(role)) {
+  // myRole() falls back to 'investigator' when a signed-in user has no role
+  // record yet (so a freshly-assigned officer isn't locked out) — but that
+  // fallback must never cover an UNAUTHENTICATED caller, so require a
+  // verified session on top of the role check.
+  if (!caller || !canInvestigate(role)) {
     return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
   }
   const caseMasterId = String(body.caseMasterId || '').trim();
