@@ -72,10 +72,10 @@ export default function Forecasts() {
     const districtSeries = weeklyCounts(cases.filter((c) => c.district === district).map((c) => c.ts));
     const offenders = offenderRisk(cases, accused);
     const scoreDist = [
-      { label: '0–19', value: 0 }, { label: '20–39', value: 0 }, { label: '40–59', value: 0 },
-      { label: '60–79', value: 0 }, { label: '80–100', value: 0 },
+      { label: '0–19', value: 0 }, { label: '20–39', value: 0 },
+      { label: '40–59', value: 0 }, { label: '60+', value: 0 },
     ];
-    offenders.forEach((o) => { scoreDist[Math.min(4, Math.floor(o.score / 20))].value++; });
+    offenders.forEach((o) => { scoreDist[Math.min(3, Math.floor(o.score / 20))].value++; });
     return {
       overall: { history: tail(overallSeries), fc: holtForecast(overallSeries, horizon.weeks) },
       byHead: { history: tail(headSeries), fc: holtForecast(headSeries, horizon.weeks) },

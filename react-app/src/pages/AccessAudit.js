@@ -4,6 +4,7 @@ import {
   Calendar, ChevronDown,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
+import DateRangeCalendar from '../components/DateRangeCalendar';
 import { ROLE_LABELS, ASSIGNABLE_ROLES } from '../utils/access';
 import { logAudit } from '../utils/audit';
 
@@ -16,30 +17,27 @@ function useClickAway(ref, onAway) {
   }, [ref, onAway]);
 }
 
-// Single calendar-icon button → popover with From/To date inputs.
-function DateRangeButton({ from, to, today, onApply }) {
+// Single calendar-icon button → a month-grid range picker (click start, then
+// end; the span highlights). No separate From/To fields.
+function DateRangeButton({ from, to, onApply }) {
   const [open, setOpen] = useState(false);
   const [f, setF] = useState(from);
   const [t, setT] = useState(to);
   const ref = useRef(null);
   useClickAway(ref, () => setOpen(false));
   const openPop = () => { setF(from); setT(to); setOpen(true); };
+  const apply = () => { if (f) onApply(f, t || f); setOpen(false); };
   return (
     <div className="aa-daterange" ref={ref}>
-      <button type="button" className="aa-btn" onClick={() => (open ? setOpen(false) : openPop())} title="Select date range">
-        <Calendar size={14} /> {from} → {to}
+      <button type="button" className="aa-btn aa-cal-btn" onClick={() => (open ? setOpen(false) : openPop())} title="Select date range">
+        <Calendar size={15} /> {from} → {to}
       </button>
       {open && (
-        <div className="aa-daterange-pop">
-          <label className="aa-range">From
-            <input type="date" className="cf-select aa-date" value={f} max={t} onChange={(e) => setF(e.target.value)} />
-          </label>
-          <label className="aa-range">To
-            <input type="date" className="cf-select aa-date" value={t} min={f} max={today} onChange={(e) => setT(e.target.value)} />
-          </label>
+        <div className="aa-daterange-pop" role="dialog" aria-label="Select date range">
+          <DateRangeCalendar from={f} to={t} onSelect={(nf, nt) => { setF(nf); setT(nt); }} />
           <div className="aa-daterange-actions">
-            <button type="button" className="aa-btn" onClick={() => setOpen(false)}>Cancel</button>
-            <button type="button" className="aa-btn primary" onClick={() => { onApply(f, t); setOpen(false); }}>Apply</button>
+            <button type="button" className="aa-btn" onClick={() => { setF(''); setT(''); }}>Clear</button>
+            <button type="button" className="aa-btn primary" onClick={apply} disabled={!f}>Apply</button>
           </div>
         </div>
       )}
@@ -59,8 +57,8 @@ function ExportMenu({ onCsv, onXlsx, disabled }) {
       </button>
       {open && (
         <div className="aa-export-menu">
-          <button type="button" onClick={() => { onCsv(); setOpen(false); }}><Download size={13} /> Export as CSV</button>
-          <button type="button" onClick={() => { onXlsx(); setOpen(false); }}><FileSpreadsheet size={13} /> Export as XLSX</button>
+          <button type="button" onClick={() => { onCsv(); setOpen(false); }}><Download size={13} /> CSV</button>
+          <button type="button" onClick={() => { onXlsx(); setOpen(false); }}><FileSpreadsheet size={13} /> XLSX</button>
         </div>
       )}
     </div>
@@ -263,7 +261,7 @@ function AuditTab() {
   return (
     <>
       <div className="aa-toolbar">
-        <DateRangeButton from={from} to={to} today={daysAgo(0)} onApply={(f, t) => { setFrom(f); setTo(t); }} />
+        <DateRangeButton from={from} to={to} onApply={(f, t) => { setFrom(f); setTo(t); }} />
         <select className="cf-select aa-select" value={fUser} onChange={(e) => setFUser(e.target.value)}>
           {options.users.map((o) => <option key={o}>{o}</option>)}
         </select>

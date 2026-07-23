@@ -5253,18 +5253,25 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   top: calc(100% + 6px);
   left: 0;
   z-index: 50;
-  min-width: 230px;
-  padding: 12px;
+  width: max-content;
+  padding: 12px 14px;
   background: var(--bg-1);
   border: 1px solid var(--border-bright);
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
-.aa-daterange-pop .aa-range { flex-direction: column; align-items: stretch; gap: 4px; }
-.aa-daterange-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+.aa-daterange-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.aa-cal-btn { font-variant-numeric: tabular-nums; }
 
 /* Access & Audit: single Export button + CSV/XLSX menu */
 .aa-export { position: relative; }
