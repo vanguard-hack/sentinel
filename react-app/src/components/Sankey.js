@@ -5,8 +5,18 @@ import React, { useMemo, useState } from 'react';
 // ci } and links carry { source, target, value, ci }. `ci` is a category
 // colour index (-1 = neutral). Ribbon thickness and node height share one
 // scale, so a node's height equals the sum of its ribbons.
-const PALETTE = ['--rp-cat-0', '--rp-cat-1', '--rp-cat-2', '--rp-cat-3', '--rp-cat-4', '--rp-cat-5', '--rp-cat-6', '--rp-cat-7'];
-const colorOf = (ci) => (ci >= 0 && ci < PALETTE.length ? `var(${PALETTE[ci]})` : 'var(--text-4)');
+// A wide, varied palette so every node in a layer gets a distinct colour.
+// Ribbons take their source node's colour, so categories, types and outcomes
+// all read as different hues rather than repeating a handful of category tints.
+const PALETTE = [
+  '#4f8cff', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4',
+  '#ec4899', '#84cc16', '#f97316', '#14b8a6', '#a855f7', '#eab308',
+  '#3b82f6', '#f43f5e', '#0ea5e9', '#65a30d', '#d946ef', '#fb7185',
+];
+const OTHER = 'var(--text-4)';
+// Offset each layer into the palette so a category and a type in adjacent
+// columns are unlikely to land on the same hue.
+const LAYER_OFFSET = [0, 6, 13];
 
 const W = 1000;
 const NW = 15;        // node bar width
@@ -40,7 +50,10 @@ export default function Sankey({ spec, height = 460 }) {
       const layerH = heights.reduce((s, h) => s + h, 0) + (layer.length - 1) * GAP;
       let y = PAD_T + (availH - layerH) / 2;
       layer.forEach((n, i) => {
-        nodeMap.set(n.id, { ...n, x0: x0For[L], x1: x0For[L] + NW, y0: y, y1: y + heights[i], oOut: 0, oIn: 0 });
+        const color = /^Other\b/i.test(n.label)
+          ? OTHER
+          : PALETTE[(i + LAYER_OFFSET[L]) % PALETTE.length];
+        nodeMap.set(n.id, { ...n, color, x0: x0For[L], x1: x0For[L] + NW, y0: y, y1: y + heights[i], oOut: 0, oIn: 0 });
         y += heights[i] + GAP;
       });
     });
@@ -96,7 +109,7 @@ export default function Sankey({ spec, height = 460 }) {
               key={i}
               d={ribbon(l)}
               className={`sk-link ${dim ? 'sk-dim' : ''}`}
-              style={{ fill: colorOf(l.ci) }}
+              style={{ fill: nodeMap.get(l.source).color }}
               onMouseEnter={() => setHover(`l${i}`)}
               onMouseLeave={() => setHover(null)}
             >
@@ -106,7 +119,7 @@ export default function Sankey({ spec, height = 460 }) {
         })}
         {/* nodes + labels */}
         {nodeList.map((n) => {
-          const fill = n.layer === 2 ? 'var(--text-3)' : colorOf(n.ci);
+          const fill = n.color;
           const labelLeft = n.layer === 0;
           return (
             <g
