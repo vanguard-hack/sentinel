@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ Sentinel
+# 🛡️ sentinel
 
 ### Crime Intelligence & Case-Management Platform for Karnataka State Police
 
