@@ -24,9 +24,6 @@ feature — including the **Access & Audit** console and role management — is 
 | **Email** | `deepujohn.t01@gmail.com` |
 | **Password** | `Zohohack2026!` |
 
-> Demo credentials for evaluation on synthetic data only. On first sign-in, allow a moment for
-> the dashboards to load; use the sidebar to explore each module.
-
 ---
 
 ## Table of Contents
