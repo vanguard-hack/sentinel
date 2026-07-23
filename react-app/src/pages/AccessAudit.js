@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
-  ShieldCheck, RefreshCw, Download, FileSpreadsheet, AlertTriangle, Check,
+  ShieldCheck, RefreshCw, Download, FileSpreadsheet, FileText, AlertTriangle, Check,
   Calendar, ChevronDown,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
@@ -61,7 +61,7 @@ function ExportMenu({ onCsv, onXlsx, disabled }) {
       </button>
       {open && (
         <div className="aa-export-menu">
-          <button type="button" onClick={() => { onCsv(); setOpen(false); }}><Download size={13} /> CSV</button>
+          <button type="button" onClick={() => { onCsv(); setOpen(false); }}><FileText size={13} /> CSV</button>
           <button type="button" onClick={() => { onXlsx(); setOpen(false); }}><FileSpreadsheet size={13} /> XLSX</button>
         </div>
       )}
@@ -278,7 +278,6 @@ function AuditTab() {
         <button type="button" className="aa-btn" onClick={load} disabled={loading}>
           <RefreshCw size={14} className={loading ? 'aa-spin' : ''} /> Refresh
         </button>
-        <span className="aa-spacer" />
         <ExportMenu onCsv={exportCsv} onXlsx={exportXlsx} disabled={!shown.length} />
       </div>
 

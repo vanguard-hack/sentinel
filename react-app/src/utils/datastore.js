@@ -112,26 +112,52 @@ function flatten(resp, table) {
   });
 }
 
-// Type-aware WHERE clause. ZCQL's LIKE is case-sensitive and doesn't apply to
-// numeric columns, so: numeric columns filter by equality (using the sampled
-// value to detect the type), text columns OR together common capitalisation
-// variants of the query for a case-insensitive feel.
+// Supported filter operators (also the value list the UI renders).
+export const FILTER_OPS = [
+  { value: 'contains', label: 'contains' },
+  { value: '=', label: 'equals (=)' },
+  { value: '!=', label: 'not equals (≠)' },
+  { value: '>', label: 'greater than (>)' },
+  { value: '>=', label: 'at least (≥)' },
+  { value: '<', label: 'less than (<)' },
+  { value: '<=', label: 'at most (≤)' },
+  { value: 'starts', label: 'starts with' },
+  { value: 'ends', label: 'ends with' },
+];
+const CMP_OPS = new Set(['>', '>=', '<', '<=']);
+
+// Type-aware WHERE clause with an operator. ZCQL's LIKE is case-sensitive and
+// doesn't apply to numeric columns, so numeric columns use direct comparison
+// (the sampled value detects the type) while text columns OR together common
+// capitalisation variants for a case-insensitive feel.
 const NUM_RE = /^-?\d+(\.\d+)?$/;
-function buildWhere(column, search, sampleValue) {
+function buildWhere(column, search, sampleValue, op = 'contains') {
   const q = (search || '').trim();
   if (!q || !column || column === 'ALL') return '';
 
   const sample = sampleValue == null ? '' : String(sampleValue);
   const numericColumn = typeof sampleValue === 'number' || (sample !== '' && NUM_RE.test(sample));
+
   if (numericColumn) {
-    // Equality on numbers; a non-numeric query can't match a numeric column,
-    // so use a sentinel that matches no rows instead of erroring.
-    return NUM_RE.test(q) ? ` WHERE ${column} = ${q}` : ` WHERE ${column} = -987654321`;
+    // A non-numeric query can't match a numeric column → sentinel = no rows.
+    if (!NUM_RE.test(q)) return ` WHERE ${column} = -987654321`;
+    // LIKE-style ops on a number fall back to equality (LIKE is invalid there).
+    const numOp = CMP_OPS.has(op) || op === '=' || op === '!=' ? op : '=';
+    return ` WHERE ${column} ${numOp} ${q}`;
   }
+
+  // Text column.
+  if (CMP_OPS.has(op)) return ` WHERE ${column} ${op} '${escLiteral(q)}'`;
 
   const title = q.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
   const variants = [...new Set([q, q.toLowerCase(), q.toUpperCase(), title])];
-  return ' WHERE ' + variants.map((v) => `${column} LIKE '%${escLiteral(v)}%'`).join(' OR ');
+  if (op === '=') return ' WHERE ' + variants.map((v) => `${column} = '${escLiteral(v)}'`).join(' OR ');
+  if (op === '!=') return ' WHERE ' + variants.map((v) => `${column} != '${escLiteral(v)}'`).join(' AND ');
+
+  const pat = op === 'starts' ? (v) => `${escLiteral(v)}%`
+    : op === 'ends' ? (v) => `%${escLiteral(v)}`
+    : (v) => `%${escLiteral(v)}%`;
+  return ' WHERE ' + variants.map((v) => `${column} LIKE '${pat(v)}'`).join(' OR ');
 }
 
 // Run an arbitrary ZCQL query and return flattened row objects. Used by the
@@ -155,9 +181,9 @@ export async function fetchColumns(table) {
 
 // Fetch one page. Returns { rows, hasNext }. Asks for perPage+1 to detect a
 // following page without a COUNT query.
-export async function fetchPage({ table, page = 1, perPage = 50, column = 'ALL', search = '', sample }) {
+export async function fetchPage({ table, page = 1, perPage = 50, column = 'ALL', search = '', op = 'contains', sample }) {
   const offset = (page - 1) * perPage;
-  const where = buildWhere(column, search, sample?.[column]);
+  const where = buildWhere(column, search, sample?.[column], op);
   const query = `SELECT * FROM ${table}${where} LIMIT ${offset}, ${perPage + 1}`;
   const resp = await zcql().executeQuery(query);
   const rows = flatten(resp, table);
@@ -181,9 +207,9 @@ export async function fetchAllRows(table, { cap = 10000 } = {}) {
 
 // Best-effort total row count (drives the "N records" label). Returns null on
 // failure so the UI can still paginate via hasNext.
-export async function fetchCount({ table, column = 'ALL', search = '', sample }) {
+export async function fetchCount({ table, column = 'ALL', search = '', op = 'contains', sample }) {
   try {
-    const where = buildWhere(column, search, sample?.[column]);
+    const where = buildWhere(column, search, sample?.[column], op);
     const resp = await zcql().executeQuery(`SELECT COUNT(ROWID) AS cnt FROM ${table}${where}`);
     const rows = flatten(resp, table);
     const r = rows[0] || {};

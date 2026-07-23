@@ -5281,8 +5281,9 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   top: calc(100% + 6px);
   right: 0;
   z-index: 50;
-  min-width: 170px;
-  padding: 6px;
+  width: max-content;
+  min-width: 96px;
+  padding: 5px;
   background: var(--bg-1);
   border: 1px solid var(--border-bright);
   border-radius: 10px;
@@ -5294,10 +5295,11 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .aa-export-menu button {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 7px;
+  padding: 7px 12px;
   border-radius: 7px;
   font-size: 12.5px;
+  font-weight: 600;
   color: var(--text-1);
   text-align: left;
 }

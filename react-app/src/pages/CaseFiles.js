@@ -6,10 +6,16 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
-  TABLE_GROUPS, ALL_TABLES, tableLabel, SYSTEM_COLUMNS,
+  TABLE_GROUPS, ALL_TABLES, tableLabel, SYSTEM_COLUMNS, FILTER_OPS,
   fetchColumns, fetchPage, fetchCount, fetchAllRows,
 } from '../utils/datastore';
 import TopBar from '../components/TopBar';
+
+const OP_PLACEHOLDER = {
+  contains: 'contains…', '=': 'equals…', '!=': 'not equals…',
+  '>': 'greater than…', '>=': 'at least…', '<': 'less than…', '<=': 'at most…',
+  starts: 'starts with…', ends: 'ends with…',
+};
 
 const PER_PAGE_OPTIONS = [25, 50, 100];
 
@@ -48,6 +54,7 @@ export default function CaseFiles() {
   const [showSystem, setShowSystem] = useState(false);
 
   const [filterColumn, setFilterColumn] = useState('ALL');
+  const [filterOp, setFilterOp] = useState('contains');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
 
@@ -141,7 +148,7 @@ export default function CaseFiles() {
   }, [activeTable]);
 
   // Reset to page 1 whenever filter/search/perPage change.
-  useEffect(() => { setPage(1); }, [search, filterColumn, perPage]);
+  useEffect(() => { setPage(1); }, [search, filterColumn, filterOp, perPage]);
 
   // Default the filter column to the first non-system column once columns load,
   // keeping the current choice if it's still valid.
@@ -155,8 +162,8 @@ export default function CaseFiles() {
     setError(null);
     try {
       const [{ rows: r, hasNext: hn }, count] = await Promise.all([
-        fetchPage({ table: activeTable, page, perPage, column: filterColumn, search, sample: sampleRow }),
-        fetchCount({ table: activeTable, column: filterColumn, search, sample: sampleRow }),
+        fetchPage({ table: activeTable, page, perPage, column: filterColumn, search, op: filterOp, sample: sampleRow }),
+        fetchCount({ table: activeTable, column: filterColumn, search, op: filterOp, sample: sampleRow }),
       ]);
       // Derive/refresh columns from data if the sample-row lookup came back empty.
       setRows(r);
@@ -169,7 +176,7 @@ export default function CaseFiles() {
     } finally {
       setLoading(false);
     }
-  }, [activeTable, page, perPage, filterColumn, search, sampleRow]);
+  }, [activeTable, page, perPage, filterColumn, filterOp, search, sampleRow]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -290,11 +297,23 @@ export default function CaseFiles() {
                   ))}
                 </select>
 
+                <select
+                  className="cf-select cf-op-select"
+                  value={filterOp}
+                  onChange={(e) => setFilterOp(e.target.value)}
+                  title="Filter clause"
+                  disabled={!filterColumn}
+                >
+                  {FILTER_OPS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+
                 <div className="cf-search">
                   <Search size={14} className="cf-search-icon" />
                   <input
                     className="cf-search-input"
-                    placeholder={filterColumn ? `contains…` : 'no columns'}
+                    placeholder={filterColumn ? OP_PLACEHOLDER[filterOp] : 'no columns'}
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
                     disabled={!filterColumn}
