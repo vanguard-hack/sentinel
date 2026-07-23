@@ -7,7 +7,7 @@ import {
   Home, AlertTriangle, Map, Brain, Database, MessageSquare, Users,
   NotebookPen, ShieldCheck, UserCircle, TrendingUp, Share2, Fingerprint,
   LineChart, Landmark, CalendarDays, Network, BarChart3, PieChart,
-  Activity, Table, Clock, LifeBuoy,
+  Activity, Table, Clock, Headset,
 } from 'lucide-react';
 
 export const SEARCH_INDEX = [
@@ -48,7 +48,7 @@ export const SEARCH_INDEX = [
   { id: 'profile', feature: 'profile', group: 'Pages', Icon: UserCircle,
     title: 'My Profile', sub: 'Account settings', to: '/profile',
     keywords: 'profile account settings me user avatar preferences' },
-  { id: 'help', feature: 'help', group: 'Pages', Icon: LifeBuoy,
+  { id: 'help', feature: 'help', group: 'Pages', Icon: Headset,
     title: 'Help Center', sub: 'Report an issue or contact support', to: '/help',
     keywords: 'help center support contact issue problem bug feedback email phone ticket assistance' },
 

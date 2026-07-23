@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LifeBuoy, Mail, Phone, Send, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Headset, Mail, Phone, Send, CheckCircle2, AlertTriangle } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { useAuth } from '../context/AuthContext';
 
@@ -52,7 +52,7 @@ export default function HelpCenter() {
         <div className="hc-layout">
           {/* Left: intro + direct contact */}
           <div className="hc-intro">
-            <div className="hc-badge"><LifeBuoy size={22} /></div>
+            <div className="hc-badge"><Headset size={22} /></div>
             <h1>Help Center</h1>
             <p className="hc-lead">
               Running into a problem or have a suggestion? Tell us what’s happening and the

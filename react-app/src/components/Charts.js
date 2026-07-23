@@ -30,6 +30,11 @@ const smoothPath = (pts, yMin, yMax) => {
   return d;
 };
 
+// Straight polyline between points (no smoothing) — for charts where each
+// data point should read literally rather than as a fitted curve.
+const straightPath = (pts) =>
+  pts.length ? 'M' + pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' L') : '';
+
 // Measure the wrapper so the viewBox matches real pixels — text renders at
 // its natural size instead of being stretched by preserveAspectRatio="none".
 function useMeasuredWidth(initial = 600) {
@@ -72,8 +77,10 @@ export function TrendArea({ data, height = 230, labelEvery = 1 }) {
   const solid = fcStart === -1 ? data : data.slice(0, fcStart);
   const dashed = fcStart === -1 ? [] : data.slice(Math.max(0, fcStart - 1));
   const xy = (arr, off) => arr.map((d, i) => ({ x: x(i + off), y: y(d.value) }));
-  const solidPath = smoothPath(xy(solid, 0), padT, base);
-  const dashedPath = smoothPath(xy(dashed, Math.max(0, fcStart - 1)), padT, base);
+  const solidXY = xy(solid, 0);
+  const dashedXY = xy(dashed, Math.max(0, fcStart - 1));
+  const solidPath = straightPath(solidXY);
+  const dashedPath = straightPath(dashedXY);
   const areaPath = solid.length > 1
     ? `${solidPath} L${x(solid.length - 1)},${base} L${x(0)},${base} Z`
     : '';
@@ -113,6 +120,13 @@ export function TrendArea({ data, height = 230, labelEvery = 1 }) {
         {areaPath && <path d={areaPath} fill={`url(#${gradId})`} className="lc-area" />}
         {solid.length > 1 && <path d={solidPath} className="lc-line" fill="none" style={{ stroke: '#765DFF' }} />}
         {dashed.length > 1 && <path d={dashedPath} className="lc-line lc-line-dashed" fill="none" style={{ stroke: '#765DFF' }} />}
+        {/* Data points on the line */}
+        {solidXY.map((p, i) => (
+          <circle key={`pt${i}`} cx={p.x} cy={p.y} r="2.6" className="lc-dot" style={{ fill: '#765DFF' }} />
+        ))}
+        {dashedXY.slice(1).map((p, i) => (
+          <circle key={`fpt${i}`} cx={p.x} cy={p.y} r="2.6" className="lc-dot lc-dot-forecast" style={{ stroke: '#765DFF' }} />
+        ))}
         {active != null && (
           <>
             <line x1={x(active)} x2={x(active)} y1={padT} y2={base} className="lc-cursor" />
