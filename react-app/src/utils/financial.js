@@ -40,7 +40,16 @@ const HIGH_RISK_CH = new Set(['Hawala', 'Crypto']);
 const FIN_HEADS = /econom|cyber|propert|fraud|cheat|forger|counterfeit/i;
 const THRESHOLD = 50000; // structuring is transactions kept just below this
 
-export const formatRs = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
+// Indian-numbering money format: crore / lakh / thousand, with the exact
+// rupee figure kept alongside for large amounts.
+export function formatRs(n) {
+  const v = Math.round(Number(n) || 0);
+  const abs = Math.abs(v);
+  if (abs >= 1e7) return `₹${(v / 1e7).toFixed(2)} Cr`;
+  if (abs >= 1e5) return `₹${(v / 1e5).toFixed(2)} L`;
+  if (abs >= 1e3) return `₹${(v / 1e3).toFixed(1)} K`;
+  return '₹' + v.toLocaleString('en-IN');
+}
 
 export async function fetchFinancialData() {
   const [caseRows, accusedRows, unitRows, districtRows, headRows] = await Promise.all([

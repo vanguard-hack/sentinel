@@ -53,7 +53,7 @@ export default function Reports() {
   const [error, setError] = useState(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState(null);
-  const [trendRange, setTrendRange] = useState('month');
+  const [trendRange, setTrendRange] = useState('year');
   const contentRef = useRef(null);
 
   // Custom date range: null = use the preset; { from, to } (YYYY-MM-DD,
