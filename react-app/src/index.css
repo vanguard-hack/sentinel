@@ -2162,6 +2162,21 @@ a:hover { color: var(--blue-500); }
 .agui-card-sub { font-size: 0.76rem; color: var(--text-3); margin-top: 2px; }
 .agui-card-body { font-size: 0.82rem; color: var(--text-2); margin-top: 8px; line-height: 1.45; }
 
+/* Navigation shortcut cards (assistant "GUIDE" answers) */
+.agui-card-nav { cursor: pointer; transition: border-color 0.15s, background 0.15s, transform 0.1s; }
+.agui-card-nav:hover { border-color: var(--blue-500); background: var(--bg-2); }
+.agui-card-nav:active { transform: translateY(1px); }
+.agui-card-nav:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; }
+.agui-card-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--blue-500);
+}
+
 /* ── Assistant: markdown prose rendering ────────────────────────────────── */
 .as-msg-text .as-md-h { font-weight: 650; color: var(--text-1); margin: 10px 0 4px; }
 .as-msg-text .as-md-h:first-child { margin-top: 0; }

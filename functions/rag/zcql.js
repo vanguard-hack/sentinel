@@ -32,12 +32,24 @@ for (const [uid, u] of Object.entries(MASTERS.units)) {
 // ── router ──────────────────────────────────────────────────────────────────
 const ROUTER_PROMPT =
   'You are a router for a police crime-analytics assistant. Decide how a ' +
-  'message should be answered and reply with EXACTLY one word: CHAT, ZCQL or RAG.\n\n' +
+  'message should be answered and reply with EXACTLY one word: CHAT, GUIDE, ZCQL or RAG.\n\n' +
   'Answer CHAT when the ORIGINAL message is casual conversation rather than a ' +
   'lookup: greetings, thanks, goodbyes, small talk, jokes, feelings, or ' +
   'questions about the assistant itself ("who are you", "what can you do"). ' +
   'If the message asks for ANY police data, statistic, record, law or ' +
   'procedure, it is NOT chat.\n\n' +
+  'Answer GUIDE when the message is about THIS Sentinel platform’s own ' +
+  'features, screens, tabs or analytics tools — what a module does, where to ' +
+  'find something, or how to use it. This covers the dashboard, incidents feed, ' +
+  'crime map, AI Analytics and its tabs (crime patterns, crime links / ' +
+  'co-offending network, case linkage, forecasts & risk, financial trails / ' +
+  'money-laundering typologies), case files, investigation diary, personnel ' +
+  'directory / duty roster / org chart, and access & audit. ' +
+  'Examples: "show me the financial crime network trails" → GUIDE. ' +
+  '"where do I see the co-offending network?" → GUIDE. ' +
+  '"what does AI analytics do?" → GUIDE. "how do I view forecasts?" → GUIDE. ' +
+  '"open personnel" / "take me to the crime map" → GUIDE. ' +
+  'A request for the actual FIR numbers/records is ZCQL, not GUIDE.\n\n' +
   'Answer ZCQL when the question asks about records, counts, statistics, lists, ' +
   'rankings, trends or lookups over the FIR relational database, which contains: ' +
   'FIR cases 2023-2026 (CaseMaster with station, district, category, status, crime ' +

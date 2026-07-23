@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { HBarList, Donut } from './Charts';
 import GeoHeatMap from './GeoHeatMap';
 import NetworkGraph from './NetworkGraph';
@@ -76,22 +77,40 @@ function AguiTable({ spec, pageSize = 8 }) {
 }
 
 function AguiCards({ spec }) {
+  const navigate = useNavigate();
   const items = (Array.isArray(spec.items) ? spec.items : []).filter(
     (it) => it && (it.title || it.body)
   );
   if (!items.length) return null;
+  // A card carrying an in-app route (`to`) becomes a navigation shortcut the
+  // user can click to jump straight to that module/tab.
+  const go = (to) => {
+    if (typeof to !== 'string' || !to.startsWith('/')) return;
+    navigate(to);
+  };
   return (
     <div className="agui-cards">
-      {items.map((it, i) => (
-        <div className="agui-card" key={i}>
-          <div className="agui-card-head">
-            {it.title && <span className="agui-card-title">{it.title}</span>}
-            {it.badge && <span className="agui-card-badge">{it.badge}</span>}
+      {items.map((it, i) => {
+        const nav = typeof it.to === 'string' && it.to.startsWith('/');
+        return (
+          <div
+            className={`agui-card ${nav ? 'agui-card-nav' : ''}`}
+            key={i}
+            role={nav ? 'button' : undefined}
+            tabIndex={nav ? 0 : undefined}
+            onClick={nav ? () => go(it.to) : undefined}
+            onKeyDown={nav ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(it.to); } } : undefined}
+          >
+            <div className="agui-card-head">
+              {it.title && <span className="agui-card-title">{it.title}</span>}
+              {it.badge && <span className="agui-card-badge">{it.badge}</span>}
+            </div>
+            {it.subtitle && <div className="agui-card-sub">{it.subtitle}</div>}
+            {it.body && <div className="agui-card-body">{it.body}</div>}
+            {nav && <span className="agui-card-open">Open <ArrowRight size={13} /></span>}
           </div>
-          {it.subtitle && <div className="agui-card-sub">{it.subtitle}</div>}
-          {it.body && <div className="agui-card-body">{it.body}</div>}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

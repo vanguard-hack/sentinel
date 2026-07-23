@@ -136,9 +136,47 @@ const CHAT_SYSTEM =
   'You are Sentinel Assistant, a friendly assistant inside a Karnataka police ' +
   'crime-analytics platform. The user is making casual conversation (a greeting, ' +
   'thanks, small talk, or a question about you). Reply naturally and warmly in ' +
-  '1-3 short sentences. When it fits, you may mention you can answer questions ' +
-  'about FIR data, crime statistics, law and procedure — but never push it, and ' +
-  'never invent data.';
+  '1-3 short sentences. If they ask what you can do, mention you can answer ' +
+  'questions about FIR data and crime statistics, explain law and procedure, and ' +
+  'guide them to any part of the platform — the dashboard, crime map, AI ' +
+  'Analytics (crime patterns, co-offending links, case linkage, forecasts, ' +
+  'financial-trail money-laundering analysis), case files, investigation diary, ' +
+  'personnel and access & audit. Never push it, and never invent data.';
+
+// The full feature map the assistant uses to answer "what/where/how" questions
+// about the platform itself, with the in-app route for each destination (paths
+// are relative to the /app basename — no leading "/app").
+const APP_GUIDE = `SENTINEL — feature map (module → what it does → route):
+
+Home / Dashboard [/reports]: crime overview — KPI cards, crime trend over time, case-status breakdown, crime-by-category, top districts heat map, station load, accused age profile, top crime types, socio-economic correlation, arrests & surrenders. Filter by Today/Month/Year/5Y or a custom range; export the report as PDF.
+Incidents [/incidents]: live FIR feed — recent cases with station, district, category and status.
+Crime Map [/crime-map]: interactive district-level heat map of Karnataka; drill from state to district to see where crime concentrates.
+AI Analytics [/ai-analytics]: the machine-learning workspace. Tabs:
+  • Crime Patterns [/ai-analytics?tab=patterns]: temporal profiles — incidents by hour of day, day of month, day of week; peak windows; crime-head × daypart heatmap.
+  • Crime Links [/ai-analytics?tab=links]: co-offending network — which offenders commit crimes together; connected offenders and repeat offenders. THIS is the crime/criminal network.
+  • Case Linkage [/ai-analytics?tab=linkage]: serial-offence linkage — finds cases likely committed by the same offender via modus operandi, geography and timing similarity.
+  • Forecasts & Risk [/ai-analytics?tab=forecasts]: crime-volume forecasting (pick a horizon), district risk for next month, repeat-offender risk scores, and anomaly detection.
+  • Financial Trails [/ai-analytics?tab=financial]: money-laundering / financial-crime analysis — screens transactions around economic, cyber and property offenders against AML typologies (structuring/smurfing, layering, fan-in mule hubs, fan-out dispersal, round-tripping, pass-through, high-value cash, hawala/crypto channels, shell/mule accounts). Shows a typology breakdown, a money-flow NETWORK of entities/mule/shell accounts, prioritised risk-scored alerts, and flagged transactions. THIS is the "financial crime network trails".
+Case Files [/case-files]: browse and query the raw FIR data store with column filters and CSV export.
+Investigation Diary [/investigation-diary]: BNSS S.172 case diaries mapped to CCTNS — diary entries, S.161 statements/testimony (typed, recorded with speech-to-text, or uploaded and OCR'd), evidence, persons, a timeline, findings, an AI cited summary and PDF export.
+Assistant [/assistant]: this chat — ask about data, law, or the platform.
+Personnel Directory [/personnel]: officer directory (rank, unit, district). Sub-pages: Duty Roster [/personnel/roster] (shift schedule), Org Chart [/personnel/org-chart] (command hierarchy).
+Access & Audit [/access]: admin only — assign roles and browse/export the audit trail of who did what, where and when.
+Global search: press Ctrl/⌘-K anywhere to jump to any of the above.`;
+
+const GUIDE_SYSTEM =
+  'You are Sentinel Assistant, a guide to the Sentinel police crime-analytics ' +
+  'platform. Using ONLY the feature map below, answer the user’s question about ' +
+  'what a feature does, where to find it, or how to use it. Be concise and ' +
+  'concrete (2-5 sentences): name the exact module and tab, and say what they ' +
+  'will see there. Never invent features or data that are not in the map.\n\n' +
+  'After your prose, if one or more destinations are directly relevant, append a ' +
+  'single fenced block exactly like:\n' +
+  '```agui\n{"components":[{"type":"cards","title":"Open","items":[' +
+  '{"title":"Financial Trails","subtitle":"AI Analytics","body":"Money-laundering typologies & money-flow network","to":"/ai-analytics?tab=financial"}]}]}\n```\n' +
+  'Rules for the block: use the EXACT route strings from the map as "to"; include ' +
+  'only genuinely relevant destinations (1-4); omit the block entirely if none ' +
+  'apply. Output valid JSON, no comments.\n\n' + APP_GUIDE;
 
 const FALLBACK_SYSTEM =
   'You are Sentinel Assistant, helping Indian police analysts. The internal knowledge ' +
@@ -1572,6 +1610,22 @@ module.exports = async (req, res) => {
             answer: chat.trim(),
             components: [],
             source: 'chat',
+            sources: [],
+          });
+        }
+        // Groq unavailable mid-request — fall through to the RAG path below.
+      }
+      if (routed && /guide/i.test(routed)) {
+        const guide = await callGroq(
+          [{ role: 'system', content: GUIDE_SYSTEM }, ...history, { role: 'user', content: query }],
+          { maxTokens: 420, temperature: 0.3, timeoutMs: 12_000 }
+        );
+        if (guide && guide.trim()) {
+          const g = extractAgui(guide);
+          return json(res, 200, {
+            answer: g.text || guide.trim(),
+            components: g.components,
+            source: 'guide',
             sources: [],
           });
         }
