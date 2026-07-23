@@ -111,11 +111,6 @@ export default function Custody() {
             <Database size={14} /> {seeding ? `Persisting ${seeding.done}/${seeding.total}…` : `Persist to Data Store`}
           </button>
         )}
-        {data.persistedCount > 0 && (
-          <span className="cust-persisted" title="Records served from the Data Store">
-            <Database size={12} /> {data.persistedCount.toLocaleString()} persisted
-          </span>
-        )}
         <button className="cf-icon-btn" onClick={() => load(true)} title="Refresh"><RefreshCw size={15} /></button>
       </TopBar>
       <div className="pp-body">
