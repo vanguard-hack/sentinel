@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, RefreshCw, Landmark, ShieldAlert, Info } from 'lucide-react';
-import { fetchFinancialData, buildFinancialTrails, formatRs } from '../utils/financial';
+import { AlertTriangle, RefreshCw, Landmark } from 'lucide-react';
+import { fetchFinancialData, buildFinancialTrails, formatRs, TYPOLOGIES } from '../utils/financial';
 import NetworkGraph from './NetworkGraph';
 
 const Tier = ({ t }) => <span className={`fc-tier fc-tier-${t.toLowerCase()}`}>{t}</span>;
@@ -33,7 +33,7 @@ export default function FinancialTrails() {
   useEffect(() => { load(); }, [load]);
 
   if (loading) {
-    return <div className="cf-state"><div className="cf-spinner" /><p>Tracing financial trails…</p></div>;
+    return <div className="cf-state"><div className="cf-spinner" /><p>Tracing money trails…</p></div>;
   }
   if (error) {
     return (
@@ -44,16 +44,17 @@ export default function FinancialTrails() {
     );
   }
 
-  const { summary, persons, flagged, netSpec } = data;
+  const { summary, alerts, typologyCounts, flagged, netSpec } = data;
 
   return (
     <>
       <section className="rp-card rp-card-wide">
         <div className="rp-card-head cl-head">
           <div>
-            <h2><Landmark size={16} /> Financial trails & money-laundering signals</h2>
+            <h2><Landmark size={16} /> Financial trails &amp; money-laundering typologies</h2>
             <span className="rp-card-sub">
-              Synthetic transactions modelled around accused named in economic, cyber &amp; property FIRs — demo, decision-support only
+              Synthetic transactions modelled around accused in economic, cyber &amp; property FIRs, screened against
+              standard AML typologies — demo, analyst decision-support only
             </span>
           </div>
           <button className="cf-icon-btn" onClick={load} title="Rebuild"><RefreshCw size={15} /></button>
@@ -62,80 +63,105 @@ export default function FinancialTrails() {
           <div className="cl-kpi-row">
             <Kpi value={summary.txns.toLocaleString()} label="Transactions analysed" />
             <Kpi value={summary.flagged.toLocaleString()} label="Flagged transactions" />
-            <Kpi value={summary.persons.toLocaleString()} label="Persons of interest" />
-            <Kpi value={summary.highRisk.toLocaleString()} label="High-risk channel / cash" />
+            <Kpi value={summary.entities.toLocaleString()} label="Entities of interest" />
+            <Kpi value={summary.typologies.toLocaleString()} label="Typologies detected" />
             <Kpi value={formatRs(summary.value)} label="Flagged value" />
           </div>
         </div>
       </section>
 
+      {/* Typology breakdown */}
       <section className="rp-card rp-card-wide">
         <div className="rp-card-head">
-          <h2>Suspicious transaction network</h2>
-          <span className="rp-card-sub">Persons of interest linked to counterparties and shell / mule accounts by flagged transfers</span>
+          <h2>Laundering typologies detected</h2>
+          <span className="rp-card-sub">Entities matching each pattern — the AML red-flag catalogue behind every alert</span>
+        </div>
+        <div className="rp-card-body">
+          <div className="ft-typologies">
+            {typologyCounts.map((t) => (
+              <div key={t.key} className="ft-typo">
+                <div className="ft-typo-top">
+                  <span className="ft-typo-name">{t.label}</span>
+                  <span className="ft-typo-count">{t.count}</span>
+                </div>
+                <span className="ft-typo-desc">{t.desc}</span>
+              </div>
+            ))}
+            {!typologyCounts.length && <div className="rp-empty">No typologies triggered.</div>}
+          </div>
+        </div>
+      </section>
+
+      {/* Money-flow network */}
+      <section className="rp-card rp-card-wide">
+        <div className="rp-card-head">
+          <h2>Money-flow network</h2>
+          <span className="rp-card-sub">Entities of interest linked to counterparties, mule and shell accounts by flagged transfers</span>
         </div>
         <div className="rp-card-body">
           {netSpec.nodes.length
             ? <NetworkGraph spec={netSpec} initialZoom={0.8} />
-            : <div className="rp-empty">No suspicious transaction network detected.</div>}
+            : <div className="rp-empty">No suspicious money-flow network detected.</div>}
         </div>
       </section>
 
+      {/* Prioritised alerts — analyst decision support */}
       <section className="rp-card rp-card-wide">
         <div className="rp-card-head">
-          <h2>Persons of interest</h2>
-          <span className="rp-card-sub">Ranked by money-laundering-signal score — leads for a financial-crime investigator to verify</span>
+          <h2>Prioritised alerts</h2>
+          <span className="rp-card-sub">Entities ranked by composite laundering-risk score — each with the typologies that triggered it and a plain-language read</span>
         </div>
         <div className="rp-card-body">
           <div className="cf-scroll">
-            <table className="fc-table">
+            <table className="fc-table ft-alert-table">
               <thead>
                 <tr>
-                  <th>Person</th><th>Risk</th><th>Score</th><th>Txns</th>
-                  <th>Flagged</th><th>Flagged value</th><th>Channels</th><th>FIRs</th>
+                  <th>Entity</th><th>Risk</th><th>Score</th>
+                  <th>Typologies</th><th>Flagged value</th><th>Assessment</th><th>FIRs</th>
                 </tr>
               </thead>
               <tbody>
-                {persons.slice(0, 50).map((p) => (
-                  <tr key={p.person}>
-                    <td>{p.name} <span className="fc-pid">{p.person}</span></td>
-                    <td><Tier t={p.tier} /></td>
-                    <td>{p.score}</td>
-                    <td>{p.txns}</td>
-                    <td>{p.flagged}</td>
-                    <td>{formatRs(p.value)}</td>
-                    <td>{p.channels.join(', ')}</td>
-                    <td>{p.cases}</td>
+                {alerts.slice(0, 50).map((a) => (
+                  <tr key={a.person}>
+                    <td>{a.name} <span className="fc-pid">{a.person}</span></td>
+                    <td><Tier t={a.tier} /></td>
+                    <td>{a.score}</td>
+                    <td className="ft-flags">
+                      {a.typologies.map((k) => <span key={k} className="ft-flag">{TYPOLOGIES[k].label}</span>)}
+                    </td>
+                    <td>{formatRs(a.value)}</td>
+                    <td className="ft-narrative">{a.narrative}</td>
+                    <td className="fc-pid">{a.firs.join(', ')}</td>
                   </tr>
                 ))}
+                {!alerts.length && <tr><td colSpan={7} className="rp-empty">No entities of interest.</td></tr>}
               </tbody>
             </table>
           </div>
         </div>
       </section>
 
+      {/* Flagged transactions */}
       <section className="rp-card rp-card-wide">
         <div className="rp-card-head">
           <h2>Flagged transactions</h2>
-          <span className="rp-card-sub">Each links back to its FIR for investigation follow-up</span>
+          <span className="rp-card-sub">Individual transfers driving the alerts — each links back to its FIR for follow-up</span>
         </div>
         <div className="rp-card-body">
           <div className="cf-scroll">
             <table className="fc-table">
               <thead>
                 <tr>
-                  <th>Date</th><th>Person</th><th>Amount</th><th>Channel</th>
-                  <th>Counterparty</th><th>Why flagged</th><th>FIR</th>
+                  <th>From</th><th>To</th><th>Amount</th><th>Channel</th><th>Why flagged</th><th>FIR</th>
                 </tr>
               </thead>
               <tbody>
                 {flagged.slice(0, 80).map((t) => (
                   <tr key={t.id}>
-                    <td>{t.dateStr}</td>
-                    <td>{t.name}</td>
+                    <td>{t.fromLabel}</td>
+                    <td>{t.toLabel}</td>
                     <td>{formatRs(t.amount)}</td>
                     <td>{t.channel}</td>
-                    <td>{t.counterLabel}</td>
                     <td className="ft-flags">
                       {t.reasons.map((r) => <span key={r} className="ft-flag">{r}</span>)}
                     </td>
@@ -145,18 +171,6 @@ export default function FinancialTrails() {
               </tbody>
             </table>
           </div>
-        </div>
-      </section>
-
-      <section className="rp-card rp-card-wide">
-        <div className="rp-card-head"><h2>Method &amp; guardrails</h2></div>
-        <div className="rp-card-body">
-          <ul className="fc-notes">
-            <li><Info size={13} /> Transaction data is <strong>synthetic</strong> — the FIR schema has none; transactions are deterministically modelled around accused in economic / cyber / property cases to demonstrate the workflow.</li>
-            <li><ShieldAlert size={13} /> Decision support only — every flag is a lead for a financial-crime investigator to verify, never a conclusion.</li>
-            <li><Info size={13} /> Signals: structuring (kept below ₹50k), high-value cash, high-risk channels (hawala / crypto), rapid layering (≥4 transfers in 72h), and shell / mule accounts.</li>
-            <li><Info size={13} /> Production use requires real STR/CTR feeds (FIU-IND), bank / UPI records, and legal authorisation.</li>
-          </ul>
         </div>
       </section>
     </>

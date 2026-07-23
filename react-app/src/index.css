@@ -5318,3 +5318,25 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   white-space: nowrap;
 }
 [data-theme="dark"] .ft-flag { color: #f0b458; }
+
+/* Financial trails: typology breakdown cards + alert narrative */
+.ft-typologies {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+.ft-typo {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 12px;
+  background: var(--bg-1);
+}
+.ft-typo-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ft-typo-name { font-size: 13px; font-weight: 650; color: var(--text-0); }
+.ft-typo-count {
+  font-size: 12px; font-weight: 700; color: var(--blue-500);
+  background: var(--blue-glow); border-radius: 999px; padding: 1px 9px; flex-shrink: 0;
+}
+.ft-typo-desc { display: block; margin-top: 4px; font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
+.ft-narrative { font-size: 12px; color: var(--text-2); max-width: 300px; }
+.ft-alert-table .ft-flags { max-width: 260px; }
