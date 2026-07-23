@@ -5272,6 +5272,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   border-top: 1px solid var(--border);
 }
 .aa-cal-btn { font-variant-numeric: tabular-nums; }
+.aa-cal-icon { padding: 0; width: 34px; justify-content: center; }
 
 /* Access & Audit: single Export button + CSV/XLSX menu */
 .aa-export { position: relative; }

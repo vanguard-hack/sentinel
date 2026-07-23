@@ -29,8 +29,12 @@ function DateRangeButton({ from, to, onApply }) {
   const apply = () => { if (f) onApply(f, t || f); setOpen(false); };
   return (
     <div className="aa-daterange" ref={ref}>
-      <button type="button" className="aa-btn aa-cal-btn" onClick={() => (open ? setOpen(false) : openPop())} title="Select date range">
-        <Calendar size={15} /> {from} → {to}
+      <button
+        type="button" className="aa-btn aa-cal-btn aa-cal-icon"
+        onClick={() => (open ? setOpen(false) : openPop())}
+        title={`Date range: ${from} → ${to}`} aria-label="Select date range"
+      >
+        <Calendar size={16} />
       </button>
       {open && (
         <div className="aa-daterange-pop" role="dialog" aria-label="Select date range">
