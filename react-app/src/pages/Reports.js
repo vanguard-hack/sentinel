@@ -9,6 +9,7 @@ import { exportReportPdf } from '../utils/reportPdf';
 import DateRangeCalendar from '../components/DateRangeCalendar';
 import { BarList, HBarList, Donut, TrendArea, MultiLine, HeatGrid, Funnel, Pyramid } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
+import Sankey from '../components/Sankey';
 import GeoHeatMap from '../components/GeoHeatMap';
 import TopBar from '../components/TopBar';
 import { useAuth } from '../context/AuthContext';
@@ -440,8 +441,13 @@ export default function Reports() {
                 <BarList data={data.accusedAges} height={300} />
               </Card>
 
-              <Card id="chart-crime-types" title="Top crime types" subtitle="Cases by crime sub-head" two>
-                <HBarList data={data.bySubHead} />
+              <Card
+                id="chart-crime-types"
+                title="Crime flow — category to type to outcome"
+                subtitle="Every FIR flows from its crime category, through its type, to its case status — ribbon width is case volume, colour follows the category"
+                wide
+              >
+                <Sankey spec={data.crimeSankey} />
               </Card>
 
               <Card

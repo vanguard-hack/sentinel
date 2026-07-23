@@ -4604,6 +4604,24 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .lc-line-dashed { stroke-dasharray: 5 4; }
 .lc-dot { stroke: var(--bg-1); stroke-width: 1.3; }
 .lc-dot-forecast { fill: var(--bg-1); }
+
+/* ── Sankey (crime category → type → outcome) ── */
+.sk-wrap { width: 100%; overflow-x: auto; }
+.sk-svg { width: 100%; height: auto; display: block; min-width: 620px; }
+.sk-link { fill-opacity: 0.42; transition: fill-opacity 0.15s, opacity 0.15s; cursor: default; }
+.sk-link:hover { fill-opacity: 0.72; }
+.sk-node { stroke: var(--bg-1); stroke-width: 0.6; }
+.sk-label {
+  font-size: 12px;
+  fill: var(--text-1);
+  paint-order: stroke;
+  stroke: var(--bg-1);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.sk-label-val { fill: var(--text-4); font-size: 10.5px; font-weight: 600; }
+.sk-dim { opacity: 0.16; }
 .lc-vgrid { stroke: var(--border); stroke-dasharray: 3 5; stroke-width: 1; }
 .lc-cursor { stroke: var(--blue-500); stroke-width: 1.2; }
 .lc-ring { fill: var(--bg-1); stroke-width: 2.2; }

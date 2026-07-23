@@ -352,6 +352,86 @@ function groupCount(rows, keyFn, nameFn) {
     .sort((a, b) => b.value - a.value);
 }
 
+// Build a 3-stage crime Sankey: major head (category) → sub-head (type) →
+// case status (outcome). The long tail at each stage is clubbed into an
+// "Other" node so the diagram branches richly but stays readable. Each flow
+// carries a colour index (`ci`) = its originating category, so a whole ribbon
+// path keeps one colour from category through type to outcome.
+function buildCrimeSankey(wcases, headName, subHeadName, statusName, { maxMajors = 6, maxSubs = 12 } = {}) {
+  const SEP = '\t';
+  const OM = 'Other crimes';
+  const OS = 'Other types';
+  const shortStatus = (st) => st
+    .replace('Under Investigation', 'Under investigation')
+    .replace('Charge Sheeted', 'Charge-sheeted')
+    .replace('Pending Trial', 'Pending trial')
+    .replace('Closed - False Case', 'Closed (false)')
+    .replace('Closed - Undetected', 'Closed (undetected)');
+
+  const majorTot = new Map();
+  const subTot = new Map();
+  const triples = [];
+  for (const c of wcases) {
+    if (c.major == null || c.minor == null || c.status == null) continue;
+    const m = headName(c.major);
+    const s = subHeadName(c.minor);
+    const st = statusName(c.status);
+    if (!m || !s || !st) continue;
+    majorTot.set(m, (majorTot.get(m) || 0) + 1);
+    subTot.set(s, (subTot.get(s) || 0) + 1);
+    triples.push([m, s, shortStatus(st)]);
+  }
+  if (!triples.length) return { nodes: [], links: [] };
+
+  const byVal = (map, n) => new Set([...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map((e) => e[0]));
+  const topMajors = byVal(majorTot, maxMajors);
+  const topSubs = byVal(subTot, maxSubs);
+  const mOf = (m) => (topMajors.has(m) ? m : OM);
+  const sOf = (s) => (topSubs.has(s) ? s : OS);
+
+  // Colour index per category, by descending volume; "Other" stays neutral.
+  const rankedMajors = [...majorTot.entries()].sort((a, b) => b[1] - a[1]).map((e) => e[0]).filter((m) => topMajors.has(m));
+  const ciMap = new Map(rankedMajors.map((m, i) => [m, i]));
+  const ciOf = (m) => (ciMap.has(m) ? ciMap.get(m) : -1);
+
+  // Each sub-head belongs to one category — record it so type→outcome ribbons
+  // keep the category colour (mixed clubbed subs fall back to neutral).
+  const subCats = new Map();
+  triples.forEach(([m, s]) => {
+    const ss = sOf(s);
+    if (!subCats.has(ss)) subCats.set(ss, new Set());
+    subCats.get(ss).add(mOf(m));
+  });
+  const subCat = (s) => { const set = subCats.get(s); return set && set.size === 1 ? [...set][0] : OM; };
+
+  const l0 = new Map();
+  const l1 = new Map();
+  const mTot = new Map();
+  const sTot = new Map();
+  const stTot = new Map();
+  triples.forEach(([m, s, st]) => {
+    const mm = mOf(m);
+    const ss = sOf(s);
+    l0.set(mm + SEP + ss, (l0.get(mm + SEP + ss) || 0) + 1);
+    l1.set(ss + SEP + st, (l1.get(ss + SEP + st) || 0) + 1);
+    mTot.set(mm, (mTot.get(mm) || 0) + 1);
+    sTot.set(ss, (sTot.get(ss) || 0) + 1);
+    stTot.set(st, (stTot.get(st) || 0) + 1);
+  });
+
+  const nid = (layer, label) => `L${layer}${SEP}${label}`;
+  const nodes = [];
+  mTot.forEach((v, label) => nodes.push({ id: nid(0, label), label, layer: 0, value: v, ci: ciOf(label) }));
+  sTot.forEach((v, label) => nodes.push({ id: nid(1, label), label, layer: 1, value: v, ci: ciOf(subCat(label)) }));
+  stTot.forEach((v, label) => nodes.push({ id: nid(2, label), label, layer: 2, value: v, ci: -1 }));
+
+  const links = [];
+  l0.forEach((v, key) => { const [m, s] = key.split(SEP); links.push({ source: nid(0, m), target: nid(1, s), value: v, ci: ciOf(m) }); });
+  l1.forEach((v, key) => { const [s, st] = key.split(SEP); links.push({ source: nid(1, s), target: nid(2, st), value: v, ci: ciOf(subCat(s)) }); });
+
+  return { nodes, links };
+}
+
 function capOther(arr, limit) {
   if (!limit || arr.length <= limit) return arr;
   const head = arr.slice(0, limit);
@@ -388,6 +468,7 @@ export function computeReport(raw, masters, rangeKey, custom) {
   const byCategory = capOther(groupCount(wcases, (c) => c.major, (id) => headName(id)), 8);
   const byStatus = capOther(groupCount(wcases, (c) => c.status, (id) => statusName(id)), 5);
   const bySubHead = capOther(groupCount(wcases, (c) => c.minor, (id) => subHeadName(id)), 8);
+  const crimeSankey = buildCrimeSankey(wcases, headName, subHeadName, statusName);
   const byDistrictAll = groupCount(wcases, (c) => c.station, (uid) => districtName(unitDistrict(uid)));
   const openByStation = capOther(
     groupCount(
@@ -650,6 +731,7 @@ export function computeReport(raw, masters, rangeKey, custom) {
     byDistrict: capOther(byDistrictAll, 12),
     crimeByDistrict: byDistrictAll,
     bySubHead,
+    crimeSankey,
     openByStation,
     yearly,
     accusedAges,
