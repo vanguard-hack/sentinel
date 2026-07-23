@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { RefreshCw, AlertTriangle, Siren, ShieldAlert, Info } from 'lucide-react';
+import { RefreshCw, AlertTriangle, Siren } from 'lucide-react';
 import {
   fetchPredictData, weeklyCounts, holtForecast, districtRisk, offenderRisk, detectAnomalies,
 } from '../utils/predict';
@@ -270,15 +270,6 @@ export default function Forecasts() {
 
         <Card title="Risk-score distribution" subtitle="All repeat offenders (2+ FIRs) by score band" wide>
           <BarList data={model.scoreDist} height={320} straightLabels />
-        </Card>
-
-        <Card title="Method notes" subtitle="How to read these predictions">
-          <ul className="fc-notes">
-            <li><ShieldAlert size={13} /> Decision support only — patterns for human review, never automated targeting.</li>
-            <li><Info size={13} /> No protected attributes (religion, caste, gender) are used as model features.</li>
-            <li><Info size={13} /> Weekly aggregates: with ~2,200 FIRs, finer grains would forecast noise. Bands are honest 95% intervals.</li>
-            <li><Info size={13} /> Forecasts: Holt exponential smoothing, grid-searched. Risk tiers: level + growth percentiles. Alerts: z ≥ 2 vs trailing 12 weeks.</li>
-          </ul>
         </Card>
       </div>
     </>

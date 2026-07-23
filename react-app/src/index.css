@@ -1517,6 +1517,9 @@ a:hover { color: var(--blue-500); }
   width: 100%;
   margin: 0 auto;
 }
+/* Vertical gap between consecutive full-width cards stacked directly in a page
+   (e.g. AI Analytics tab views: the method card and the workbench card). */
+.rp-main > .rp-card + .rp-card { margin-top: 18px; }
 
 /* ── Welcome hero + time filter cluster ── */
 .rp-hero {
@@ -2573,7 +2576,7 @@ a:hover { color: var(--blue-500); }
 tr.lk-flagged td { background: rgba(42, 120, 214, 0.05); }
 tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .lk-shared { max-width: 240px; }
-.lk-shared .lk-chip { margin: 1px 3px 1px 0; }
+.lk-shared-wrap { display: flex; flex-wrap: wrap; gap: 4px; max-width: 230px; }
 .lk-confirmed {
   display: inline-flex; align-items: center; gap: 4px; margin-top: 3px;
   padding: 2px 8px; border-radius: 999px;
@@ -3446,7 +3449,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   flex-direction: column;
 }
 .topbar {
-  height: 62px;
+  height: 52px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -3506,7 +3509,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  height: 40px;
+  height: 36px;
   min-width: 250px;
   padding: 0 8px 0 14px;
   border: 1px solid var(--border-bright);
@@ -5227,6 +5230,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .inv-steps li svg { color: #d97706; flex-shrink: 0; margin-top: 1px; }
 
 /* AI summary */
+.inv-summary-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .inv-summary-card {
   margin-top: 14px;
   padding: 16px;

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Fingerprint, AlertTriangle, RefreshCw, Search, MapPin, CalendarDays,
-  ShieldCheck, SlidersHorizontal, BookOpenCheck,
+  ShieldCheck, SlidersHorizontal,
 } from 'lucide-react';
 import {
-  fetchLinkageData, validate, rankCandidates, defaultIndexCase, aucBand, WEIGHTS,
+  fetchLinkageData, validate, rankCandidates, defaultIndexCase, aucBand,
 } from '../utils/caselinkage';
 
 function Kpi({ value, label }) {
@@ -145,12 +145,6 @@ export default function CaseLinkage() {
               label="True link in top-10 candidates"
             />
           </div>
-          <p className="lk-valnote">
-            <BookOpenCheck size={13} /> Validated against ground truth: FIRs naming the same
-            offender (PersonID) are true linked pairs. AUC is the chance a random linked pair
-            outscores a random unlinked pair — 0.70–0.90 is the “moderate” band typical of the
-            published linkage studies (Swets, 1988; Bennell et&nbsp;al., 2014).
-          </p>
         </div>
       </section>
 
@@ -249,9 +243,11 @@ export default function CaseLinkage() {
                           )}
                         </td>
                         <td className="lk-shared">
-                          {r.shared.slice(0, 3).map((f) => <span key={f} className="lk-chip lk-chip-hit">{f}</span>)}
-                          {r.shared.length > 3 && <span className="lk-chip">+{r.shared.length - 3}</span>}
-                          {!r.shared.length && <span className="lk-none">none</span>}
+                          <div className="lk-shared-wrap">
+                            {r.shared.slice(0, 3).map((f) => <span key={f} className="lk-chip lk-chip-hit">{f}</span>)}
+                            {r.shared.length > 3 && <span className="lk-chip">+{r.shared.length - 3}</span>}
+                            {!r.shared.length && <span className="lk-none">none</span>}
+                          </div>
                         </td>
                         <td className="lk-num">{fmtDays(r.days)}</td>
                         <td className="lk-num">{fmtKm(r.km)}</td>
@@ -264,15 +260,6 @@ export default function CaseLinkage() {
               </div>
             </div>
           </div>
-
-          <p className="rp-footnote">
-            <Fingerprint size={13} /> Method follows the behavioural crime-linkage literature
-            (Bennell, Mugford, Ellingwood &amp; Woodhams 2014; Burrell, Costello &amp; Woodhams
-            2024): Jaccard&rsquo;s coefficient over binary MO/target/timing features (weight {WEIGHTS.behaviour}),
-            inter-crime distance ({WEIGHTS.spatial}) and temporal proximity ({WEIGHTS.temporal}).
-            Scores are investigative leads for prioritising case review — not evidence of a
-            common offender.
-          </p>
         </div>
       </section>
     </>

@@ -14,7 +14,7 @@ import {
   uploadEvidenceMedia, fetchEvidenceMediaUrl, ocrExtractText,
 } from '../utils/investigation';
 import { transcribeAudio } from '../utils/assistant';
-import { exportInvestigationDiaryPdf } from '../utils/reportPdf';
+import { exportInvestigationDiaryPdf, exportReportPdf } from '../utils/reportPdf';
 import i18n from '../i18n';
 
 const fmtDate = (ts) => (ts ? new Date(ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
@@ -861,8 +861,10 @@ function FindingsTab({ rec, onAdd, onUpdate, onDelete }) {
   );
 }
 
-function SummaryTab({ caseMasterId }) {
+function SummaryTab({ caseMasterId, crimeNo }) {
   const [state, setState] = useState({ loading: false, summary: null, citations: [], error: null });
+  const [downloading, setDownloading] = useState(false);
+  const summaryRef = useRef(null);
 
   const generate = async () => {
     setState({ loading: true, summary: null, citations: [], error: null });
@@ -874,6 +876,19 @@ function SummaryTab({ caseMasterId }) {
     }
   };
 
+  const download = async () => {
+    if (!summaryRef.current) return;
+    setDownloading(true);
+    try {
+      const stamp = new Date().toISOString().slice(0, 10);
+      await exportReportPdf(summaryRef.current, `investigation-summary-${crimeNo || caseMasterId}-${stamp}.pdf`);
+    } catch (e) {
+      setState((s) => ({ ...s, error: e.message }));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className="inv-tab">
       <IifBadge>{IIF_LABELS.summary}</IifBadge>
@@ -882,12 +897,19 @@ function SummaryTab({ caseMasterId }) {
         timeline and findings — for handover between IOs or when a case is reopened. Always advisory: verify
         every cited entry before relying on it.
       </p>
-      <button type="button" className="aa-btn primary" onClick={generate} disabled={state.loading}>
-        <Sparkles size={15} /> {state.loading ? 'Drafting…' : 'Generate summary'}
-      </button>
+      <div className="inv-summary-actions">
+        <button type="button" className="aa-btn primary" onClick={generate} disabled={state.loading}>
+          <Sparkles size={15} /> {state.loading ? 'Drafting…' : 'Generate summary'}
+        </button>
+        {state.summary && (
+          <button type="button" className="aa-btn" onClick={download} disabled={downloading}>
+            <FileDown size={14} /> {downloading ? 'Preparing…' : 'Download summary'}
+          </button>
+        )}
+      </div>
       {state.error && <div className="aa-error"><AlertTriangle size={16} /> {state.error}</div>}
       {state.summary && (
-        <div className="inv-summary-card">
+        <div className="inv-summary-card" ref={summaryRef}>
           <div className="inv-summary-flag">AI-drafted — advisory only, verify against source entries</div>
           <p>{state.summary}</p>
           {state.citations.length > 0 && (
@@ -1021,7 +1043,7 @@ export default function InvestigationCase() {
         {tab === 'persons' && <PersonsTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab === 'timeline' && <TimelineTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab === 'findings' && <FindingsTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
-        {tab === 'summary' && <SummaryTab caseMasterId={rec.caseMasterId} />}
+        {tab === 'summary' && <SummaryTab caseMasterId={rec.caseMasterId} crimeNo={rec.crimeNo} />}
       </div>
     </div>
   );
