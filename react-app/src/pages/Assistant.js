@@ -539,6 +539,7 @@ export default function Assistant() {
               </div>
             </div>
           )}
+          <div className="as-history-label">Chat History</div>
           <div className="as-session-list">
             {sessions.length === 0 && <p className="as-empty-hint">No conversations yet.</p>}
             {sessions.map((s) => (

@@ -1877,7 +1877,16 @@ a:hover { color: var(--blue-500); }
   transition: background 0.15s;
 }
 .as-new-btn:hover { background: var(--blue-600); }
-.as-session-list { flex: 1; overflow-y: auto; margin-top: 12px; display: flex; flex-direction: column; gap: 2px; }
+.as-history-label {
+  margin-top: 14px;
+  padding: 0 8px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+.as-session-list { flex: 1; overflow-y: auto; margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
 .as-empty-hint { color: var(--text-4); font-size: 12px; padding: 10px; }
 .as-session {
   display: flex;

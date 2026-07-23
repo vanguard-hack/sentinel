@@ -188,7 +188,19 @@ const FALLBACK_SYSTEM =
 // A RAG non-answer: empty, or a short "I don't know" style reply.
 const NEGATIVE_RE =
   /i'?m not sure|i don'?t (know|have)|not sure what information|no (relevant |such )?information|couldn'?t find|cannot find|unable to (find|answer)|not (available|mentioned|provided) in/i;
-const isNegative = (t) => !String(t).trim() || (String(t).length < 240 && NEGATIVE_RE.test(t));
+// A "meta" non-answer talks ABOUT the retrieved context instead of answering —
+// e.g. "the provided context does not state…". A genuine data answer never
+// refers to "the provided/given context", so these are high-precision signals
+// that retrieval missed; they route to the general-knowledge fallback at any
+// length rather than being shown as an (often unrelated) reply.
+const META_RE =
+  /(provided|given|available|retrieved) context|the context (does|doesn'?t|does not|only|contains|lacks)|(context|information|document|documents|passage|passages|knowledge base|text provided)[^.]{0,50}?(does not|doesn'?t|do not|don'?t|contain no|lack)[^.]{0,25}?(contain|include|mention|state|specify|provide|cover|discuss|have|indicate|address)|(does not|doesn'?t) (state|mention|specify|contain|include|provide|indicate) (the|any|a )?(total |exact )?(number|count|figure|information|data|details?)/i;
+const isNegative = (t) => {
+  const s = String(t).trim();
+  if (!s) return true;
+  if (META_RE.test(s)) return true;
+  return s.length < 240 && NEGATIVE_RE.test(s);
+};
 
 // Worth a second model call only when the prose plausibly contains data to
 // visualize: some length plus digits or a multi-item list.
