@@ -594,6 +594,61 @@ function packMessages(messages) {
   return msgs;
 }
 
+// ── Help Center → email the admin (with a Stratus backup copy) ──────────────
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'deepujohn.t01@gmail.com';
+
+async function handleSupport(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const fromEmail = String(body.email || '').trim().slice(0, 200);
+  const category = String(body.category || 'General').trim().slice(0, 80);
+  const message = String(body.message || '').trim().slice(0, 5000);
+  const name = String(body.name || '').trim().slice(0, 120);
+  if (!message) return json(res, 400, { error: 'Please describe the issue.' });
+
+  const app = catalystSDK.initialize(req);
+  const when = new Date().toISOString();
+  const ticket = { when, name, fromEmail, category, message };
+
+  // Keep a copy so nothing is lost even if email delivery fails.
+  try {
+    const bucket = app.stratus().bucket(CONV_BUCKET);
+    let tickets = [];
+    try {
+      tickets = JSON.parse((await streamToString(await bucket.getObject('support/tickets.json'))) || '[]');
+    } catch { tickets = []; }
+    if (!Array.isArray(tickets)) tickets = [];
+    tickets.push(ticket);
+    await bucket.putObject('support/tickets.json', Buffer.from(JSON.stringify(tickets)));
+  } catch (e) {
+    console.warn('support: store failed —', (e && e.message) || e);
+  }
+
+  // Email the admin inbox; reply-to the requester so a reply reaches them.
+  let emailed = false;
+  let emailError = null;
+  try {
+    const content =
+      'New Sentinel Help Center request\n\n' +
+      `Category: ${category}\n` +
+      `From: ${name || '—'} <${fromEmail || 'no email provided'}>\n` +
+      `Time (UTC): ${when}\n\n` +
+      `Message:\n${message}\n`;
+    await app.email().sendMail({
+      from_email: SUPPORT_EMAIL,
+      to_email: SUPPORT_EMAIL,
+      subject: `[Sentinel Help] ${category}${name ? ' — ' + name : ''}`,
+      content,
+      ...(fromEmail ? { reply_to: fromEmail } : {}),
+    });
+    emailed = true;
+  } catch (e) {
+    emailError = (e && e.message) || String(e);
+    console.warn('support: email failed —', emailError);
+  }
+
+  return json(res, 200, { ok: true, emailed, ...(emailError ? { emailError } : {}) });
+}
+
 async function handleConversations(req, res, action) {
   const body = JSON.parse((await readBody(req)) || '{}');
   const email = String(body.email || '').trim().toLowerCase();
@@ -1627,6 +1682,7 @@ module.exports = async (req, res) => {
     const path = req.url ? req.url.split('?')[0].replace(/\/+$/, '') : '';
     if (path.endsWith('/transcribe')) return await handleTranscribe(req, res);
     if (path.endsWith('/report-pdf')) return await handleReportPdf(req, res);
+    if (path.endsWith('/support')) return await handleSupport(req, res);
     if (path.endsWith('/conversations/list')) return await handleConversations(req, res, 'list');
     if (path.endsWith('/conversations/save')) return await handleConversations(req, res, 'save');
     if (path.endsWith('/conversations/delete')) return await handleConversations(req, res, 'delete');

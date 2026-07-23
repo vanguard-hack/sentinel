@@ -1,12 +1,27 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
-  ShieldCheck, RefreshCw, Download, FileSpreadsheet, FileText, AlertTriangle, Check,
+  ShieldCheck, RefreshCw, Download, FileSpreadsheet, AlertTriangle, Check,
   Calendar, ChevronDown, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import DateRangeCalendar from '../components/DateRangeCalendar';
 import { ROLE_LABELS, ASSIGNABLE_ROLES } from '../utils/access';
 import { logAudit } from '../utils/audit';
+
+// CSV file glyph — a document with a "CSV" label band, matching the familiar
+// file-type icon rather than a generic text page.
+function CsvIcon({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true">
+      <path d="M14 2.5H6.5A1.5 1.5 0 0 0 5 4v16a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 20V7.5z" />
+      <path d="M14 2.5V7.5H19" />
+      <text x="12" y="17.3" textAnchor="middle" fontSize="6.2" fontWeight="700"
+        fill="currentColor" stroke="none" fontFamily="Arial, sans-serif">CSV</text>
+    </svg>
+  );
+}
 
 // Close a popover when clicking outside its ref.
 function useClickAway(ref, onAway) {
@@ -61,7 +76,7 @@ function ExportMenu({ onCsv, onXlsx, disabled }) {
       </button>
       {open && (
         <div className="aa-export-menu">
-          <button type="button" onClick={() => { onCsv(); setOpen(false); }}><FileText size={13} /> CSV</button>
+          <button type="button" onClick={() => { onCsv(); setOpen(false); }}><CsvIcon size={14} /> CSV</button>
           <button type="button" onClick={() => { onXlsx(); setOpen(false); }}><FileSpreadsheet size={13} /> XLSX</button>
         </div>
       )}

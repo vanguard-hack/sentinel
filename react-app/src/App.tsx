@@ -17,6 +17,7 @@ import OrgChart from './pages/OrgChart';
 import AccessAudit from './pages/AccessAudit';
 import InvestigationDiary from './pages/InvestigationDiary';
 import InvestigationCase from './pages/InvestigationCase';
+import HelpCenter from './pages/HelpCenter';
 import Sidebar from './components/Sidebar';
 import LoadingScreen from './components/LoadingScreen';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -51,6 +52,7 @@ function AppRoutes() {
               <Route path="/assistant" element={guarded('assistant', <Assistant />)} />
               <Route path="/ai-analytics" element={guarded('aiAnalytics', <AIAnalytics />)} />
               <Route path="/profile" element={guarded('profile', <Profile />)} />
+              <Route path="/help" element={guarded('help', <HelpCenter />)} />
               <Route path="/incidents" element={guarded('incidents', <Incidents />)} />
               <Route path="/personnel" element={guarded('personnel', <Personnel />)} />
               <Route path="/personnel/roster" element={guarded('dutyRoster', <Roster />)} />

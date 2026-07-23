@@ -28,9 +28,9 @@ function Card({ title, subtitle, wide, children }) {
 }
 
 const DIMENSIONS = [
-  { key: 'hour', label: 'Hour of day', glyph: 'H' },
-  { key: 'dom', label: 'Day of month', glyph: 'D' },
-  { key: 'dow', label: 'Day of week', glyph: 'W' },
+  { key: 'hour', label: 'Hour of day' },
+  { key: 'dom', label: 'Day of month' },
+  { key: 'dow', label: 'Day of week' },
 ];
 
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -227,16 +227,14 @@ export default function AIAnalytics() {
             {/* Controls: dimension toggle + crime-head filter */}
             <div className="ai-controls">
               <div className="ai-seg" role="group" aria-label="Time dimension">
-                {DIMENSIONS.map(({ key, label, glyph }) => (
+                {DIMENSIONS.map(({ key, label }) => (
                   <button
                     key={key}
                     className={`ai-seg-btn ${dim === key ? 'active' : ''}`}
                     onClick={() => setDim(key)}
                     aria-pressed={dim === key}
-                    title={label}
                   >
-                    <span className="ai-seg-glyph" aria-hidden="true">{glyph}</span>
-                    <span className="ai-seg-label">{label}</span>
+                    {label}
                   </button>
                 ))}
               </div>

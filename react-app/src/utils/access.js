@@ -32,6 +32,7 @@ export const FEATURES = [
   { key: 'dutyRoster', label: 'Duty Roster', path: '/personnel/roster', roles: ['admin', 'supervisor'] },
   { key: 'orgChart', label: 'Org Chart', path: '/personnel/org-chart', roles: ['admin', 'supervisor', 'policymaker'] },
   { key: 'profile', label: 'Profile', path: '/profile', roles: ALL },
+  { key: 'help', label: 'Help Center', path: '/help', roles: ALL },
   { key: 'access', label: 'Access & Audit', path: '/access', roles: ['admin'] },
   { key: 'dashboard', label: 'Dashboard', path: '/dashboard', roles: ALL },
 ];

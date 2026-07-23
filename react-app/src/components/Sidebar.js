@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Shield, Home, AlertTriangle, Map, Brain, Database,
   MessageSquare, Users, ChevronLeft, ChevronRight, Sun, Moon, LogOut,
-  UserCircle, PanelLeftClose, ShieldCheck, NotebookPen,
+  UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, LifeBuoy,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccess } from '../context/AccessContext';
@@ -192,6 +192,9 @@ export default function Sidebar() {
               <div className="sb-menu" role="menu">
                 <button className="sb-menu-item" onClick={() => { setMenuOpen(false); navigate('/profile'); setMobileOpen(false); }}>
                   <UserCircle size={16} /> View profile
+                </button>
+                <button className="sb-menu-item" onClick={() => { setMenuOpen(false); navigate('/help'); setMobileOpen(false); }}>
+                  <LifeBuoy size={16} /> Help center
                 </button>
                 <button
                   className="sb-menu-item sb-menu-danger"
