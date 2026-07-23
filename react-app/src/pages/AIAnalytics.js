@@ -245,7 +245,12 @@ export default function AIAnalytics() {
                 {profile && profile.chart === 'area' ? (
                   <TrendArea data={profile.data} labelEvery={profile.labelEvery} height={170} />
                 ) : profile ? (
-                  <BarList data={profile.data} />
+                  <BarList
+                    data={dim === 'dow'
+                      ? profile.data.map((d) => ({ ...d, label: d.label.slice(0, 3) }))
+                      : profile.data}
+                    straightLabels
+                  />
                 ) : (
                   <div className="rp-empty">No incidents match this filter</div>
                 )}
