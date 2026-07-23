@@ -5392,6 +5392,15 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .inv-entry.drag-over { border-color: var(--blue-500); box-shadow: 0 -2px 0 0 var(--blue-500) inset; }
 
 /* Investigation pagination */
+/* Forecast pair fills the whole row (no empty third column). */
+.fc-duo {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 720px) { .fc-duo { grid-template-columns: 1fr; } }
+
 .inv-pagination {
   display: flex;
   align-items: center;

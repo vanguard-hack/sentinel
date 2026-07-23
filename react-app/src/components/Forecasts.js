@@ -159,19 +159,21 @@ export default function Forecasts() {
           <ForecastChart history={model.overall.history} forecast={model.overall.fc} labelEvery={labelEvery(model.overall)} />
         </Card>
 
-        <Card title="Forecast by crime head" subtitle="Weekly registrations for one crime group">
-          <select className="cf-select fc-select" value={head} onChange={(e) => setHead(e.target.value)}>
-            {heads.map((h) => <option key={h} value={h}>{h}</option>)}
-          </select>
-          <ForecastChart history={model.byHead.history} forecast={model.byHead.fc} labelEvery={labelEvery(model.byHead)} />
-        </Card>
+        <div className="fc-duo">
+          <Card title="Forecast by crime head" subtitle="Weekly registrations for one crime group">
+            <select className="cf-select fc-select" value={head} onChange={(e) => setHead(e.target.value)}>
+              {heads.map((h) => <option key={h} value={h}>{h}</option>)}
+            </select>
+            <ForecastChart history={model.byHead.history} forecast={model.byHead.fc} labelEvery={labelEvery(model.byHead)} height={300} />
+          </Card>
 
-        <Card title="Forecast by district" subtitle="Weekly registrations for one district">
-          <select className="cf-select fc-select" value={district} onChange={(e) => setDistrict(e.target.value)}>
-            {districts.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
-          <ForecastChart history={model.byDistrict.history} forecast={model.byDistrict.fc} labelEvery={labelEvery(model.byDistrict)} />
-        </Card>
+          <Card title="Forecast by district" subtitle="Weekly registrations for one district">
+            <select className="cf-select fc-select" value={district} onChange={(e) => setDistrict(e.target.value)}>
+              {districts.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <ForecastChart history={model.byDistrict.history} forecast={model.byDistrict.fc} labelEvery={labelEvery(model.byDistrict)} height={300} />
+          </Card>
+        </div>
 
         {/* District risk board */}
         <Card
