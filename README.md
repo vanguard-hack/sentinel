@@ -12,22 +12,40 @@ running end-to-end on **Zoho Catalyst**.
 
 ---
 
+## Live Demo & Judge Login
+
+**Live app:** <https://sentinel-60073599957.development.catalystserverless.in/app/index.html>
+
+Sign in with the shared evaluation account below. It has full **Admin** access, so every
+feature — including the **Access & Audit** console and role management — is visible:
+
+| Field | Value |
+| --- | --- |
+| **Email** | `deepujohn.t01@gmail.com` |
+| **Password** | `Zohohack2026!` |
+
+> Demo credentials for evaluation on synthetic data only. On first sign-in, allow a moment for
+> the dashboards to load; use the sidebar to explore each module.
+
+---
+
 ## Table of Contents
 
-1. [Overview](#overview)
-2. [Key Features](#key-features)
-3. [Architecture](#architecture)
-4. [Tech Stack](#tech-stack)
-5. [Repository Structure](#repository-structure)
-6. [Prerequisites](#prerequisites)
-7. [Setup & Installation](#setup--installation)
-8. [Running Locally](#running-locally)
-9. [Build & Deploy](#build--deploy)
-10. [Roles & Access](#roles--access)
-11. [Security & Compliance](#security--compliance)
-12. [Project Scripts](#project-scripts)
-13. [Troubleshooting](#troubleshooting)
-14. [Disclaimer](#disclaimer)
+1. [Live Demo & Judge Login](#live-demo--judge-login)
+2. [Overview](#overview)
+3. [Key Features](#key-features)
+4. [Architecture](#architecture)
+5. [Tech Stack](#tech-stack)
+6. [Repository Structure](#repository-structure)
+7. [Prerequisites](#prerequisites)
+8. [Setup & Installation](#setup--installation)
+9. [Running Locally](#running-locally)
+10. [Build & Deploy](#build--deploy)
+11. [Roles & Access](#roles--access)
+12. [Security & Compliance](#security--compliance)
+13. [Project Scripts](#project-scripts)
+14. [Troubleshooting](#troubleshooting)
+15. [Disclaimer](#disclaimer)
 
 ---
 
