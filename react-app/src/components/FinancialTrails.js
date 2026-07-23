@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { AlertTriangle, RefreshCw, Landmark } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Landmark, ChevronLeft, ChevronRight } from 'lucide-react';
 import { fetchFinancialData, buildFinancialTrails, formatRs, TYPOLOGIES } from '../utils/financial';
 import NetworkGraph from './NetworkGraph';
 
@@ -20,9 +20,13 @@ function Pagination({ page, pages, setPage }) {
   if (pages <= 1) return null;
   return (
     <div className="inv-pagination">
-      <button className="inv-page-btn" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Prev</button>
+      <button className="inv-page-btn ft-arrow-btn" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} aria-label="Previous page">
+        <ChevronLeft size={16} />
+      </button>
       <span className="inv-page-info">Page {page} of {pages}</span>
-      <button className="inv-page-btn" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Next</button>
+      <button className="inv-page-btn ft-arrow-btn" disabled={page >= pages} onClick={() => setPage((p) => p + 1)} aria-label="Next page">
+        <ChevronRight size={16} />
+      </button>
     </div>
   );
 }

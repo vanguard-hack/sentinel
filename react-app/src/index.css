@@ -5338,27 +5338,27 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   background: var(--blue-glow); border-radius: 999px; padding: 1px 9px; flex-shrink: 0;
 }
 .ft-typo-desc { display: block; margin-top: 4px; font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
-.ft-narrative {
+.fc-table td.ft-narrative {
   font-size: 12px;
   color: var(--text-2);
   white-space: normal;
   word-break: break-word;
-  min-width: 220px;
-  max-width: 320px;
+  min-width: 240px;
+  max-width: 300px;
   line-height: 1.45;
   vertical-align: top;
 }
 .ft-alert-table .ft-flags { max-width: 240px; }
 .ft-alert-table td { vertical-align: top; }
-.ft-entity-cell { white-space: normal; min-width: 150px; vertical-align: top; }
-.ft-firs {
+.fc-table td.ft-entity-cell { white-space: normal; min-width: 140px; max-width: 180px; vertical-align: top; }
+.fc-table td.ft-firs {
   white-space: normal;
   word-break: break-word;
   min-width: 120px;
-  max-width: 180px;
+  max-width: 160px;
   vertical-align: top;
 }
-.ft-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fc-table td.ft-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* Financial trails: extra breathing room above/below the tabular sections */
 .ft-section { margin-top: 22px; margin-bottom: 22px; }
@@ -5381,3 +5381,4 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   background: var(--bg-1);
 }
 .ft-count { margin-left: auto; font-size: 12px; color: var(--text-4); }
+.ft-arrow-btn { padding: 0 8px; }
