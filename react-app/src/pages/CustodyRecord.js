@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, MapPin, CalendarClock, Gavel, Scale,
-  Clock, ShieldAlert, RotateCcw, FileText, Landmark,
+  Clock, ShieldAlert, RotateCcw, FileText, Landmark, Pencil, Check, X,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
-import { getRegistry, STATUS, fmtDate } from '../utils/custody';
+import { useAccess } from '../context/AccessContext';
+import { getRegistry, saveCustodyRecord, STATUS_ORDER, STATUS, fmtDate } from '../utils/custody';
 
 const Chip = ({ status }) => <span className={`cust-chip ${STATUS[status]?.cls || ''}`}>{status}</span>;
 
@@ -23,14 +24,32 @@ const Field = ({ k, v }) => (<div className="cust-field"><span>{k}</span><b>{v |
 export default function CustodyRecord() {
   const { personId } = useParams();
   const navigate = useNavigate();
+  const { isAdmin, role } = useAccess();
+  const canEdit = isAdmin || role === 'supervisor' || role === 'investigator';
   const [p, setP] = useState(undefined); // undefined = loading, null = not found
   const [error, setError] = useState(null);
+  const [edit, setEdit] = useState(null); // { status, facility } | null
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     getRegistry()
       .then((reg) => setP(reg.byId.get(personId) || null))
       .catch((e) => setError(e.message || String(e)));
   }, [personId]);
+
+  const saveEdit = async () => {
+    setSaving(true);
+    const updated = { ...p, status: edit.status, facility: edit.facility || null };
+    try {
+      await saveCustodyRecord(updated);
+      setP(updated);
+      setEdit(null);
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (error) return (<div className="cf-page"><TopBar title="Custodial record" parent="Custody & Corrections" /><div className="cf-state cf-error"><AlertTriangle size={22} /><p>{error}</p></div></div>);
   if (p === undefined) return (<div className="cf-page"><TopBar title="Custodial record" parent="Custody & Corrections" /><div className="cf-state"><div className="cf-spinner" /><p>Loading record…</p></div></div>);
@@ -48,15 +67,33 @@ export default function CustodyRecord() {
           <div className="cust-id-main">
             <div className="cust-id-top">
               <h1>{p.name}</h1>
-              <Chip status={p.status} />
+              {edit ? (
+                <select className="cf-select cust-edit-sel" value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value })}>
+                  {STATUS_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              ) : <Chip status={p.status} />}
               {p.recidivism.repeatOffender && <span className="cust-flag"><RotateCcw size={12} /> Repeat offender</span>}
+              <div className="cust-id-actions">
+                {edit ? (
+                  <>
+                    <button className="aa-btn primary" onClick={saveEdit} disabled={saving}><Check size={14} /> {saving ? 'Saving…' : 'Save'}</button>
+                    <button className="aa-btn" onClick={() => setEdit(null)} disabled={saving}><X size={14} /> Cancel</button>
+                  </>
+                ) : canEdit && (
+                  <button className="aa-btn" onClick={() => setEdit({ status: p.status, facility: p.facility || '' })}><Pencil size={13} /> Edit</button>
+                )}
+              </div>
             </div>
             {p.aliases.length > 0 && <div className="cust-id-alias">alias: {p.aliases.join(', ')}</div>}
             <div className="cust-id-grid">
               <Field k="Biometric ID" v={p.biometricId} />
               <Field k="Date of birth" v={`${fmtDate(p.dob)} (${p.age} yrs)`} />
               <Field k="Gender" v={p.gender} />
-              <Field k="Facility" v={p.facility} />
+              {edit ? (
+                <div className="cust-field"><span>Facility</span>
+                  <input className="cf-search-input cust-edit-inp" value={edit.facility} placeholder="Facility (blank if not in custody)" onChange={(e) => setEdit({ ...edit, facility: e.target.value })} />
+                </div>
+              ) : <Field k="Facility" v={p.facility} />}
               <Field k="Address" v={p.address} />
               <Field k="Custody duration" v={p.custodyDays != null ? `${p.custodyDays} days` : '—'} />
             </div>

@@ -121,7 +121,9 @@ export async function fetchCustodyData() {
   return { caseRows, accusedRows, arrestRows, unitRows, districtRows, courtRows, headRows, subRows, statusRows };
 }
 
-export function buildRegistry(raw) {
+// Compute the person records from FIR data + deterministic synthesis. This is
+// the seed source and the fallback when nothing is persisted yet.
+export function buildPeople(raw) {
   const unit = new Map(raw.unitRows.map((u) => [String(u.UnitID), u]));
   const district = new Map(raw.districtRows.map((d) => [String(d.DistrictID), d.DistrictName]));
   const court = new Map(raw.courtRows.map((c) => [String(c.CourtID), c.CourtName]));
@@ -302,6 +304,17 @@ export function buildRegistry(raw) {
     });
   });
 
+  return people;
+}
+
+// Turn a people[] list (synthesised and/or persisted) into the full registry —
+// recomputing custody duration, facilities, analytics and alerts so persisted
+// records stay fresh as time passes.
+export function finalize(people) {
+  people.forEach((p) => {
+    const inCustody = p.status === 'Undertrial' || p.status === 'Convicted';
+    p.custodyDays = inCustody && Number.isFinite(p.custodyStart) ? daysBetween(p.custodyStart, NOW) : null;
+  });
   people.sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || (b.custodyDays || 0) - (a.custodyDays || 0));
 
   // ── facilities (overcrowding) ──────────────────────────────────────────
@@ -349,12 +362,71 @@ export function buildRegistry(raw) {
   return { people, byId, facilities, analytics, alerts, now: NOW };
 }
 
+// Back-compat: build the whole registry from FIR data alone (no persistence).
+export function buildRegistry(raw) {
+  return finalize(buildPeople(raw));
+}
+
+async function post(url, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  return res.json().catch(() => ({}));
+}
+
+// ── persistence: read persisted records, merge over the computed registry ───
 // Module-level cache so the registry and a record detail share one fetch.
 let _cache = null;
 export async function getRegistry(force = false) {
   if (_cache && !force) return _cache;
-  _cache = buildRegistry(await fetchCustodyData());
+  const synth = buildPeople(await fetchCustodyData());
+  let overlays = [];
+  let tableReady = false;
+  try {
+    const r = await post('/server/rag/custody/list', {});
+    tableReady = r.persisted !== false;
+    if (Array.isArray(r.records)) overlays = r.records;
+  } catch { /* fall back to synthesis */ }
+
+  // Persisted record (authoritative) overrides the synthesised one per person;
+  // persons not yet persisted keep their synthesised record.
+  const byId = new Map(synth.map((p) => [p.personId, p]));
+  overlays.forEach((o) => { if (o && o.personId) byId.set(o.personId, o); });
+
+  _cache = finalize([...byId.values()]);
+  _cache.tableReady = tableReady;
+  _cache.persistedCount = overlays.length;
   return _cache;
+}
+
+// Seed the Data Store from the computed registry (admin action). Sends batches;
+// the backend inserts only persons not already present. Returns total seeded.
+export async function seedCustody(onProgress) {
+  const reg = await getRegistry();
+  const people = reg.people;
+  const B = 120;
+  let seeded = 0;
+  for (let i = 0; i < people.length; i += B) {
+    const batch = people.slice(i, i + B);
+    const r = await post('/server/rag/custody/seed', { records: batch });
+    seeded += r.seeded || 0;
+    if (onProgress) onProgress(Math.min(i + B, people.length), people.length, seeded);
+  }
+  _cache = null; // force a reload from the Data Store next time
+  return seeded;
+}
+
+// Persist an edited record; updates the in-memory cache on success.
+export async function saveCustodyRecord(person) {
+  const r = await post('/server/rag/custody/save', { record: person });
+  if (r && r.ok && _cache) {
+    _cache.byId.set(person.personId, person);
+    const i = _cache.people.findIndex((p) => p.personId === person.personId);
+    if (i >= 0) _cache.people[i] = person;
+  }
+  return r && r.ok;
 }
 
 // Sections list joined for search/filter.

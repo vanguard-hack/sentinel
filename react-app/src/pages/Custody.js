@@ -6,10 +6,12 @@ import {
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { Donut, HBarList } from '../components/Charts';
+import { useAccess } from '../context/AccessContext';
 import {
-  getRegistry, STATUS, STATUS_ORDER, fmtDate,
+  getRegistry, seedCustody, STATUS, STATUS_ORDER, fmtDate,
   allSections, allFacilities,
 } from '../utils/custody';
+import { Database } from 'lucide-react';
 
 const PER_PAGE = 12;
 const RELEASE_WINDOWS = [
@@ -35,10 +37,12 @@ function Kpi({ value, label, tone }) {
 
 export default function Custody() {
   const navigate = useNavigate();
+  const { isAdmin } = useAccess();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tab, setTab] = useState('registry');
+  const [seeding, setSeeding] = useState(null); // { done, total } | null
 
   const [q, setQ] = useState('');
   const [fStatus, setFStatus] = useState('All');
@@ -54,6 +58,18 @@ export default function Custody() {
     finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  const runSeed = useCallback(async () => {
+    setSeeding({ done: 0, total: data?.analytics.total || 0 });
+    try {
+      await seedCustody((done, total) => setSeeding({ done, total }));
+      await load(true);
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setSeeding(null);
+    }
+  }, [data, load]);
 
   const people = useMemo(() => data?.people || [], [data]);
   const sections = useMemo(() => allSections(people), [people]);
@@ -90,6 +106,16 @@ export default function Custody() {
   return (
     <div className="cf-page">
       <TopBar title="Custody & Corrections">
+        {isAdmin && data.tableReady && data.persistedCount < a.total && (
+          <button className="aa-btn" onClick={runSeed} disabled={!!seeding} title="Write the registry to the Data Store">
+            <Database size={14} /> {seeding ? `Persisting ${seeding.done}/${seeding.total}…` : `Persist to Data Store`}
+          </button>
+        )}
+        {data.persistedCount > 0 && (
+          <span className="cust-persisted" title="Records served from the Data Store">
+            <Database size={12} /> {data.persistedCount.toLocaleString()} persisted
+          </span>
+        )}
         <button className="cf-icon-btn" onClick={() => load(true)} title="Refresh"><RefreshCw size={15} /></button>
       </TopBar>
       <div className="pp-body">

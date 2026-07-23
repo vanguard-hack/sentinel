@@ -606,6 +606,98 @@ function packMessages(messages) {
   return msgs;
 }
 
+// ── Custody & Corrections registry (Catalyst Data Store) ────────────────────
+// One row per person keyed by PersonId; the full custodial record is stored as
+// a JSON `Details` blob (Name/Status/Facility denormalised for querying). The
+// client seeds the table from its computed registry, then reads/edits this as
+// the authoritative source. Falls back gracefully (persisted:false) if the
+// table isn't created yet, so the feature keeps working on synthesis alone.
+//
+// Table `CustodyRecords`: PersonId Varchar · Name Varchar · Status Varchar ·
+// Facility Varchar · Details Text · UpdatedAt BigInt · UpdatedBy Varchar
+const CUSTODY_TABLE = process.env.CUSTODY_TABLE || 'CustodyRecords';
+const czq = (s) => String(s).replace(/'/g, "''");
+const cUnwrap = (r) => (r && r[CUSTODY_TABLE] ? r[CUSTODY_TABLE] : r || {});
+
+async function custodyExistingIds(app) {
+  const ids = new Set();
+  for (let off = 0; off < 40000; off += 300) {
+    const rows = await app.zcql().executeZCQLQuery(`SELECT PersonId FROM ${CUSTODY_TABLE} LIMIT ${off},300`);
+    if (!rows || !rows.length) break;
+    rows.forEach((r) => ids.add(String(cUnwrap(r).PersonId)));
+    if (rows.length < 300) break;
+  }
+  return ids;
+}
+
+async function handleCustody(req, res, action) {
+  const app = catalystSDK.initialize(req);
+  try {
+    if (action === 'list') {
+      const out = [];
+      for (let off = 0; off < 40000; off += 300) {
+        const rows = await app.zcql().executeZCQLQuery(`SELECT ROWID, PersonId, Details FROM ${CUSTODY_TABLE} LIMIT ${off},300`);
+        if (!rows || !rows.length) break;
+        rows.forEach((r) => { try { const p = JSON.parse(cUnwrap(r).Details || 'null'); if (p) out.push(p); } catch { /* skip */ } });
+        if (rows.length < 300) break;
+      }
+      return json(res, 200, { records: out, persisted: true });
+    }
+
+    const body = JSON.parse((await readBody(req)) || '{}');
+
+    if (action === 'save') {
+      const rec = body.record;
+      if (!rec || !rec.personId) return json(res, 400, { error: 'record.personId required' });
+      const caller = await requestUser(app);
+      const table = app.datastore().table(CUSTODY_TABLE);
+      const base = {
+        Name: String(rec.name || '').slice(0, 200),
+        Status: String(rec.status || '').slice(0, 40),
+        Facility: String(rec.facility || '').slice(0, 200),
+        Details: JSON.stringify(rec).slice(0, 200000),
+        UpdatedAt: Date.now(),
+        UpdatedBy: String(caller?.email_id || '').slice(0, 200),
+      };
+      const found = await app.zcql().executeZCQLQuery(`SELECT ROWID FROM ${CUSTODY_TABLE} WHERE PersonId = '${czq(rec.personId)}' LIMIT 1`);
+      if (found && found.length) {
+        await table.updateRow({ ROWID: cUnwrap(found[0]).ROWID, ...base });
+      } else {
+        await table.insertRow({ PersonId: String(rec.personId).slice(0, 64), ...base });
+      }
+      return json(res, 200, { ok: true });
+    }
+
+    if (action === 'seed') {
+      const records = Array.isArray(body.records) ? body.records : [];
+      if (!records.length) return json(res, 200, { seeded: 0 });
+      const existing = await custodyExistingIds(app);
+      const now = Date.now();
+      const rows = records
+        .filter((r) => r && r.personId && !existing.has(String(r.personId)))
+        .slice(0, 200)
+        .map((r) => ({
+          PersonId: String(r.personId).slice(0, 64),
+          Name: String(r.name || '').slice(0, 200),
+          Status: String(r.status || '').slice(0, 40),
+          Facility: String(r.facility || '').slice(0, 200),
+          Details: JSON.stringify(r).slice(0, 200000),
+          UpdatedAt: now,
+          UpdatedBy: 'seed',
+        }));
+      if (!rows.length) return json(res, 200, { seeded: 0, skipped: records.length });
+      await app.datastore().table(CUSTODY_TABLE).insertRows(rows);
+      return json(res, 200, { seeded: rows.length });
+    }
+
+    return json(res, 404, { error: 'unknown action' });
+  } catch (e) {
+    // Table not created yet (or a Data Store error) — signal not-persisted so
+    // the client keeps using its computed registry.
+    return json(res, 200, { records: [], persisted: false, error: (e && e.message) || String(e) });
+  }
+}
+
 // ── Help Center → email the admin (with a Stratus backup copy) ──────────────
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'deepujohn.t01@gmail.com';
 
@@ -1756,6 +1848,9 @@ module.exports = async (req, res) => {
     if (path.endsWith('/transcribe')) return await handleTranscribe(req, res);
     if (path.endsWith('/report-pdf')) return await handleReportPdf(req, res);
     if (path.endsWith('/support')) return await handleSupport(req, res);
+    if (path.endsWith('/custody/list')) return await handleCustody(req, res, 'list');
+    if (path.endsWith('/custody/save')) return await handleCustody(req, res, 'save');
+    if (path.endsWith('/custody/seed')) return await handleCustody(req, res, 'seed');
     if (path.endsWith('/conversations/list')) return await handleConversations(req, res, 'list');
     if (path.endsWith('/conversations/save')) return await handleConversations(req, res, 'save');
     if (path.endsWith('/conversations/delete')) return await handleConversations(req, res, 'delete');
