@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ShieldCheck, RefreshCw, Download, FileSpreadsheet, FileText, AlertTriangle, Check,
-  Calendar, ChevronDown,
+  Calendar, ChevronDown, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import DateRangeCalendar from '../components/DateRangeCalendar';
@@ -187,6 +187,8 @@ function RolesTab() {
   );
 }
 
+const AUDIT_PER_PAGE = 20;
+
 function AuditTab() {
   const [from, setFrom] = useState(daysAgo(6));
   const [to, setTo] = useState(daysAgo(0));
@@ -194,8 +196,10 @@ function AuditTab() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [fUser, setFUser] = useState('All');
+  const [fRole, setFRole] = useState('All');
   const [fFeature, setFFeature] = useState('All');
   const [fAction, setFAction] = useState('All');
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -213,19 +217,25 @@ function AuditTab() {
   useEffect(() => { load(); }, [load]);
 
   const options = useMemo(() => {
-    const uniq = (k) => ['All', ...[...new Set((events || []).map((e) => e[k]).filter(Boolean))].sort()];
-    return { users: uniq('email'), features: uniq('feature'), actions: uniq('action') };
+    const uniq = (k) => [...new Set((events || []).map((e) => e[k]).filter(Boolean))].sort();
+    return { users: uniq('email'), roles: uniq('role'), features: uniq('feature'), actions: uniq('action') };
   }, [events]);
 
   const shown = useMemo(
     () => (events || []).filter(
       (e) =>
         (fUser === 'All' || e.email === fUser) &&
+        (fRole === 'All' || e.role === fRole) &&
         (fFeature === 'All' || e.feature === fFeature) &&
         (fAction === 'All' || e.action === fAction)
     ),
-    [events, fUser, fFeature, fAction]
+    [events, fUser, fRole, fFeature, fAction]
   );
+
+  // Reset to the first page whenever the result set changes.
+  useEffect(() => { setPage(1); }, [fUser, fRole, fFeature, fAction, events]);
+  const pageCount = Math.max(1, Math.ceil(shown.length / AUDIT_PER_PAGE));
+  const pageRows = shown.slice((page - 1) * AUDIT_PER_PAGE, page * AUDIT_PER_PAGE);
 
   const roleName = (e) => ROLE_LABELS[e.role] || e.role || '';
 
@@ -266,14 +276,21 @@ function AuditTab() {
     <>
       <div className="aa-toolbar">
         <DateRangeButton from={from} to={to} onApply={(f, t) => { setFrom(f); setTo(t); }} />
-        <select className="cf-select aa-select" value={fUser} onChange={(e) => setFUser(e.target.value)}>
-          {options.users.map((o) => <option key={o}>{o}</option>)}
+        <select className="cf-select aa-select" value={fUser} onChange={(e) => setFUser(e.target.value)} title="Filter by email">
+          <option value="All">All emails</option>
+          {options.users.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
-        <select className="cf-select aa-select" value={fFeature} onChange={(e) => setFFeature(e.target.value)}>
-          {options.features.map((o) => <option key={o}>{o}</option>)}
+        <select className="cf-select aa-select" value={fRole} onChange={(e) => setFRole(e.target.value)} title="Filter by role">
+          <option value="All">All roles</option>
+          {options.roles.map((o) => <option key={o} value={o}>{o === 'admin' ? 'Admin' : ROLE_LABELS[o] || o}</option>)}
         </select>
-        <select className="cf-select aa-select" value={fAction} onChange={(e) => setFAction(e.target.value)}>
-          {options.actions.map((o) => <option key={o}>{o}</option>)}
+        <select className="cf-select aa-select" value={fFeature} onChange={(e) => setFFeature(e.target.value)} title="Filter by feature">
+          <option value="All">All features</option>
+          {options.features.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+        <select className="cf-select aa-select" value={fAction} onChange={(e) => setFAction(e.target.value)} title="Filter by action">
+          <option value="All">All actions</option>
+          {options.actions.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
         <button type="button" className="aa-btn" onClick={load} disabled={loading}>
           <RefreshCw size={14} className={loading ? 'aa-spin' : ''} /> Refresh
@@ -300,8 +317,8 @@ function AuditTab() {
                 </tr>
               </thead>
               <tbody>
-                {shown.slice(0, 500).map((e, i) => (
-                  <tr key={i} title={e.device}>
+                {pageRows.map((e, i) => (
+                  <tr key={(page - 1) * AUDIT_PER_PAGE + i} title={e.device}>
                     <td className="aa-time">{e.istTime}</td>
                     <td>
                       <div className="aa-user">
@@ -327,10 +344,31 @@ function AuditTab() {
                 ))}
               </tbody>
             </table>
-            {shown.length > 500 && (
-              <div className="aa-count">Showing the latest 500 — exports include all {shown.length}.</div>
-            )}
           </div>
+          {shown.length > 0 && (
+            <div className="aa-pagination">
+              <button
+                type="button" className="aa-page-btn"
+                disabled={page <= 1} onClick={() => setPage((p) => p - 1)}
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="aa-page-info">
+                Page {page} of {pageCount}
+                <span className="aa-page-range">
+                  · {(page - 1) * AUDIT_PER_PAGE + 1}–{Math.min(page * AUDIT_PER_PAGE, shown.length)} of {shown.length}
+                </span>
+              </span>
+              <button
+                type="button" className="aa-page-btn"
+                disabled={page >= pageCount} onClick={() => setPage((p) => p + 1)}
+                aria-label="Next page"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
         </>
       )}
     </>
