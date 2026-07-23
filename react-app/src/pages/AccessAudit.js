@@ -162,7 +162,7 @@ function RolesTab() {
       <div className="aa-table-wrap">
         <table className="aa-table">
           <thead>
-            <tr><th>User</th><th>Status</th><th>Role</th><th /></tr>
+            <tr><th>User</th><th>Status</th><th>Role</th><th>Last active (IST)</th><th /></tr>
           </thead>
           <tbody>
             {users.map((u) => {
@@ -191,6 +191,7 @@ function RolesTab() {
                       </select>
                     )}
                   </td>
+                  <td className="aa-time">{u.lastActive || <span className="aa-muted">Never</span>}</td>
                   <td className="aa-saved">{savedFlash[u.email] && <><Check size={14} /> Saved</>}</td>
                 </tr>
               );

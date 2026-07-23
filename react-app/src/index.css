@@ -4862,6 +4862,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .aa-chip.act-other { background: var(--blue-glow); color: var(--blue-500); }
 .aa-detail { font-size: 11.5px; color: var(--text-4); margin-left: 6px; }
 .aa-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.aa-muted { color: var(--text-4); }
 .aa-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
 .aa-saved { color: var(--green-600, #1a9a50); font-size: 12px; white-space: nowrap; }
 .aa-saved svg { vertical-align: -2px; }

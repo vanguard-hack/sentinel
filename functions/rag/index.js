@@ -894,6 +894,7 @@ async function handleProfile(req, res, action) {
 // contend and reads can be scoped to a date range.
 const ROLES_KEY = 'access/roles.json';
 const AUDIT_PREFIX = 'audit/logs/';
+const LAST_ACTIVE_KEY = 'access/last-active.json';
 const APP_ROLES = ['investigator', 'analyst', 'supervisor', 'policymaker', 'admin'];
 
 async function loadRolesBlob(bucket) {
@@ -902,6 +903,17 @@ async function loadRolesBlob(bucket) {
     return parsed && parsed.users && typeof parsed.users === 'object' ? parsed : { users: {} };
   } catch {
     return { users: {} };
+  }
+}
+
+// email → { ts, istTime } of the most recent activity. One small blob, updated
+// (throttled) on each audit write, read by the Access Control table.
+async function loadLastActive(bucket) {
+  try {
+    const parsed = JSON.parse((await streamToString(await bucket.getObject(LAST_ACTIVE_KEY))) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
   }
 }
 
@@ -936,19 +948,23 @@ async function handleAccess(req, res, action) {
   if (!isAdminUser(caller)) return json(res, 403, { error: 'admin only' });
 
   if (action === 'users') {
-    const [all, roles] = await Promise.all([
+    const [all, roles, lastActive] = await Promise.all([
       app.userManagement().getAllUsers(),
       loadRolesBlob(bucket),
+      loadLastActive(bucket),
     ]);
     const users = (all || []).map((u) => {
       const email = String(u.email_id || '').toLowerCase();
       const rec = roles.users[email] || {};
+      const la = lastActive[email] || {};
       return {
         email,
         name: [u.first_name, u.last_name].filter(Boolean).join(' '),
         status: u.status || '',
         catalystRole: u.role_details?.role_name || '',
         role: APP_ROLES.includes(rec.role) ? rec.role : isAdminUser(u) ? 'admin' : 'investigator',
+        lastActive: la.istTime || '',
+        lastActiveTs: la.ts || 0,
       };
     });
     return json(res, 200, { users });
@@ -1056,6 +1072,19 @@ async function writeAuditEvents(req, app, bucket, events, sessionUser) {
   const day = new Date(now).toISOString().slice(0, 10);
   const key = `${AUDIT_PREFIX}${day}/${now}-${Math.random().toString(36).slice(2, 8)}.json`;
   await bucket.putObject(key, Buffer.from(JSON.stringify({ events: enriched })));
+
+  // Refresh this user's last-active stamp (throttled to ~30s to limit writes).
+  if (email) {
+    try {
+      const la = await loadLastActive(bucket);
+      if (!la[email] || now - (la[email].ts || 0) > 30_000) {
+        la[email] = { ts: now, istTime: IST_FMT.format(new Date(now)) };
+        await bucket.putObject(LAST_ACTIVE_KEY, Buffer.from(JSON.stringify(la)));
+      }
+    } catch (e) {
+      console.error('last-active update failed (non-fatal):', e && e.message);
+    }
+  }
 }
 
 async function handleAudit(req, res, action) {
