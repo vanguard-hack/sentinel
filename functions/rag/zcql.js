@@ -142,6 +142,12 @@ const RULES = `RULES (follow ALL):
 const ZCQL_SYSTEM =
   'You convert an analyst question into a single-table ZCQL query plan for the ' +
   'Zoho Catalyst Data Store below (Karnataka Police FIR database).\n\n' +
+  "GLOSSARY: 'FIR', 'FIRs', 'firs', 'fir' mean First Information Report cases — " +
+  'rows in CaseMaster with CaseCategoryID = 1 (never trees or anything else). ' +
+  "'case', 'cases', 'crime', 'crimes' mean rows in CaseMaster (any category). " +
+  "Example: 'how many firs in 2024' = SELECT COUNT(ROWID) FROM CaseMaster WHERE " +
+  "CaseMaster.CaseCategoryID = 1 AND CaseMaster.CrimeRegisteredDate BETWEEN " +
+  "'2024-01-01' AND '2024-12-31'.\n\n" +
   SCHEMA + '\n\n' + RULES;
 
 function buildUserPrompt(question, prevQuery, prevError) {

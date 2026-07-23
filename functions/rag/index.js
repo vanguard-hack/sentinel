@@ -1936,15 +1936,19 @@ module.exports = async (req, res) => {
               [
                 {
                   role: 'system',
-                  content: isList
-                    ? 'You are Sentinel Assistant. The query returned ' +
-                      `${flat.length} records, already shown to the user as a TABLE. ` +
-                      'Write ONE short summary sentence only — a count and/or the single ' +
-                      'top item. NEVER list, enumerate, or repeat the individual records, ' +
-                      'and never output a markdown table. Invent nothing.'
-                    : 'You are Sentinel Assistant. Answer the analyst question from the ' +
-                      'query result rows (JSON) in 1-2 sentences, stating numbers plainly. ' +
-                      'If rows are empty, say no matching records were found. Invent nothing.',
+                  content:
+                    "DOMAIN: 'FIR', 'FIRs', 'firs', 'fir' ALWAYS mean First Information " +
+                    'Report — a registered police case. Never interpret them as trees, ' +
+                    "people, or anything else. 'cases' and 'crimes' also mean these records.\n" +
+                    (isList
+                      ? 'You are Sentinel Assistant. The query returned ' +
+                        `${flat.length} records, already shown to the user as a TABLE. ` +
+                        'Write ONE short summary sentence only — a count and/or the single ' +
+                        'top item. NEVER list, enumerate, or repeat the individual records, ' +
+                        'and never output a markdown table. Invent nothing.'
+                      : 'You are Sentinel Assistant. Answer the analyst question from the ' +
+                        'query result rows (JSON) in 1-2 sentences, stating numbers plainly. ' +
+                        'If rows are empty, say no matching records were found. Invent nothing.'),
                 },
                 {
                   role: 'user',
