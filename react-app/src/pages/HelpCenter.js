@@ -78,8 +78,7 @@ export default function HelpCenter() {
                 <CheckCircle2 size={40} />
                 <h2>Request sent</h2>
                 <p>
-                  Thanks — your message is on its way to the team. We’ll reach out at{' '}
-                  <strong>{email || 'your email'}</strong>. You can also contact us directly at{' '}
+                  Thanks — your message is on its way to the team. You can also contact us directly at{' '}
                   {SUPPORT_EMAIL} or {SUPPORT_PHONE}.
                 </p>
                 <button
