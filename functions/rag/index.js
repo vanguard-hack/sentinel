@@ -465,6 +465,106 @@ async function saveConvBlob(bucket, email, conversations) {
   await bucket.putObject(convKey(email), body);
 }
 
+// ── Conversation persistence (Catalyst Data Store — one row per chat) ────────
+// The legacy design kept ALL of a user's chats in one Stratus JSON blob with
+// last-write-wins; two near-simultaneous saves (a debounced save racing the
+// unload beacon, or two chats saving at once) could overwrite each other and
+// silently drop older conversations. The Data Store gives every conversation
+// its own row keyed by (UserEmail, ConvId), so saves never clobber siblings.
+//
+// Table `ChatConversations` (create once in the Catalyst console):
+//   UserEmail  Varchar   ConvId  Varchar   Title    Varchar
+//   Starred    Boolean   Transcript Text    CreatedAt BigInt  UpdatedAt BigInt
+const CONV_TABLE = process.env.CONV_TABLE || 'ChatConversations';
+
+// Escape a string for use inside a ZCQL single-quoted literal.
+const zq = (s) => String(s).replace(/'/g, "''");
+
+// ZCQL rows come back keyed by the table name; unwrap to the flat row object.
+const unwrapRow = (r) => (r && r[CONV_TABLE] ? r[CONV_TABLE] : r || {});
+
+function normalizeConvRow(o) {
+  let messages = [];
+  try { messages = JSON.parse(o.Transcript || '[]'); } catch { messages = []; }
+  return {
+    id: o.ConvId,
+    title: o.Title || 'New chat',
+    starred: o.Starred === true || o.Starred === 'true',
+    messages: Array.isArray(messages) ? messages : [],
+    createdAt: Number(o.CreatedAt) || 0,
+    updatedAt: Number(o.UpdatedAt) || 0,
+    _rowid: o.ROWID,
+  };
+}
+
+const CONV_COLS = 'ROWID, ConvId, Title, Starred, Transcript, CreatedAt, UpdatedAt';
+
+async function dsListConversations(app, email) {
+  const q = `SELECT ${CONV_COLS} FROM ${CONV_TABLE} WHERE UserEmail = '${zq(email)}'`;
+  const rows = await app.zcql().executeZCQLQuery(q);
+  return (rows || []).map((r) => normalizeConvRow(unwrapRow(r)));
+}
+
+async function dsGetConversation(app, email, convId) {
+  const q =
+    `SELECT ${CONV_COLS} FROM ${CONV_TABLE} ` +
+    `WHERE UserEmail = '${zq(email)}' AND ConvId = '${zq(convId)}' LIMIT 1`;
+  const rows = await app.zcql().executeZCQLQuery(q);
+  return rows && rows.length ? normalizeConvRow(unwrapRow(rows[0])) : null;
+}
+
+async function dsUpsertConversation(app, email, record) {
+  const table = app.datastore().table(CONV_TABLE);
+  const base = {
+    Title: record.title,
+    Starred: !!record.starred,
+    Transcript: JSON.stringify(record.messages || []),
+    UpdatedAt: record.updatedAt,
+  };
+  if (record._rowid) {
+    await table.updateRow({ ROWID: record._rowid, ...base });
+  } else {
+    await table.insertRow({ UserEmail: email, ConvId: record.id, CreatedAt: record.createdAt, ...base });
+  }
+}
+
+async function dsDeleteConversation(app, email, convId) {
+  const existing = await dsGetConversation(app, email, convId);
+  if (existing && existing._rowid) {
+    await app.datastore().table(CONV_TABLE).deleteRow(existing._rowid);
+  }
+}
+
+// One-time lift of a user's legacy Stratus blob into the Data Store, then empty
+// the blob so it never re-imports. Returns the migrated conversations (or null).
+async function migrateStratusToDS(app, email) {
+  try {
+    const bucket = app.stratus().bucket(CONV_BUCKET);
+    const convos = await loadConvBlob(bucket, email);
+    if (!convos.length) return null;
+    const rows = convos.map((c) => ({
+      UserEmail: email,
+      ConvId: c.id,
+      Title: (c.title || 'New chat').slice(0, 240),
+      Starred: !!c.starred,
+      Transcript: JSON.stringify(c.messages || []),
+      CreatedAt: c.createdAt || Date.now(),
+      UpdatedAt: c.updatedAt || Date.now(),
+    }));
+    await app.datastore().table(CONV_TABLE).insertRows(rows);
+    await saveConvBlob(bucket, email, []); // clear so we don't migrate twice
+    return convos;
+  } catch (e) {
+    console.warn('conv migration failed:', (e && e.message) || e);
+    return null;
+  }
+}
+
+// Starred first, then most-recently-updated.
+const sortConvos = (a, b) =>
+  (b.starred ? 1 : 0) - (a.starred ? 1 : 0) || (b.updatedAt || 0) - (a.updatedAt || 0);
+const stripRowid = ({ _rowid, ...c }) => c;
+
 async function generateTitle(firstUserMsg) {
   const t = await callGroq(
     [
@@ -498,16 +598,65 @@ async function handleConversations(req, res, action) {
   const body = JSON.parse((await readBody(req)) || '{}');
   const email = String(body.email || '').trim().toLowerCase();
   if (!email) return json(res, 400, { error: 'email is required' });
-
   const app = catalystSDK.initialize(req);
+
+  // Data Store is authoritative. If the table isn't set up yet (or a Data
+  // Store call fails), fall back to the legacy Stratus blob so history keeps
+  // working during migration.
+  try {
+    return await handleConversationsDS(app, res, action, body, email);
+  } catch (e) {
+    console.warn('conversations: Data Store path failed, using Stratus —', (e && e.message) || e);
+    return await handleConversationsStratus(app, res, action, body, email);
+  }
+}
+
+async function handleConversationsDS(app, res, action, body, email) {
+  if (action === 'list') {
+    let convos = await dsListConversations(app, email);
+    if (convos.length === 0) {
+      const migrated = await migrateStratusToDS(app, email);
+      if (migrated) convos = migrated;
+    }
+    return json(res, 200, { conversations: convos.sort(sortConvos).map(stripRowid) });
+  }
+
+  const id = String(body.id || '').trim();
+  if (!id) return json(res, 400, { error: 'id is required' });
+
+  if (action === 'delete') {
+    await dsDeleteConversation(app, email, id);
+    return json(res, 200, { ok: true });
+  }
+
+  // upsert (also handles rename via title, and star via starred)
+  const existing = await dsGetConversation(app, email, id);
+  const messages = packMessages(Array.isArray(body.messages) ? body.messages : []);
+  const firstUser = messages.find((m) => m && m.role === 'user');
+  let title = String(body.title || '').trim();
+  if (body.autotitle || !title || title === 'New chat') {
+    title = firstUser ? await generateTitle(firstUser.content) : title || 'New chat';
+  }
+  const record = {
+    id,
+    title: title.slice(0, 240),
+    starred: typeof body.starred === 'boolean' ? body.starred : !!(existing && existing.starred),
+    messages: messages.length ? messages : (existing ? existing.messages : []),
+    createdAt: existing ? existing.createdAt : Date.now(),
+    updatedAt: Date.now(),
+    _rowid: existing ? existing._rowid : null,
+  };
+  await dsUpsertConversation(app, email, record);
+  return json(res, 200, { id, title: record.title, starred: record.starred });
+}
+
+// Legacy fallback: all of a user's chats in one Stratus JSON blob.
+async function handleConversationsStratus(app, res, action, body, email) {
   const bucket = app.stratus().bucket(CONV_BUCKET);
   const conversations = await loadConvBlob(bucket, email);
 
   if (action === 'list') {
-    const list = [...conversations].sort(
-      (a, b) => (b.starred ? 1e15 : 0) - (a.starred ? 1e15 : 0) + (b.updatedAt || 0) - (a.updatedAt || 0)
-    );
-    return json(res, 200, { conversations: list });
+    return json(res, 200, { conversations: [...conversations].sort(sortConvos) });
   }
 
   const id = String(body.id || '').trim();
@@ -522,11 +671,9 @@ async function handleConversations(req, res, action) {
     return json(res, 200, { ok: true });
   }
 
-  // upsert (also handles rename via title, and star via starred)
   const messages = packMessages(Array.isArray(body.messages) ? body.messages : []);
   const firstUser = messages.find((m) => m && m.role === 'user');
   let title = String(body.title || '').trim();
-  // Generate an AI title when asked (autotitle) or when none was provided.
   if (body.autotitle || !title || title === 'New chat') {
     title = firstUser ? await generateTitle(firstUser.content) : title || 'New chat';
   }
