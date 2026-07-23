@@ -37,6 +37,8 @@ export default function Forecasts() {
   const [horizon, setHorizon] = useState(HORIZONS[1]);
   const [head, setHead] = useState('');
   const [district, setDistrict] = useState('');
+  const [riskPage, setRiskPage] = useState(1);
+  const RISK_PER_PAGE = 8;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -136,15 +138,13 @@ export default function Forecasts() {
       {/* Volume forecasts */}
       <div className="fc-toolbar">
         <span className="fc-toolbar-label">Forecast horizon</span>
-        {HORIZONS.map((h) => (
-          <button
-            key={h.label}
-            className={`fc-horizon ${horizon.label === h.label ? 'active' : ''}`}
-            onClick={() => setHorizon(h)}
-          >
-            {h.label}
-          </button>
-        ))}
+        <select
+          className="cf-select fc-horizon-select"
+          value={horizon.label}
+          onChange={(e) => setHorizon(HORIZONS.find((h) => h.label === e.target.value))}
+        >
+          {HORIZONS.map((h) => <option key={h.label} value={h.label}>{h.label}</option>)}
+        </select>
         <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
           <RefreshCw size={15} />
         </button>
@@ -188,21 +188,36 @@ export default function Forecasts() {
                 </tr>
               </thead>
               <tbody>
-                {model.risk.map((r) => (
-                  <tr key={r.district}>
-                    <td>{r.district}</td>
-                    <td><TierChip tier={r.tier} /></td>
-                    <td>{r.score}</td>
-                    <td>{r.recent} FIRs</td>
-                    <td className={r.growth > 0.05 ? 'fc-up' : r.growth < -0.05 ? 'fc-down' : ''}>
-                      {r.growth > 0 ? '+' : ''}{Math.round(r.growth * 100)}%
-                    </td>
-                    <td>{r.predicted != null ? `~${r.predicted} FIRs` : '—'}</td>
-                  </tr>
-                ))}
+                {model.risk
+                  .slice((riskPage - 1) * RISK_PER_PAGE, riskPage * RISK_PER_PAGE)
+                  .map((r) => (
+                    <tr key={r.district}>
+                      <td>{r.district}</td>
+                      <td><TierChip tier={r.tier} /></td>
+                      <td>{r.score}</td>
+                      <td>{r.recent} FIRs</td>
+                      <td className={r.growth > 0.05 ? 'fc-up' : r.growth < -0.05 ? 'fc-down' : ''}>
+                        {r.growth > 0 ? '+' : ''}{Math.round(r.growth * 100)}%
+                      </td>
+                      <td>{r.predicted != null ? `~${r.predicted} FIRs` : '—'}</td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
+          {model.risk.length > RISK_PER_PAGE && (
+            <div className="inv-pagination">
+              <button className="inv-page-btn" disabled={riskPage <= 1} onClick={() => setRiskPage((p) => p - 1)}>Prev</button>
+              <span className="inv-page-info">
+                Page {riskPage} of {Math.ceil(model.risk.length / RISK_PER_PAGE)}
+              </span>
+              <button
+                className="inv-page-btn"
+                disabled={riskPage >= Math.ceil(model.risk.length / RISK_PER_PAGE)}
+                onClick={() => setRiskPage((p) => p + 1)}
+              >Next</button>
+            </div>
+          )}
         </Card>
 
         {/* Repeat offender risk */}
@@ -253,8 +268,8 @@ export default function Forecasts() {
           </div>
         </Card>
 
-        <Card title="Risk-score distribution" subtitle="All repeat offenders (2+ FIRs) by score band">
-          <BarList data={model.scoreDist} />
+        <Card title="Risk-score distribution" subtitle="All repeat offenders (2+ FIRs) by score band" wide>
+          <BarList data={model.scoreDist} height={320} straightLabels />
         </Card>
 
         <Card title="Method notes" subtitle="How to read these predictions">

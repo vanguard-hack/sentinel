@@ -77,7 +77,10 @@ const weekLabel = (ts) => {
   return `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`;
 };
 
-// Gap-filled weekly counts over the data span (ending at the current week).
+// Gap-filled weekly counts over the DATA span. Ends at the last week that
+// actually had a FIR — NOT at the calendar "now" — so a static dataset that
+// stops weeks ago doesn't get padded with trailing zeros that would drag the
+// forecast to 0 and hide every anomaly.
 export function weeklyCounts(tsList) {
   if (!tsList.length) return [];
   const counts = new Map();
@@ -86,13 +89,18 @@ export function weeklyCounts(tsList) {
     counts.set(w, (counts.get(w) || 0) + 1);
   });
   const start = Math.min(...counts.keys());
-  const end = mondayTs(Date.now());
+  const end = Math.max(...counts.keys());
   const out = [];
   for (let w = start; w <= end; w += WEEK) {
     out.push({ ts: w, label: weekLabel(w), value: counts.get(w) || 0 });
   }
   return out;
 }
+
+// The latest week present in the data — used as "now" for windowed metrics so
+// they follow the dataset rather than the calendar.
+export const dataNow = (cases) =>
+  cases.length ? mondayTs(Math.max(...cases.map((c) => c.ts))) : mondayTs(Date.now());
 
 // ── Holt double exponential smoothing with CI ────────────────────────────────
 function holtFit(values, alpha, beta) {
@@ -157,7 +165,7 @@ export function districtRisk(cases) {
     byDistrict.get(c.district).push(c.ts);
   });
 
-  const now = mondayTs(Date.now());
+  const now = dataNow(cases);
   const rows = [...byDistrict.entries()].map(([district, tsList]) => {
     const recent = tsList.filter((t) => t >= now - 8 * WEEK).length;
     const prev = tsList.filter((t) => t >= now - 16 * WEEK && t < now - 8 * WEEK).length;
@@ -198,7 +206,7 @@ export function offenderRisk(cases, accused) {
     caseCrew.get(a.caseId).add(a.person);
   });
 
-  const now = Date.now();
+  const now = dataNow(cases);
   const rows = [];
   byPerson.forEach((agg, person) => {
     const ids = [...agg.cases];
@@ -236,7 +244,7 @@ export function offenderRisk(cases, accused) {
 // ── Anomaly detection ────────────────────────────────────────────────────────
 // z-score of each of the last `recentWeeks` weeks against the trailing
 // 12-week baseline, per crime head and per district.
-export function detectAnomalies(cases, { z = 2, recentWeeks = 2 } = {}) {
+export function detectAnomalies(cases, { z = 2, recentWeeks = 4 } = {}) {
   const groups = new Map();
   cases.forEach((c) => {
     [['head', c.head], ['district', c.district]].forEach(([kind, key]) => {

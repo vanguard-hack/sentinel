@@ -1,10 +1,71 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ShieldCheck, RefreshCw, Download, FileSpreadsheet, AlertTriangle, Check,
+  Calendar, ChevronDown,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { ROLE_LABELS, ASSIGNABLE_ROLES } from '../utils/access';
-import { logAudit, flushNow } from '../utils/audit';
+import { logAudit } from '../utils/audit';
+
+// Close a popover when clicking outside its ref.
+function useClickAway(ref, onAway) {
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onAway(); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [ref, onAway]);
+}
+
+// Single calendar-icon button → popover with From/To date inputs.
+function DateRangeButton({ from, to, today, onApply }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState(from);
+  const [t, setT] = useState(to);
+  const ref = useRef(null);
+  useClickAway(ref, () => setOpen(false));
+  const openPop = () => { setF(from); setT(to); setOpen(true); };
+  return (
+    <div className="aa-daterange" ref={ref}>
+      <button type="button" className="aa-btn" onClick={() => (open ? setOpen(false) : openPop())} title="Select date range">
+        <Calendar size={14} /> {from} → {to}
+      </button>
+      {open && (
+        <div className="aa-daterange-pop">
+          <label className="aa-range">From
+            <input type="date" className="cf-select aa-date" value={f} max={t} onChange={(e) => setF(e.target.value)} />
+          </label>
+          <label className="aa-range">To
+            <input type="date" className="cf-select aa-date" value={t} min={f} max={today} onChange={(e) => setT(e.target.value)} />
+          </label>
+          <div className="aa-daterange-actions">
+            <button type="button" className="aa-btn" onClick={() => setOpen(false)}>Cancel</button>
+            <button type="button" className="aa-btn primary" onClick={() => { onApply(f, t); setOpen(false); }}>Apply</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Single Export button → dropdown to pick CSV or XLSX.
+function ExportMenu({ onCsv, onXlsx, disabled }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useClickAway(ref, () => setOpen(false));
+  return (
+    <div className="aa-export" ref={ref}>
+      <button type="button" className="aa-btn primary" disabled={disabled} onClick={() => setOpen((o) => !o)}>
+        <Download size={14} /> Export <ChevronDown size={13} />
+      </button>
+      {open && (
+        <div className="aa-export-menu">
+          <button type="button" onClick={() => { onCsv(); setOpen(false); }}><Download size={13} /> Export as CSV</button>
+          <button type="button" onClick={() => { onXlsx(); setOpen(false); }}><FileSpreadsheet size={13} /> Export as XLSX</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Admin console: assign app roles to users, and browse/export the audit
 // trail (who opened what, from where, when — in IST).
@@ -133,7 +194,6 @@ function AuditTab() {
   const [fUser, setFUser] = useState('All');
   const [fFeature, setFFeature] = useState('All');
   const [fAction, setFAction] = useState('All');
-  const [health, setHealth] = useState(null); // capture self-test outcome
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -149,22 +209,6 @@ function AuditTab() {
   }, [from, to]);
 
   useEffect(() => { load(); }, [load]);
-
-  // Capture self-test: push a real event through the exact client pipeline,
-  // force the flush, surface the outcome, then re-load so it (and anything
-  // else captured this session) shows up without hunting for Refresh.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      logAudit('self-test', 'Access & Audit', 'capture health check');
-      const r = await flushNow();
-      if (cancelled) return;
-      setHealth(r);
-      if (r.ok) setTimeout(() => { if (!cancelled) load(); }, 900);
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const options = useMemo(() => {
     const uniq = (k) => ['All', ...[...new Set((events || []).map((e) => e[k]).filter(Boolean))].sort()];
@@ -219,16 +263,7 @@ function AuditTab() {
   return (
     <>
       <div className="aa-toolbar">
-        <label className="aa-range">
-          From
-          <input type="date" className="cf-select aa-date" value={from} max={to}
-            onChange={(e) => setFrom(e.target.value)} />
-        </label>
-        <label className="aa-range">
-          To
-          <input type="date" className="cf-select aa-date" value={to} min={from} max={daysAgo(0)}
-            onChange={(e) => setTo(e.target.value)} />
-        </label>
+        <DateRangeButton from={from} to={to} today={daysAgo(0)} onApply={(f, t) => { setFrom(f); setTo(t); }} />
         <select className="cf-select aa-select" value={fUser} onChange={(e) => setFUser(e.target.value)}>
           {options.users.map((o) => <option key={o}>{o}</option>)}
         </select>
@@ -242,22 +277,9 @@ function AuditTab() {
           <RefreshCw size={14} className={loading ? 'aa-spin' : ''} /> Refresh
         </button>
         <span className="aa-spacer" />
-        <button type="button" className="aa-btn" onClick={exportCsv} disabled={!shown.length}>
-          <Download size={14} /> CSV
-        </button>
-        <button type="button" className="aa-btn primary" onClick={exportXlsx} disabled={!shown.length}>
-          <FileSpreadsheet size={14} /> XLSX
-        </button>
+        <ExportMenu onCsv={exportCsv} onXlsx={exportXlsx} disabled={!shown.length} />
       </div>
 
-      {health && (
-        <div className={`aa-health ${health.ok ? 'ok' : 'bad'}`}>
-          {health.ok
-            ? 'Capture check passed — events from this browser are reaching the server.'
-            : `Capture check FAILED (${health.error}) — this browser is blocking the audit call. ` +
-              'An ad-blocker or privacy shield is the usual cause; whitelist this site and reload.'}
-        </div>
-      )}
       {error && <div className="aa-error"><AlertTriangle size={16} /> {error}</div>}
       {!events && !error && <div className="aa-loading">Loading audit trail…</div>}
 

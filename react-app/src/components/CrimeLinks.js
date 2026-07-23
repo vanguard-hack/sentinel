@@ -196,7 +196,7 @@ export default function CrimeLinks() {
       </section>
 
       {/* Key players + repeat offenders */}
-      <div className="rp-grid">
+      <div className="rp-grid cl-players">
         <section className="rp-card">
           <div className="rp-card-head"><h2>Most connected offenders</h2><span className="rp-card-sub">Highest degree centrality — likely coordinators</span></div>
           <div className="rp-card-body">
