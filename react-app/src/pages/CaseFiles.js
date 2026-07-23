@@ -51,7 +51,6 @@ export default function CaseFiles() {
   const [perPage, setPerPage] = useState(50);
   const [hasNext, setHasNext] = useState(false);
   const [total, setTotal] = useState(null);
-  const [showSystem, setShowSystem] = useState(false);
 
   const [filterColumn, setFilterColumn] = useState('ALL');
   const [filterOp, setFilterOp] = useState('contains');
@@ -187,9 +186,7 @@ export default function CaseFiles() {
     : rows[0]
     ? orderColumns(Object.keys(rows[0]))
     : [];
-  const visibleColumns = showSystem
-    ? effectiveColumns
-    : effectiveColumns.filter((c) => !SYSTEM_COLUMNS.includes(c));
+  const visibleColumns = effectiveColumns.filter((c) => !SYSTEM_COLUMNS.includes(c));
 
   const totalPages = total != null ? Math.max(1, Math.ceil(total / perPage)) : null;
   const rangeStart = rows.length ? (page - 1) * perPage + 1 : 0;
@@ -336,15 +333,6 @@ export default function CaseFiles() {
                   <option key={n} value={n}>{n} / page</option>
                 ))}
               </select>
-
-              <label className="cf-checkbox" title="Show Catalyst audit columns">
-                <input
-                  type="checkbox"
-                  checked={showSystem}
-                  onChange={(e) => setShowSystem(e.target.checked)}
-                />
-                <span>System cols</span>
-              </label>
 
               <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
                 <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
