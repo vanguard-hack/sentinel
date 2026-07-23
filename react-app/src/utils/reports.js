@@ -46,8 +46,8 @@ const AGE_BUCKETS = [
 // Time-range filter options for the Home dashboard. `windowDays` is the span of
 // data each range covers; `bucket` is the trend-chart granularity.
 export const TREND_RANGES = [
-  { key: 'day', label: 'Today', bucket: 'day', days: 30, windowDays: 30 },
-  { key: 'month', label: 'Month', bucket: 'month', months: 12, windowDays: 365 },
+  { key: 'day', label: 'Today', bucket: 'day', days: 30, windowDays: 1 },
+  { key: 'month', label: 'Month', bucket: 'day', months: 1, windowDays: 30 },
   { key: 'year', label: 'Year', bucket: 'week', months: 12, windowDays: 365 },
   { key: '5y', label: '5 Years', bucket: 'year', years: 5, windowDays: 365 * 5 },
 ];
@@ -224,7 +224,7 @@ export const earliestTs = (dates) => {
 
 // The [from, to] window (ms) a range covers — the custom range verbatim
 // (inclusive of the whole `to` day), or the preset's span ending now.
-export function windowFor(rangeKey, custom) {
+export function windowFor(rangeKey, custom, anchorTo) {
   if (custom) {
     return {
       from: Date.parse(custom.from + 'T00:00:00Z'),
@@ -232,7 +232,9 @@ export function windowFor(rangeKey, custom) {
     };
   }
   const range = TREND_RANGES.find((r) => r.key === rangeKey) || TREND_RANGES[1];
-  const to = Date.now();
+  // Anchor to the data's latest date (not the calendar "now") — the dataset
+  // ends weeks ago, so a "now"-anchored short window would be empty.
+  const to = Number.isFinite(anchorTo) ? anchorTo : Date.now();
   return { from: to - range.windowDays * 86400000, to };
 }
 
@@ -365,7 +367,8 @@ export function computeReport(raw, masters, rangeKey, custom) {
     headName, statusName, unitName, unitDistrict, districtName, subHeadName,
     categoryName, courtName, occupationName, sectionName, actName, rankName,
   } = masters;
-  const { from, to } = windowFor(rangeKey, custom);
+  const dataMax = raw.cases.reduce((m, c) => (Number.isFinite(c.ts) && c.ts > m ? c.ts : m), 0);
+  const { from, to } = windowFor(rangeKey, custom, dataMax || undefined);
   const span = to - from;
 
   const wcases = raw.cases.filter((c) => Number.isFinite(c.ts) && c.ts >= from && c.ts <= to);

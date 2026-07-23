@@ -5301,3 +5301,17 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   text-align: left;
 }
 .aa-export-menu button:hover { background: var(--bg-3); }
+
+/* Financial trails: flag chips on transactions */
+.ft-flags { display: flex; flex-wrap: wrap; gap: 4px; }
+.ft-flag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: color-mix(in srgb, #d97706 15%, transparent);
+  color: #b4610a;
+  white-space: nowrap;
+}
+[data-theme="dark"] .ft-flag { color: #f0b458; }

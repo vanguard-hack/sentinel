@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   RefreshCw, AlertTriangle,
-  Brain, TrendingUp, TrendingDown, Lightbulb, Activity, Share2, LineChart, Fingerprint,
+  Brain, TrendingUp, TrendingDown, Lightbulb, Activity, Share2, LineChart, Fingerprint, Landmark,
 } from 'lucide-react';
 import {
   fetchIncidents, hourlyProfile, dayOfMonthProfile, weekdayProfile,
@@ -11,6 +11,7 @@ import { TrendArea, BarList } from '../components/Charts';
 import CrimeLinks from '../components/CrimeLinks';
 import CaseLinkage from '../components/CaseLinkage';
 import Forecasts from '../components/Forecasts';
+import FinancialTrails from '../components/FinancialTrails';
 import TopBar from '../components/TopBar';
 
 function Card({ title, subtitle, wide, children }) {
@@ -183,9 +184,18 @@ export default function AIAnalytics() {
           >
             <LineChart size={15} /> Forecasts
           </button>
+          <button
+            className={`ai-viewtab ${view === 'financial' ? 'active' : ''}`}
+            onClick={() => setView('financial')}
+            role="tab" aria-selected={view === 'financial'}
+          >
+            <Landmark size={15} /> Financial trails
+          </button>
         </div>
 
-        {view === 'forecasts' ? (
+        {view === 'financial' ? (
+          <FinancialTrails />
+        ) : view === 'forecasts' ? (
           <Forecasts />
         ) : view === 'links' ? (
           <CrimeLinks />
