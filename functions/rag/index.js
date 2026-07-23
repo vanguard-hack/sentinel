@@ -624,26 +624,58 @@ async function handleSupport(req, res) {
   }
 
   // Email the admin inbox; reply-to the requester so a reply reaches them.
+  const subject = `[Sentinel Help] ${category}${name ? ' — ' + name : ''}`;
+  const content =
+    'New Sentinel Help Center request\n\n' +
+    `Category: ${category}\n` +
+    `From: ${name || '—'} <${fromEmail || 'no email provided'}>\n` +
+    `Time (UTC): ${when}\n\n` +
+    `Message:\n${message}\n`;
+
   let emailed = false;
   let emailError = null;
-  try {
-    const content =
-      'New Sentinel Help Center request\n\n' +
-      `Category: ${category}\n` +
-      `From: ${name || '—'} <${fromEmail || 'no email provided'}>\n` +
-      `Time (UTC): ${when}\n\n` +
-      `Message:\n${message}\n`;
-    await app.email().sendMail({
-      from_email: SUPPORT_EMAIL,
-      to_email: SUPPORT_EMAIL,
-      subject: `[Sentinel Help] ${category}${name ? ' — ' + name : ''}`,
-      content,
-      ...(fromEmail ? { reply_to: fromEmail } : {}),
-    });
-    emailed = true;
-  } catch (e) {
-    emailError = (e && e.message) || String(e);
-    console.warn('support: email failed —', emailError);
+
+  // Primary: Gmail SMTP (works from a Gmail address without owning a domain,
+  // unlike Catalyst's Email API which requires a DKIM/SPF-verified domain).
+  // Needs SMTP_USER + SMTP_PASS (a Google App Password) in the function env.
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = (process.env.SMTP_PASS || '').replace(/\s+/g, '');
+  if (smtpUser && smtpPass) {
+    try {
+      const nodemailer = require('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com', port: 465, secure: true,
+        auth: { user: smtpUser, pass: smtpPass },
+      });
+      await transporter.sendMail({
+        from: `Sentinel Help Center <${smtpUser}>`,
+        to: SUPPORT_EMAIL,
+        ...(fromEmail ? { replyTo: fromEmail } : {}),
+        subject,
+        text: content,
+      });
+      emailed = true;
+    } catch (e) {
+      emailError = 'smtp: ' + ((e && e.message) || String(e));
+      console.warn('support:', emailError);
+    }
+  }
+
+  // Fallback: Catalyst Email API (only sends from a verified domain).
+  if (!emailed) {
+    try {
+      await app.email().sendMail({
+        from_email: SUPPORT_EMAIL,
+        to_email: SUPPORT_EMAIL,
+        subject,
+        content,
+        ...(fromEmail ? { reply_to: fromEmail } : {}),
+      });
+      emailed = true;
+    } catch (e) {
+      emailError = emailError || ((e && e.message) || String(e));
+      console.warn('support: catalyst email failed —', (e && e.message) || e);
+    }
   }
 
   return json(res, 200, { ok: true, emailed, ...(emailError ? { emailError } : {}) });

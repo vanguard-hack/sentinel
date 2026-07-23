@@ -8,7 +8,10 @@
 			"RAG_CLIENT_SECRET": "<zoho-self-client-secret>",
 			"RAG_REFRESH_TOKEN": "<zoho-refresh-token — scripts/rotate-rag-token.sh renews this>",
 			"RAG_ORG": "<catalyst-org-id>",
-			"GROQ_API_KEY": "<groq-api-key>"
+			"GROQ_API_KEY": "<groq-api-key>",
+			"SUPPORT_EMAIL": "<help-center-recipient-email>",
+			"SMTP_USER": "<gmail-address-for-sending>",
+			"SMTP_PASS": "<gmail-app-password — Google Account > Security > App passwords>"
 		}
 	},
 	"execution": {
