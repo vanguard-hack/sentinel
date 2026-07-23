@@ -13,6 +13,7 @@ import CaseLinkage from '../components/CaseLinkage';
 import Forecasts from '../components/Forecasts';
 import FinancialTrails from '../components/FinancialTrails';
 import TopBar from '../components/TopBar';
+import { useLocation } from 'react-router-dom';
 
 function Card({ title, subtitle, wide, children }) {
   return (
@@ -40,7 +41,16 @@ export default function AIAnalytics() {
   const [error, setError] = useState(null);
   const [dim, setDim] = useState('hour');
   const [head, setHead] = useState('ALL');
-  const [view, setView] = useState('patterns'); // 'patterns' | 'links' | 'linkage' | 'forecasts'
+  const [view, setView] = useState('patterns'); // 'patterns' | 'links' | 'linkage' | 'forecasts' | 'financial'
+
+  // Honor deep-links from the global search (e.g. /ai-analytics?tab=financial).
+  const { search } = useLocation();
+  useEffect(() => {
+    const tab = new URLSearchParams(search).get('tab');
+    if (tab && ['patterns', 'links', 'linkage', 'forecasts', 'financial'].includes(tab)) {
+      setView(tab);
+    }
+  }, [search]);
 
   const load = useCallback(async () => {
     setLoading(true);

@@ -32,9 +32,9 @@ function Kpi({ Icon, label, value, sub, trend }) {
   );
 }
 
-function Card({ title, subtitle, wide, two, children }) {
+function Card({ id, title, subtitle, wide, two, children }) {
   return (
-    <section className={`rp-card ${wide ? 'rp-card-wide' : ''} ${two ? 'rp-card-2' : ''}`}>
+    <section id={id} className={`rp-card ${wide ? 'rp-card-wide' : ''} ${two ? 'rp-card-2' : ''}`}>
       <div className="rp-card-head">
         <h2>{title}</h2>
         {subtitle && <span className="rp-card-sub">{subtitle}</span>}
@@ -333,7 +333,7 @@ export default function Reports() {
             </div>
 
             {/* Crime trend with day/month/year/5-year filter */}
-            <section className="rp-card rp-card-wide rp-standalone">
+            <section id="chart-crime-trend" className="rp-card rp-card-wide rp-standalone">
               <div className="rp-card-head rp-trend-head">
                 <div>
                   <h2>Crime trend</h2>
@@ -407,15 +407,15 @@ export default function Reports() {
 
             {/* Charts */}
             <div className="rp-grid">
-              <Card title="Case status" subtitle="Distribution of FIR outcomes">
+              <Card id="chart-case-status" title="Case status" subtitle="Distribution of FIR outcomes">
                 <Donut data={data.byStatus} />
               </Card>
 
-              <Card title="Crime by category" subtitle="FIR classifications by major head" two>
+              <Card id="chart-crime-category" title="Crime by category" subtitle="FIR classifications by major head" two>
                 <HBarList data={data.byCategory} />
               </Card>
 
-              <Card title="Top districts" subtitle="FIRs registered per district — shading intensity follows crime volume" two>
+              <Card id="chart-top-districts" title="Top districts" subtitle="FIRs registered per district — shading intensity follows crime volume" two>
                 <div className="rp-geo-controls">
                   <span>Show top</span>
                   <select className="cf-select pp-perpage" value={topK} onChange={(e) => setTopK(e.target.value)}>
@@ -432,19 +432,20 @@ export default function Reports() {
                 />
               </Card>
 
-              <Card title="Station load" subtitle="Open investigations by police station (top 8)" two>
+              <Card id="chart-station-load" title="Station load" subtitle="Open investigations by police station (top 8)" two>
                 <HBarList data={data.openByStation} />
               </Card>
 
-              <Card title="Accused age profile" two>
+              <Card id="chart-age-profile" title="Accused age profile" two>
                 <BarList data={data.accusedAges} height={300} />
               </Card>
 
-              <Card title="Top crime types" subtitle="Cases by crime sub-head" two>
+              <Card id="chart-crime-types" title="Top crime types" subtitle="Cases by crime sub-head" two>
                 <HBarList data={data.bySubHead} />
               </Card>
 
               <Card
+                id="chart-socio"
                 title="Socio-economic crime correlation"
                 subtitle="Districts shaded by the chosen indicator; circles sized by registered cases — when dark shading and big circles coincide, the two move together"
                 wide
@@ -456,13 +457,13 @@ export default function Reports() {
             {/* ── Trends ── */}
             <h2 className="rp-section-title">Trends</h2>
             <div className="rp-grid">
-              <Card title="Crime trend by head" subtitle="Monthly registrations · top 5 crime heads" wide>
+              <Card id="chart-trend-head" title="Crime trend by head" subtitle="Monthly registrations · top 5 crime heads" wide>
                 <MultiLine
                   series={data.trendByHead}
                   labelEvery={Math.max(1, Math.ceil((data.trendByHead[0]?.points.length || 1) / 14))}
                 />
               </Card>
-              <Card title="Arrests & surrenders" subtitle="Monthly events by type">
+              <Card id="chart-arrests" title="Arrests & surrenders" subtitle="Monthly events by type">
                 <MultiLine
                   series={data.arrestSeries}
                   labelEvery={Math.max(1, Math.ceil((data.arrestSeries[0]?.points.length || 1) / 8))}

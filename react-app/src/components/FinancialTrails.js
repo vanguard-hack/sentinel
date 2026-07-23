@@ -143,7 +143,7 @@ export default function FinancialTrails() {
       </section>
 
       {/* Typology breakdown */}
-      <section className="rp-card rp-card-wide">
+      <section id="fin-typologies" className="rp-card rp-card-wide">
         <div className="rp-card-head">
           <h2>Laundering typologies detected</h2>
           <span className="rp-card-sub">Entities matching each pattern — the AML red-flag catalogue behind every alert</span>
@@ -165,7 +165,7 @@ export default function FinancialTrails() {
       </section>
 
       {/* Money-flow network */}
-      <section className="rp-card rp-card-wide">
+      <section id="fin-network" className="rp-card rp-card-wide">
         <div className="rp-card-head">
           <h2>Money-flow network</h2>
           <span className="rp-card-sub">Entities of interest linked to counterparties, mule and shell accounts by flagged transfers</span>
@@ -178,7 +178,7 @@ export default function FinancialTrails() {
       </section>
 
       {/* Prioritised alerts — analyst decision support */}
-      <section className="rp-card rp-card-wide ft-section">
+      <section id="fin-alerts" className="rp-card rp-card-wide ft-section">
         <div className="rp-card-head">
           <h2>Prioritised alerts</h2>
           <span className="rp-card-sub">Entities ranked by composite laundering-risk score — each with the typologies that triggered it and a plain-language read</span>
@@ -234,7 +234,7 @@ export default function FinancialTrails() {
       </section>
 
       {/* Flagged transactions */}
-      <section className="rp-card rp-card-wide ft-section">
+      <section id="fin-txns" className="rp-card rp-card-wide ft-section">
         <div className="rp-card-head">
           <h2>Flagged transactions</h2>
           <span className="rp-card-sub">Individual transfers driving the alerts — each links back to its FIR for follow-up</span>

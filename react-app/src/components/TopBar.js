@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Menu, Home } from 'lucide-react';
 import { useLayout } from '../context/LayoutContext';
+import GlobalSearch from './GlobalSearch';
 
 // Slim per-page header inside the app shell. Left: mobile menu button + a
 // breadcrumb trail (home icon / current module). Center: optional search.
@@ -41,6 +42,7 @@ export default function TopBar({ title, parent, search, children }) {
       </nav>
 
       {search && <div className="topbar-search">{search}</div>}
+      <div className="topbar-global"><GlobalSearch /></div>
       {children && <div className="topbar-actions">{children}</div>}
     </header>
   );

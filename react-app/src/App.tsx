@@ -22,6 +22,7 @@ import LoadingScreen from './components/LoadingScreen';
 import ErrorBoundary from './components/ErrorBoundary';
 import RequireAccess from './components/RequireAccess';
 import AuditTracker from './components/AuditTracker';
+import ScrollToHash from './components/ScrollToHash';
 
 // Every feature route is wrapped in a role guard (see utils/access.js for the
 // feature → roles matrix) and every route change lands in the audit trail.
@@ -39,6 +40,7 @@ function AppRoutes() {
       <LayoutProvider>
         <div className="app-shell">
           <AuditTracker />
+          <ScrollToHash />
           <Sidebar />
           <div className="app-main">
             <Routes>
