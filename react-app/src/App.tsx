@@ -18,6 +18,8 @@ import AccessAudit from './pages/AccessAudit';
 import InvestigationDiary from './pages/InvestigationDiary';
 import InvestigationCase from './pages/InvestigationCase';
 import HelpCenter from './pages/HelpCenter';
+import Custody from './pages/Custody';
+import CustodyRecord from './pages/CustodyRecord';
 import Sidebar from './components/Sidebar';
 import LoadingScreen from './components/LoadingScreen';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -60,6 +62,8 @@ function AppRoutes() {
               <Route path="/access" element={guarded('access', <AccessAudit />)} />
               <Route path="/investigation-diary" element={guarded('investigationDiary', <InvestigationDiary />)} />
               <Route path="/investigation-diary/:caseMasterId" element={guarded('investigationDiary', <InvestigationCase />)} />
+              <Route path="/custody" element={guarded('custody', <Custody />)} />
+              <Route path="/custody/:personId" element={guarded('custody', <CustodyRecord />)} />
               <Route path="*" element={<Navigate to="/reports" replace />} />
             </Routes>
           </div>

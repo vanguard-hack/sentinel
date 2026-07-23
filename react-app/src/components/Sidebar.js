@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Shield, Home, AlertTriangle, Map, Brain, Database,
   MessageSquare, Users, ChevronLeft, ChevronRight, Sun, Moon, LogOut,
-  UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, Headset,
+  UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, Headset, Building2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccess } from '../context/AccessContext';
@@ -21,6 +21,7 @@ const NAV = [
   { to: '/ai-analytics', Icon: Brain, key: 'aiAnalytics' },
   { to: '/case-files', Icon: Database, key: 'caseFiles' },
   { to: '/investigation-diary', Icon: NotebookPen, key: 'investigationDiary', label: 'Investigation Diary' },
+  { to: '/custody', Icon: Building2, key: 'custody', label: 'Custody & Corrections' },
   { to: '/assistant', Icon: MessageSquare, key: 'assistant' },
   {
     to: '/personnel', Icon: Users, key: 'personnel',

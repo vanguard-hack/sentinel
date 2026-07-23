@@ -27,6 +27,7 @@ export const FEATURES = [
   { key: 'aiAnalytics', label: 'AI Analytics', path: '/ai-analytics', roles: ['admin', 'supervisor', 'analyst', 'policymaker'] },
   { key: 'caseFiles', label: 'Case Files', path: '/case-files', roles: ['admin', 'supervisor', 'investigator'] },
   { key: 'investigationDiary', label: 'Investigation Diary', path: '/investigation-diary', roles: ['admin', 'supervisor', 'investigator'] },
+  { key: 'custody', label: 'Custody & Corrections', path: '/custody', roles: ['admin', 'supervisor', 'investigator', 'policymaker'] },
   { key: 'assistant', label: 'Assistant', path: '/assistant', roles: ALL },
   { key: 'personnel', label: 'Personnel', path: '/personnel', roles: ['admin', 'supervisor', 'policymaker'] },
   { key: 'dutyRoster', label: 'Duty Roster', path: '/personnel/roster', roles: ['admin', 'supervisor'] },

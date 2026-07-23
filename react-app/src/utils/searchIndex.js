@@ -7,7 +7,7 @@ import {
   Home, AlertTriangle, Map, Brain, Database, MessageSquare, Users,
   NotebookPen, ShieldCheck, UserCircle, TrendingUp, Share2, Fingerprint,
   LineChart, Landmark, CalendarDays, Network, BarChart3, PieChart,
-  Activity, Table, Clock, Headset,
+  Activity, Table, Clock, Headset, Building2,
 } from 'lucide-react';
 
 export const SEARCH_INDEX = [
@@ -33,6 +33,9 @@ export const SEARCH_INDEX = [
   { id: 'assistant', feature: 'assistant', group: 'Pages', Icon: MessageSquare,
     title: 'Assistant', sub: 'Ask questions in natural language', to: '/assistant',
     keywords: 'assistant chat chatbot ask ai question query rag help conversation' },
+  { id: 'custody', feature: 'custody', group: 'Pages', Icon: Building2,
+    title: 'Custody & Corrections', sub: 'Custodial registry — undertrials & convicts', to: '/custody',
+    keywords: 'custody corrections inmate prisoner registry undertrial convict jail prison bail sentence remission parole release facility recidivism remand' },
   { id: 'personnel', feature: 'personnel', group: 'Pages', Icon: Users,
     title: 'Personnel Directory', sub: 'Officer directory', to: '/personnel',
     keywords: 'personnel directory officers staff employees people roster rank' },
