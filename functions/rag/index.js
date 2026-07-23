@@ -1827,9 +1827,13 @@ module.exports = async (req, res) => {
       : null;
     const searchQuery = (expanded || '').trim() || query;
 
-    // ── Router: casual message → direct Groq chat; relational question →
-    // ZCQL over the Data Store; otherwise RAG. Groq decides; any failure in
-    // the CHAT/ZCQL paths falls through to RAG so the assistant always answers.
+    // ── Router (Groq decides one word) — the assistant's decision point:
+    //   CHAT  → casual chat, answered directly by Groq llama.
+    //   GUIDE → question about the platform, answered by Groq from the feature map.
+    //   ZCQL  → relational question, answered from the Data Store via text2zcql.
+    //   RAG   → everything else, answered from the knowledge base.
+    // Fallback chain so the assistant always answers: text2zcql failure →
+    // RAG; RAG failure or non-answer → Groq llama (the final fallback).
     let zcqlDebug; // populated when the ZCQL path was tried but abandoned
     if (process.env.GROQ_API_KEY) {
       // CHAT must be judged on the user's ORIGINAL wording — expansion can
@@ -1983,12 +1987,17 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Pass 1: retrieval-augmented answer from the knowledge base.
-    let first = await callRag(searchQuery, documents, 30_000);
-    if (!first.ok) {
-      return json(res, first.status, { error: 'RAG request failed', detail: first.data });
+    // Pass 1: retrieval-augmented answer from the knowledge base. A hard RAG
+    // failure (network / 5xx / timeout) is NOT fatal — it leaves the answer
+    // empty so the Groq fallback below still responds. Groq llama is the final
+    // safety net whenever both text2zcql and RAG come up short.
+    let first;
+    try {
+      first = await callRag(searchQuery, documents, 30_000);
+    } catch (e) {
+      first = { ok: false, status: 502, data: { error: (e && e.message) || String(e) } };
     }
-    let extracted = extractAgui(pickAnswer(first.data));
+    const extracted = first.ok ? extractAgui(pickAnswer(first.data)) : { text: '', components: [] };
     let text = extracted.text;
     let components = extracted.components;
     let source = 'rag';
@@ -2050,7 +2059,13 @@ module.exports = async (req, res) => {
     text = stripStrayCodeBlocks(text);
     ({ text, components } = stripMarkdownTables(text, components));
     components = promoteDistrictCharts(components);
-    const answer = stripDuplicatedLists(text, components);
+    let answer = stripDuplicatedLists(text, components);
+    // If every stage (text2zcql, RAG, Groq) came up empty, respond gracefully
+    // instead of returning a blank message.
+    if (!answer.trim() && !components.length) {
+      answer = 'I couldn’t find an answer for that. Try rephrasing, or ask about FIR data, crime statistics, law and procedure, or any part of the platform.';
+      source = 'fallback';
+    }
 
     // Attribution: knowledge-base document titles, and only for RAG answers —
     // conversational/general-knowledge replies carry no sources row at all.
