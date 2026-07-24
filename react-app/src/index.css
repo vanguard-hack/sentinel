@@ -5818,3 +5818,18 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 /* clickable breadcrumb parent */
 .crumb-link { background: none; border: none; padding: 0; cursor: pointer; }
 .crumb-link:hover { color: var(--blue-500); text-decoration: underline; }
+
+/* Custody: analytics compact + alerts equal height + bigger status total + wider search */
+.cust-analytics { display: flex; flex-direction: column; gap: 14px; }
+.cust-an-top { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 720px) { .cust-an-top { grid-template-columns: 1fr; } }
+.cust-fac-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.cust-fac-head .cf-select { height: 32px; font-size: 12.5px; flex-shrink: 0; }
+/* alerts: equal height across the three cards */
+.cust-alerts { align-items: stretch; }
+.cust-alert-card { height: 100%; }
+/* bigger centred total on the custody-status donut */
+.cust-status-donut .rp-donut-total { font-size: 30px; font-weight: 780; }
+.cust-status-donut .rp-donut-cap { font-size: 12px; }
+/* wider registry search bar so it fills the row */
+.cust-filters .cf-search { flex: 1 1 340px; max-width: 620px; }

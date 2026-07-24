@@ -52,6 +52,7 @@ export default function Custody() {
   const [fRelease, setFRelease] = useState('any');
   const [page, setPage] = useState(1);
   const [alertPage, setAlertPage] = useState(1);
+  const [facLimit, setFacLimit] = useState(10);
 
   const load = useCallback(async (force) => {
     setLoading(true); setError(null);
@@ -242,24 +243,35 @@ export default function Custody() {
         })()}
 
         {tab === 'analytics' && (
-          <div className="rp-grid">
+          <div className="cust-analytics">
+            <div className="cust-an-top">
+              <section className="rp-card">
+                <div className="rp-card-head"><h2>Custody status</h2><span className="rp-card-sub">Distribution across the registry</span></div>
+                <div className="rp-card-body cust-status-donut"><Donut data={a.statusCounts.filter((d) => d.value)} /></div>
+              </section>
+              <section className="rp-card cust-ratio-card">
+                <div className="rp-card-head"><h2>Undertrial : convict ratio</h2><span className="rp-card-sub">Persons awaiting trial vs. convicted</span></div>
+                <div className="rp-card-body cust-ratio">
+                  <div><span className="cust-ratio-big">{a.ratio.toFixed(2)}</span><span className="cust-ratio-lab">undertrials per convict</span></div>
+                  <div className="cust-ratio-split"><span className="t-under">{a.undertrials} undertrial</span><span className="t-conv">{a.convicts} convicted</span></div>
+                  <p className="cust-ratio-note">Average time in custody: <b>{a.avgCustodyDays} days</b> across {a.undertrials + a.convicts} persons currently held.</p>
+                </div>
+              </section>
+            </div>
             <section className="rp-card">
-              <div className="rp-card-head"><h2>Custody status</h2><span className="rp-card-sub">Distribution across the registry</span></div>
-              <div className="rp-card-body"><Donut data={a.statusCounts.filter((d) => d.value)} /></div>
-            </section>
-            <section className="rp-card cust-ratio-card">
-              <div className="rp-card-head"><h2>Undertrial : convict ratio</h2><span className="rp-card-sub">Persons awaiting trial vs. convicted</span></div>
-              <div className="rp-card-body cust-ratio">
-                <div><span className="cust-ratio-big">{a.ratio.toFixed(2)}</span><span className="cust-ratio-lab">undertrials per convict</span></div>
-                <div className="cust-ratio-split"><span className="t-under">{a.undertrials} undertrial</span><span className="t-conv">{a.convicts} convicted</span></div>
-                <p className="cust-ratio-note">Average time in custody: <b>{a.avgCustodyDays} days</b> across {a.undertrials + a.convicts} persons currently held.</p>
+              <div className="rp-card-head cust-fac-head">
+                <div>
+                  <h2>Overcrowding by facility</h2>
+                  <span className="rp-card-sub">Occupancy against sanctioned capacity — bars past 100% are over capacity</span>
+                </div>
+                <select className="cf-select" value={facLimit} onChange={(e) => setFacLimit(e.target.value)} title="Facilities shown">
+                  {[5, 10, 15, 20].map((n) => <option key={n} value={n}>Top {n}</option>)}
+                  <option value="all">All facilities</option>
+                </select>
               </div>
-            </section>
-            <section className="rp-card rp-card-wide">
-              <div className="rp-card-head"><h2>Overcrowding by facility</h2><span className="rp-card-sub">Occupancy against sanctioned capacity — bars past 100% are over capacity</span></div>
               <div className="rp-card-body">
                 <div className="cust-fac-list">
-                  {a.facilities.map((f) => (
+                  {(facLimit === 'all' ? a.facilities : a.facilities.slice(0, Number(facLimit))).map((f) => (
                     <div key={f.facility} className="cust-fac-row">
                       <div className="cust-fac-name">{f.facility}</div>
                       <div className="cust-fac-bar"><div className={`cust-fac-fill ${f.pct > 100 ? 'over' : ''}`} style={{ width: `${Math.min(100, f.pct)}%` }} /></div>
