@@ -111,7 +111,7 @@ export default function Roster() {
 
   return (
     <div className="cf-page">
-      <TopBar title="Duty Roster" parent="Personnel" />
+      <TopBar title="Duty Roster" parent="Personnel" parentTo="/personnel" />
 
       <div className="pp-body">
         {/* Toolbar */}

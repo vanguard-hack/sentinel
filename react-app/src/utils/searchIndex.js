@@ -34,7 +34,7 @@ export const SEARCH_INDEX = [
     title: 'Assistant', sub: 'Ask questions in natural language', to: '/assistant',
     keywords: 'assistant chat chatbot ask ai question query rag help conversation' },
   { id: 'custody', feature: 'custody', group: 'Pages', Icon: Building2,
-    title: 'Custody & Corrections', sub: 'Custodial registry — undertrials & convicts', to: '/custody',
+    title: 'Inmate Registry', sub: 'Custodial registry — undertrials & convicts', to: '/custody',
     keywords: 'custody corrections inmate prisoner registry undertrial convict jail prison bail sentence remission parole release facility recidivism remand' },
   { id: 'personnel', feature: 'personnel', group: 'Pages', Icon: Users,
     title: 'Personnel Directory', sub: 'Officer directory', to: '/personnel',

@@ -21,7 +21,7 @@ const NAV = [
   { to: '/ai-analytics', Icon: Brain, key: 'aiAnalytics' },
   { to: '/case-files', Icon: Database, key: 'caseFiles' },
   { to: '/investigation-diary', Icon: NotebookPen, key: 'investigationDiary', label: 'Investigation Diary' },
-  { to: '/custody', Icon: Building2, key: 'custody', label: 'Custody & Corrections' },
+  { to: '/custody', Icon: Building2, key: 'custody', label: 'Inmate Registry' },
   { to: '/assistant', Icon: MessageSquare, key: 'assistant' },
   {
     to: '/personnel', Icon: Users, key: 'personnel',

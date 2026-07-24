@@ -997,7 +997,7 @@ export default function InvestigationCase() {
 
   return (
     <div className="cf-page">
-      <TopBar title={rec.crimeNo || `Case ${rec.caseMasterId}`} parent="Investigation Diary" />
+      <TopBar title={rec.crimeNo || `Case ${rec.caseMasterId}`} parent="Investigation Diary" parentTo="/investigation-diary" />
       <div className="pp-body">
         <div className="inv-case-head">
           <div>

@@ -5803,3 +5803,18 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .cust-id-actions { display: inline-flex; gap: 8px; margin-left: auto; }
 .cust-edit-sel { height: 30px; font-size: 12.5px; }
 .cust-edit-inp { height: 38px; max-width: 100%; border: 1px solid var(--border-bright); border-radius: 9px; padding: 0 12px; background: var(--bg-2); }
+
+/* Custody: fixes — facility wraps (beat .fc-table td nowrap), compact analytics + alerts */
+.fc-table td.cust-fac { white-space: normal; word-break: break-word; min-width: 150px; max-width: 260px; }
+.cust-table.fc-table td { vertical-align: top; }
+.cust-alert-card .rp-card-body { padding-top: 4px; }
+.cust-alert-list li { padding: 8px 4px; }
+.cust-alerts { align-items: start; }
+.cust-ratio { gap: 8px; padding: 6px 0; }
+.cust-ratio-big { font-size: 38px; }
+.cust-fac-list { gap: 7px; }
+.cust-fac-row { grid-template-columns: minmax(150px, 1.6fr) 3fr 44px 64px; gap: 10px; }
+.cust-analytics-note { font-size: 11.5px; color: var(--text-4); }
+/* clickable breadcrumb parent */
+.crumb-link { background: none; border: none; padding: 0; cursor: pointer; }
+.crumb-link:hover { color: var(--blue-500); text-decoration: underline; }

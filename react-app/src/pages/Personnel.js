@@ -143,7 +143,7 @@ export default function Personnel() {
 
   return (
     <div className="cf-page">
-      <TopBar title="Directory" parent="Personnel" />
+      <TopBar title="Directory" parent="Personnel" parentTo="/personnel" />
 
       <div className="pp-body">
         {/* Toolbar */}

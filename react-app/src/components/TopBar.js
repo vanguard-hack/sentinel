@@ -7,7 +7,7 @@ import GlobalSearch from './GlobalSearch';
 // Slim per-page header inside the app shell. Left: mobile menu button + a
 // breadcrumb trail (home icon / current module). Center: optional search.
 // Right: page-specific actions (children).
-export default function TopBar({ title, parent, search, children }) {
+export default function TopBar({ title, parent, parentTo, search, children }) {
   const { toggleMobile } = useLayout();
   const navigate = useNavigate();
   const isHome = title === 'Home';
@@ -30,7 +30,11 @@ export default function TopBar({ title, parent, search, children }) {
         {parent && (
           <>
             <span className="crumb-sep">/</span>
-            <span className="crumb">{parent}</span>
+            {parentTo ? (
+              <button type="button" className="crumb crumb-link" onClick={() => navigate(parentTo)}>{parent}</button>
+            ) : (
+              <span className="crumb">{parent}</span>
+            )}
           </>
         )}
         {!isHome && (

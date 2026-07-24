@@ -5,7 +5,7 @@ import {
   CalendarClock, Gavel, UserX, Users, ScrollText,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
-import { Donut, HBarList } from '../components/Charts';
+import { Donut } from '../components/Charts';
 import { useAccess } from '../context/AccessContext';
 import {
   getRegistry, seedCustody, STATUS, STATUS_ORDER, fmtDate,
@@ -15,9 +15,10 @@ import { Database } from 'lucide-react';
 
 const PER_PAGE = 12;
 const RELEASE_WINDOWS = [
-  ['any', 'Any release window'], ['30', 'Releasing ≤ 30 days'],
+  ['any', 'All release windows'], ['30', 'Releasing ≤ 30 days'],
   ['90', 'Releasing ≤ 90 days'], ['365', 'Releasing ≤ 1 year'],
 ];
+const ALERT_PER_PAGE = 6;
 
 const Chip = ({ status }) => <span className={`cust-chip ${STATUS[status]?.cls || ''}`}>{status}</span>;
 
@@ -50,6 +51,7 @@ export default function Custody() {
   const [fSection, setFSection] = useState('All');
   const [fRelease, setFRelease] = useState('any');
   const [page, setPage] = useState(1);
+  const [alertPage, setAlertPage] = useState(1);
 
   const load = useCallback(async (force) => {
     setLoading(true); setError(null);
@@ -98,14 +100,14 @@ export default function Custody() {
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const rows = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
-  if (loading) return (<div className="cf-page"><TopBar title="Custody & Corrections" /><div className="cf-state"><div className="cf-spinner" /><p>Loading custodial records…</p></div></div>);
-  if (error) return (<div className="cf-page"><TopBar title="Custody & Corrections" /><div className="cf-state cf-error"><AlertTriangle size={22} /><p>{error}</p><button className="cf-retry" onClick={load}>Retry</button></div></div>);
+  if (loading) return (<div className="cf-page"><TopBar title="Inmate Registry" /><div className="cf-state"><div className="cf-spinner" /><p>Loading custodial records…</p></div></div>);
+  if (error) return (<div className="cf-page"><TopBar title="Inmate Registry" /><div className="cf-state cf-error"><AlertTriangle size={22} /><p>{error}</p><button className="cf-retry" onClick={load}>Retry</button></div></div>);
 
   const a = data.analytics;
 
   return (
     <div className="cf-page">
-      <TopBar title="Custody & Corrections">
+      <TopBar title="Inmate Registry">
         {isAdmin && data.tableReady && data.persistedCount < a.total && (
           <button className="aa-btn" onClick={runSeed} disabled={!!seeding} title="Write the registry to the Data Store">
             <Database size={14} /> {seeding ? `Persisting ${seeding.done}/${seeding.total}…` : `Persist to Data Store`}
@@ -118,7 +120,7 @@ export default function Custody() {
           <div className="cust-title">
             <Building2 size={20} strokeWidth={1.9} />
             <div>
-              <h1>Custody &amp; Corrections</h1>
+              <h1>Inmate Registry</h1>
               <p>Custodial registry of undertrials and convicts — status, custody, bail, sentence and post-release, drawn from case records (correctional details are indicative).</p>
             </div>
           </div>
@@ -210,19 +212,34 @@ export default function Custody() {
           </>
         )}
 
-        {tab === 'alerts' && (
-          <div className="cust-alerts">
-            <AlertList
-              icon={<CalendarClock size={16} />} title="Upcoming releases" sub="Convicts with an expected release date within 90 days"
-              items={data.alerts.releases} render={(x) => <><b>{x.name}</b><span>{x.facility}</span></>} right={(x) => fmtDate(x.date)} onGo={(x) => navigate(`/custody/${x.id}`)} empty="No releases due in the next 90 days." />
-            <AlertList
-              icon={<Gavel size={16} />} title="Bail hearings" sub="Undertrials with a bail hearing within 30 days"
-              items={data.alerts.hearings} render={(x) => <><b>{x.name}</b><span>{x.court}</span></>} right={(x) => fmtDate(x.date)} onGo={(x) => navigate(`/custody/${x.id}`)} empty="No bail hearings scheduled in the next 30 days." />
-            <AlertList
-              icon={<UserX size={16} />} title="Missed reporting" sub="Released / on-bail persons who have missed a reporting obligation"
-              items={data.alerts.missed} render={(x) => <><b>{x.name}</b><span>{x.obligation}</span></>} right={(x) => <Chip status={x.status} />} onGo={(x) => navigate(`/custody/${x.id}`)} empty="No missed reporting flagged." />
-          </div>
-        )}
+        {tab === 'alerts' && (() => {
+          const alertPages = Math.max(1, Math.ceil(Math.max(
+            data.alerts.releases.length, data.alerts.hearings.length, data.alerts.missed.length,
+          ) / ALERT_PER_PAGE));
+          const ap = Math.min(alertPage, alertPages);
+          return (
+            <>
+              <div className="cust-alerts">
+                <AlertList page={ap}
+                  icon={<CalendarClock size={16} />} title="Upcoming releases" sub="Convicts releasing within 90 days"
+                  items={data.alerts.releases} render={(x) => <><b>{x.name}</b><span>{x.facility}</span></>} right={(x) => fmtDate(x.date)} onGo={(x) => navigate(`/custody/${x.id}`)} empty="No releases due in the next 90 days." />
+                <AlertList page={ap}
+                  icon={<Gavel size={16} />} title="Bail hearings" sub="Undertrials with a hearing within 30 days"
+                  items={data.alerts.hearings} render={(x) => <><b>{x.name}</b><span>{x.court}</span></>} right={(x) => fmtDate(x.date)} onGo={(x) => navigate(`/custody/${x.id}`)} empty="No bail hearings in the next 30 days." />
+                <AlertList page={ap}
+                  icon={<UserX size={16} />} title="Missed reporting" sub="Missed a reporting obligation"
+                  items={data.alerts.missed} render={(x) => <><b>{x.name}</b><span>{x.obligation}</span></>} right={(x) => <Chip status={x.status} />} onGo={(x) => navigate(`/custody/${x.id}`)} empty="No missed reporting flagged." />
+              </div>
+              {alertPages > 1 && (
+                <div className="inv-pagination">
+                  <button className="inv-page-btn" disabled={ap <= 1} onClick={() => setAlertPage(ap - 1)} aria-label="Previous"><ChevronLeft size={16} /></button>
+                  <span className="inv-page-info">Page {ap} of {alertPages}</span>
+                  <button className="inv-page-btn" disabled={ap >= alertPages} onClick={() => setAlertPage(ap + 1)} aria-label="Next"><ChevronRight size={16} /></button>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {tab === 'analytics' && (
           <div className="rp-grid">
@@ -254,10 +271,6 @@ export default function Custody() {
                 </div>
               </div>
             </section>
-            <section className="rp-card rp-card-wide">
-              <div className="rp-card-head"><h2>Custodial population by facility</h2><span className="rp-card-sub">Persons currently held per facility</span></div>
-              <div className="rp-card-body"><HBarList data={a.facilities.map((f) => ({ label: f.facility.replace(/,.*/, ''), value: f.occupancy }))} /></div>
-            </section>
           </div>
         )}
       </div>
@@ -265,14 +278,15 @@ export default function Custody() {
   );
 }
 
-function AlertList({ icon, title, sub, items, render, right, onGo, empty }) {
+function AlertList({ icon, title, sub, items, render, right, onGo, empty, page = 1 }) {
+  const shown = items.slice((page - 1) * ALERT_PER_PAGE, page * ALERT_PER_PAGE);
   return (
     <section className="rp-card cust-alert-card">
       <div className="rp-card-head"><h2>{icon} {title} <span className="cust-alert-n">{items.length}</span></h2><span className="rp-card-sub">{sub}</span></div>
       <div className="rp-card-body">
-        {items.length ? (
+        {shown.length ? (
           <ul className="cust-alert-list">
-            {items.map((x) => (
+            {shown.map((x) => (
               <li key={x.id} onClick={() => onGo(x)}>
                 <div className="cust-alert-main">{render(x)}</div>
                 <div className="cust-alert-right">{right(x)}</div>

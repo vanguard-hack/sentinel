@@ -240,7 +240,7 @@ export default function OrgChart() {
 
   return (
     <div className="cf-page">
-      <TopBar title="Org Chart" parent="Personnel" />
+      <TopBar title="Org Chart" parent="Personnel" parentTo="/personnel" />
 
       <div className="pp-body">
         <div className="pp-toolbar">

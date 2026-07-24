@@ -51,15 +51,15 @@ export default function CustodyRecord() {
     }
   };
 
-  if (error) return (<div className="cf-page"><TopBar title="Custodial record" parent="Custody & Corrections" /><div className="cf-state cf-error"><AlertTriangle size={22} /><p>{error}</p></div></div>);
-  if (p === undefined) return (<div className="cf-page"><TopBar title="Custodial record" parent="Custody & Corrections" /><div className="cf-state"><div className="cf-spinner" /><p>Loading record…</p></div></div>);
-  if (p === null) return (<div className="cf-page"><TopBar title="Custodial record" parent="Custody & Corrections" /><div className="cf-state"><p>Record not found.</p><button className="cf-retry" onClick={() => navigate('/custody')}>Back to registry</button></div></div>);
+  if (error) return (<div className="cf-page"><TopBar title="Custodial record" parent="Inmate Registry" parentTo="/custody" /><div className="cf-state cf-error"><AlertTriangle size={22} /><p>{error}</p></div></div>);
+  if (p === undefined) return (<div className="cf-page"><TopBar title="Custodial record" parent="Inmate Registry" parentTo="/custody" /><div className="cf-state"><div className="cf-spinner" /><p>Loading record…</p></div></div>);
+  if (p === null) return (<div className="cf-page"><TopBar title="Custodial record" parent="Inmate Registry" parentTo="/custody" /><div className="cf-state"><p>Record not found.</p><button className="cf-retry" onClick={() => navigate('/custody')}>Back to registry</button></div></div>);
 
   const initials = p.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
   return (
     <div className="cf-page">
-      <TopBar title={p.name} parent="Custody & Corrections" />
+      <TopBar title={p.name} parent="Inmate Registry" parentTo="/custody" />
       <div className="pp-body">
         {/* Identity header */}
         <section className="rp-card rp-card-wide cust-idcard">

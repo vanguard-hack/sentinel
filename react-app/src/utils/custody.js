@@ -310,10 +310,15 @@ export function buildPeople(raw) {
 // Turn a people[] list (synthesised and/or persisted) into the full registry —
 // recomputing custody duration, facilities, analytics and alerts so persisted
 // records stay fresh as time passes.
+const fixSec = (c) => String(c).replace(/^BNS\s+BNS\b/, 'BNS');
 export function finalize(people) {
   people.forEach((p) => {
     const inCustody = p.status === 'Undertrial' || p.status === 'Convicted';
     p.custodyDays = inCustody && Number.isFinite(p.custodyStart) ? daysBetween(p.custodyStart, NOW) : null;
+    // Normalise a legacy section-code glitch ("BNS BNS 281") in both computed
+    // and persisted records.
+    p.sections?.forEach((s) => { s.code = fixSec(s.code); });
+    p.cases?.forEach((c) => c.sections?.forEach((s) => { s.code = fixSec(s.code); }));
   });
   people.sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || (b.custodyDays || 0) - (a.custodyDays || 0));
 
