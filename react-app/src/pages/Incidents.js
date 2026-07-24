@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Shield, RefreshCw, AlertTriangle, ChevronDown, Flame,
+  Shield, RefreshCw, AlertTriangle, ChevronDown,
   MapPin, Clock, User, Users, Gavel, Phone, BadgeCheck, FileText, Search,
 } from 'lucide-react';
 import { fetchIncidents } from '../utils/incidents';
@@ -28,7 +28,6 @@ function IncidentRow({ inc, open, onToggle }) {
       <button className="inc-head" onClick={onToggle}>
         <div className="inc-head-main">
           <span className="inc-crimeno">{inc.crimeNo}</span>
-          {inc.heinous && <span className="db-badge-heinous" title="Heinous"><Flame size={12} /></span>}
           <span className="inc-type">{inc.crimeType}</span>
         </div>
         <div className="inc-head-meta">
