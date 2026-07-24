@@ -3285,7 +3285,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   color: #fff;
 }
 .sb-brand-name {
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.03em;
   text-transform: lowercase;
