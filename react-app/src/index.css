@@ -5840,3 +5840,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .cust-filters .cf-search { flex: 1 1 340px; max-width: 620px; }
 .cust-alert-card .rp-card-body { justify-content: flex-start; }
 .cust-alert-card .rp-empty { margin: auto; text-align: center; }
+
+/* Custody search: the input itself must fill the grown container (it's fixed 240px by default) */
+.cust-filters .cf-search { flex: 1 1 340px; max-width: none; }
+.cust-filters .cf-search-input { width: 100%; }
