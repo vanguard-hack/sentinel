@@ -5,41 +5,86 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
+// Export the report to PDF by capturing each card / section as its OWN image
+// and flowing them onto A4 pages. A block is never split across a page break —
+// if it doesn't fit the remaining space it moves to the next page (and a block
+// taller than a whole page is scaled down to fit). This avoids both the
+// mid-chart page cuts and the single-giant-canvas failure (browsers cap canvas
+// size, so a very long report rendered in one shot silently fails).
 export async function exportReportPdf(element, filename) {
   if (!element) throw new Error('nothing to export');
 
   const bg =
     getComputedStyle(document.body).backgroundColor ||
-    (document.documentElement.getAttribute('data-theme') === 'dark' ? '#000000' : '#ffffff');
+    (document.documentElement.getAttribute('data-theme') === 'dark' ? '#ffffff' : '#ffffff');
 
-  const canvas = await html2canvas(element, {
-    scale: 2,
-    backgroundColor: bg,
-    useCORS: true,
-    logging: false,
-    windowWidth: element.scrollWidth,
-  });
+  // Ordered list of blocks to render: grids are broken into their individual
+  // cards so every chart is captured whole; everything else (KPI row, standalone
+  // chart, section headings) is captured as-is.
+  const blocks = [];
+  const isContainer = element.querySelector(':scope > .rp-grid, :scope > .rp-card, :scope > .rp-kpi-row, :scope > .rp-section-title');
+  if (!isContainer) {
+    // A single card/element (e.g. the AI-summary card) — capture it whole.
+    blocks.push(element);
+  } else {
+    for (const child of Array.from(element.children)) {
+      if (child.classList.contains('rp-grid')) {
+        const cards = child.querySelectorAll(':scope > .rp-card');
+        if (cards.length) cards.forEach((c) => blocks.push(c));
+        else blocks.push(child);
+      } else {
+        blocks.push(child);
+      }
+    }
+  }
 
   const pdf = new jsPDF('p', 'mm', 'a4');
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
-  const margin = 6;
-  const imgW = pageW - margin * 2;
-  const imgH = (canvas.height * imgW) / canvas.width;
-  const img = canvas.toDataURL('image/jpeg', 0.9);
+  const margin = 8;
+  const contentW = pageW - margin * 2;
+  const gap = 4;
+  let y = margin;
+  let placed = false;
 
-  let heightLeft = imgH;
-  let position = margin;
-  pdf.addImage(img, 'JPEG', margin, position, imgW, imgH);
-  heightLeft -= pageH - margin * 2;
+  for (const block of blocks) {
+    if (!block || !block.offsetHeight || !block.offsetWidth) continue;
 
-  while (heightLeft > 0) {
-    position = margin - (imgH - heightLeft);
-    pdf.addPage();
-    pdf.addImage(img, 'JPEG', margin, position, imgW, imgH);
-    heightLeft -= pageH - margin * 2;
+    let canvas;
+    try {
+      canvas = await html2canvas(block, {
+        scale: 2,
+        backgroundColor: bg,
+        useCORS: true,
+        logging: false,
+        windowWidth: element.scrollWidth,
+      });
+    } catch {
+      // A single problematic block must not abort the whole export.
+      continue;
+    }
+    if (!canvas.width || !canvas.height) continue;
+
+    let imgW = contentW;
+    let imgH = (canvas.height * imgW) / canvas.width;
+    // A block taller than a full page: scale it down so it fits on one page.
+    if (imgH > pageH - margin * 2) {
+      const s = (pageH - margin * 2) / imgH;
+      imgH *= s;
+      imgW *= s;
+    }
+    // Move to a new page when the block would overflow the current one.
+    if (placed && y + imgH > pageH - margin) {
+      pdf.addPage();
+      y = margin;
+    }
+    const x = margin + (contentW - imgW) / 2; // centre scaled-down blocks
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, imgW, imgH);
+    y += imgH + gap;
+    placed = true;
   }
 
+  if (!placed) throw new Error('nothing could be captured for the PDF');
   pdf.save(filename || `sentinel-report-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
