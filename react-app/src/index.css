@@ -5833,3 +5833,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .cust-status-donut .rp-donut-cap { font-size: 12px; }
 /* wider registry search bar so it fills the row */
 .cust-filters .cf-search { flex: 1 1 340px; max-width: 620px; }
+
+/* Custody fixes v2: hug the tab pill, let search grow, top-align alert lists */
+.cust-tabs { align-self: flex-start; }
+.cust-count { margin-left: 4px; }               /* was auto — freed space lets .cf-search grow */
+.cust-filters .cf-search { flex: 1 1 340px; max-width: 620px; }
+.cust-alert-card .rp-card-body { justify-content: flex-start; }
+.cust-alert-card .rp-empty { margin: auto; text-align: center; }
