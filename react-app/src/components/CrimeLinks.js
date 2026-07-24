@@ -114,6 +114,7 @@ export default function CrimeLinks() {
         </div>
         <div className="rp-card-body">
           <div className="cl-explorer">
+            <div className="cl-ring-col">
             <ul className="cl-ring-list">
               {data.networks.slice(0, 40).map((n) => (
                 <li key={n.id}>
@@ -131,6 +132,7 @@ export default function CrimeLinks() {
                 </li>
               ))}
             </ul>
+            </div>
 
             <div className="cl-graph-wrap">
               {net && (

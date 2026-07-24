@@ -1620,6 +1620,9 @@ a:hover { color: var(--blue-500); }
      edges line up into a clean lattice (reference-dashboard style). */
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 14px;
+  /* Backfill the 1-col gaps that 2-col cards leave — smaller charts slot into
+     the holes instead of leaving empty space, without shrinking anything. */
+  grid-auto-flow: row dense;
 }
 .rp-card {
   background: var(--bg-1);
@@ -2416,15 +2419,23 @@ a:hover { color: var(--blue-500); }
 .cl-kpi-value { font-size: 1.5rem; font-weight: 700; color: var(--text-0); }
 .cl-kpi-label { font-size: 0.76rem; color: var(--text-3); }
 
-.cl-explorer { display: grid; grid-template-columns: 250px 1fr; gap: 16px; }
+.cl-explorer { display: grid; grid-template-columns: 250px 1fr; gap: 16px; align-items: stretch; }
+/* The ring column fills the graph column's height; the list scrolls inside it
+   so there's no dead space below the rings. */
+.cl-ring-col { position: relative; min-height: 300px; }
 .cl-ring-list {
   list-style: none;
-  max-height: 440px;
+  position: absolute;
+  inset: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding-right: 4px;
+}
+@media (max-width: 720px) {
+  .cl-ring-col { position: static; min-height: 0; }
+  .cl-ring-list { position: static; max-height: 340px; }
 }
 .cl-ring {
   display: flex;
