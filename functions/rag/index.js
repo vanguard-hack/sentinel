@@ -1950,7 +1950,8 @@ module.exports = async (req, res) => {
             { role: 'system', content: EXPAND_PROMPT },
             { role: 'user', content: contextBits.join('\n\n') + '\n\nQuestion: ' + query },
           ],
-          { maxTokens: 160, temperature: 0.2, timeoutMs: 6_000 }
+          // Fast model: keeps follow-up questions working off the 70B day cap.
+          { maxTokens: 160, temperature: 0.2, timeoutMs: 6_000, model: GROQ_MODEL_FAST }
         )
       : null;
     const searchQuery = (expanded || '').trim() || query;
