@@ -24,7 +24,7 @@ const SUGGESTIONS = [
   'Recent FIRs in Bengaluru City',
   'Which districts have the most crime?',
   'List known habitual offenders',
-  'Unsolved cases by police station',
+  'Give me a list of unsolved cases',
 ];
 
 // Voice input records real audio via MediaRecorder and transcribes it with the
