@@ -111,8 +111,12 @@ async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeout
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (r.status === 429 && attempt === 0) {
-        const wait = Math.min((parseFloat(r.headers.get('retry-after')) || 3) * 1000, 8_000);
-        await new Promise((s) => setTimeout(s, wait));
+        // Only a SHORT cool-off (per-minute cap) is worth waiting out. A long
+        // retry-after means a per-day cap — retrying is futile and just stalls
+        // the request, so bail immediately and let the caller fall back fast.
+        const retry = (parseFloat(r.headers.get('retry-after')) || 3) * 1000;
+        if (retry > 9_000) return null;
+        await new Promise((s) => setTimeout(s, Math.min(retry, 8_000)));
         continue;
       }
       const d = await r.json().catch(() => ({}));
@@ -2020,7 +2024,10 @@ module.exports = async (req, res) => {
                 { role: 'system', content: zcql.ZCQL_SYSTEM },
                 { role: 'user', content: zcql.buildUserPrompt(searchQuery, q, lastErr) },
               ],
-              { maxTokens: 350, temperature: 0, timeoutMs: 10_000 }
+              // ZCQL generation runs on the fast model: it's a structured task the
+              // 8B handles well, and it keeps data questions off the 70B model's
+              // small per-day token budget (which the 70B fallbacks can exhaust).
+              { maxTokens: 350, temperature: 0, timeoutMs: 10_000, model: GROQ_MODEL_FAST }
             );
             const s = zcql.parsePlan(gen);
             if (!s.ok) { lastErr = s.error; q = gen && String(gen).slice(0, 400); continue; }
