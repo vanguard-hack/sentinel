@@ -316,9 +316,3 @@ The feature→role matrix lives in [`react-app/src/utils/access.js`](react-app/s
 Sentinel runs on a **synthetic** dataset for demonstration and evaluation. It is a decision-support
 tool — every AI output is advisory and must be verified by an officer. **Production deployment with
 real citizen data requires legal sign-off** (DPDP Act, evidence-handling, and departmental approval).
-
-<div align="center">
-
-Built for the Karnataka State Police · on the CCTNS / BNSS framework · powered by Zoho Catalyst.
-
-</div>
