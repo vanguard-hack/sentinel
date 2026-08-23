@@ -98,8 +98,10 @@ const GROQ_MODEL_FAST = process.env.GROQ_MODEL_FAST || 'llama-3.1-8b-instant';
 async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeoutMs = 12_000, model = GROQ_MODEL } = {}) {
   if (!process.env.GROQ_API_KEY) return null;
   // One retry on 429: the free tier has a tokens-per-minute cap that a single
-  // multi-call question (router + generator + prose) can trip.
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // multi-call question (router + generator + prose) can trip. A third attempt
+  // is reserved for the model-downgrade path below.
+  let waited = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const r = await fetch(GROQ_URL, {
         method: 'POST',
@@ -110,14 +112,19 @@ async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeout
         body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (r.status === 429 && attempt === 0) {
-        // Only a SHORT cool-off (per-minute cap) is worth waiting out. A long
-        // retry-after means a per-day cap — retrying is futile and just stalls
-        // the request, so bail immediately and let the caller fall back fast.
+      if (r.status === 429) {
+        // Only a SHORT cool-off (per-minute cap) is worth waiting out — once. A
+        // long retry-after means a per-day cap: retrying the same model is
+        // futile, so downgrade to the fast model (its cap is separate) instead
+        // of failing the feature outright.
         const retry = (parseFloat(r.headers.get('retry-after')) || 3) * 1000;
-        if (retry > 9_000) return null;
-        await new Promise((s) => setTimeout(s, Math.min(retry, 8_000)));
-        continue;
+        if (retry <= 9_000 && !waited) {
+          waited = true;
+          await new Promise((s) => setTimeout(s, Math.min(retry, 8_000)));
+          continue;
+        }
+        if (model !== GROQ_MODEL_FAST) { model = GROQ_MODEL_FAST; continue; }
+        return null;
       }
       const d = await r.json().catch(() => ({}));
       return r.ok ? (d.choices && d.choices[0] && d.choices[0].message.content) || null : null;
