@@ -89,11 +89,13 @@ const AGUI_TRANSFORM =
 //   3. transform answers into agui components (faster + more reliable than a
 //      second RAG round-trip)
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
-// Groq rate-limits per model. High-volume/simple calls (routing, expansion,
-// prose-from-rows, component transform) run on the fast model so the 70B
-// budget is reserved for ZCQL generation and knowledge fallbacks.
-const GROQ_MODEL_FAST = process.env.GROQ_MODEL_FAST || 'llama-3.1-8b-instant';
+// Groq decommissioned the llama-3.x models (they now 404), so the defaults are
+// the current replacements. Rate limits are per model: high-volume/simple calls
+// (routing, expansion, prose-from-rows, component transform) run on the fast
+// model so the big model's budget is reserved for summaries, ZCQL generation
+// and knowledge fallbacks.
+const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+const GROQ_MODEL_FAST = process.env.GROQ_MODEL_FAST || 'qwen/qwen3.6-27b';
 
 async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeoutMs = 12_000, model = GROQ_MODEL } = {}) {
   if (!process.env.GROQ_API_KEY) return null;
@@ -103,15 +105,32 @@ async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeout
   let waited = false;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
+      // gpt-oss are reasoning models: reasoning tokens spend from max_tokens
+      // BEFORE any content, so a tight content budget must be topped up or the
+      // reply comes back empty. qwen3 can switch reasoning off entirely, so
+      // there max_tokens keeps meaning "content tokens".
+      const payload = { model, messages, temperature, max_tokens: maxTokens };
+      if (model.startsWith('openai/gpt-oss')) {
+        payload.reasoning_effort = 'low';
+        payload.max_tokens = maxTokens + 768;
+      } else if (model.startsWith('qwen/')) {
+        payload.reasoning_effort = 'none';
+      }
       const r = await fetch(GROQ_URL, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
+        body: JSON.stringify(payload),
         signal: AbortSignal.timeout(timeoutMs),
       });
+      if (r.status === 404 || r.status === 400) {
+        // model_not_found (Groq retires models without notice) — try the other
+        // tier once rather than failing the feature.
+        if (model !== GROQ_MODEL_FAST) { model = GROQ_MODEL_FAST; continue; }
+        return null;
+      }
       if (r.status === 429) {
         // Only a SHORT cool-off (per-minute cap) is worth waiting out — once. A
         // long retry-after means a per-day cap: retrying the same model is
@@ -1974,7 +1993,7 @@ module.exports = async (req, res) => {
             { role: 'system', content: EXPAND_PROMPT },
             { role: 'user', content: contextBits.join('\n\n') + '\n\nQuestion: ' + query },
           ],
-          // Fast model: keeps follow-up questions working off the 70B day cap.
+          // Fast model: keeps follow-up questions off the big model's day cap.
           { maxTokens: 160, temperature: 0.2, timeoutMs: 6_000, model: GROQ_MODEL_FAST }
         )
       : null;
@@ -2049,9 +2068,9 @@ module.exports = async (req, res) => {
                 { role: 'system', content: zcql.ZCQL_SYSTEM },
                 { role: 'user', content: zcql.buildUserPrompt(searchQuery, q, lastErr) },
               ],
-              // ZCQL generation runs on the fast model: it's a structured task the
-              // 8B handles well, and it keeps data questions off the 70B model's
-              // small per-day token budget (which the 70B fallbacks can exhaust).
+              // ZCQL generation runs on the fast model: it's a structured task it
+              // handles well, and it keeps data questions off the big model's
+              // small per-day token budget (which its fallbacks can exhaust).
               { maxTokens: 350, temperature: 0, timeoutMs: 10_000, model: GROQ_MODEL_FAST }
             );
             const s = zcql.parsePlan(gen);
