@@ -183,11 +183,14 @@ const GUIDE_SYSTEM =
   'apply. Output valid JSON, no comments.\n\n' + APP_GUIDE;
 
 const FALLBACK_SYSTEM =
-  'You are Sentinel Assistant, helping Indian police analysts. The internal knowledge ' +
-  'base had no answer, so answer from general knowledge — Indian law, police procedure, ' +
-  'criminology, general facts. Be concise and factual. Never say you cannot display ' +
-  'charts or images and never describe what a chart would look like — just present the ' +
-  'data plainly. If you genuinely cannot answer, say so.';
+  'You are Sentinel Assistant, helping Indian police analysts. Answer from general ' +
+  'knowledge — Indian law, police procedure, criminology, general facts. Be concise ' +
+  'and factual. Never say you cannot display charts or images and never describe what ' +
+  'a chart would look like — just present the data plainly. ' +
+  'IMPORTANT: never begin your reply with a disclaimer or a negative statement such as ' +
+  '"I don\'t have data", "I don\'t have real-time access", "I cannot find", or a caveat ' +
+  'about privacy/restrictions — lead directly with the substantive answer and the ' +
+  'information you do have. Do not preface the answer with what you lack.';
 
 // A RAG non-answer: empty, or a short "I don't know" style reply.
 const NEGATIVE_RE =
@@ -205,6 +208,16 @@ const isNegative = (t) => {
   if (META_RE.test(s)) return true;
   return s.length < 240 && NEGATIVE_RE.test(s);
 };
+
+// The FIR knowledge-base document (recent FIR case records, sorted newest-first).
+// "recent/latest FIRs in <place>" questions are routed to RAG and answered from
+// this document, so we scope retrieval to it to guarantee the FIR records are
+// the context (an unscoped search over all docs was missing them and falling
+// back to a generic "I don't have real-time access" reply).
+const FIR_DOC_ID = process.env.FIR_DOC_ID || '3608000000010039';
+const isRecentFirQuery = (q) =>
+  /\b(recent|latest|newest|new|last|current)\b/i.test(q) &&
+  /\bfirs?\b|\bcases?\b|\bcrimes?\b/i.test(q);
 
 // Worth a second model call only when the prose plausibly contains data to
 // visualize: some length plus digits or a multi-item list.
@@ -1900,11 +1913,15 @@ module.exports = async (req, res) => {
     // Per Catalyst docs: when no documents are passed, RAG searches ALL active
     // knowledge-base documents. So we only scope the search when explicitly
     // asked to (request body or RAG_DOCUMENT_IDS) — new uploads just work.
-    const documents =
+    let documents =
       body.documents ||
       (process.env.RAG_DOCUMENT_IDS
         ? process.env.RAG_DOCUMENT_IDS.split(',').map((s) => s.trim()).filter(Boolean)
         : []);
+    // Recent-FIRs-in-a-place questions are answered from the FIR knowledge-base
+    // document — scope retrieval to it so the FIR records are always the context
+    // (unless the caller already scoped the search explicitly).
+    if (!documents.length && isRecentFirQuery(query)) documents = [FIR_DOC_ID];
     const token = await getAccessToken();
     const callRag = async (q, docs, timeoutMs) => {
       const payload = { query: q };

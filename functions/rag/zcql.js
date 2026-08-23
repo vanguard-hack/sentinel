@@ -59,12 +59,19 @@ const ROUTER_PROMPT =
   'designations, employees/officers, religions, castes, occupations.\n\n' +
   'Answer RAG when the question is about law/procedure explanations, FAQs, ' +
   'definitions, how-to guidance, document contents, or anything not answerable ' +
-  'from those tables.\n\n' +
+  'from those tables. ALSO answer RAG when the question asks to LIST the RECENT ' +
+  'or LATEST FIRs / cases in a specific place (a city, district or police ' +
+  'station) — these recent-FIR listings are served from the FIR knowledge-base ' +
+  'document, NOT from ZCQL. Examples: "recent FIRs in Bengaluru City" → RAG. ' +
+  '"latest cases in Mysuru" → RAG. "show me the newest FIRs in Hubli" → RAG.\n\n' +
   'If a question could plausibly be answered either way (e.g. any count, "top N", ' +
   'ranking, per-district/per-station/per-year statistic), ALWAYS prefer ZCQL — ' +
-  'the database is the authoritative, current source.\n' +
+  'the database is the authoritative, current source. The ONE exception is the ' +
+  'recent/latest-FIRs-in-a-place listing above, which goes to RAG.\n' +
   'Examples: "How many FIRs in 2024?" → ZCQL. "Top 5 districts by cases" → ZCQL. ' +
-  '"Which officer registered the most cases?" → ZCQL. "What is a cognizable ' +
+  '"Which officer registered the most cases?" → ZCQL. ' +
+  '"recent FIRs in Bengaluru City" → RAG. "latest FIRs in Mysuru" → RAG. ' +
+  '"What is a cognizable ' +
   'offence?" → RAG. "What does Section 379 IPC say?" → RAG. ' +
   '"Hey, how are you?" → CHAT. "thanks, that helped!" → CHAT. ' +
   '"good morning" → CHAT. "what all can you do?" → CHAT.';
