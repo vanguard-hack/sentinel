@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, FileDown, FilePlus2,
-  Lock, Plus, RotateCcw, Save, Sparkles, Trash2, Unlock, ZoomIn, ZoomOut,
+  AlertTriangle, AlignCenter, AlignLeft, AlignRight, Bold, ChevronDown,
+  ChevronUp, FileDown, FilePlus2, Heading1, List, Move, Plus, RectangleHorizontal,
+  RotateCcw, Save, Sparkles, Table as TableIcon, Trash2, Type, Unlock, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { reportTypeById, extraSheetDefs, initSheetValues } from '../data/reportTemplates';
@@ -11,9 +12,24 @@ import { logAudit } from '../utils/audit';
 
 // A4 at 96dpi. The on-screen sheet mirrors what SmartBrowz prints server-side.
 const PAGE_W = 794;
+// Usable free-layout canvas inside a blank page (fits the printed A4 content box).
+export const FREE_W = 682;
+export const FREE_H = 1005;
+
 const pageUid = () => 'pg-' + Math.random().toString(36).slice(2, 10);
+const elUid = () => 'el-' + Math.random().toString(36).slice(2, 10);
 
 const newPageFor = (sheet) => ({ uid: pageUid(), sheetId: sheet.id, values: initSheetValues(sheet) });
+const blankPage = () => ({ uid: pageUid(), sheetId: 'blank', values: {}, elements: [] });
+
+// Default geometry & typography for each free-layout element type.
+const EL_DEFAULTS = {
+  title: { w: 420, h: 36, text: 'Section title', fontSize: 16, bold: true, align: 'center', color: '#111111' },
+  field: { w: 300, h: 48, label: 'Field name', text: '', fontSize: 12, bold: false, align: 'left', color: '#111111' },
+  text: { w: 420, h: 110, text: '', fontSize: 12, bold: false, align: 'left', color: '#111111' },
+  bullets: { w: 380, h: 100, text: 'First point\nSecond point', fontSize: 12, bold: false, align: 'left', color: '#111111' },
+  table: { w: 520, h: 120, fontSize: 11, bold: false, align: 'left', color: '#111111', rows: [['', '', ''], ['', '', ''], ['', '', '']] },
+};
 
 function freshReport(type) {
   return {
@@ -49,13 +65,15 @@ export default function ReportEditor() {
   const [savedAt, setSavedAt] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [zoom, setZoom] = useState(100);
-  const [addOpen, setAddOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [aiBusy, setAiBusy] = useState(null); // "uid:fieldId" of narrative being polished
   const [aiUndo, setAiUndo] = useState(null); // { key, prev }
+  const [selected, setSelected] = useState(null); // { pageUid, elId } on blank pages
   const canvasRef = useRef(null);
   const reportRef = useRef(null);
   reportRef.current = report;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
 
   const type = report ? reportTypeById(report.typeId) : null;
   const locked = report?.status === 'final';
@@ -107,9 +125,8 @@ export default function ReportEditor() {
   }, [dirty]);
 
   const mutate = useCallback((fn) => {
-    setReport((r) => { const next = fn(r); return next; });
+    setReport(fn);
     setDirty(true);
-    setAiUndo(null);
   }, []);
 
   const setValue = useCallback((uid, key, v) => {
@@ -141,9 +158,44 @@ export default function ReportEditor() {
     }));
   };
 
+  // ── free-layout (blank page) element ops ──────────────────────────────────
+  const updateEl = useCallback((uid, elId, fn) => {
+    mutate((r) => ({
+      ...r,
+      pages: r.pages.map((p) => (p.uid !== uid ? p : {
+        ...p,
+        elements: (p.elements || []).map((el) => (el.id === elId ? fn(el) : el)),
+      })),
+    }));
+  }, [mutate]);
+
+  const addEl = (uid, elType) => {
+    mutate((r) => ({
+      ...r,
+      pages: r.pages.map((p) => {
+        if (p.uid !== uid) return p;
+        const n = (p.elements || []).length;
+        const el = {
+          id: elUid(), type: elType,
+          x: 40 + ((n * 16) % 120), y: 48 + ((n * 24) % 240),
+          ...JSON.parse(JSON.stringify(EL_DEFAULTS[elType])),
+        };
+        setSelected({ pageUid: uid, elId: el.id });
+        return { ...p, elements: [...(p.elements || []), el].slice(0, 120) };
+      }),
+    }));
+  };
+
+  const removeEl = (uid, elId) => {
+    mutate((r) => ({
+      ...r,
+      pages: r.pages.map((p) => (p.uid !== uid ? p : { ...p, elements: (p.elements || []).filter((e) => e.id !== elId) })),
+    }));
+    setSelected(null);
+  };
+
   const addPage = (sheet) => {
-    mutate((r) => ({ ...r, pages: [...r.pages, newPageFor(sheet)].slice(0, 60) }));
-    setAddOpen(false);
+    mutate((r) => ({ ...r, pages: [...r.pages, sheet ? newPageFor(sheet) : blankPage()].slice(0, 60) }));
     setTimeout(() => canvasRef.current?.scrollTo({ top: canvasRef.current.scrollHeight, behavior: 'smooth' }), 60);
   };
 
@@ -178,14 +230,6 @@ export default function ReportEditor() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const toggleFinal = () => {
-    const next = locked ? 'draft' : 'final';
-    // eslint-disable-next-line no-alert
-    if (next === 'final' && !window.confirm('Finalize this report? It becomes read-only until reopened.')) return;
-    saveNow({ status: next });
-    logAudit(next === 'final' ? 'finalize-report' : 'reopen-report', 'Report Studio', reportRef.current.title);
   };
 
   const exportPdf = async () => {
@@ -265,44 +309,30 @@ export default function ReportEditor() {
             <button type="button" className="rb-zoom-pct" title="Fit width" onClick={fitWidth}>{zoom}%</button>
             <button type="button" className="cf-icon-btn" title="Zoom in" onClick={() => setZoom((z) => Math.min(150, z + 10))}><ZoomIn size={15} /></button>
           </div>
-          {!locked && (
-            <div className="rb-addpage">
-              <button type="button" className="aa-btn" onClick={() => setAddOpen((o) => !o)}>
-                <FilePlus2 size={15} /> Add page <ChevronDown size={13} />
-              </button>
-              {addOpen && (
-                <div className="rb-addpage-menu">
-                  {extras.map((e) => (
-                    <button key={e.label} type="button" onClick={() => addPage(e.sheet)}>{e.label}</button>
-                  ))}
-                </div>
-              )}
-            </div>
+          {locked && (
+            <button type="button" className="cf-icon-btn" title="Reopen for editing" onClick={() => saveNow({ status: 'draft' })}>
+              <Unlock size={15} />
+            </button>
           )}
-          <button type="button" className="aa-btn" onClick={() => saveNow()} disabled={saving || locked}>
-            <Save size={15} /> Save
+          <button type="button" className="cf-icon-btn" title="Save now" onClick={() => saveNow()} disabled={saving || locked}>
+            <Save size={15} />
           </button>
-          <button type="button" className="aa-btn" onClick={toggleFinal} disabled={saving}>
-            {locked ? <><Unlock size={15} /> Reopen</> : <><Lock size={15} /> Finalize</>}
-          </button>
-          <button type="button" className="aa-btn primary" onClick={exportPdf} disabled={exporting}>
-            <FileDown size={15} /> {exporting ? 'Rendering…' : 'Download PDF'}
+          <button type="button" className="cf-icon-btn primary" title="Download PDF" onClick={exportPdf} disabled={exporting}>
+            <FileDown size={15} />
           </button>
         </div>
 
         {error && <div className="aa-error rb-editor-error"><AlertTriangle size={16} /> {error}</div>}
-        {locked && (
-          <div className="rb-final-banner">
-            <CheckCircle2 size={15} /> This report is finalized and read-only. Reopen it to make corrections.
-          </div>
-        )}
 
-        <div className="rb-canvas" ref={canvasRef} onClick={() => addOpen && setAddOpen(false)}>
+        <div className="rb-canvas" ref={canvasRef}>
           <div className="rb-zoom-stage" style={{ zoom: zoom / 100 }}>
             {report.pages.map((page, pi) => {
-              const sheet = type.sheets.find((s) => s.id === page.sheetId)
+              const isBlank = page.sheetId === 'blank';
+              const sheet = isBlank ? null : (
+                type.sheets.find((s) => s.id === page.sheetId)
                 || extras.map((e) => e.sheet).find((s) => s.id === page.sheetId)
-                || { title: 'Sheet', blocks: [] };
+                || { title: 'Sheet', blocks: [] }
+              );
               return (
                 <div className="rb-sheet-wrap" key={page.uid}>
                   {!locked && (
@@ -313,38 +343,65 @@ export default function ReportEditor() {
                     </div>
                   )}
                   <div className="rb-sheet" style={{ width: PAGE_W }}>
-                    <div className="rb-sheet-hdr">
-                      <div className="rb-sheet-org">KARNATAKA STATE POLICE</div>
-                      <h2>{sheet.title}</h2>
-                      {sheet.subtitle && <div className="rb-sheet-sub">{sheet.subtitle}</div>}
-                    </div>
-                    {(sheet.blocks || []).map((b, bi) => (
-                      <Block
-                        key={bi}
-                        block={b}
-                        bi={bi}
+                    {isBlank ? (
+                      <FreeSheet
                         page={page}
                         locked={locked}
-                        setValue={setValue}
-                        setCell={setCell}
-                        addRow={addRow}
-                        polish={polish}
-                        aiBusy={aiBusy}
-                        aiUndo={aiUndo}
-                        setAiUndo={setAiUndo}
+                        zoomRef={zoomRef}
+                        selected={selected && selected.pageUid === page.uid ? selected.elId : null}
+                        onSelect={(elId) => setSelected(elId ? { pageUid: page.uid, elId } : null)}
+                        updateEl={updateEl}
+                        addEl={addEl}
+                        removeEl={removeEl}
                       />
-                    ))}
+                    ) : (
+                      <>
+                        <div className="rb-sheet-hdr">
+                          <div className="rb-sheet-org">KARNATAKA STATE POLICE</div>
+                          <h2>{sheet.title}</h2>
+                          {sheet.subtitle && <div className="rb-sheet-sub">{sheet.subtitle}</div>}
+                        </div>
+                        {(sheet.blocks || []).map((b, bi) => (
+                          <Block
+                            key={bi}
+                            block={b}
+                            bi={bi}
+                            page={page}
+                            locked={locked}
+                            setValue={setValue}
+                            setCell={setCell}
+                            addRow={addRow}
+                            polish={polish}
+                            aiBusy={aiBusy}
+                            aiUndo={aiUndo}
+                            setAiUndo={setAiUndo}
+                          />
+                        ))}
+                      </>
+                    )}
                     <div className="rb-sheet-pgno">Page {pi + 1} of {report.pages.length}</div>
                   </div>
                 </div>
               );
             })}
+
+            {!locked && (
+              <div className="rb-addpage-end" style={{ width: PAGE_W }}>
+                <span className="rb-addpage-end-label"><FilePlus2 size={14} /> Add page</span>
+                {extras.map((e) => (
+                  <button key={e.label} type="button" onClick={() => addPage(e.sheet)}>{e.label}</button>
+                ))}
+                <button type="button" className="accent" onClick={() => addPage(null)}>Blank page (free layout)</button>
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
+
+/* ── Template-sheet blocks ─────────────────────────────────────────────────── */
 
 function Block({ block: b, bi, page, locked, setValue, setCell, addRow, polish, aiBusy, aiUndo, setAiUndo }) {
   const v = page.values || {};
@@ -412,30 +469,30 @@ function Block({ block: b, bi, page, locked, setValue, setCell, addRow, polish, 
     const key = `${page.uid}:${b.id}`;
     return (
       <div className="rb-narrative">
-        <div className="rb-legend rb-legend-row">
-          <span>{b.label}</span>
+        <div className="rb-legend">{b.label}</div>
+        <div className="rb-nar-box">
+          <AutoTextarea
+            value={v[b.id] || ''}
+            minLines={Math.min(b.lines || 3, 10)}
+            disabled={locked}
+            onChange={(e) => { setValue(page.uid, b.id, e.target.value); if (aiUndo && aiUndo.key === key) setAiUndo(null); }}
+          />
           {!locked && (
-            <span className="rb-nar-actions">
+            <span className="rb-nar-fabs">
               {aiUndo && aiUndo.key === key && (
-                <button type="button" className="rb-ai-btn" title="Revert AI edit"
+                <button type="button" className="rb-ai-fab" title="Revert AI edit"
                   onClick={() => { setValue(page.uid, b.id, aiUndo.prev); setAiUndo(null); }}>
-                  <RotateCcw size={11} /> Undo
+                  <RotateCcw size={12} />
                 </button>
               )}
-              <button type="button" className="rb-ai-btn" disabled={aiBusy === key || !(v[b.id] || '').trim()}
-                title="Rewrite this section in formal report language (facts preserved)"
+              <button type="button" className="rb-ai-fab" disabled={aiBusy === key || !(v[b.id] || '').trim()}
+                title="AI polish — rewrite in formal report language (facts preserved)"
                 onClick={() => polish(page.uid, b.id, b.label)}>
-                <Sparkles size={11} /> {aiBusy === key ? 'Polishing…' : 'AI polish'}
+                <Sparkles size={12} className={aiBusy === key ? 'rb-spin' : undefined} />
               </button>
             </span>
           )}
         </div>
-        <AutoTextarea
-          value={v[b.id] || ''}
-          minLines={Math.min(b.lines || 3, 10)}
-          disabled={locked}
-          onChange={(e) => setValue(page.uid, b.id, e.target.value)}
-        />
         {b.hint && <span className="rb-hint">{b.hint}</span>}
       </div>
     );
@@ -460,4 +517,234 @@ function Block({ block: b, bi, page, locked, setValue, setCell, addRow, polish, 
     );
   }
   return null;
+}
+
+/* ── Free-layout (blank page) designer ─────────────────────────────────────── */
+
+const SNAP = 6;
+
+// Snap a proposed x/y against page edges, page centre and sibling edges/centres.
+// Returns the snapped position plus the guide lines to draw.
+function snapAxis(pos, size, limit, cands) {
+  for (const [target, line] of cands) {
+    if (Math.abs(pos - target) <= SNAP) return { pos: target, line };
+  }
+  return { pos: Math.max(0, Math.min(limit - size, pos)), line: null };
+}
+
+function FreeSheet({ page, locked, zoomRef, selected, onSelect, updateEl, addEl, removeEl }) {
+  const [guides, setGuides] = useState({ v: null, h: null });
+  const dragRef = useRef(null);
+  const elsRef = useRef([]);
+  elsRef.current = page.elements || [];
+
+  const endDrag = useCallback(() => {
+    dragRef.current = null;
+    setGuides({ v: null, h: null });
+  }, []);
+
+  useEffect(() => () => endDrag(), [endDrag]);
+
+  const onMove = useCallback((e) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const k = (zoomRef.current || 100) / 100;
+    const dx = (e.clientX - d.sx) / k;
+    const dy = (e.clientY - d.sy) / k;
+    const el = elsRef.current.find((x) => x.id === d.id);
+    if (!el) return;
+    if (d.mode === 'resize') {
+      const w = Math.max(60, Math.min(FREE_W - el.x, d.ow + dx));
+      const h = Math.max(26, Math.min(FREE_H - el.y, d.oh + dy));
+      updateEl(page.uid, d.id, (x) => ({ ...x, w: Math.round(w), h: Math.round(h) }));
+      return;
+    }
+    const others = elsRef.current.filter((x) => x.id !== d.id);
+    const xCands = [[0, 0], [(FREE_W - el.w) / 2, FREE_W / 2], [FREE_W - el.w, FREE_W]];
+    const yCands = [[0, 0], [(FREE_H - el.h) / 2, FREE_H / 2], [FREE_H - el.h, FREE_H]];
+    others.forEach((o) => {
+      xCands.push([o.x, o.x], [o.x + o.w - el.w, o.x + o.w], [o.x + (o.w - el.w) / 2, o.x + o.w / 2]);
+      yCands.push([o.y, o.y], [o.y + o.h - el.h, o.y + o.h], [o.y + (o.h - el.h) / 2, o.y + o.h / 2]);
+    });
+    const sx = snapAxis(d.ox + dx, el.w, FREE_W, xCands);
+    const sy = snapAxis(d.oy + dy, el.h, FREE_H, yCands);
+    setGuides({ v: sx.line, h: sy.line });
+    updateEl(page.uid, d.id, (x) => ({ ...x, x: Math.round(sx.pos), y: Math.round(sy.pos) }));
+  }, [page.uid, updateEl, zoomRef]);
+
+  const startDrag = (e, el, mode) => {
+    if (locked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onSelect(el.id);
+    dragRef.current = { mode, id: el.id, sx: e.clientX, sy: e.clientY, ox: el.x, oy: el.y, ow: el.w, oh: el.h };
+    const up = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', up);
+      endDrag();
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', up);
+  };
+
+  const selectedEl = (page.elements || []).find((e) => e.id === selected) || null;
+
+  return (
+    <div className="rb-free" onPointerDown={() => onSelect(null)}>
+      {!locked && (
+        <div className="rb-palette" onPointerDown={(e) => e.stopPropagation()}>
+          <button type="button" title="Add heading" onClick={() => addEl(page.uid, 'title')}><Heading1 size={14} /> Heading</button>
+          <button type="button" title="Add labelled field" onClick={() => addEl(page.uid, 'field')}><RectangleHorizontal size={14} /> Field</button>
+          <button type="button" title="Add text box" onClick={() => addEl(page.uid, 'text')}><Type size={14} /> Text</button>
+          <button type="button" title="Add bullet list" onClick={() => addEl(page.uid, 'bullets')}><List size={14} /> Bullets</button>
+          <button type="button" title="Add table" onClick={() => addEl(page.uid, 'table')}><TableIcon size={14} /> Table</button>
+        </div>
+      )}
+
+      {!locked && selectedEl && (
+        <div className="rb-props" onPointerDown={(e) => e.stopPropagation()}>
+          <label title="Font size">
+            <input
+              type="number" min={8} max={40} value={selectedEl.fontSize}
+              onChange={(e) => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, fontSize: Math.max(8, Math.min(40, Number(e.target.value) || 12)) }))}
+            />
+            px
+          </label>
+          <input
+            type="color" title="Text colour" value={selectedEl.color || '#111111'}
+            onChange={(e) => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, color: e.target.value }))}
+          />
+          <button type="button" className={selectedEl.bold ? 'on' : ''} title="Bold"
+            onClick={() => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, bold: !x.bold }))}><Bold size={13} /></button>
+          <button type="button" className={selectedEl.align === 'left' ? 'on' : ''} title="Align left"
+            onClick={() => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, align: 'left' }))}><AlignLeft size={13} /></button>
+          <button type="button" className={selectedEl.align === 'center' ? 'on' : ''} title="Align centre"
+            onClick={() => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, align: 'center' }))}><AlignCenter size={13} /></button>
+          <button type="button" className={selectedEl.align === 'right' ? 'on' : ''} title="Align right"
+            onClick={() => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, align: 'right' }))}><AlignRight size={13} /></button>
+          {selectedEl.type === 'table' && (
+            <>
+              <button type="button" title="Add row" onClick={() => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, rows: [...x.rows, x.rows[0].map(() => '')].slice(0, 30) }))}>+Row</button>
+              <button type="button" title="Remove last row" onClick={() => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, rows: x.rows.length > 1 ? x.rows.slice(0, -1) : x.rows }))}>−Row</button>
+              <button type="button" title="Add column" onClick={() => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, rows: x.rows.map((r) => (r.length < 10 ? [...r, ''] : r)) }))}>+Col</button>
+              <button type="button" title="Remove last column" onClick={() => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, rows: x.rows.map((r) => (r.length > 1 ? r.slice(0, -1) : r)) }))}>−Col</button>
+            </>
+          )}
+          <button type="button" className="danger" title="Delete element" onClick={() => removeEl(page.uid, selectedEl.id)}><Trash2 size={13} /></button>
+        </div>
+      )}
+
+      <div className="rb-free-canvas" style={{ width: FREE_W, height: FREE_H }}>
+        {(page.elements || []).length === 0 && (
+          <div className="rb-free-empty">Blank page — add headings, fields, text boxes, bullet lists or tables from the palette above, then drag them anywhere. Edges snap to guides for alignment.</div>
+        )}
+        {guides.v != null && <div className="rb-guide-v" style={{ left: guides.v }} />}
+        {guides.h != null && <div className="rb-guide-h" style={{ top: guides.h }} />}
+        {(page.elements || []).map((el) => (
+          <FreeElement
+            key={el.id}
+            el={el}
+            locked={locked}
+            selected={selected === el.id}
+            startDrag={startDrag}
+            onSelect={onSelect}
+            update={(fn) => updateEl(page.uid, el.id, fn)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FreeElement({ el, locked, selected, startDrag, onSelect, update }) {
+  const style = {
+    left: el.x, top: el.y, width: el.w, height: el.h,
+    fontSize: el.fontSize, color: el.color || '#111',
+    fontWeight: el.bold ? 700 : 400, textAlign: el.align || 'left',
+  };
+  const stop = (e) => e.stopPropagation();
+
+  let body = null;
+  if (el.type === 'title') {
+    body = (
+      <input
+        className="rb-el-input" value={el.text} disabled={locked} placeholder="Heading…"
+        style={{ textAlign: el.align }} onChange={(e) => update((x) => ({ ...x, text: e.target.value }))}
+      />
+    );
+  } else if (el.type === 'field') {
+    body = (
+      <div className="rb-el-fieldwrap">
+        <input
+          className="rb-el-label" value={el.label || ''} disabled={locked} placeholder="FIELD NAME"
+          onChange={(e) => update((x) => ({ ...x, label: e.target.value }))}
+        />
+        <input
+          className="rb-el-input dotted" value={el.text || ''} disabled={locked} placeholder="…"
+          style={{ textAlign: el.align }} onChange={(e) => update((x) => ({ ...x, text: e.target.value }))}
+        />
+      </div>
+    );
+  } else if (el.type === 'text') {
+    body = (
+      <textarea
+        className="rb-el-area" value={el.text || ''} disabled={locked} placeholder="Text…"
+        style={{ textAlign: el.align }} onChange={(e) => update((x) => ({ ...x, text: e.target.value }))}
+      />
+    );
+  } else if (el.type === 'bullets') {
+    body = selected && !locked ? (
+      <textarea
+        className="rb-el-area" value={el.text || ''} placeholder={'One point per line'}
+        onChange={(e) => update((x) => ({ ...x, text: e.target.value }))}
+      />
+    ) : (
+      <ul className="rb-el-bullets">
+        {String(el.text || '').split('\n').filter((l) => l.trim()).map((l, i) => <li key={i}>{l}</li>)}
+      </ul>
+    );
+  } else if (el.type === 'table') {
+    body = (
+      <table className="rb-el-table">
+        <tbody>
+          {(el.rows || []).map((row, ri) => (
+            <tr key={ri}>
+              {row.map((cell, ci) => (
+                <td key={ci}>
+                  <input
+                    value={cell} disabled={locked}
+                    onChange={(e) => update((x) => ({
+                      ...x,
+                      rows: x.rows.map((r, i) => (i === ri ? r.map((c, j) => (j === ci ? e.target.value : c)) : r)),
+                    }))}
+                  />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+
+  return (
+    <div
+      className={`rb-el${selected ? ' sel' : ''}`}
+      style={style}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        if (!selected) startDrag(e, el, 'move');
+      }}
+    >
+      {selected && !locked && (
+        <>
+          <div className="rb-el-grip" title="Drag to move" onPointerDown={(e) => startDrag(e, el, 'move')}>
+            <Move size={11} />
+          </div>
+          <div className="rb-el-resize" title="Drag to resize" onPointerDown={(e) => startDrag(e, el, 'resize')} />
+        </>
+      )}
+      <div className="rb-el-body" onPointerDown={selected ? stop : undefined}>{body}</div>
+    </div>
+  );
 }

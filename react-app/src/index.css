@@ -6008,3 +6008,105 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .rb-sig-label { font-size: 10px; font-weight: 700; color: #222; margin-bottom: 3px; }
 .rb-sig-field { display: flex; align-items: baseline; gap: 6px; font-size: 10px; color: #444; margin: 2px 0; }
 .rb-sig-field span { flex: 0 0 auto; }
+
+/* ── Report Studio: free-layout blank pages & icon toolbar ─────────────── */
+.cf-icon-btn.primary { background: var(--blue-500); color: #fff; border-color: var(--blue-500); }
+.cf-icon-btn.primary:hover:not(:disabled) { background: var(--blue-600); }
+
+.rb-nar-box { position: relative; }
+.rb-nar-fabs { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; }
+.rb-ai-fab {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 999px; cursor: pointer;
+  color: var(--blue-600); background: color-mix(in srgb, var(--blue-400) 10%, #ffffff 70%);
+  border: 1px solid color-mix(in srgb, var(--blue-400) 40%, transparent);
+}
+.rb-ai-fab:hover:not(:disabled) { background: color-mix(in srgb, var(--blue-400) 22%, #ffffff 60%); }
+.rb-ai-fab:disabled { opacity: .4; cursor: default; }
+@keyframes rb-spin { to { transform: rotate(360deg); } }
+.rb-spin { animation: rb-spin 1.1s linear infinite; }
+
+.rb-addpage-end {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 14px 18px; border: 1.5px dashed var(--border-bright); border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-1) 60%, transparent); margin: 0 auto;
+}
+.rb-addpage-end-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: var(--text-2); margin-right: 4px;
+}
+.rb-addpage-end button {
+  font: inherit; font-size: 11.5px; font-weight: 600; color: var(--text-1);
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: 999px;
+  padding: 6px 12px; cursor: pointer; transition: border-color .12s;
+}
+.rb-addpage-end button:hover { border-color: var(--border-bright); }
+.rb-addpage-end button.accent { color: var(--blue-600); border-color: color-mix(in srgb, var(--blue-400) 45%, transparent); }
+
+/* Free page */
+.rb-free { position: relative; margin: -52px -56px -40px; padding: 46px 56px 40px; }
+.rb-palette, .rb-props {
+  position: sticky; top: 0; z-index: 8; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  width: fit-content; margin: 0 auto 8px; padding: 5px 8px;
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: 999px;
+  box-shadow: var(--shadow-card);
+}
+.rb-palette button, .rb-props button {
+  display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 10.5px; font-weight: 600;
+  color: var(--text-1); background: none; border: 1px solid transparent; border-radius: 999px;
+  padding: 4px 9px; cursor: pointer;
+}
+.rb-palette button:hover, .rb-props button:hover { background: var(--hover-overlay); }
+.rb-props button.on { background: color-mix(in srgb, var(--blue-400) 14%, transparent); color: var(--blue-600); border-color: color-mix(in srgb, var(--blue-400) 35%, transparent); }
+.rb-props button.danger { color: var(--red); }
+.rb-props label { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; color: var(--text-2); }
+.rb-props input[type="number"] {
+  font: inherit; font-size: 11px; width: 44px; padding: 3px 5px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--bg-2); color: var(--text-0);
+}
+.rb-props input[type="color"] {
+  width: 24px; height: 24px; padding: 0; border: 1px solid var(--border); border-radius: 6px;
+  background: none; cursor: pointer;
+}
+
+.rb-free-canvas { position: relative; margin: 0 auto; outline: 1px dashed #d5d5d5; }
+.rb-free-empty {
+  position: absolute; inset: 34% 12% auto; text-align: center;
+  font-size: 12px; font-style: italic; color: #999; pointer-events: none;
+}
+.rb-guide-v { position: absolute; top: 0; bottom: 0; width: 1px; background: #e11d48; z-index: 6; pointer-events: none; }
+.rb-guide-h { position: absolute; left: 0; right: 0; height: 1px; background: #e11d48; z-index: 6; pointer-events: none; }
+
+.rb-el { position: absolute; border: 1px dashed transparent; border-radius: 3px; cursor: grab; }
+.rb-el:hover { border-color: #bbb; }
+.rb-el.sel { border: 1px solid var(--blue-500); cursor: default; z-index: 4; }
+.rb-el-body { width: 100%; height: 100%; overflow: hidden; }
+.rb-el-grip {
+  position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 999px; cursor: grab; z-index: 5;
+  background: var(--blue-500); color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3);
+}
+.rb-el-grip:active { cursor: grabbing; }
+.rb-el-resize {
+  position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px;
+  border-radius: 3px; background: var(--blue-500); cursor: nwse-resize; z-index: 5;
+}
+.rb-el-input, .rb-el-area, .rb-el-label {
+  font-family: inherit; font-size: inherit; font-weight: inherit; color: inherit;
+  background: transparent; border: 0; width: 100%; padding: 2px 4px;
+}
+.rb-el-input:focus, .rb-el-area:focus, .rb-el-label:focus { outline: none; background: color-mix(in srgb, var(--blue-400) 6%, transparent); }
+.rb-el-input.dotted { border-bottom: 1px dotted #888; }
+.rb-el-label { font-size: 8.5px; text-transform: uppercase; letter-spacing: .5px; color: #555; font-weight: 400; text-align: left; }
+.rb-el-area { height: 100%; resize: none; line-height: 1.45; }
+.rb-el-fieldwrap { display: flex; flex-direction: column; height: 100%; }
+.rb-el-bullets { margin: 0; padding: 2px 4px 2px 20px; line-height: 1.5; }
+.rb-el-bullets li { margin: 1px 0; }
+.rb-el-table { width: 100%; border-collapse: collapse; }
+.rb-el-table td { border: 1px solid #444; padding: 0; vertical-align: top; }
+.rb-el-table td input {
+  font-family: inherit; font-size: inherit; color: inherit; background: transparent;
+  border: 0; width: 100%; padding: 3px 5px; min-width: 24px;
+}
+.rb-el-table td input:focus { outline: none; background: color-mix(in srgb, var(--blue-400) 6%, transparent); }

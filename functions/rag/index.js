@@ -1818,11 +1818,19 @@ async function handleReportDocs(req, res, action) {
   // transitions (creation, finalize/reopen) land in the audit trail.
   const typeId = String(body.typeId || '').slice(0, 40);
   if (!typeId) return json(res, 400, { error: 'typeId is required' });
-  const pages = (Array.isArray(body.pages) ? body.pages : []).slice(0, 60).map((p) => ({
-    uid: String((p && p.uid) || '').slice(0, 40),
-    sheetId: String((p && p.sheetId) || '').slice(0, 60),
-    values: p && p.values && typeof p.values === 'object' && !Array.isArray(p.values) ? p.values : {},
-  }));
+  const pages = (Array.isArray(body.pages) ? body.pages : []).slice(0, 60).map((p) => {
+    const page = {
+      uid: String((p && p.uid) || '').slice(0, 40),
+      sheetId: String((p && p.sheetId) || '').slice(0, 60),
+      values: p && p.values && typeof p.values === 'object' && !Array.isArray(p.values) ? p.values : {},
+    };
+    // Blank pages carry a free-layout element list (positioned headings,
+    // fields, text boxes, bullet lists, tables) instead of template values.
+    if (Array.isArray(p && p.elements)) {
+      page.elements = p.elements.slice(0, 120).filter((el) => el && typeof el === 'object');
+    }
+    return page;
+  });
   if (JSON.stringify(pages).length > 900_000) return json(res, 413, { error: 'Report too large' });
 
   let existing = await loadRptRecord(bucket, id);

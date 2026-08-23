@@ -74,9 +74,48 @@ function blockHtml(b, bi, values) {
   return '';
 }
 
+// Free-layout (blank page) elements — absolutely positioned inside a canvas
+// whose px dimensions match the on-screen designer (682×1005 @96dpi ≈ the A4
+// content box), so what the officer laid out is what prints.
+function freeElHtml(el) {
+  const base = `position:absolute;left:${Number(el.x) || 0}px;top:${Number(el.y) || 0}px;` +
+    `width:${Number(el.w) || 100}px;font-size:${Number(el.fontSize) || 12}px;` +
+    `color:${esc(el.color || '#111')};font-weight:${el.bold ? 700 : 400};text-align:${esc(el.align || 'left')};`;
+  if (el.type === 'title') return `<div style="${base}">${val(el.text)}</div>`;
+  if (el.type === 'field') {
+    return `<div style="${base}">
+      <div style="font-size:${Math.max(7, (Number(el.fontSize) || 12) - 4)}px;text-transform:uppercase;letter-spacing:.4px;color:#555;text-align:left;font-weight:400">${esc(el.label || '')}</div>
+      <div style="border-bottom:1px dotted #666;min-height:${(Number(el.fontSize) || 12) + 5}px;padding:1px 2px">${val(el.text)}</div>
+    </div>`;
+  }
+  if (el.type === 'text') {
+    return `<div style="${base}min-height:${Number(el.h) || 24}px;white-space:pre-wrap;line-height:1.45">${val(el.text)}</div>`;
+  }
+  if (el.type === 'bullets') {
+    const items = String(el.text || '').split('\n').filter((l) => l.trim());
+    return `<ul style="${base}margin:0;padding-left:${(Number(el.fontSize) || 12) + 6}px;line-height:1.5">${items.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>`;
+  }
+  if (el.type === 'table') {
+    const rows = Array.isArray(el.rows) ? el.rows : [];
+    return `<table style="${base}border-collapse:collapse" cellspacing="0">
+      <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td style="border:1px solid #444;padding:3px 5px;font-size:inherit;vertical-align:top">${val(c)}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+  }
+  return '';
+}
+
 export function buildReportHtml(type, report) {
   const pagesHtml = (report.pages || [])
     .map((p, i, arr) => {
+      const footer = `<footer class="pgno">${esc(report.title || type.name)} — Page ${i + 1} of ${arr.length}</footer>`;
+      if (p.sheetId === 'blank') {
+        return `<section class="sheet">
+          <div style="position:relative;width:682px;height:1005px">
+            ${(p.elements || []).map(freeElHtml).join('')}
+          </div>
+          ${footer}
+        </section>`;
+      }
       const sheet = type.sheets.find((s) => s.id === p.sheetId)
         || (type.extraSheets || []).find((s) => s.id === p.sheetId)
         || { title: 'Sheet', blocks: [] };
@@ -87,7 +126,7 @@ export function buildReportHtml(type, report) {
           ${sheet.subtitle ? `<div class="sub">${esc(sheet.subtitle)}</div>` : ''}
         </header>
         ${(sheet.blocks || []).map((b, bi) => blockHtml(b, bi, p.values || {})).join('')}
-        <footer class="pgno">${esc(report.title || type.name)} — Page ${i + 1} of ${arr.length}</footer>
+        ${footer}
       </section>`;
     })
     .join('');
