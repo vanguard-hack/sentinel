@@ -1,0 +1,463 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import {
+  AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, FileDown, FilePlus2,
+  Lock, Plus, RotateCcw, Save, Sparkles, Trash2, Unlock, ZoomIn, ZoomOut,
+} from 'lucide-react';
+import TopBar from '../components/TopBar';
+import { reportTypeById, extraSheetDefs, initSheetValues } from '../data/reportTemplates';
+import { getReport, saveReport, newReportId, downloadReportPdf, aiPolish } from '../utils/reportStudio';
+import { logAudit } from '../utils/audit';
+
+// A4 at 96dpi. The on-screen sheet mirrors what SmartBrowz prints server-side.
+const PAGE_W = 794;
+const pageUid = () => 'pg-' + Math.random().toString(36).slice(2, 10);
+
+const newPageFor = (sheet) => ({ uid: pageUid(), sheetId: sheet.id, values: initSheetValues(sheet) });
+
+function freshReport(type) {
+  return {
+    id: newReportId(),
+    typeId: type.id,
+    title: `${type.name} — ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`,
+    status: 'draft',
+    refNo: '',
+    pages: type.sheets.map(newPageFor),
+  };
+}
+
+// Auto-growing textarea for narrative blocks.
+function AutoTextarea({ value, minLines, ...rest }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.max(el.scrollHeight, (minLines || 3) * 19 + 12)}px`;
+  }, [value, minLines]);
+  return <textarea ref={ref} rows={minLines || 3} value={value} {...rest} />;
+}
+
+export default function ReportEditor() {
+  const { reportId } = useParams();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const [report, setReport] = useState(null);
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState(null);
+  const [dirty, setDirty] = useState(false);
+  const [zoom, setZoom] = useState(100);
+  const [addOpen, setAddOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [aiBusy, setAiBusy] = useState(null); // "uid:fieldId" of narrative being polished
+  const [aiUndo, setAiUndo] = useState(null); // { key, prev }
+  const canvasRef = useRef(null);
+  const reportRef = useRef(null);
+  reportRef.current = report;
+
+  const type = report ? reportTypeById(report.typeId) : null;
+  const locked = report?.status === 'final';
+
+  // Load or create.
+  useEffect(() => {
+    let live = true;
+    if (reportId === 'new') {
+      const t = reportTypeById(searchParams.get('type'));
+      if (!t) { setError('Unknown report type'); return undefined; }
+      const rec = freshReport(t);
+      setReport(rec);
+      // Claim a real URL immediately so refresh/back behave, and persist the shell.
+      saveReport(rec)
+        .then(() => { if (live) { setSavedAt(Date.now()); navigate(`/report-studio/${rec.id}`, { replace: true }); } })
+        .catch((e) => live && setError(e.message));
+      logAudit('create-report', 'Report Studio', t.name);
+      return () => { live = false; };
+    }
+    getReport(reportId)
+      .then((rec) => live && setReport(rec))
+      .catch((e) => live && setError(e.message));
+    return () => { live = false; };
+  }, [reportId, searchParams, navigate]);
+
+  // Debounced autosave whenever the document changes.
+  useEffect(() => {
+    if (!dirty || !report) return undefined;
+    const t = setTimeout(async () => {
+      try {
+        setSaving(true);
+        await saveReport(reportRef.current);
+        setSavedAt(Date.now());
+        setDirty(false);
+      } catch (e) {
+        setError(`Autosave failed — ${e.message}`);
+      } finally {
+        setSaving(false);
+      }
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [dirty, report]);
+
+  // Warn before leaving with unsaved edits still in the debounce window.
+  useEffect(() => {
+    const onUnload = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, [dirty]);
+
+  const mutate = useCallback((fn) => {
+    setReport((r) => { const next = fn(r); return next; });
+    setDirty(true);
+    setAiUndo(null);
+  }, []);
+
+  const setValue = useCallback((uid, key, v) => {
+    mutate((r) => ({
+      ...r,
+      pages: r.pages.map((p) => (p.uid === uid ? { ...p, values: { ...p.values, [key]: v } } : p)),
+    }));
+  }, [mutate]);
+
+  const setCell = useCallback((uid, tableId, ri, ci, v) => {
+    mutate((r) => ({
+      ...r,
+      pages: r.pages.map((p) => {
+        if (p.uid !== uid) return p;
+        const rows = (p.values[tableId] || []).map((row, i) => (i === ri ? row.map((c, j) => (j === ci ? v : c)) : row));
+        return { ...p, values: { ...p.values, [tableId]: rows } };
+      }),
+    }));
+  }, [mutate]);
+
+  const addRow = (uid, block) => {
+    mutate((r) => ({
+      ...r,
+      pages: r.pages.map((p) => {
+        if (p.uid !== uid) return p;
+        const rows = [...(p.values[block.id] || []), block.columns.map(() => '')];
+        return { ...p, values: { ...p.values, [block.id]: rows.slice(0, 40) } };
+      }),
+    }));
+  };
+
+  const addPage = (sheet) => {
+    mutate((r) => ({ ...r, pages: [...r.pages, newPageFor(sheet)].slice(0, 60) }));
+    setAddOpen(false);
+    setTimeout(() => canvasRef.current?.scrollTo({ top: canvasRef.current.scrollHeight, behavior: 'smooth' }), 60);
+  };
+
+  const removePage = (uid) => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm('Remove this page and everything entered on it?')) return;
+    mutate((r) => ({ ...r, pages: r.pages.filter((p) => p.uid !== uid) }));
+  };
+
+  const movePage = (uid, dir) => {
+    mutate((r) => {
+      const i = r.pages.findIndex((p) => p.uid === uid);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= r.pages.length) return r;
+      const pages = [...r.pages];
+      [pages[i], pages[j]] = [pages[j], pages[i]];
+      return { ...r, pages };
+    });
+  };
+
+  const saveNow = async (patch) => {
+    try {
+      setSaving(true);
+      const rec = { ...reportRef.current, ...(patch || {}) };
+      if (patch) setReport(rec);
+      await saveReport(rec);
+      setSavedAt(Date.now());
+      setDirty(false);
+      setError(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleFinal = () => {
+    const next = locked ? 'draft' : 'final';
+    // eslint-disable-next-line no-alert
+    if (next === 'final' && !window.confirm('Finalize this report? It becomes read-only until reopened.')) return;
+    saveNow({ status: next });
+    logAudit(next === 'final' ? 'finalize-report' : 'reopen-report', 'Report Studio', reportRef.current.title);
+  };
+
+  const exportPdf = async () => {
+    try {
+      setExporting(true);
+      if (dirty) await saveNow();
+      await downloadReportPdf(reportRef.current);
+      logAudit('download-report', 'Report Studio', reportRef.current.title);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const polish = async (uid, fieldId, label) => {
+    const page = reportRef.current.pages.find((p) => p.uid === uid);
+    const text = (page?.values[fieldId] || '').trim();
+    if (!text) return;
+    const key = `${uid}:${fieldId}`;
+    setAiBusy(key);
+    try {
+      const polished = await aiPolish({ text, label, reportName: type?.name });
+      setValue(uid, fieldId, polished);
+      setAiUndo({ key, prev: text });
+    } catch (e) {
+      setError(`AI assist failed — ${e.message}`);
+    } finally {
+      setAiBusy(null);
+    }
+  };
+
+  const fitWidth = () => {
+    const w = canvasRef.current?.clientWidth || PAGE_W;
+    setZoom(Math.max(50, Math.min(150, Math.floor(((w - 48) / PAGE_W) * 100))));
+  };
+
+  const extras = useMemo(() => (type ? extraSheetDefs(type) : []), [type]);
+
+  if (error && !report) {
+    return (
+      <div className="cf-page">
+        <TopBar title="Report Studio" parent="Report Studio" parentTo="/report-studio" />
+        <div className="pp-body"><div className="aa-error"><AlertTriangle size={16} /> {error}</div></div>
+      </div>
+    );
+  }
+  if (!report || !type) {
+    return (
+      <div className="cf-page">
+        <TopBar title="Report Studio" parent="Report Studio" parentTo="/report-studio" />
+        <div className="pp-body"><div className="aa-loading">Opening report…</div></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cf-page">
+      <TopBar title={type.name} parent="Report Studio" parentTo="/report-studio" />
+      <div className="rb-editor">
+        <div className="rb-toolbar">
+          <input
+            className="rb-title-input"
+            value={report.title}
+            disabled={locked}
+            maxLength={160}
+            onChange={(e) => mutate((r) => ({ ...r, title: e.target.value }))}
+            aria-label="Report title"
+          />
+          <span className={`rb-chip ${locked ? 'final' : 'draft'}`}>{locked ? 'Final' : 'Draft'}</span>
+          <span className="rb-savestate">
+            {saving ? 'Saving…' : dirty ? 'Unsaved edits' : savedAt ? `Saved ${new Date(savedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : ''}
+          </span>
+          <div className="rb-toolbar-spacer" />
+          <div className="rb-zoom">
+            <button type="button" className="cf-icon-btn" title="Zoom out" onClick={() => setZoom((z) => Math.max(50, z - 10))}><ZoomOut size={15} /></button>
+            <button type="button" className="rb-zoom-pct" title="Fit width" onClick={fitWidth}>{zoom}%</button>
+            <button type="button" className="cf-icon-btn" title="Zoom in" onClick={() => setZoom((z) => Math.min(150, z + 10))}><ZoomIn size={15} /></button>
+          </div>
+          {!locked && (
+            <div className="rb-addpage">
+              <button type="button" className="aa-btn" onClick={() => setAddOpen((o) => !o)}>
+                <FilePlus2 size={15} /> Add page <ChevronDown size={13} />
+              </button>
+              {addOpen && (
+                <div className="rb-addpage-menu">
+                  {extras.map((e) => (
+                    <button key={e.label} type="button" onClick={() => addPage(e.sheet)}>{e.label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <button type="button" className="aa-btn" onClick={() => saveNow()} disabled={saving || locked}>
+            <Save size={15} /> Save
+          </button>
+          <button type="button" className="aa-btn" onClick={toggleFinal} disabled={saving}>
+            {locked ? <><Unlock size={15} /> Reopen</> : <><Lock size={15} /> Finalize</>}
+          </button>
+          <button type="button" className="aa-btn primary" onClick={exportPdf} disabled={exporting}>
+            <FileDown size={15} /> {exporting ? 'Rendering…' : 'Download PDF'}
+          </button>
+        </div>
+
+        {error && <div className="aa-error rb-editor-error"><AlertTriangle size={16} /> {error}</div>}
+        {locked && (
+          <div className="rb-final-banner">
+            <CheckCircle2 size={15} /> This report is finalized and read-only. Reopen it to make corrections.
+          </div>
+        )}
+
+        <div className="rb-canvas" ref={canvasRef} onClick={() => addOpen && setAddOpen(false)}>
+          <div className="rb-zoom-stage" style={{ zoom: zoom / 100 }}>
+            {report.pages.map((page, pi) => {
+              const sheet = type.sheets.find((s) => s.id === page.sheetId)
+                || extras.map((e) => e.sheet).find((s) => s.id === page.sheetId)
+                || { title: 'Sheet', blocks: [] };
+              return (
+                <div className="rb-sheet-wrap" key={page.uid}>
+                  {!locked && (
+                    <div className="rb-page-tools">
+                      <button type="button" className="cf-icon-btn" title="Move up" disabled={pi === 0} onClick={() => movePage(page.uid, -1)}><ChevronUp size={14} /></button>
+                      <button type="button" className="cf-icon-btn" title="Move down" disabled={pi === report.pages.length - 1} onClick={() => movePage(page.uid, 1)}><ChevronDown size={14} /></button>
+                      <button type="button" className="cf-icon-btn danger" title="Remove page" disabled={report.pages.length === 1} onClick={() => removePage(page.uid)}><Trash2 size={14} /></button>
+                    </div>
+                  )}
+                  <div className="rb-sheet" style={{ width: PAGE_W }}>
+                    <div className="rb-sheet-hdr">
+                      <div className="rb-sheet-org">KARNATAKA STATE POLICE</div>
+                      <h2>{sheet.title}</h2>
+                      {sheet.subtitle && <div className="rb-sheet-sub">{sheet.subtitle}</div>}
+                    </div>
+                    {(sheet.blocks || []).map((b, bi) => (
+                      <Block
+                        key={bi}
+                        block={b}
+                        bi={bi}
+                        page={page}
+                        locked={locked}
+                        setValue={setValue}
+                        setCell={setCell}
+                        addRow={addRow}
+                        polish={polish}
+                        aiBusy={aiBusy}
+                        aiUndo={aiUndo}
+                        setAiUndo={setAiUndo}
+                      />
+                    ))}
+                    <div className="rb-sheet-pgno">Page {pi + 1} of {report.pages.length}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Block({ block: b, bi, page, locked, setValue, setCell, addRow, polish, aiBusy, aiUndo, setAiUndo }) {
+  const v = page.values || {};
+  if (b.kind === 'fields') {
+    return (
+      <div>
+        {b.legend && <div className="rb-legend">{b.legend}</div>}
+        <div className="rb-grid">
+          {b.fields.map((f) => (
+            <label key={f.id} className="rb-field" style={{ gridColumn: `span ${f.span || 12}` }}>
+              <span className="rb-lbl">{f.label}</span>
+              {f.type === 'select' ? (
+                <select value={v[f.id] || ''} disabled={locked} onChange={(e) => setValue(page.uid, f.id, e.target.value)}>
+                  <option value="">—</option>
+                  {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              ) : (
+                <input
+                  type={f.type === 'date' ? 'date' : f.type === 'time' ? 'time' : 'text'}
+                  value={v[f.id] || ''}
+                  disabled={locked}
+                  onChange={(e) => setValue(page.uid, f.id, e.target.value)}
+                />
+              )}
+              {f.hint && <span className="rb-hint">{f.hint}</span>}
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (b.kind === 'table') {
+    const rows = Array.isArray(v[b.id]) ? v[b.id] : [];
+    return (
+      <div>
+        {b.label && <div className="rb-legend">{b.label}</div>}
+        <div className="rb-table-scroll">
+          <table className="rb-table">
+            <thead>
+              <tr>{b.columns.map((c) => <th key={c.id} style={c.width ? { width: `${c.width}%` } : undefined}>{c.label}</th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={ri}>
+                  {b.columns.map((c, ci) => (
+                    <td key={c.id}>
+                      <input value={row[ci] || ''} disabled={locked} onChange={(e) => setCell(page.uid, b.id, ri, ci, e.target.value)} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {b.footnote && <div className="rb-hint">{b.footnote}</div>}
+        {!locked && (
+          <button type="button" className="rb-addrow" onClick={() => addRow(page.uid, b)}>
+            <Plus size={12} /> Add row
+          </button>
+        )}
+      </div>
+    );
+  }
+  if (b.kind === 'narrative') {
+    const key = `${page.uid}:${b.id}`;
+    return (
+      <div className="rb-narrative">
+        <div className="rb-legend rb-legend-row">
+          <span>{b.label}</span>
+          {!locked && (
+            <span className="rb-nar-actions">
+              {aiUndo && aiUndo.key === key && (
+                <button type="button" className="rb-ai-btn" title="Revert AI edit"
+                  onClick={() => { setValue(page.uid, b.id, aiUndo.prev); setAiUndo(null); }}>
+                  <RotateCcw size={11} /> Undo
+                </button>
+              )}
+              <button type="button" className="rb-ai-btn" disabled={aiBusy === key || !(v[b.id] || '').trim()}
+                title="Rewrite this section in formal report language (facts preserved)"
+                onClick={() => polish(page.uid, b.id, b.label)}>
+                <Sparkles size={11} /> {aiBusy === key ? 'Polishing…' : 'AI polish'}
+              </button>
+            </span>
+          )}
+        </div>
+        <AutoTextarea
+          value={v[b.id] || ''}
+          minLines={Math.min(b.lines || 3, 10)}
+          disabled={locked}
+          onChange={(e) => setValue(page.uid, b.id, e.target.value)}
+        />
+        {b.hint && <span className="rb-hint">{b.hint}</span>}
+      </div>
+    );
+  }
+  if (b.kind === 'note') return <p className="rb-note">{b.text}</p>;
+  if (b.kind === 'signatures') {
+    return (
+      <div className="rb-sigs">
+        {b.blocks.map((sb, j) => (
+          <div key={j} className="rb-sig">
+            <div className="rb-sig-space" />
+            <div className="rb-sig-label">{sb.label}</div>
+            {(sb.fields || []).map((f) => (
+              <label key={f} className="rb-sig-field">
+                <span>{f}:</span>
+                <input value={v[`b${bi}:${j}:${f}`] || ''} disabled={locked} onChange={(e) => setValue(page.uid, `b${bi}:${j}:${f}`, e.target.value)} />
+              </label>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
+}

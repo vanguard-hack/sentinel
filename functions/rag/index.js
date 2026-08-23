@@ -189,6 +189,7 @@ AI Analytics [/ai-analytics]: the machine-learning workspace. Tabs:
   • Financial Trails [/ai-analytics?tab=financial]: money-laundering / financial-crime analysis — screens transactions around economic, cyber and property offenders against AML typologies (structuring/smurfing, layering, fan-in mule hubs, fan-out dispersal, round-tripping, pass-through, high-value cash, hawala/crypto channels, shell/mule accounts). Shows a typology breakdown, a money-flow NETWORK of entities/mule/shell accounts, prioritised risk-scored alerts, and flagged transactions. THIS is the "financial crime network trails".
 Case Files [/case-files]: browse and query the raw FIR data store with column filters and CSV export.
 Investigation Diary [/investigation-diary]: BNSS S.172 case diaries mapped to CCTNS — diary entries, S.161 statements/testimony (typed, recorded with speech-to-text, or uploaded and OCR'd), evidence, persons, a timeline, findings, an AI cited summary and PDF export.
+Report Studio [/report-studio]: draft, edit and file statutory & administrative police reports from prescribed templates — FIR (IIF-1), Case Diary (S.192 BNSS), Arrest/Court Surrender Memo (IIF-3), Charge Sheet / Final Report (IIF-5), UDR/Death Report, Missing Person Report, Property Seizure Memo (IIF-4), Daily Station Report/General Diary, Law & Order Report, Crime Analysis Report, Police Performance Report and Court/Case Status Report. Paged A4 editor with zoom, add-page (continuation/accused/property sheets), autosave to the archive, AI narrative polish, finalize (read-only lock) and PDF download.
 Assistant [/assistant]: this chat — ask about data, law, or the platform.
 Personnel Directory [/personnel]: officer directory (rank, unit, district). Sub-pages: Duty Roster [/personnel/roster] (shift schedule), Org Chart [/personnel/org-chart] (command hierarchy).
 Access & Audit [/access]: admin only — assign roles and browse/export the audit trail of who did what, where and when.
@@ -1739,6 +1740,162 @@ async function handleInvestigationSummary(req, res) {
   });
 }
 
+// ── Report Studio (statutory & administrative report documents) ─────────────
+// FIR, case diary, arrest memo, charge sheet, seizure memo, UDR, missing
+// person, GD and management reports drafted in the Report Studio editor.
+// Same record+index Stratus pattern as the Investigation Diary: one blob per
+// report plus a small index blob so the hub lists fast. Deletion is soft (the
+// blob is kept, flagged `deleted`) so a filed report can always be recovered.
+const RPT_PREFIX = 'reports/studio/';
+const RPT_INDEX_KEY = 'reports/studio-index.json';
+const RPT_STATUSES = ['draft', 'final'];
+const rptKey = (id) => `${RPT_PREFIX}${id}.json`;
+
+async function loadRptIndex(bucket) {
+  try {
+    const parsed = JSON.parse((await streamToString(await bucket.getObject(RPT_INDEX_KEY))) || '{}');
+    return Array.isArray(parsed.reports) ? parsed.reports : [];
+  } catch {
+    return [];
+  }
+}
+async function saveRptIndex(bucket, reports) {
+  await bucket.putObject(RPT_INDEX_KEY, Buffer.from(JSON.stringify({ reports, updatedAt: Date.now() })));
+}
+async function loadRptRecord(bucket, id) {
+  try {
+    return JSON.parse((await streamToString(await bucket.getObject(rptKey(id)))) || 'null');
+  } catch {
+    return null;
+  }
+}
+const rptSummary = (rec) => ({
+  id: rec.id, typeId: rec.typeId, title: rec.title, status: rec.status,
+  refNo: rec.refNo || '', pageCount: (rec.pages || []).length,
+  createdBy: rec.createdBy || '', createdByName: rec.createdByName || '',
+  createdAt: rec.createdAt, updatedAt: rec.updatedAt,
+});
+
+async function handleReportDocs(req, res, action) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  // Same authenticated-role gate as the Investigation Diary (myRole fails open
+  // to 'investigator' for role-less users, so !caller must be checked too).
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+
+  if (action === 'list') {
+    const reports = await loadRptIndex(bucket);
+    return json(res, 200, { reports: reports.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)) });
+  }
+
+  const id = String(body.id || '').trim();
+  if (!/^[A-Za-z0-9_-]{4,64}$/.test(id)) return json(res, 400, { error: 'valid id is required' });
+
+  if (action === 'get') {
+    const rec = await loadRptRecord(bucket, id);
+    if (!rec || rec.deleted) return json(res, 404, { error: 'Report not found' });
+    return json(res, 200, { report: rec });
+  }
+
+  if (action === 'delete') {
+    const rec = await loadRptRecord(bucket, id);
+    if (rec && !rec.deleted) {
+      await bucket.putObject(rptKey(id), Buffer.from(JSON.stringify({ ...rec, deleted: true, updatedAt: Date.now() })));
+    }
+    await saveRptIndex(bucket, (await loadRptIndex(bucket)).filter((r) => r.id !== id));
+    await storeAuditEvents(req, app, bucket, [{
+      action: 'delete-report', feature: 'Report Studio', path: '/report-studio',
+      detail: (rec && rec.title) || id,
+    }], caller);
+    return json(res, 200, { ok: true });
+  }
+
+  // save (create or update). The editor autosaves, so only meaningful
+  // transitions (creation, finalize/reopen) land in the audit trail.
+  const typeId = String(body.typeId || '').slice(0, 40);
+  if (!typeId) return json(res, 400, { error: 'typeId is required' });
+  const pages = (Array.isArray(body.pages) ? body.pages : []).slice(0, 60).map((p) => ({
+    uid: String((p && p.uid) || '').slice(0, 40),
+    sheetId: String((p && p.sheetId) || '').slice(0, 60),
+    values: p && p.values && typeof p.values === 'object' && !Array.isArray(p.values) ? p.values : {},
+  }));
+  if (JSON.stringify(pages).length > 900_000) return json(res, 413, { error: 'Report too large' });
+
+  let existing = await loadRptRecord(bucket, id);
+  if (existing && existing.deleted) existing = null;
+  const now = Date.now();
+  const rec = {
+    id,
+    typeId,
+    title: String(body.title || 'Untitled report').slice(0, 160),
+    status: RPT_STATUSES.includes(body.status) ? body.status : 'draft',
+    refNo: String(body.refNo || '').slice(0, 80),
+    pages,
+    createdBy: existing ? existing.createdBy : String(caller.email_id || '').toLowerCase(),
+    createdByName: existing
+      ? existing.createdByName
+      : `${caller.first_name || ''} ${caller.last_name || ''}`.trim() || String(caller.email_id || ''),
+    createdAt: existing ? existing.createdAt : now,
+    updatedAt: now,
+  };
+  await bucket.putObject(rptKey(id), Buffer.from(JSON.stringify(rec)));
+  const idx = (await loadRptIndex(bucket)).filter((r) => r.id !== id);
+  idx.push(rptSummary(rec));
+  await saveRptIndex(bucket, idx);
+
+  const events = [];
+  if (!existing) {
+    events.push({ action: 'create-report', feature: 'Report Studio', path: '/report-studio', detail: rec.title });
+  } else if (existing.status !== rec.status) {
+    events.push({
+      action: rec.status === 'final' ? 'finalize-report' : 'reopen-report',
+      feature: 'Report Studio', path: '/report-studio', detail: rec.title,
+    });
+  }
+  if (events.length) await storeAuditEvents(req, app, bucket, events, caller);
+  return json(res, 200, { report: rec });
+}
+
+// AI narrative polish: rewrites a drafted section in formal report language.
+// Facts are preserved by instruction; the officer reviews before it is saved,
+// and the original text stays one click away (Undo) in the editor.
+async function handleReportAi(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+  const text = String(body.text || '').slice(0, 6000);
+  if (!text.trim()) return json(res, 400, { error: 'text is required' });
+  const label = String(body.label || 'narrative').slice(0, 140);
+  const reportName = String(body.reportName || 'police report').slice(0, 80);
+  const prose = await callGroq(
+    [
+      {
+        role: 'system',
+        content:
+          'You polish draft text for formal Indian police reports. Rewrite the given draft into clear, ' +
+          'formal, precise report language appropriate to the stated section of the stated report. ' +
+          'Preserve every fact, name, number, date, section of law and place EXACTLY — never invent, add ' +
+          'or drop facts. Keep roughly the same length. Output ONLY the rewritten text, no preamble.',
+      },
+      { role: 'user', content: `Report: ${reportName}\nSection: ${label}\n\nDraft:\n${text}` },
+    ],
+    { maxTokens: 900, temperature: 0.2, timeoutMs: 15_000 }
+  );
+  if (!prose) return json(res, 503, { error: 'AI assist is unavailable right now — try again shortly' });
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'ai-polish', feature: 'Report Studio', path: '/report-studio', detail: label,
+  }], caller);
+  return json(res, 200, { text: prose.trim() });
+}
+
 // ── Investigation media (audio/image/doc evidence) ───────────────────────────
 // Recordings and scanned documents attached to a testimony/statement are
 // stored as individual Stratus objects (not embedded in the case JSON blob,
@@ -1914,6 +2071,11 @@ module.exports = async (req, res) => {
     if (path.endsWith('/investigation/append')) return await handleInvestigation(req, res, 'append');
     if (path.endsWith('/investigation/update')) return await handleInvestigation(req, res, 'update');
     if (path.endsWith('/investigation/delete')) return await handleInvestigation(req, res, 'delete');
+    if (path.endsWith('/reportdocs/list')) return await handleReportDocs(req, res, 'list');
+    if (path.endsWith('/reportdocs/get')) return await handleReportDocs(req, res, 'get');
+    if (path.endsWith('/reportdocs/save')) return await handleReportDocs(req, res, 'save');
+    if (path.endsWith('/reportdocs/delete')) return await handleReportDocs(req, res, 'delete');
+    if (path.endsWith('/reportdocs/ai')) return await handleReportAi(req, res);
     if (path.endsWith('/investigation/reorder')) return await handleInvestigation(req, res, 'reorder');
     if (path.endsWith('/investigation/summarize')) return await handleInvestigationSummary(req, res);
     if (path.endsWith('/investigation/media/upload')) return await handleMediaUpload(req, res);
