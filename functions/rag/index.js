@@ -1824,8 +1824,12 @@ async function handleReportDocs(req, res, action) {
       sheetId: String((p && p.sheetId) || '').slice(0, 60),
       values: p && p.values && typeof p.values === 'object' && !Array.isArray(p.values) ? p.values : {},
     };
-    // Blank pages carry a free-layout element list (positioned headings,
-    // fields, text boxes, bullet lists, tables) instead of template values.
+    // Blank pages are rich documents: `doc` is the editor's ProseMirror JSON
+    // (authoritative for re-editing) and `html` its rendered form, which the
+    // PDF pipeline consumes directly.
+    if (p && p.doc && typeof p.doc === 'object') page.doc = p.doc;
+    if (p && typeof p.html === 'string') page.html = p.html.slice(0, 400_000);
+    // Legacy free-layout pages (absolutely positioned elements) still load.
     if (Array.isArray(p && p.elements)) {
       page.elements = p.elements.slice(0, 120).filter((el) => el && typeof el === 'object');
     }

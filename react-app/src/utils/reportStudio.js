@@ -31,6 +31,16 @@ const esc = (s) =>
 
 const val = (v) => (v && String(v).trim() ? esc(v) : '&nbsp;');
 
+// Defence in depth for editor-generated HTML on its way to the PDF renderer:
+// drop scripts/styles/iframes and any inline event handlers or javascript: URLs.
+function sanitize(html) {
+  return String(html || '')
+    .replace(/<\s*(script|style|iframe|object|embed|link|meta)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+    .replace(/<\s*(script|style|iframe|object|embed|link|meta)\b[^>]*\/?>/gi, '')
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/(href|src)\s*=\s*("\s*javascript:[^"]*"|'\s*javascript:[^']*')/gi, '$1="#"');
+}
+
 function fieldHtml(f, values) {
   return `<div class="fld" style="grid-column: span ${f.span || 12}">
     <div class="lbl">${esc(f.label)}</div>
@@ -78,22 +88,27 @@ function blockHtml(b, bi, values) {
 // whose px dimensions match the on-screen designer (682×1005 @96dpi ≈ the A4
 // content box), so what the officer laid out is what prints.
 function freeElHtml(el) {
+  const vjust = { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[el.valign || 'top'];
+  const ws = el.wrap === false ? 'white-space:pre;overflow:hidden;' : 'white-space:pre-wrap;';
   const base = `position:absolute;left:${Number(el.x) || 0}px;top:${Number(el.y) || 0}px;` +
     `width:${Number(el.w) || 100}px;font-size:${Number(el.fontSize) || 12}px;` +
     `color:${esc(el.color || '#111')};font-weight:${el.bold ? 700 : 400};text-align:${esc(el.align || 'left')};`;
-  if (el.type === 'title') return `<div style="${base}">${val(el.text)}</div>`;
+  // Non-table boxes keep their drawn height so vertical alignment positions
+  // the content inside the box just like the on-screen editor.
+  const box = base + `height:${Number(el.h) || 24}px;display:flex;flex-direction:column;justify-content:${vjust};overflow:hidden;`;
+  if (el.type === 'title') return `<div style="${box}"><div style="${ws}">${val(el.text)}</div></div>`;
   if (el.type === 'field') {
-    return `<div style="${base}">
+    return `<div style="${box}">
       <div style="font-size:${Math.max(7, (Number(el.fontSize) || 12) - 4)}px;text-transform:uppercase;letter-spacing:.4px;color:#555;text-align:left;font-weight:400">${esc(el.label || '')}</div>
-      <div style="border-bottom:1px dotted #666;min-height:${(Number(el.fontSize) || 12) + 5}px;padding:1px 2px">${val(el.text)}</div>
+      <div style="border-bottom:1px dotted #666;min-height:${(Number(el.fontSize) || 12) + 5}px;padding:1px 2px;${ws}">${val(el.text)}</div>
     </div>`;
   }
   if (el.type === 'text') {
-    return `<div style="${base}min-height:${Number(el.h) || 24}px;white-space:pre-wrap;line-height:1.45">${val(el.text)}</div>`;
+    return `<div style="${box}"><div style="${ws}line-height:1.45">${val(el.text)}</div></div>`;
   }
   if (el.type === 'bullets') {
     const items = String(el.text || '').split('\n').filter((l) => l.trim());
-    return `<ul style="${base}margin:0;padding-left:${(Number(el.fontSize) || 12) + 6}px;line-height:1.5">${items.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>`;
+    return `<div style="${box}"><ul style="margin:0;padding-left:${(Number(el.fontSize) || 12) + 6}px;line-height:1.5;${ws}">${items.map((l) => `<li>${esc(l)}</li>`).join('')}</ul></div>`;
   }
   if (el.type === 'table') {
     const rows = Array.isArray(el.rows) ? el.rows : [];
@@ -102,9 +117,21 @@ function freeElHtml(el) {
       ? el.colW : Array(cols).fill(Math.max(40, Math.round((Number(el.w) || 520) / cols)));
     const rowH = Array.isArray(el.rowH) && el.rowH.length === rows.length ? el.rowH : rows.map(() => 28);
     const total = colW.reduce((a, b) => a + b, 0);
+    const merges = Array.isArray(el.merges) ? el.merges : [];
+    const anchor = (ri, ci) => merges.find((m) => m.r === ri && m.c === ci);
+    const covered = (ri, ci) =>
+      merges.some((m) => ri >= m.r && ri < m.r + m.rs && ci >= m.c && ci < m.c + m.cs && !(m.r === ri && m.c === ci));
+    const va = el.valign === 'middle' ? 'middle' : el.valign === 'bottom' ? 'bottom' : 'top';
+    const body = rows.map((r, ri) => `<tr style="height:${rowH[ri] || 28}px">${r.map((c, ci) => {
+      if (covered(ri, ci)) return '';
+      const m = anchor(ri, ci);
+      const span = m ? ` rowspan="${m.rs}" colspan="${m.cs}"` : '';
+      const center = m && m.center ? 'text-align:center;' : '';
+      return `<td${span} style="border:1px solid #444;padding:3px 5px;font-size:inherit;vertical-align:${va};word-wrap:break-word;${center}${ws}">${val(c)}</td>`;
+    }).join('')}</tr>`).join('');
     return `<table style="${base}width:${total}px;border-collapse:collapse;table-layout:fixed" cellspacing="0">
       <colgroup>${colW.map((w) => `<col style="width:${w}px"/>`).join('')}</colgroup>
-      <tbody>${rows.map((r, ri) => `<tr style="height:${rowH[ri] || 28}px">${r.map((c) => `<td style="border:1px solid #444;padding:3px 5px;font-size:inherit;vertical-align:top;word-wrap:break-word">${val(c)}</td>`).join('')}</tr>`).join('')}</tbody>
+      <tbody>${body}</tbody>
     </table>`;
   }
   return '';
@@ -115,6 +142,14 @@ export function buildReportHtml(type, report) {
     .map((p, i, arr) => {
       const footer = `<footer class="pgno">${esc(report.title || type.name)} — Page ${i + 1} of ${arr.length}</footer>`;
       if (p.sheetId === 'blank') {
+        // Rich-document page: the editor already rendered its own HTML. It is
+        // generated by Tiptap from our own editor (not user-supplied markup),
+        // but strip script/style/event handlers anyway before it reaches the
+        // PDF renderer.
+        if (p.html || !Array.isArray(p.elements)) {
+          return `<section class="sheet"><div class="docbody">${sanitize(p.html || '')}</div>${footer}</section>`;
+        }
+        // Legacy free-layout page saved before the rich editor.
         return `<section class="sheet">
           <div style="position:relative;width:682px;height:1005px">
             ${(p.elements || []).map(freeElHtml).join('')}
@@ -162,7 +197,21 @@ export function buildReportHtml(type, report) {
     .sig-space { height: 30px; border-bottom: 1px solid #333; margin-bottom: 3px; }
     .sig-label { font-size: 9px; font-weight: bold; }
     .sig-field { font-size: 9px; } .sig-field span { border-bottom: 1px dotted #666; padding: 0 4px; }
-    .pgno { position: absolute; bottom: 0; right: 0; font-size: 8px; color: #555; }
+    .pgno { position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-size: 8px; color: #555; }
+    /* rich-document pages (Tiptap output) */
+    .docbody { font-size: 11px; line-height: 1.5; }
+    .docbody h1 { font-size: 20px; margin: 10px 0 6px; }
+    .docbody h2 { font-size: 17px; margin: 9px 0 5px; }
+    .docbody h3 { font-size: 14px; margin: 8px 0 4px; }
+    .docbody h4 { font-size: 12.5px; margin: 7px 0 4px; }
+    .docbody p { margin: 4px 0; }
+    .docbody ul, .docbody ol { margin: 4px 0; padding-left: 20px; }
+    .docbody li { margin: 2px 0; }
+    .docbody hr { border: 0; border-top: 1px solid #999; margin: 8px 0; }
+    .docbody table { border-collapse: collapse; width: 100%; margin: 6px 0; table-layout: fixed; }
+    .docbody th, .docbody td { border: 1px solid #333; padding: 4px 6px; vertical-align: top; word-wrap: break-word; }
+    .docbody th { background: #eee; font-weight: bold; }
+    .docbody blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid #bbb; color: #333; }
   </style></head><body>${pagesHtml}</body></html>`;
 }
 
