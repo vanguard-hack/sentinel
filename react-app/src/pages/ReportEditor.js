@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle, AlignCenter, AlignLeft, AlignRight, Bold, ChevronDown,
-  ChevronUp, FileDown, FilePlus2, Heading1, List, Move, Plus, RectangleHorizontal,
+  ChevronUp, FileDown, Heading1, List, Move, Plus, RectangleHorizontal,
   RotateCcw, Save, Sparkles, Table as TableIcon, Trash2, Type, Unlock, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
@@ -69,6 +69,7 @@ export default function ReportEditor() {
   const [aiBusy, setAiBusy] = useState(null); // "uid:fieldId" of narrative being polished
   const [aiUndo, setAiUndo] = useState(null); // { key, prev }
   const [selected, setSelected] = useState(null); // { pageUid, elId } on blank pages
+  const [addOpen, setAddOpen] = useState(false);
   const canvasRef = useRef(null);
   const reportRef = useRef(null);
   reportRef.current = report;
@@ -196,6 +197,7 @@ export default function ReportEditor() {
 
   const addPage = (sheet) => {
     mutate((r) => ({ ...r, pages: [...r.pages, sheet ? newPageFor(sheet) : blankPage()].slice(0, 60) }));
+    setAddOpen(false);
     setTimeout(() => canvasRef.current?.scrollTo({ top: canvasRef.current.scrollHeight, behavior: 'smooth' }), 60);
   };
 
@@ -386,12 +388,24 @@ export default function ReportEditor() {
             })}
 
             {!locked && (
-              <div className="rb-addpage-end" style={{ width: PAGE_W }}>
-                <span className="rb-addpage-end-label"><FilePlus2 size={14} /> Add page</span>
-                {extras.map((e) => (
-                  <button key={e.label} type="button" onClick={() => addPage(e.sheet)}>{e.label}</button>
-                ))}
-                <button type="button" className="accent" onClick={() => addPage(null)}>Blank page (free layout)</button>
+              <div className="rb-addpage-wrap" style={{ width: PAGE_W }}>
+                {addOpen && (
+                  <div className="rb-addpage-menu">
+                    {extras.map((e) => (
+                      <button key={e.label} type="button" onClick={() => addPage(e.sheet)}>{e.label}</button>
+                    ))}
+                    <button type="button" className="accent" onClick={() => addPage(null)}>Blank page (free layout)</button>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="rb-addpage-fab"
+                  title="Add page"
+                  aria-label="Add page"
+                  onClick={() => setAddOpen((o) => !o)}
+                >
+                  <Plus size={20} strokeWidth={2.2} />
+                </button>
               </div>
             )}
           </div>

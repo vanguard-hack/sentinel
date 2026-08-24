@@ -6110,3 +6110,18 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   border: 0; width: 100%; padding: 3px 5px; min-width: 24px;
 }
 .rb-el-table td input:focus { outline: none; background: color-mix(in srgb, var(--blue-400) 6%, transparent); }
+
+/* Full-width icon-only add-page button (menu pops above it) */
+.rb-addpage-wrap { position: relative; margin: 0 auto; }
+.rb-addpage-fab {
+  display: flex; align-items: center; justify-content: center; width: 100%;
+  padding: 14px 0; cursor: pointer; color: var(--text-2);
+  background: color-mix(in srgb, var(--bg-1) 60%, transparent);
+  border: 1.5px dashed var(--border-bright); border-radius: 14px;
+  transition: border-color .12s, color .12s, background .12s;
+}
+.rb-addpage-fab:hover { color: var(--blue-600); border-color: var(--blue-500); background: color-mix(in srgb, var(--blue-400) 6%, transparent); }
+.rb-addpage-wrap .rb-addpage-menu {
+  position: absolute; bottom: calc(100% + 8px); top: auto; left: 50%; right: auto;
+  transform: translateX(-50%); min-width: 260px;
+}
