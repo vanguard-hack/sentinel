@@ -6318,50 +6318,45 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 
 /* ── Confirmation dialog (replaces window.confirm app-wide) ────────────── */
 @keyframes cd-fade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes cd-pop {
-  from { opacity: 0; transform: translateY(10px) scale(.965); }
+@keyframes cd-drop {
+  from { opacity: 0; transform: translateY(-14px) scale(.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* Anchored near the top: a confirmation is a quick interruption, not a page. */
 .cd-scrim {
   position: fixed; inset: 0; z-index: 400;
-  display: flex; align-items: center; justify-content: center; padding: 20px;
-  background: rgba(15, 23, 42, .5);
-  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
-  animation: cd-fade .14s ease-out;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 46px 16px 16px;
+  background: rgba(15, 23, 42, .28);
+  animation: cd-fade .12s ease-out;
 }
 .cd-modal {
-  position: relative; width: 100%; max-width: 400px; padding: 24px 22px 18px;
-  background: var(--bg-1); border: 1px solid var(--border-bright); border-radius: 18px;
-  box-shadow: 0 18px 48px rgba(15, 23, 42, .28), 0 2px 8px rgba(15, 23, 42, .12);
-  animation: cd-pop .18s cubic-bezier(.22, 1.2, .36, 1);
-  text-align: center;
+  display: flex; align-items: flex-start; gap: 11px;
+  width: 100%; max-width: 430px; padding: 13px 14px;
+  background: var(--bg-1); border: 1px solid var(--border-bright); border-radius: 13px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, .22), 0 1px 4px rgba(15, 23, 42, .1);
+  animation: cd-drop .16s cubic-bezier(.22, 1.15, .4, 1);
+  text-align: left; flex-wrap: wrap;
 }
-[data-theme="dark"] .cd-modal { box-shadow: 0 18px 48px rgba(0, 0, 0, .6), 0 2px 8px rgba(0, 0, 0, .4); }
-
-.cd-x {
-  position: absolute; top: 10px; right: 10px;
-  display: flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; padding: 0; cursor: pointer;
-  color: var(--text-3); background: none; border: 0; border-radius: 9px;
-}
-.cd-x:hover { background: var(--hover-overlay); color: var(--text-0); }
+[data-theme="dark"] .cd-modal { box-shadow: 0 12px 32px rgba(0, 0, 0, .55), 0 1px 4px rgba(0, 0, 0, .35); }
 
 .cd-icon {
-  display: flex; align-items: center; justify-content: center;
-  width: 46px; height: 46px; margin: 2px auto 13px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  width: 27px; height: 27px; border-radius: 999px;
   color: var(--blue-600); background: color-mix(in srgb, var(--blue-400) 14%, transparent);
 }
 .cd-modal.danger .cd-icon { color: var(--red); background: color-mix(in srgb, var(--red) 13%, transparent); }
 .cd-modal.warning .cd-icon { color: var(--gold); background: color-mix(in srgb, var(--gold) 15%, transparent); }
 
-.cd-title { margin: 0; font-size: 15.5px; font-weight: 700; color: var(--text-0); line-height: 1.35; }
-.cd-body { margin: 8px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--text-2); }
+.cd-main { flex: 1 1 210px; min-width: 0; padding-top: 2px; }
+.cd-title { margin: 0; font-size: 13px; font-weight: 700; color: var(--text-0); line-height: 1.35; }
+.cd-body { margin: 3px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--text-2); }
 
-.cd-actions { display: flex; gap: 9px; margin-top: 20px; }
+.cd-actions { display: flex; gap: 6px; margin-left: auto; align-self: center; }
 .cd-btn {
-  flex: 1; height: 38px; padding: 0 14px; cursor: pointer;
-  font: inherit; font-size: 12.5px; font-weight: 600; border-radius: 11px;
+  height: 29px; padding: 0 12px; cursor: pointer; white-space: nowrap;
+  font: inherit; font-size: 11.5px; font-weight: 600; border-radius: 8px;
   border: 1px solid var(--border); transition: background .12s, border-color .12s, transform .08s;
 }
 .cd-btn:active { transform: translateY(1px); }
@@ -6376,4 +6371,57 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 
 @media (prefers-reduced-motion: reduce) {
   .cd-scrim, .cd-modal { animation: none; }
+}
+
+/* ── Report Studio: floating text boxes (free positioning in the document) ─ */
+.rb-doc-content .tiptap { position: relative; }
+
+.rb-textbox {
+  position: absolute;
+  padding: 5px 7px;
+  border: 1px solid #444;
+  border-radius: 2px;
+  box-sizing: border-box;
+  background: #fff;
+  z-index: 3;
+}
+.rb-textbox[data-bordered="false"] { border-color: transparent; }
+.rb-textbox:hover { outline: 1px dashed var(--blue-400); outline-offset: 1px; }
+.rb-textbox.sel { outline: 1.5px solid var(--blue-500); outline-offset: 1px; z-index: 5; }
+.rb-textbox-body > *:first-child { margin-top: 0; }
+.rb-textbox-body > *:last-child { margin-bottom: 0; }
+
+.rb-textbox-grip {
+  position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
+  display: none; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 999px; cursor: grab; z-index: 6;
+  background: var(--blue-500); color: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .3);
+}
+.rb-textbox-grip:active { cursor: grabbing; }
+.rb-textbox-resize {
+  position: absolute; right: -6px; bottom: -6px; display: none;
+  width: 12px; height: 12px; border-radius: 3px; cursor: nwse-resize; z-index: 6;
+  background: var(--blue-500);
+}
+.rb-textbox:hover .rb-textbox-grip,
+.rb-textbox:hover .rb-textbox-resize,
+.rb-textbox.sel .rb-textbox-grip,
+.rb-textbox.sel .rb-textbox-resize { display: flex; }
+
+/* Live alignment guides drawn during a text-box drag */
+.rb-doc-content > .rb-guide-v {
+  position: absolute; top: 0; bottom: 0; width: 1px; background: #e11d48; z-index: 20; pointer-events: none;
+}
+.rb-doc-content > .rb-guide-h {
+  position: absolute; left: 0; right: 0; height: 1px; background: #e11d48; z-index: 20; pointer-events: none;
+}
+
+/* Text-box coordinates are page-content pixels (682×1005 = A4 minus margins).
+   The padding moves to the wrapper so .tiptap IS that content box in both the
+   editor and the exported PDF, making absolute positions map 1:1. */
+.rb-doc-content { padding: 46px 56px 40px; position: relative; }
+.rb-doc-content .tiptap {
+  padding: 0;
+  width: 682px;
+  min-height: 1005px;
 }

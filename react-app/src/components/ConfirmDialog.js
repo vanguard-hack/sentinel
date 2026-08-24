@@ -8,7 +8,7 @@
 // The hook returns a promise resolving true/false, so call sites read almost
 // exactly like the window.confirm they replace.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, HelpCircle, Trash2, X } from 'lucide-react';
+import { AlertTriangle, HelpCircle, Trash2 } from 'lucide-react';
 
 const ConfirmContext = createContext(null);
 
@@ -58,12 +58,11 @@ export function ConfirmProvider({ children }) {
             aria-labelledby="cd-title"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <button type="button" className="cd-x" aria-label="Close" onClick={() => close(false)}>
-              <X size={16} />
-            </button>
-            <div className="cd-icon"><Icon size={20} strokeWidth={2} /></div>
-            <h3 id="cd-title" className="cd-title">{opts.title || 'Are you sure?'}</h3>
-            {opts.body && <p className="cd-body">{opts.body}</p>}
+            <div className="cd-icon"><Icon size={15} strokeWidth={2.2} /></div>
+            <div className="cd-main">
+              <h3 id="cd-title" className="cd-title">{opts.title || 'Are you sure?'}</h3>
+              {opts.body && <p className="cd-body">{opts.body}</p>}
+            </div>
             <div className="cd-actions">
               <button type="button" className="cd-btn ghost" onClick={() => close(false)}>
                 {opts.cancelLabel || 'Cancel'}

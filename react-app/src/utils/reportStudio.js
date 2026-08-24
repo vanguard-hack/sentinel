@@ -199,7 +199,9 @@ export function buildReportHtml(type, report) {
     .sig-field { font-size: 9px; } .sig-field span { border-bottom: 1px dotted #666; padding: 0 4px; }
     .pgno { position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-size: 8px; color: #555; }
     /* rich-document pages (Tiptap output) */
-    .docbody { font-size: 11px; line-height: 1.5; }
+    /* Same 682×1005 content box as the editor so absolutely positioned
+       text boxes print exactly where they were placed. */
+    .docbody { position: relative; width: 682px; height: 1005px; font-size: 11px; line-height: 1.5; }
     .docbody h1 { font-size: 20px; margin: 10px 0 6px; }
     .docbody h2 { font-size: 17px; margin: 9px 0 5px; }
     .docbody h3 { font-size: 14px; margin: 8px 0 4px; }

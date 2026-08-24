@@ -14,9 +14,10 @@ import { TextStyleKit } from '@tiptap/extension-text-style';
 import { Placeholder } from '@tiptap/extensions';
 import {
   AlignCenter, AlignJustify, AlignLeft, AlignRight, Bold, ChevronDown, Italic,
-  List, ListOrdered, Minus, Redo2, Strikethrough, Table as TableIcon,
+  List, ListOrdered, Minus, Redo2, Square, Strikethrough, Table as TableIcon,
   Underline as UnderlineIcon, Undo2,
 } from 'lucide-react';
+import { TextBox } from './TextBoxNode';
 
 const FONT_SIZES = [9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32];
 const COLORS = [
@@ -82,6 +83,7 @@ export default function DocEditor({ value, html, locked, onChange }) {
     TextStyleKit,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     TableKit.configure({ table: { resizable: true, cellMinWidth: 36 } }),
+    TextBox,
     Placeholder.configure({ placeholder: 'Start typing — use the toolbar for headings, tables, lists and formatting…' }),
   ], []);
 
@@ -208,6 +210,17 @@ export default function DocEditor({ value, html, locked, onChange }) {
           {btn(editor.isActive('bulletList'), 'Bullet list', () => chain().toggleBulletList().run(), <List size={14} />)}
           {btn(editor.isActive('orderedList'), 'Numbered list', () => chain().toggleOrderedList().run(), <ListOrdered size={14} />)}
           {btn(false, 'Horizontal line', () => chain().setHorizontalRule().run(), <Minus size={14} />)}
+          {btn(
+            editor.isActive('textBox'),
+            'Insert text box — drag it anywhere on the page',
+            () => {
+              // Stagger new boxes so they never land exactly on top of each other.
+              let n = 0;
+              editor.state.doc.descendants((node) => { if (node.type.name === 'textBox') n += 1; });
+              chain().insertTextBox({ x: 60 + ((n * 24) % 160), y: 80 + ((n * 28) % 260) }).run();
+            },
+            <Square size={14} />,
+          )}
 
           <div className="rb-doc-drop">
             <button type="button" className={`rb-doc-tablebtn${inTable ? ' on' : ''}`} title="Insert table" disabled={locked}
