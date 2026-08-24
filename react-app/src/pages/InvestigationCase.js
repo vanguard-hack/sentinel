@@ -4,6 +4,7 @@ import {
   NotebookPen, AlertTriangle, Plus, Sparkles, ListChecks, Users, Fingerprint,
   MessageSquareQuote, Clock, Link2, ChevronDown, ChevronLeft, ChevronRight,
   Mic, Upload, Paperclip, Play, FileText, Pencil, Trash2, FileDown,
+  ScrollText, ExternalLink,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import {
@@ -13,6 +14,8 @@ import {
   STATUS_OPTIONS, PERSON_ROLES, PERSON_STATUSES, EVIDENCE_TYPES, FSL_STATUSES, TIMELINE_TYPES, FINDING_TYPES,
   uploadEvidenceMedia, fetchEvidenceMediaUrl, ocrExtractText,
 } from '../utils/investigation';
+import { listReports } from '../utils/reportStudio';
+import { REPORT_TYPES } from '../data/reportTemplates';
 import { transcribeAudio } from '../utils/assistant';
 import { exportInvestigationDiaryPdf, exportReportPdf } from '../utils/reportPdf';
 import i18n from '../i18n';
@@ -934,6 +937,7 @@ const TABS = [
   { key: 'persons', label: 'Persons', Icon: Users },
   { key: 'timeline', label: 'Timeline', Icon: Clock },
   { key: 'findings', label: 'Findings', Icon: ListChecks },
+  { key: 'reports', label: 'Reports', Icon: ScrollText },
   { key: 'summary', label: 'AI Summary', Icon: Sparkles },
 ];
 
@@ -1043,7 +1047,82 @@ export default function InvestigationCase() {
         {tab === 'persons' && <PersonsTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab === 'timeline' && <TimelineTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab === 'findings' && <FindingsTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
+        {tab === 'reports' && <ReportsTab caseMasterId={rec.caseMasterId} crimeNo={rec.crimeNo} />}
         {tab === 'summary' && <SummaryTab caseMasterId={rec.caseMasterId} crimeNo={rec.crimeNo} />}
+      </div>
+    </div>
+  );
+}
+
+// Reports filed under this case, drafted in Report Studio. The link lives on
+// the report record (caseMasterId), so this reads the report index and filters
+// — the diary record itself stays untouched.
+function ReportsTab({ caseMasterId, crimeNo }) {
+  const navigate = useNavigate();
+  const [reports, setReports] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let live = true;
+    listReports()
+      .then((all) => live && setReports(all.filter((r) => r.caseMasterId === caseMasterId)))
+      .catch((e) => { if (live) { setError(e.message); setReports([]); } });
+    return () => { live = false; };
+  }, [caseMasterId]);
+
+  const typeName = (id) => (REPORT_TYPES.find((t) => t.id === id) || {}).name || id;
+  const fmt = (ts) => (ts ? new Date(ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+
+  return (
+    <div className="inv-pane">
+      <div className="aa-head">
+        <div className="aa-title">
+          <ScrollText size={18} strokeWidth={1.9} />
+          <div>
+            <h1>Reports</h1>
+            <p>Statutory and administrative reports drafted in Report Studio and linked to this case.</p>
+          </div>
+        </div>
+        <button type="button" className="aa-btn primary" onClick={() => navigate('/report-studio')}>
+          <Plus size={15} /> New report
+        </button>
+      </div>
+
+      {error && <div className="aa-error"><AlertTriangle size={16} /> {error}</div>}
+      {!reports && <div className="aa-loading">Loading reports…</div>}
+      {reports && !reports.length && (
+        <div className="rb-empty">
+          No reports linked to {crimeNo || 'this case'} yet. Draft one in Report Studio, then use its link
+          button to attach it to this case.
+        </div>
+      )}
+
+      <div className="rb-saved-list">
+        {(reports || []).map((r) => (
+          <div
+            key={r.id}
+            className="rb-saved-row"
+            role="button"
+            tabIndex={0}
+            onClick={() => navigate(`/report-studio/${r.id}`)}
+            onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/report-studio/${r.id}`); }}
+          >
+            <span className="rb-type-icon sm"><FileText size={16} strokeWidth={1.8} /></span>
+            <div className="rb-saved-main">
+              <div className="rb-saved-title">
+                {r.title}
+                <span className={`rb-chip ${r.status === 'final' ? 'final' : 'draft'}`}>
+                  {r.status === 'final' ? 'Final' : 'Draft'}
+                </span>
+              </div>
+              <div className="rb-saved-sub">
+                {typeName(r.typeId)} · {r.pageCount || 0} page{(r.pageCount || 0) === 1 ? '' : 's'} · Updated {fmt(r.updatedAt)}
+                {r.createdByName ? ` · ${r.createdByName}` : ''}
+              </div>
+            </div>
+            <span className="cf-icon-btn" title="Open in Report Studio"><ExternalLink size={15} /></span>
+          </div>
+        ))}
       </div>
     </div>
   );

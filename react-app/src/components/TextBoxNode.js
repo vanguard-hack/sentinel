@@ -11,8 +11,9 @@
 // export reproduces the layout exactly without any extra conversion.
 import React, { useCallback, useRef } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
+import { NodeSelection } from '@tiptap/pm/state';
 import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
-import { Move } from 'lucide-react';
+import { Move, X } from 'lucide-react';
 
 // Usable content box of the A4 sheet, matching the editor's own padding.
 export const PAGE_INNER_W = 682;
@@ -155,11 +156,32 @@ function TextBoxView({ node, updateAttributes, editor, getPos, selected }) {
         <>
           <span
             className="rb-textbox-grip"
-            title="Drag to move"
+            title="Drag to move · click to select (Backspace deletes)"
             contentEditable={false}
-            onPointerDown={(e) => startDrag(e, 'move')}
+            onPointerDown={(e) => {
+              // Select the box itself, so Backspace/Delete removes the whole
+              // thing rather than editing the text inside it.
+              if (typeof getPos === 'function') {
+                const pos = getPos();
+                if (pos != null) editor.commands.setNodeSelection(pos);
+              }
+              startDrag(e, 'move');
+            }}
           >
             <Move size={11} />
+          </span>
+          <span
+            className="rb-textbox-del"
+            title="Delete text box"
+            contentEditable={false}
+            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onClick={() => {
+              if (typeof getPos !== 'function') return;
+              const pos = getPos();
+              if (pos != null) editor.chain().focus().setNodeSelection(pos).deleteSelection().run();
+            }}
+          >
+            <X size={10} />
           </span>
           <span
             className="rb-textbox-resize"
@@ -228,6 +250,11 @@ export const TextBox = Node.create({
         attrs,
         content: [{ type: 'paragraph' }],
       }),
+      // Make the current block(s) freely positionable by wrapping them in a
+      // box, and the reverse — so any content (text, headings, lists, tables)
+      // can be moved anywhere on the page and later returned to the flow.
+      floatSelection: (attrs = {}) => ({ commands }) => commands.wrapIn(this.name, attrs),
+      unfloatSelection: () => ({ commands }) => commands.lift(this.name),
       toggleTextBoxBorder: () => ({ state, commands }) => {
         const { selection } = state;
         const node = state.doc.nodeAt(selection.from);
@@ -235,6 +262,20 @@ export const TextBox = Node.create({
         return commands.updateAttributes(this.name, { bordered: !node.attrs.bordered });
       },
     };
+  },
+
+  // Backspace/Delete on a selected box removes the whole box. ProseMirror's
+  // base keymap covers most node selections, but the box is `isolating`, so
+  // handle it explicitly to be certain.
+  addKeyboardShortcuts() {
+    const removeIfSelected = ({ editor }) => {
+      const { selection } = editor.state;
+      if (selection instanceof NodeSelection && selection.node.type.name === this.name) {
+        return editor.commands.deleteSelection();
+      }
+      return false;
+    };
+    return { Backspace: removeIfSelected, Delete: removeIfSelected };
   },
 });
 

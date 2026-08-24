@@ -14,8 +14,8 @@ import { TextStyleKit } from '@tiptap/extension-text-style';
 import { Placeholder } from '@tiptap/extensions';
 import {
   AlignCenter, AlignJustify, AlignLeft, AlignRight, Bold, ChevronDown, Italic,
-  List, ListOrdered, Minus, Redo2, Square, Strikethrough, Table as TableIcon,
-  Underline as UnderlineIcon, Undo2,
+  List, ListOrdered, Minus, MoveDiagonal, Redo2, Square, Strikethrough,
+  Table as TableIcon, Underline as UnderlineIcon, Undo2,
 } from 'lucide-react';
 import { TextBox } from './TextBoxNode';
 
@@ -109,6 +109,7 @@ export default function DocEditor({ value, html, locked, onChange }) {
     ? editor.isActive('paragraph')
     : editor.isActive('heading', { level: b.level }))) || BLOCK_LABELS[0];
   const inTable = editor.isActive('table');
+  const inTextBox = editor.isActive('textBox');
 
   const btn = (isOn, title, onClick, children) => (
     <button
@@ -211,7 +212,7 @@ export default function DocEditor({ value, html, locked, onChange }) {
           {btn(editor.isActive('orderedList'), 'Numbered list', () => chain().toggleOrderedList().run(), <ListOrdered size={14} />)}
           {btn(false, 'Horizontal line', () => chain().setHorizontalRule().run(), <Minus size={14} />)}
           {btn(
-            editor.isActive('textBox'),
+            false,
             'Insert text box — drag it anywhere on the page',
             () => {
               // Stagger new boxes so they never land exactly on top of each other.
@@ -220,6 +221,19 @@ export default function DocEditor({ value, html, locked, onChange }) {
               chain().insertTextBox({ x: 60 + ((n * 24) % 160), y: 80 + ((n * 28) % 260) }).run();
             },
             <Square size={14} />,
+          )}
+          {btn(
+            inTextBox,
+            inTextBox
+              ? 'Return this content to the page flow'
+              : 'Float this content — makes it draggable anywhere on the page',
+            () => {
+              if (inTextBox) { chain().unfloatSelection().run(); return; }
+              let n = 0;
+              editor.state.doc.descendants((node) => { if (node.type.name === 'textBox') n += 1; });
+              chain().floatSelection({ x: 60 + ((n * 24) % 160), y: 80 + ((n * 28) % 260) }).run();
+            },
+            <MoveDiagonal size={14} />,
           )}
 
           <div className="rb-doc-drop">

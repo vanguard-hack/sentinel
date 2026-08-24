@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ScrollText, Search, AlertTriangle, FileText, NotebookPen, UserX, Gavel,
   HeartPulse, UserSearch, PackageSearch, ClipboardList, ShieldAlert,
-  TrendingUp, BarChart3, Scale, Copy, Trash2, FileDown, Lock,
+  TrendingUp, BarChart3, Scale, Copy, Trash2, FileDown, Lock, Link2,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -172,6 +172,9 @@ export default function ReportStudio() {
                   </div>
                   <div className="rb-saved-sub">
                     {type ? type.name : r.typeId} · {r.pageCount || 0} page{(r.pageCount || 0) === 1 ? '' : 's'} · Updated {fmtDate(r.updatedAt)}{r.createdByName ? ` · ${r.createdByName}` : ''}
+                    {r.caseMasterId && (
+                      <> · <span className="rb-saved-case"><Link2 size={11} /> {r.crimeNo || 'linked case'}</span></>
+                    )}
                   </div>
                 </div>
                 <div className="rb-saved-actions" onClick={(e) => e.stopPropagation()}>

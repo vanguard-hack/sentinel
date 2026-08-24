@@ -1772,6 +1772,9 @@ async function loadRptRecord(bucket, id) {
 const rptSummary = (rec) => ({
   id: rec.id, typeId: rec.typeId, title: rec.title, status: rec.status,
   refNo: rec.refNo || '', pageCount: (rec.pages || []).length,
+  // Optional link to an Investigation Diary case, so the diary can list the
+  // reports filed under it and the Studio can show which case a report serves.
+  caseMasterId: rec.caseMasterId || '', crimeNo: rec.crimeNo || '',
   createdBy: rec.createdBy || '', createdByName: rec.createdByName || '',
   createdAt: rec.createdAt, updatedAt: rec.updatedAt,
 });
@@ -1846,6 +1849,8 @@ async function handleReportDocs(req, res, action) {
     title: String(body.title || 'Untitled report').slice(0, 160),
     status: RPT_STATUSES.includes(body.status) ? body.status : 'draft',
     refNo: String(body.refNo || '').slice(0, 80),
+    caseMasterId: String(body.caseMasterId || '').slice(0, 80),
+    crimeNo: String(body.crimeNo || '').slice(0, 120),
     pages,
     createdBy: existing ? existing.createdBy : String(caller.email_id || '').toLowerCase(),
     createdByName: existing

@@ -1,13 +1,14 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  AlertTriangle, ChevronDown, ChevronUp, FileDown, Plus, RotateCcw, Save,
-  Sparkles, Trash2, Unlock, ZoomIn, ZoomOut,
+  AlertTriangle, ChevronDown, ChevronUp, FileDown, Link2, Link2Off, Plus,
+  RotateCcw, Save, Search, Sparkles, Trash2, Unlock, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { useConfirm } from '../components/ConfirmDialog';
 import { reportTypeById, extraSheetDefs, initSheetValues } from '../data/reportTemplates';
 import { getReport, saveReport, newReportId, downloadReportPdf, aiPolish } from '../utils/reportStudio';
+import { listInvestigations } from '../utils/investigation';
 import { logAudit } from '../utils/audit';
 
 // The rich-document editor pulls in Tiptap/ProseMirror (~150 kB gzipped), so
@@ -355,6 +356,11 @@ export default function ReportEditor() {
             <button type="button" className="rb-zoom-pct" title="Fit width" onClick={fitWidth}>{zoom}%</button>
             <button type="button" className="cf-icon-btn" title="Zoom in" onClick={() => setZoom((z) => Math.min(150, z + 10))}><ZoomIn size={15} /></button>
           </div>
+          <CaseLink
+            report={report}
+            locked={locked}
+            onLink={(c) => saveNow({ caseMasterId: c ? c.caseMasterId : '', crimeNo: c ? (c.crimeNo || c.caseNo || '') : '' })}
+          />
           {locked && (
             <button type="button" className="cf-icon-btn" title="Reopen for editing" onClick={() => saveNow({ status: 'draft' })}>
               <Unlock size={15} />
@@ -439,6 +445,94 @@ export default function ReportEditor() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Case link (ties a report to an Investigation Diary case) ─────────────── */
+
+function CaseLink({ report, locked, onLink }) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [cases, setCases] = useState(null);
+  const [q, setQ] = useState('');
+  const linked = !!report.caseMasterId;
+
+  useEffect(() => {
+    if (!open || cases) return;
+    listInvestigations().then(setCases).catch(() => setCases([]));
+  }, [open, cases]);
+
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const list = cases || [];
+    if (!needle) return list.slice(0, 40);
+    return list
+      .filter((c) => `${c.crimeNo || ''} ${c.caseNo || ''} ${c.station || ''} ${c.district || ''} ${c.sections || ''} ${c.ioName || ''}`
+        .toLowerCase().includes(needle))
+      .slice(0, 40);
+  }, [cases, q]);
+
+  return (
+    <div className="rb-caselink">
+      {linked ? (
+        <span className="rb-caselink-chip">
+          <button
+            type="button"
+            className="rb-caselink-open"
+            title="Open the linked case in Investigation Diary"
+            onClick={() => navigate(`/investigation-diary/${report.caseMasterId}`)}
+          >
+            <Link2 size={13} /> {report.crimeNo || 'Linked case'}
+          </button>
+          {!locked && (
+            <button type="button" className="rb-caselink-x" title="Unlink this case" onClick={() => onLink(null)}>
+              <X size={12} />
+            </button>
+          )}
+        </span>
+      ) : (
+        <button
+          type="button"
+          className="cf-icon-btn"
+          title="Link this report to a case"
+          disabled={locked}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <Link2Off size={15} />
+        </button>
+      )}
+
+      {open && !linked && (
+        <>
+          <div className="rb-caselink-scrim" onClick={() => setOpen(false)} />
+          <div className="rb-caselink-menu">
+            <div className="rb-caselink-head">
+              <Search size={14} />
+              <input
+                autoFocus
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search cases by crime no., station, sections…"
+              />
+            </div>
+            <div className="rb-caselink-list">
+              {!cases && <div className="rb-caselink-empty">Loading cases…</div>}
+              {cases && !shown.length && <div className="rb-caselink-empty">No matching cases.</div>}
+              {shown.map((c) => (
+                <button
+                  key={c.caseMasterId}
+                  type="button"
+                  onClick={() => { onLink(c); setOpen(false); }}
+                >
+                  <strong>{c.crimeNo || c.caseNo || c.caseMasterId}</strong>
+                  <span>{[c.station, c.district, c.sections].filter(Boolean).join(' · ')}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
