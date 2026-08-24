@@ -66,7 +66,7 @@ export const REPORT_TYPES = [
   // ── 1. FIR / Crime Report — IIF-1 ────────────────────────────────────────
   {
     id: 'fir',
-    name: 'FIR / Crime Report',
+    name: 'FIR',
     form: 'Form IIF-1',
     law: 'u/s 173 BNSS (154 CrPC)',
     preparedBy: 'Officer receiving / registering the complaint',
@@ -168,7 +168,7 @@ export const REPORT_TYPES = [
   // ── 2. Investigation Report / Case Diary — S.192 BNSS ───────────────────
   {
     id: 'case-diary',
-    name: 'Investigation Report / Case Diary',
+    name: 'Case Diary',
     form: 'Case Diary',
     law: 'u/s 192 BNSS (172 CrPC)',
     preparedBy: 'Investigating Officer',
@@ -212,7 +212,7 @@ export const REPORT_TYPES = [
   // ── 3. Arrest & Accused Report — IIF-3 ───────────────────────────────────
   {
     id: 'arrest',
-    name: 'Arrest & Accused Report',
+    name: 'Arrest Report',
     form: 'Form IIF-3',
     law: 'u/s 35 BNSS · D.K. Basu safeguards',
     preparedBy: 'Investigating / arresting officer',
@@ -331,7 +331,7 @@ export const REPORT_TYPES = [
   // ── 4. Charge Sheet / Final Report — IIF-5 ───────────────────────────────
   {
     id: 'charge-sheet',
-    name: 'Charge Sheet / Final Report',
+    name: 'Charge Sheet',
     form: 'Form IIF-5',
     law: 'u/s 193 BNSS (173 CrPC)',
     preparedBy: 'Investigating Officer — submitted to court',
@@ -479,7 +479,7 @@ export const REPORT_TYPES = [
   // ── 5. UDR / Death Report — S.194 BNSS ───────────────────────────────────
   {
     id: 'udr',
-    name: 'UDR / Death Report',
+    name: 'Death Report',
     form: 'UDR & Inquest',
     law: 'u/s 194 BNSS (174 CrPC)',
     preparedBy: 'Police / Investigating Officer',
@@ -639,7 +639,7 @@ export const REPORT_TYPES = [
   // ── 7. Evidence & Seizure Report — IIF-4 ─────────────────────────────────
   {
     id: 'seizure',
-    name: 'Evidence & Seizure Report',
+    name: 'Seizure Report',
     form: 'Form IIF-4',
     law: 'Seizure mahazar / panchnama',
     preparedBy: 'Investigating / scene-of-crime officers',
@@ -756,7 +756,7 @@ export const REPORT_TYPES = [
   // ── 8. Daily Station Report / General Diary ──────────────────────────────
   {
     id: 'station-gd',
-    name: 'Daily Station Report / GD',
+    name: 'General Diary',
     form: 'General Diary',
     law: 'S.44 Police Act · Stn. House Report',
     preparedBy: 'Station duty / diary officer',
@@ -941,7 +941,7 @@ export const REPORT_TYPES = [
   // ── 11. Police Performance Report ────────────────────────────────────────
   {
     id: 'performance',
-    name: 'Police Performance Report',
+    name: 'Performance Report',
     form: 'Performance Review',
     law: 'Administrative',
     preparedBy: 'Department / senior command',
@@ -1008,7 +1008,7 @@ export const REPORT_TYPES = [
   // ── 12. Court / Case Status Report ───────────────────────────────────────
   {
     id: 'case-status',
-    name: 'Court / Case Status Report',
+    name: 'Case Status Report',
     form: 'Case Status',
     law: 'Police–prosecution interface',
     preparedBy: 'Police / prosecution wing',

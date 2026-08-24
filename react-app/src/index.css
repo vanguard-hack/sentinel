@@ -6125,3 +6125,43 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   position: absolute; bottom: calc(100% + 8px); top: auto; left: 50%; right: auto;
   transform: translateX(-50%); min-width: 260px;
 }
+
+/* ── Report Studio: Google-Docs-style tables ───────────────────────────── */
+.rb-table-pick-wrap { position: relative; }
+.rb-dim-picker {
+  position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  z-index: 40; background: var(--bg-1); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: var(--shadow-card); padding: 10px;
+}
+.rb-dim-grid { display: grid; gap: 3px; }
+.rb-dim-cell {
+  width: 16px; height: 16px; padding: 0; cursor: pointer;
+  background: var(--bg-3); border: 1px solid var(--border); border-radius: 3px;
+}
+.rb-dim-cell.on { background: color-mix(in srgb, var(--blue-400) 35%, transparent); border-color: var(--blue-500); }
+.rb-dim-label { text-align: center; font-size: 11px; font-weight: 600; color: var(--text-2); margin-top: 6px; }
+
+.rb-el.is-table .rb-el-body { overflow: visible; }
+.rb-tablewrap { position: relative; }
+.rb-el-table td textarea {
+  font-family: inherit; font-size: inherit; font-weight: inherit; color: inherit;
+  background: transparent; border: 0; width: 100%; height: 100%; display: block;
+  padding: 3px 5px; resize: none; line-height: 1.35; overflow: hidden;
+}
+.rb-el-table td textarea:focus { outline: none; background: color-mix(in srgb, var(--blue-400) 6%, transparent); }
+
+.rb-tresize-v { position: absolute; top: 0; bottom: 0; width: 7px; cursor: col-resize; z-index: 6; }
+.rb-tresize-h { position: absolute; left: 0; right: 0; height: 7px; cursor: row-resize; z-index: 6; }
+.rb-tresize-v:hover, .rb-tresize-v:active { background: color-mix(in srgb, var(--blue-500) 45%, transparent); }
+.rb-tresize-h:hover, .rb-tresize-h:active { background: color-mix(in srgb, var(--blue-500) 45%, transparent); }
+
+.rb-tinsert {
+  position: absolute; display: flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0; border-radius: 999px; cursor: pointer; z-index: 7;
+  background: var(--bg-1); color: var(--blue-600); border: 1px solid var(--border-bright);
+  box-shadow: 0 1px 4px rgba(0,0,0,.18); opacity: 0; transition: opacity .1s, transform .1s;
+}
+.rb-tinsert-col { top: -22px; }
+.rb-tinsert-row { left: -22px; }
+.rb-tablewrap:hover .rb-tinsert { opacity: .85; }
+.rb-tinsert:hover { opacity: 1 !important; transform: scale(1.15); background: var(--blue-500); color: #fff; border-color: var(--blue-500); }

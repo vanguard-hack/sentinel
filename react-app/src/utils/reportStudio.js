@@ -97,8 +97,14 @@ function freeElHtml(el) {
   }
   if (el.type === 'table') {
     const rows = Array.isArray(el.rows) ? el.rows : [];
-    return `<table style="${base}border-collapse:collapse" cellspacing="0">
-      <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td style="border:1px solid #444;padding:3px 5px;font-size:inherit;vertical-align:top">${val(c)}</td>`).join('')}</tr>`).join('')}</tbody>
+    const cols = rows[0] ? rows[0].length : 1;
+    const colW = Array.isArray(el.colW) && el.colW.length === cols
+      ? el.colW : Array(cols).fill(Math.max(40, Math.round((Number(el.w) || 520) / cols)));
+    const rowH = Array.isArray(el.rowH) && el.rowH.length === rows.length ? el.rowH : rows.map(() => 28);
+    const total = colW.reduce((a, b) => a + b, 0);
+    return `<table style="${base}width:${total}px;border-collapse:collapse;table-layout:fixed" cellspacing="0">
+      <colgroup>${colW.map((w) => `<col style="width:${w}px"/>`).join('')}</colgroup>
+      <tbody>${rows.map((r, ri) => `<tr style="height:${rowH[ri] || 28}px">${r.map((c) => `<td style="border:1px solid #444;padding:3px 5px;font-size:inherit;vertical-align:top;word-wrap:break-word">${val(c)}</td>`).join('')}</tr>`).join('')}</tbody>
     </table>`;
   }
   return '';

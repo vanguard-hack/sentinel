@@ -170,7 +170,7 @@ export default function ReportEditor() {
     }));
   }, [mutate]);
 
-  const addEl = (uid, elType) => {
+  const addEl = (uid, elType, opts) => {
     mutate((r) => ({
       ...r,
       pages: r.pages.map((p) => {
@@ -181,6 +181,16 @@ export default function ReportEditor() {
           x: 40 + ((n * 16) % 120), y: 48 + ((n * 24) % 240),
           ...JSON.parse(JSON.stringify(EL_DEFAULTS[elType])),
         };
+        if (elType === 'table' && opts) {
+          const c = Math.max(1, Math.min(10, opts.cols || 3));
+          const rws = Math.max(1, Math.min(20, opts.rows || 3));
+          const cw = Math.max(40, Math.min(110, Math.floor(620 / c)));
+          el.rows = Array.from({ length: rws }, () => Array(c).fill(''));
+          el.colW = Array(c).fill(cw);
+          el.rowH = Array(rws).fill(28);
+          el.w = cw * c;
+          el.h = 28 * rws;
+        }
         setSelected({ pageUid: uid, elId: el.id });
         return { ...p, elements: [...(p.elements || []), el].slice(0, 120) };
       }),
@@ -254,9 +264,18 @@ export default function ReportEditor() {
     const key = `${uid}:${fieldId}`;
     setAiBusy(key);
     try {
-      const polished = await aiPolish({ text, label, reportName: type?.name });
+      let polished;
+      try {
+        polished = await aiPolish({ text, label, reportName: type?.name });
+      } catch {
+        // One transparent retry — the backend also falls back across models,
+        // so a second invocation almost always lands.
+        await new Promise((s) => setTimeout(s, 1500));
+        polished = await aiPolish({ text, label, reportName: type?.name });
+      }
       setValue(uid, fieldId, polished);
       setAiUndo({ key, prev: text });
+      setError(null);
     } catch (e) {
       setError(`AI assist failed — ${e.message}`);
     } finally {
@@ -548,6 +567,7 @@ function snapAxis(pos, size, limit, cands) {
 
 function FreeSheet({ page, locked, zoomRef, selected, onSelect, updateEl, addEl, removeEl }) {
   const [guides, setGuides] = useState({ v: null, h: null });
+  const [picker, setPicker] = useState(false);
   const dragRef = useRef(null);
   const elsRef = useRef([]);
   elsRef.current = page.elements || [];
@@ -611,7 +631,16 @@ function FreeSheet({ page, locked, zoomRef, selected, onSelect, updateEl, addEl,
           <button type="button" title="Add labelled field" onClick={() => addEl(page.uid, 'field')}><RectangleHorizontal size={14} /> Field</button>
           <button type="button" title="Add text box" onClick={() => addEl(page.uid, 'text')}><Type size={14} /> Text</button>
           <button type="button" title="Add bullet list" onClick={() => addEl(page.uid, 'bullets')}><List size={14} /> Bullets</button>
-          <button type="button" title="Add table" onClick={() => addEl(page.uid, 'table')}><TableIcon size={14} /> Table</button>
+          <div className="rb-table-pick-wrap">
+            <button type="button" title="Insert table — pick dimensions" onClick={() => setPicker((o) => !o)}>
+              <TableIcon size={14} /> Table
+            </button>
+            {picker && (
+              <TableDimPicker
+                onPick={(rows, cols) => { setPicker(false); addEl(page.uid, 'table', { rows, cols }); }}
+              />
+            )}
+          </div>
         </div>
       )}
 
@@ -638,10 +667,16 @@ function FreeSheet({ page, locked, zoomRef, selected, onSelect, updateEl, addEl,
             onClick={() => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, align: 'right' }))}><AlignRight size={13} /></button>
           {selectedEl.type === 'table' && (
             <>
-              <button type="button" title="Add row" onClick={() => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, rows: [...x.rows, x.rows[0].map(() => '')].slice(0, 30) }))}>+Row</button>
-              <button type="button" title="Remove last row" onClick={() => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, rows: x.rows.length > 1 ? x.rows.slice(0, -1) : x.rows }))}>−Row</button>
-              <button type="button" title="Add column" onClick={() => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, rows: x.rows.map((r) => (r.length < 10 ? [...r, ''] : r)) }))}>+Col</button>
-              <button type="button" title="Remove last column" onClick={() => updateEl(page.uid, selectedEl.id, (x) => ({ ...x, rows: x.rows.map((r) => (r.length > 1 ? r.slice(0, -1) : r)) }))}>−Col</button>
+              <button type="button" title="Remove last row" onClick={() => updateEl(page.uid, selectedEl.id, (x) => {
+                if (x.rows.length <= 1) return x;
+                const g = tableGeom(x);
+                return syncTableSize({ ...x, rows: x.rows.slice(0, -1), colW: g.colW, rowH: g.rowH.slice(0, -1) });
+              })}>−Row</button>
+              <button type="button" title="Remove last column" onClick={() => updateEl(page.uid, selectedEl.id, (x) => {
+                if ((x.rows[0] || []).length <= 1) return x;
+                const g = tableGeom(x);
+                return syncTableSize({ ...x, rows: x.rows.map((r) => r.slice(0, -1)), colW: g.colW.slice(0, -1), rowH: g.rowH });
+              })}>−Col</button>
             </>
           )}
           <button type="button" className="danger" title="Delete element" onClick={() => removeEl(page.uid, selectedEl.id)}><Trash2 size={13} /></button>
@@ -661,7 +696,7 @@ function FreeSheet({ page, locked, zoomRef, selected, onSelect, updateEl, addEl,
             locked={locked}
             selected={selected === el.id}
             startDrag={startDrag}
-            onSelect={onSelect}
+            zoomRef={zoomRef}
             update={(fn) => updateEl(page.uid, el.id, fn)}
           />
         ))}
@@ -670,9 +705,10 @@ function FreeSheet({ page, locked, zoomRef, selected, onSelect, updateEl, addEl,
   );
 }
 
-function FreeElement({ el, locked, selected, startDrag, onSelect, update }) {
+function FreeElement({ el, locked, selected, startDrag, zoomRef, update }) {
   const style = {
-    left: el.x, top: el.y, width: el.w, height: el.h,
+    left: el.x, top: el.y, width: el.w,
+    height: el.type === 'table' ? 'auto' : el.h,
     fontSize: el.fontSize, color: el.color || '#111',
     fontWeight: el.bold ? 700 : 400, textAlign: el.align || 'left',
   };
@@ -718,32 +754,12 @@ function FreeElement({ el, locked, selected, startDrag, onSelect, update }) {
       </ul>
     );
   } else if (el.type === 'table') {
-    body = (
-      <table className="rb-el-table">
-        <tbody>
-          {(el.rows || []).map((row, ri) => (
-            <tr key={ri}>
-              {row.map((cell, ci) => (
-                <td key={ci}>
-                  <input
-                    value={cell} disabled={locked}
-                    onChange={(e) => update((x) => ({
-                      ...x,
-                      rows: x.rows.map((r, i) => (i === ri ? r.map((c, j) => (j === ci ? e.target.value : c)) : r)),
-                    }))}
-                  />
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    );
+    body = <TableElement el={el} locked={locked} selected={selected} update={update} zoomRef={zoomRef} />;
   }
 
   return (
     <div
-      className={`rb-el${selected ? ' sel' : ''}`}
+      className={`rb-el${selected ? ' sel' : ''}${el.type === 'table' ? ' is-table' : ''}`}
       style={style}
       onPointerDown={(e) => {
         e.stopPropagation();
@@ -755,10 +771,183 @@ function FreeElement({ el, locked, selected, startDrag, onSelect, update }) {
           <div className="rb-el-grip" title="Drag to move" onPointerDown={(e) => startDrag(e, el, 'move')}>
             <Move size={11} />
           </div>
-          <div className="rb-el-resize" title="Drag to resize" onPointerDown={(e) => startDrag(e, el, 'resize')} />
+          {el.type !== 'table' && (
+            <div className="rb-el-resize" title="Drag to resize" onPointerDown={(e) => startDrag(e, el, 'resize')} />
+          )}
         </>
       )}
       <div className="rb-el-body" onPointerDown={selected ? stop : undefined}>{body}</div>
+    </div>
+  );
+}
+
+/* ── Google-Docs-style table: dimension picker, hover inserts, resizable
+      columns & rows ─────────────────────────────────────────────────────── */
+
+// Normalised column widths / row heights for a table element (older tables
+// saved before geometry existed get sensible defaults).
+export function tableGeom(el) {
+  const cols = (el.rows && el.rows[0] ? el.rows[0].length : 1) || 1;
+  const colW = Array.isArray(el.colW) && el.colW.length === cols
+    ? el.colW
+    : Array(cols).fill(Math.max(40, Math.round((el.w || 520) / cols)));
+  const rowH = Array.isArray(el.rowH) && el.rowH.length === (el.rows || []).length
+    ? el.rowH
+    : (el.rows || []).map(() => 28);
+  return { colW, rowH };
+}
+
+// Keep the element's outer box in sync with its grid so dragging/snapping
+// and PDF layout stay truthful.
+function syncTableSize(el) {
+  const { colW, rowH } = tableGeom(el);
+  return { ...el, colW, rowH, w: colW.reduce((a, b) => a + b, 0), h: rowH.reduce((a, b) => a + b, 0) };
+}
+
+function TableDimPicker({ onPick }) {
+  const [dims, setDims] = useState({ r: 3, c: 3 });
+  const COLS = 10;
+  const ROWS = 8;
+  return (
+    <div className="rb-dim-picker" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="rb-dim-grid" style={{ gridTemplateColumns: `repeat(${COLS}, 16px)` }}>
+        {Array.from({ length: ROWS * COLS }, (_, i) => {
+          const r = Math.floor(i / COLS) + 1;
+          const c = (i % COLS) + 1;
+          const on = r <= dims.r && c <= dims.c;
+          return (
+            <button
+              key={i}
+              type="button"
+              className={`rb-dim-cell${on ? ' on' : ''}`}
+              onPointerEnter={() => setDims({ r, c })}
+              onClick={() => onPick(r, c)}
+              aria-label={`${c} × ${r} table`}
+            />
+          );
+        })}
+      </div>
+      <div className="rb-dim-label">{dims.c} × {dims.r}</div>
+    </div>
+  );
+}
+
+function TableElement({ el, locked, selected, update, zoomRef }) {
+  const { colW, rowH } = tableGeom(el);
+  const dragRef = useRef(null);
+
+  // Column / row border resize (Google-Docs style drag on the grid lines).
+  const startResize = (e, axis, idx) => {
+    if (locked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const orig = axis === 'col' ? colW[idx] : rowH[idx];
+    dragRef.current = { axis, idx, start: axis === 'col' ? e.clientX : e.clientY, orig };
+    const onMove = (ev) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const k = (zoomRef?.current || 100) / 100;
+      const delta = ((d.axis === 'col' ? ev.clientX : ev.clientY) - d.start) / k;
+      update((x) => {
+        const g = tableGeom(x);
+        if (d.axis === 'col') {
+          const next = [...g.colW];
+          next[d.idx] = Math.round(Math.max(32, Math.min(660, d.orig + delta)));
+          return syncTableSize({ ...x, colW: next, rowH: g.rowH });
+        }
+        const next = [...g.rowH];
+        next[d.idx] = Math.round(Math.max(22, Math.min(400, d.orig + delta)));
+        return syncTableSize({ ...x, colW: g.colW, rowH: next });
+      });
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  const insertCol = (at) => update((x) => {
+    const g = tableGeom(x);
+    if (g.colW.length >= 12) return x;
+    const w = 80;
+    return syncTableSize({
+      ...x,
+      rows: x.rows.map((r) => [...r.slice(0, at), '', ...r.slice(at)]),
+      colW: [...g.colW.slice(0, at), w, ...g.colW.slice(at)],
+      rowH: g.rowH,
+    });
+  });
+
+  const insertRow = (at) => update((x) => {
+    const g = tableGeom(x);
+    if (g.rowH.length >= 30) return x;
+    return syncTableSize({
+      ...x,
+      rows: [...x.rows.slice(0, at), x.rows[0].map(() => ''), ...x.rows.slice(at)],
+      colW: g.colW,
+      rowH: [...g.rowH.slice(0, at), 28, ...g.rowH.slice(at)],
+    });
+  });
+
+  const totalW = colW.reduce((a, b) => a + b, 0);
+  // Boundary offsets for the hover "+" chips and resize strips.
+  const xAt = colW.reduce((acc, w) => [...acc, acc[acc.length - 1] + w], [0]);
+  const yAt = rowH.reduce((acc, h) => [...acc, acc[acc.length - 1] + h], [0]);
+
+  return (
+    <div className="rb-tablewrap" style={{ width: totalW }}>
+      <table className="rb-el-table" style={{ width: totalW, tableLayout: 'fixed' }}>
+        <colgroup>{colW.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+        <tbody>
+          {(el.rows || []).map((row, ri) => (
+            <tr key={ri} style={{ height: rowH[ri] }}>
+              {row.map((cell, ci) => (
+                <td key={ci}>
+                  <textarea
+                    value={cell} disabled={locked} rows={1}
+                    onChange={(e) => update((x) => ({
+                      ...x,
+                      rows: x.rows.map((r, i) => (i === ri ? r.map((c, j) => (j === ci ? e.target.value : c)) : r)),
+                    }))}
+                  />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {selected && !locked && (
+        <>
+          {/* drag the inner grid lines (and outer right/bottom edge) to resize */}
+          {xAt.slice(1).map((x, i) => (
+            <div key={`c${i}`} className="rb-tresize-v" style={{ left: x - 3 }}
+              title="Drag to resize column" onPointerDown={(e) => startResize(e, 'col', i)} />
+          ))}
+          {yAt.slice(1).map((y, i) => (
+            <div key={`r${i}`} className="rb-tresize-h" style={{ top: y - 3 }}
+              title="Drag to resize row" onPointerDown={(e) => startResize(e, 'row', i)} />
+          ))}
+          {/* hover "+" chips on every boundary — insert a column / row there */}
+          {xAt.map((x, i) => (
+            <button key={`ic${i}`} type="button" className="rb-tinsert rb-tinsert-col" style={{ left: x - 9 }}
+              title={i === 0 ? 'Insert column left' : i === colW.length ? 'Insert column right' : 'Insert column here'}
+              onPointerDown={(e) => e.stopPropagation()} onClick={() => insertCol(i)}>
+              <Plus size={11} />
+            </button>
+          ))}
+          {yAt.map((y, i) => (
+            <button key={`ir${i}`} type="button" className="rb-tinsert rb-tinsert-row" style={{ top: y - 9 }}
+              title={i === 0 ? 'Insert row above' : i === rowH.length ? 'Insert row below' : 'Insert row here'}
+              onPointerDown={(e) => e.stopPropagation()} onClick={() => insertRow(i)}>
+              <Plus size={11} />
+            </button>
+          ))}
+        </>
+      )}
     </div>
   );
 }

@@ -1883,20 +1883,26 @@ async function handleReportAi(req, res) {
   if (!text.trim()) return json(res, 400, { error: 'text is required' });
   const label = String(body.label || 'narrative').slice(0, 140);
   const reportName = String(body.reportName || 'police report').slice(0, 80);
-  const prose = await callGroq(
-    [
-      {
-        role: 'system',
-        content:
-          'You polish draft text for formal Indian police reports. Rewrite the given draft into clear, ' +
-          'formal, precise report language appropriate to the stated section of the stated report. ' +
-          'Preserve every fact, name, number, date, section of law and place EXACTLY — never invent, add ' +
-          'or drop facts. Keep roughly the same length. Output ONLY the rewritten text, no preamble.',
-      },
-      { role: 'user', content: `Report: ${reportName}\nSection: ${label}\n\nDraft:\n${text}` },
-    ],
-    { maxTokens: 900, temperature: 0.2, timeoutMs: 15_000 }
-  );
+  const messages = [
+    {
+      role: 'system',
+      content:
+        'You polish draft text for formal Indian police reports. Rewrite the given draft into clear, ' +
+        'formal, precise report language appropriate to the stated section of the stated report. ' +
+        'Preserve every fact, name, number, date, section of law and place EXACTLY — never invent, add ' +
+        'or drop facts. Keep roughly the same length. Output ONLY the rewritten text, no preamble.',
+    },
+    { role: 'user', content: `Report: ${reportName}\nSection: ${label}\n\nDraft:\n${text}` },
+  ];
+  // Belt-and-braces: callGroq already downgrades on day caps / retired models,
+  // but a transient timeout or per-minute 429 can still surface as null — so
+  // fall back to the fast model explicitly, then once more after a cool-off.
+  let prose = await callGroq(messages, { maxTokens: 900, temperature: 0.2, timeoutMs: 15_000 });
+  if (!prose) prose = await callGroq(messages, { maxTokens: 900, temperature: 0.2, timeoutMs: 12_000, model: GROQ_MODEL_FAST });
+  if (!prose) {
+    await new Promise((s) => setTimeout(s, 2_000));
+    prose = await callGroq(messages, { maxTokens: 900, temperature: 0.2, timeoutMs: 12_000, model: GROQ_MODEL_FAST });
+  }
   if (!prose) return json(res, 503, { error: 'AI assist is unavailable right now — try again shortly' });
   await storeAuditEvents(req, app, bucket, [{
     action: 'ai-polish', feature: 'Report Studio', path: '/report-studio', detail: label,
