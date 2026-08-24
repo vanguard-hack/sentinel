@@ -6315,3 +6315,65 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   background: var(--blue-500); pointer-events: none;
 }
 .rb-doc-content .tiptap.resize-cursor { cursor: col-resize; }
+
+/* ── Confirmation dialog (replaces window.confirm app-wide) ────────────── */
+@keyframes cd-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cd-pop {
+  from { opacity: 0; transform: translateY(10px) scale(.965); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.cd-scrim {
+  position: fixed; inset: 0; z-index: 400;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(15, 23, 42, .5);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  animation: cd-fade .14s ease-out;
+}
+.cd-modal {
+  position: relative; width: 100%; max-width: 400px; padding: 24px 22px 18px;
+  background: var(--bg-1); border: 1px solid var(--border-bright); border-radius: 18px;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, .28), 0 2px 8px rgba(15, 23, 42, .12);
+  animation: cd-pop .18s cubic-bezier(.22, 1.2, .36, 1);
+  text-align: center;
+}
+[data-theme="dark"] .cd-modal { box-shadow: 0 18px 48px rgba(0, 0, 0, .6), 0 2px 8px rgba(0, 0, 0, .4); }
+
+.cd-x {
+  position: absolute; top: 10px; right: 10px;
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; cursor: pointer;
+  color: var(--text-3); background: none; border: 0; border-radius: 9px;
+}
+.cd-x:hover { background: var(--hover-overlay); color: var(--text-0); }
+
+.cd-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 46px; height: 46px; margin: 2px auto 13px; border-radius: 999px;
+  color: var(--blue-600); background: color-mix(in srgb, var(--blue-400) 14%, transparent);
+}
+.cd-modal.danger .cd-icon { color: var(--red); background: color-mix(in srgb, var(--red) 13%, transparent); }
+.cd-modal.warning .cd-icon { color: var(--gold); background: color-mix(in srgb, var(--gold) 15%, transparent); }
+
+.cd-title { margin: 0; font-size: 15.5px; font-weight: 700; color: var(--text-0); line-height: 1.35; }
+.cd-body { margin: 8px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--text-2); }
+
+.cd-actions { display: flex; gap: 9px; margin-top: 20px; }
+.cd-btn {
+  flex: 1; height: 38px; padding: 0 14px; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 600; border-radius: 11px;
+  border: 1px solid var(--border); transition: background .12s, border-color .12s, transform .08s;
+}
+.cd-btn:active { transform: translateY(1px); }
+.cd-btn.ghost { color: var(--text-1); background: var(--bg-2); }
+.cd-btn.ghost:hover { background: var(--bg-3); border-color: var(--border-bright); }
+.cd-btn.solid { color: #fff; background: var(--blue-500); border-color: var(--blue-500); }
+.cd-btn.solid:hover { background: var(--blue-600); border-color: var(--blue-600); }
+.cd-btn.solid.danger { background: var(--red); border-color: var(--red); }
+.cd-btn.solid.danger:hover { background: color-mix(in srgb, var(--red) 84%, #000); }
+.cd-btn.solid.warning { background: var(--gold); border-color: var(--gold); }
+.cd-btn:focus-visible { outline: 2px solid var(--blue-400); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cd-scrim, .cd-modal { animation: none; }
+}

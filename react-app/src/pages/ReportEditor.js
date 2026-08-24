@@ -5,6 +5,7 @@ import {
   Sparkles, Trash2, Unlock, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
+import { useConfirm } from '../components/ConfirmDialog';
 import { reportTypeById, extraSheetDefs, initSheetValues } from '../data/reportTemplates';
 import { getReport, saveReport, newReportId, downloadReportPdf, aiPolish } from '../utils/reportStudio';
 import { logAudit } from '../utils/audit';
@@ -116,6 +117,7 @@ export default function ReportEditor() {
   const [exporting, setExporting] = useState(false);
   const [aiBusy, setAiBusy] = useState(null); // "uid:fieldId" of narrative being polished
   const [aiUndo, setAiUndo] = useState(null); // { key, prev }
+  const confirm = useConfirm();
   const canvasRef = useRef(null);
   const reportRef = useRef(null);
   reportRef.current = report;
@@ -227,9 +229,14 @@ export default function ReportEditor() {
     setTimeout(() => canvasRef.current?.scrollTo({ top: canvasRef.current.scrollHeight, behavior: 'smooth' }), 60);
   };
 
-  const removePage = (uid) => {
-    // eslint-disable-next-line no-alert
-    if (!window.confirm('Remove this page and everything entered on it?')) return;
+  const removePage = async (uid) => {
+    const ok = await confirm({
+      title: 'Remove this page?',
+      body: 'Everything entered on it will be deleted. This cannot be undone.',
+      confirmLabel: 'Remove page',
+      tone: 'danger',
+    });
+    if (!ok) return;
     mutate((r) => ({ ...r, pages: r.pages.filter((p) => p.uid !== uid) }));
   };
 

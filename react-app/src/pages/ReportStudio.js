@@ -6,6 +6,7 @@ import {
   TrendingUp, BarChart3, Scale, Copy, Trash2, FileDown, Lock,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
+import { useConfirm } from '../components/ConfirmDialog';
 import { REPORT_TYPES, reportTypeById } from '../data/reportTemplates';
 import { listReports, getReport, saveReport, deleteReport, newReportId, downloadReportPdf } from '../utils/reportStudio';
 import { logAudit } from '../utils/audit';
@@ -22,6 +23,7 @@ const fmtDate = (ts) =>
 
 export default function ReportStudio() {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [reports, setReports] = useState(null);
   const [error, setError] = useState(null);
   const [q, setQ] = useState('');
@@ -59,8 +61,13 @@ export default function ReportStudio() {
   };
 
   const remove = async (r) => {
-    // eslint-disable-next-line no-alert
-    if (!window.confirm(`Delete "${r.title}"? The stored copy is retained in the archive but it disappears from this list.`)) return;
+    const ok = await confirm({
+      title: `Delete “${r.title}”?`,
+      body: 'It disappears from this list. The filed copy is retained in the archive, so it can still be recovered.',
+      confirmLabel: 'Delete report',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setBusyId(r.id);
     try { await deleteReport(r.id); refresh(); } catch (e) { setError(e.message); }
     setBusyId(null);

@@ -28,6 +28,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import RequireAccess from './components/RequireAccess';
 import AuditTracker from './components/AuditTracker';
 import ScrollToHash from './components/ScrollToHash';
+import { ConfirmProvider } from './components/ConfirmDialog';
 
 // Every feature route is wrapped in a role guard (see utils/access.js for the
 // feature → roles matrix) and every route change lands in the audit trail.
@@ -43,35 +44,37 @@ function AppRoutes() {
   return (
     <ErrorBoundary>
       <LayoutProvider>
-        <div className="app-shell">
-          <AuditTracker />
-          <ScrollToHash />
-          <Sidebar />
-          <div className="app-main">
-            <Routes>
-              <Route path="/dashboard" element={guarded('dashboard', <Dashboard />)} />
-              <Route path="/crime-map" element={guarded('crimeMap', <CrimeMap />)} />
-              <Route path="/case-files" element={guarded('caseFiles', <CaseFiles />)} />
-              <Route path="/reports" element={guarded('reports', <Reports />)} />
-              <Route path="/assistant" element={guarded('assistant', <Assistant />)} />
-              <Route path="/ai-analytics" element={guarded('aiAnalytics', <AIAnalytics />)} />
-              <Route path="/profile" element={guarded('profile', <Profile />)} />
-              <Route path="/help" element={guarded('help', <HelpCenter />)} />
-              <Route path="/incidents" element={guarded('incidents', <Incidents />)} />
-              <Route path="/personnel" element={guarded('personnel', <Personnel />)} />
-              <Route path="/personnel/roster" element={guarded('dutyRoster', <Roster />)} />
-              <Route path="/personnel/org-chart" element={guarded('orgChart', <OrgChart />)} />
-              <Route path="/access" element={guarded('access', <AccessAudit />)} />
-              <Route path="/investigation-diary" element={guarded('investigationDiary', <InvestigationDiary />)} />
-              <Route path="/investigation-diary/:caseMasterId" element={guarded('investigationDiary', <InvestigationCase />)} />
-              <Route path="/report-studio" element={guarded('reportStudio', <ReportStudio />)} />
-              <Route path="/report-studio/:reportId" element={guarded('reportStudio', <ReportEditor />)} />
-              <Route path="/custody" element={guarded('custody', <Custody />)} />
-              <Route path="/custody/:personId" element={guarded('custody', <CustodyRecord />)} />
-              <Route path="*" element={<Navigate to="/reports" replace />} />
-            </Routes>
+        <ConfirmProvider>
+          <div className="app-shell">
+            <AuditTracker />
+            <ScrollToHash />
+            <Sidebar />
+            <div className="app-main">
+              <Routes>
+                <Route path="/dashboard" element={guarded('dashboard', <Dashboard />)} />
+                <Route path="/crime-map" element={guarded('crimeMap', <CrimeMap />)} />
+                <Route path="/case-files" element={guarded('caseFiles', <CaseFiles />)} />
+                <Route path="/reports" element={guarded('reports', <Reports />)} />
+                <Route path="/assistant" element={guarded('assistant', <Assistant />)} />
+                <Route path="/ai-analytics" element={guarded('aiAnalytics', <AIAnalytics />)} />
+                <Route path="/profile" element={guarded('profile', <Profile />)} />
+                <Route path="/help" element={guarded('help', <HelpCenter />)} />
+                <Route path="/incidents" element={guarded('incidents', <Incidents />)} />
+                <Route path="/personnel" element={guarded('personnel', <Personnel />)} />
+                <Route path="/personnel/roster" element={guarded('dutyRoster', <Roster />)} />
+                <Route path="/personnel/org-chart" element={guarded('orgChart', <OrgChart />)} />
+                <Route path="/access" element={guarded('access', <AccessAudit />)} />
+                <Route path="/investigation-diary" element={guarded('investigationDiary', <InvestigationDiary />)} />
+                <Route path="/investigation-diary/:caseMasterId" element={guarded('investigationDiary', <InvestigationCase />)} />
+                <Route path="/report-studio" element={guarded('reportStudio', <ReportStudio />)} />
+                <Route path="/report-studio/:reportId" element={guarded('reportStudio', <ReportEditor />)} />
+                <Route path="/custody" element={guarded('custody', <Custody />)} />
+                <Route path="/custody/:personId" element={guarded('custody', <CustodyRecord />)} />
+                <Route path="*" element={<Navigate to="/reports" replace />} />
+              </Routes>
+            </div>
           </div>
-        </div>
+        </ConfirmProvider>
       </LayoutProvider>
     </ErrorBoundary>
   );
