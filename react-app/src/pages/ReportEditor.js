@@ -69,7 +69,6 @@ export default function ReportEditor() {
   const [aiBusy, setAiBusy] = useState(null); // "uid:fieldId" of narrative being polished
   const [aiUndo, setAiUndo] = useState(null); // { key, prev }
   const [selected, setSelected] = useState(null); // { pageUid, elId } on blank pages
-  const [addOpen, setAddOpen] = useState(false);
   const canvasRef = useRef(null);
   const reportRef = useRef(null);
   reportRef.current = report;
@@ -207,7 +206,6 @@ export default function ReportEditor() {
 
   const addPage = (sheet) => {
     mutate((r) => ({ ...r, pages: [...r.pages, sheet ? newPageFor(sheet) : blankPage()].slice(0, 60) }));
-    setAddOpen(false);
     setTimeout(() => canvasRef.current?.scrollTo({ top: canvasRef.current.scrollHeight, behavior: 'smooth' }), 60);
   };
 
@@ -408,20 +406,12 @@ export default function ReportEditor() {
 
             {!locked && (
               <div className="rb-addpage-wrap" style={{ width: PAGE_W }}>
-                {addOpen && (
-                  <div className="rb-addpage-menu">
-                    {extras.map((e) => (
-                      <button key={e.label} type="button" onClick={() => addPage(e.sheet)}>{e.label}</button>
-                    ))}
-                    <button type="button" className="accent" onClick={() => addPage(null)}>Blank page (free layout)</button>
-                  </div>
-                )}
                 <button
                   type="button"
                   className="rb-addpage-fab"
-                  title="Add page"
-                  aria-label="Add page"
-                  onClick={() => setAddOpen((o) => !o)}
+                  title="Add blank page"
+                  aria-label="Add blank page"
+                  onClick={() => addPage(null)}
                 >
                   <Plus size={20} strokeWidth={2.2} />
                 </button>
@@ -590,6 +580,16 @@ function FreeSheet({ page, locked, zoomRef, selected, onSelect, updateEl, addEl,
     if (d.mode === 'resize') {
       const w = Math.max(60, Math.min(FREE_W - el.x, d.ow + dx));
       const h = Math.max(26, Math.min(FREE_H - el.y, d.oh + dy));
+      if (el.type === 'table' && d.g0) {
+        // Whole-table resize: scale every column width and row height
+        // proportionally to the dragged outer box.
+        const w0 = d.g0.colW.reduce((a, b) => a + b, 0);
+        const h0 = d.g0.rowH.reduce((a, b) => a + b, 0);
+        const colW = d.g0.colW.map((cw) => Math.max(32, Math.round((cw * w) / w0)));
+        const rowH = d.g0.rowH.map((rh) => Math.max(22, Math.round((rh * h) / h0)));
+        updateEl(page.uid, d.id, (x) => syncTableSize({ ...x, colW, rowH }));
+        return;
+      }
       updateEl(page.uid, d.id, (x) => ({ ...x, w: Math.round(w), h: Math.round(h) }));
       return;
     }
@@ -611,7 +611,10 @@ function FreeSheet({ page, locked, zoomRef, selected, onSelect, updateEl, addEl,
     e.preventDefault();
     e.stopPropagation();
     onSelect(el.id);
-    dragRef.current = { mode, id: el.id, sx: e.clientX, sy: e.clientY, ox: el.x, oy: el.y, ow: el.w, oh: el.h };
+    dragRef.current = {
+      mode, id: el.id, sx: e.clientX, sy: e.clientY, ox: el.x, oy: el.y, ow: el.w, oh: el.h,
+      g0: el.type === 'table' ? tableGeom(el) : null,
+    };
     const up = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', up);
@@ -743,15 +746,16 @@ function FreeElement({ el, locked, selected, startDrag, zoomRef, update }) {
       />
     );
   } else if (el.type === 'bullets') {
-    body = selected && !locked ? (
-      <textarea
-        className="rb-el-area" value={el.text || ''} placeholder={'One point per line'}
-        onChange={(e) => update((x) => ({ ...x, text: e.target.value }))}
-      />
-    ) : (
-      <ul className="rb-el-bullets">
-        {String(el.text || '').split('\n').filter((l) => l.trim()).map((l, i) => <li key={i}>{l}</li>)}
-      </ul>
+    body = (
+      <div className="rb-el-bulletwrap">
+        <div className="rb-el-bulletdots" style={{ fontSize: el.fontSize }} aria-hidden="true">
+          {String(el.text || '').split('\n').map((l, i) => <div key={i}>{l.trim() ? '•' : ' '}</div>)}
+        </div>
+        <textarea
+          className="rb-el-area" value={el.text || ''} disabled={locked} placeholder={'One point per line'}
+          onChange={(e) => update((x) => ({ ...x, text: e.target.value }))}
+        />
+      </div>
     );
   } else if (el.type === 'table') {
     body = <TableElement el={el} locked={locked} selected={selected} update={update} zoomRef={zoomRef} />;
@@ -771,9 +775,7 @@ function FreeElement({ el, locked, selected, startDrag, zoomRef, update }) {
           <div className="rb-el-grip" title="Drag to move" onPointerDown={(e) => startDrag(e, el, 'move')}>
             <Move size={11} />
           </div>
-          {el.type !== 'table' && (
-            <div className="rb-el-resize" title="Drag to resize" onPointerDown={(e) => startDrag(e, el, 'resize')} />
-          )}
+          <div className="rb-el-resize" title="Drag to resize" onPointerDown={(e) => startDrag(e, el, 'resize')} />
         </>
       )}
       <div className="rb-el-body" onPointerDown={selected ? stop : undefined}>{body}</div>
@@ -835,6 +837,7 @@ function TableDimPicker({ onPick }) {
 function TableElement({ el, locked, selected, update, zoomRef }) {
   const { colW, rowH } = tableGeom(el);
   const dragRef = useRef(null);
+  const [hover, setHover] = useState(null); // pointer position in table-local px
 
   // Column / row border resize (Google-Docs style drag on the grid lines).
   const startResize = (e, axis, idx) => {
@@ -897,8 +900,37 @@ function TableElement({ el, locked, selected, update, zoomRef }) {
   const xAt = colW.reduce((acc, w) => [...acc, acc[acc.length - 1] + w], [0]);
   const yAt = rowH.reduce((acc, h) => [...acc, acc[acc.length - 1] + h], [0]);
 
+  // Show a single insert chip only at the boundary the pointer is near —
+  // like Google Docs' hover affordance.
+  const NEAR = 16;
+  let colChip = null;
+  let rowChip = null;
+  if (hover && selected && !locked) {
+    let best = NEAR + 1;
+    xAt.forEach((x, i) => {
+      const d = Math.abs(hover.x - x);
+      if (d < best) { best = d; colChip = { x, i }; }
+    });
+    best = NEAR + 1;
+    yAt.forEach((y, i) => {
+      const d = Math.abs(hover.y - y);
+      if (d < best) { best = d; rowChip = { y, i }; }
+    });
+  }
+
+  const onHoverMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const k = (zoomRef?.current || 100) / 100;
+    setHover({ x: (e.clientX - rect.left) / k, y: (e.clientY - rect.top) / k });
+  };
+
   return (
-    <div className="rb-tablewrap" style={{ width: totalW }}>
+    <div
+      className="rb-tablewrap"
+      style={{ width: totalW }}
+      onPointerMove={selected && !locked ? onHoverMove : undefined}
+      onPointerLeave={() => setHover(null)}
+    >
       <table className="rb-el-table" style={{ width: totalW, tableLayout: 'fixed' }}>
         <colgroup>{colW.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
         <tbody>
@@ -931,21 +963,21 @@ function TableElement({ el, locked, selected, update, zoomRef }) {
             <div key={`r${i}`} className="rb-tresize-h" style={{ top: y - 3 }}
               title="Drag to resize row" onPointerDown={(e) => startResize(e, 'row', i)} />
           ))}
-          {/* hover "+" chips on every boundary — insert a column / row there */}
-          {xAt.map((x, i) => (
-            <button key={`ic${i}`} type="button" className="rb-tinsert rb-tinsert-col" style={{ left: x - 9 }}
-              title={i === 0 ? 'Insert column left' : i === colW.length ? 'Insert column right' : 'Insert column here'}
-              onPointerDown={(e) => e.stopPropagation()} onClick={() => insertCol(i)}>
+          {/* single hover "+" chip at the boundary the pointer is near */}
+          {colChip && (
+            <button type="button" className="rb-tinsert rb-tinsert-col" style={{ left: colChip.x - 9 }}
+              title={colChip.i === 0 ? 'Insert column left' : colChip.i === colW.length ? 'Insert column right' : 'Insert column here'}
+              onPointerDown={(e) => e.stopPropagation()} onClick={() => insertCol(colChip.i)}>
               <Plus size={11} />
             </button>
-          ))}
-          {yAt.map((y, i) => (
-            <button key={`ir${i}`} type="button" className="rb-tinsert rb-tinsert-row" style={{ top: y - 9 }}
-              title={i === 0 ? 'Insert row above' : i === rowH.length ? 'Insert row below' : 'Insert row here'}
-              onPointerDown={(e) => e.stopPropagation()} onClick={() => insertRow(i)}>
+          )}
+          {rowChip && (
+            <button type="button" className="rb-tinsert rb-tinsert-row" style={{ top: rowChip.y - 9 }}
+              title={rowChip.i === 0 ? 'Insert row above' : rowChip.i === rowH.length ? 'Insert row below' : 'Insert row here'}
+              onPointerDown={(e) => e.stopPropagation()} onClick={() => insertRow(rowChip.i)}>
               <Plus size={11} />
             </button>
-          ))}
+          )}
         </>
       )}
     </div>

@@ -6165,3 +6165,34 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .rb-tinsert-row { left: -22px; }
 .rb-tablewrap:hover .rb-tinsert { opacity: .85; }
 .rb-tinsert:hover { opacity: 1 !important; transform: scale(1.15); background: var(--blue-500); color: #fff; border-color: var(--blue-500); }
+
+/* ── Report Studio: round-4 refinements ────────────────────────────────── */
+/* Free elements always show a light outline so boxes are visible */
+.rb-el { border: 1px solid #dcdcdc; border-radius: 3px; }
+.rb-el:hover { border-color: #b9b9b9; }
+.rb-el.is-table { border-color: transparent; }
+.rb-el.is-table:hover { border-color: transparent; }
+.rb-el.sel, .rb-el.is-table.sel { border: 1px solid var(--blue-500); }
+
+/* Dimension-picker cells: crisp squares with light grey outline */
+.rb-dim-picker .rb-dim-cell {
+  border-radius: 2px !important;
+  border: 1px solid #c8cdd6;
+  background: var(--bg-1);
+}
+.rb-dim-picker .rb-dim-cell.on {
+  background: color-mix(in srgb, var(--blue-400) 30%, transparent);
+  border-color: var(--blue-500);
+}
+
+/* Bullets: live dot gutter beside an always-editable textarea */
+.rb-el-bulletwrap { display: flex; height: 100%; }
+.rb-el-bulletdots {
+  flex: 0 0 14px; padding: 2px 0 2px 4px; line-height: 1.45; color: inherit;
+  user-select: none; text-align: left; font-weight: inherit;
+}
+.rb-el-bulletwrap .rb-el-area { flex: 1; }
+
+/* Insert chips appear only near the hovered boundary — fully visible */
+.rb-tinsert { opacity: 1; }
+.rb-tablewrap:hover .rb-tinsert { opacity: 1; }
