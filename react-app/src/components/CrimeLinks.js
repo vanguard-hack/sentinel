@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Share2, AlertTriangle, Crown, Shuffle, Repeat, Users, MapPin, Network, RefreshCw,
 } from 'lucide-react';
-import { fetchCrimeNetwork, networkToSpec } from '../utils/crimelinks';
+import { fetchCrimeNetwork, networkToSpec, buildOverview } from '../utils/crimelinks';
 import NetworkGraph from './NetworkGraph';
+import NetworkOverview from './NetworkOverview';
+import RingList from './RingList';
 
 // Analyst label for a person within a ring, from centrality + clustering.
 function role(p, net) {
@@ -33,7 +35,7 @@ export default function CrimeLinks() {
     try {
       const d = await fetchCrimeNetwork();
       setData(d);
-      setSel(d.networks[0]?.id ?? null);
+      // Deliberately no default selection — the overview is the landing view.
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -43,8 +45,32 @@ export default function CrimeLinks() {
   useEffect(() => { load(); }, [load]);
 
   const net = useMemo(
-    () => data?.networks.find((n) => n.id === sel) || data?.networks[0] || null,
+    () => (sel == null ? null : data?.networks.find((n) => n.id === sel) || null),
     [data, sel]
+  );
+
+  // Laid out once per dataset, not per render — see buildOverview.
+  const overview = useMemo(
+    () => (data ? buildOverview(data.networks) : null),
+    [data]
+  );
+
+  // The canvas needs real colours; the SVG graph can use CSS variables but
+  // canvas fill styles cannot, so resolve them once against the theme.
+  const districts = useMemo(() => {
+    const set = [];
+    (overview?.nodes || []).forEach((n) => { if (!set.includes(n.group)) set.push(n.group); });
+    return set;
+  }, [overview]);
+  const palette = useMemo(() => {
+    if (typeof window === 'undefined') return [];
+    const cs = getComputedStyle(document.documentElement);
+    return ['--rp-cat-0', '--rp-cat-1', '--rp-cat-2', '--rp-cat-3', '--rp-cat-4', '--rp-cat-5']
+      .map((v) => cs.getPropertyValue(v).trim() || '#2563eb');
+  }, []);
+  const colorFor = useCallback(
+    (g) => palette[Math.max(0, districts.indexOf(g)) % (palette.length || 1)] || '#2563eb',
+    [palette, districts]
   );
   const spec = useMemo(() => (net ? networkToSpec(net) : null), [net]);
   const ringCrimes = useMemo(() => {
@@ -110,34 +136,41 @@ export default function CrimeLinks() {
       <section className="rp-card rp-card-wide">
         <div className="rp-card-head">
           <h2>Network explorer</h2>
-          <span className="rp-card-sub">{data.networks.length} rings · pick one to inspect its members and linked crimes</span>
+          <span className="rp-card-sub">{data.networks.length} rings · the whole network is shown; pick one to inspect its members and linked crimes</span>
         </div>
         <div className="rp-card-body">
           <div className="cl-explorer">
             <div className="cl-ring-col">
-            <ul className="cl-ring-list">
-              {data.networks.slice(0, 40).map((n) => (
-                <li key={n.id}>
-                  <button
-                    className={`cl-ring ${n.id === net?.id ? 'active' : ''}`}
-                    onClick={() => setSel(n.id)}
-                  >
-                    <span className="cl-ring-rank">#{n.rank}</span>
-                    <span className="cl-ring-main">
-                      <span className="cl-ring-name">{n.leader.name.split(' ')[0]}’s ring</span>
-                      <span className="cl-ring-sub">{n.size} members · {n.district}</span>
-                    </span>
-                    <span className="cl-ring-type">{n.topType}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <RingList
+              networks={data.networks}
+              selectedId={sel}
+              onSelect={setSel}
+            />
             </div>
 
             <div className="cl-graph-wrap">
+              {!net && overview && (
+                <>
+                  <div className="cl-ring-title">
+                    <strong>All rings · full linkage network</strong>
+                    <span>
+                      {data.networks.length} rings · {overview.nodes.length} people · {overview.links.length} links
+                      {' · '}click any cluster to open that ring
+                    </span>
+                  </div>
+                  <NetworkOverview
+                    overview={overview}
+                    colorFor={colorFor}
+                    onPick={(ringIdx) => setSel(data.networks[ringIdx]?.id ?? null)}
+                  />
+                </>
+              )}
               {net && (
                 <>
                   <div className="cl-ring-title">
+                    <button type="button" className="cl-back" onClick={() => setSel(null)}>
+                      ← Show all rings
+                    </button>
                     <strong>Ring #{net.rank} · {net.leader.name}</strong>
                     <span>{net.size} members · {net.edges.length} links · {net.caseIds.length} crimes · {net.district}{net.dateFrom ? ` · ${net.dateFrom} → ${net.dateTo}` : ''}</span>
                     {spec?.trimmed > 0 && <span className="cl-trim">graph shows top {spec.nodes.length} of {net.size} by connections</span>}

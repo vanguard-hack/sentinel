@@ -228,3 +228,83 @@ export function networkToSpec(net, cap = 60) {
   const links = net.edges.filter((e) => keep.has(e.source) && keep.has(e.target));
   return { nodes, links, trimmed: net.members.length - nodes.length };
 }
+
+// ── Full-network overview ───────────────────────────────────────────────────
+// Every ring laid out at once, so an officer sees the whole linkage landscape
+// before drilling into one.
+//
+// Layout is computed here rather than simulated in the browser on each load: a
+// force pass over every node at once would be slow and would tangle unrelated
+// rings together. Instead each ring gets a cheap local layout (a ring of
+// members around its most-connected member, which reproduces the hub-and-spoke
+// shape the detail view shows), and the rings are then packed onto a spiral by
+// size — largest near the centre. The result is deterministic, O(n), and reads
+// as distinct clusters, which is what the data actually is.
+//
+// Note on topology: a "ring" here is a connected component of the co-offending
+// graph, so two rings can never share a member — if they did they would be one
+// ring. Overlapping rings would require a different definition (community
+// detection inside a component) rather than a change to this layout.
+export function buildOverview(networks) {
+  const nodes = [];
+  const links = [];
+  const rings = [];
+
+  // Ring radius grows with membership; spiral spacing grows with it too so
+  // clusters don't overlap.
+  const ringRadius = (n) => 14 + Math.sqrt(n) * 9;
+
+  let angle = 0;
+  let spiral = 0;
+  networks.forEach((net, ri) => {
+    const R = ringRadius(net.size);
+    // Golden-angle spiral: even packing without collision tests.
+    spiral += 1;
+    angle += 2.39996;
+    const dist = 26 * Math.sqrt(spiral) * (1 + ri / Math.max(1, networks.length) * 1.6);
+    const cx = Math.cos(angle) * dist;
+    const cy = Math.sin(angle) * dist;
+
+    const members = net.members;
+    const idx = new Map();
+    const base = nodes.length;
+    members.forEach((m, i) => {
+      idx.set(m.pid, base + i);
+      // Member 0 is the most connected (members are pre-sorted by degree), so
+      // it anchors the centre and the rest fan around it.
+      const a = (i / Math.max(1, members.length - 1)) * Math.PI * 2;
+      const rr = i === 0 ? 0 : R * (0.6 + 0.4 * ((i % 3) / 2));
+      nodes.push({
+        id: m.pid,
+        label: m.name || m.names?.[0] || m.pid,
+        group: m.district || '—',
+        deg: m.degree || 0,
+        ring: ri,
+        x: cx + Math.cos(a) * rr,
+        y: cy + Math.sin(a) * rr,
+      });
+    });
+    net.edges.forEach((e) => {
+      const s = idx.get(e.source);
+      const t = idx.get(e.target);
+      if (s != null && t != null) links.push({ s, t, ring: ri });
+    });
+    rings.push({ id: net.id, rank: net.rank, cx, cy, r: R, size: net.size, label: net.leader?.name || '' });
+  });
+
+  // Normalise into a 0..1000 box so the renderer can fit any dataset size.
+  const xs = nodes.map((n) => n.x);
+  const ys = nodes.map((n) => n.y);
+  const minX = Math.min(...xs, 0);
+  const maxX = Math.max(...xs, 1);
+  const minY = Math.min(...ys, 0);
+  const maxY = Math.max(...ys, 1);
+  const span = Math.max(maxX - minX, maxY - minY) || 1;
+  const scale = 960 / span;
+  const offX = 20 - minX * scale;
+  const offY = 20 - minY * scale;
+  nodes.forEach((n) => { n.x = n.x * scale + offX; n.y = n.y * scale + offY; });
+  rings.forEach((r) => { r.cx = r.cx * scale + offX; r.cy = r.cy * scale + offY; r.r *= scale; });
+
+  return { nodes, links, rings };
+}

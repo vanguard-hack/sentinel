@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import ZoomControls from './ZoomControls';
 
 // Interactive crime-network graph (Obsidian-graph-view style). A small force
 // simulation (repulsion + spring + centring) lays out nodes; hovering a node
@@ -108,6 +109,49 @@ export default function NetworkGraph({ spec, initialZoom = 1 }) {
 
   const color = (g) => `var(${CAT[model.groups.indexOf(g) % CAT.length]})`;
 
+  // Animate to a zoom level about the canvas centre. Used by the +/- buttons
+  // and the keyboard; the wheel keeps its own cursor-anchored path so the
+  // pointer stays over the same node while scrolling.
+  const animRef = useRef(null);
+  const zoomTo = useCallback((target, opts = {}) => {
+    const from = viewRef.current;
+    const k = Math.max(MIN_K, Math.min(MAX_K, target));
+    const to = opts.reset
+      ? viewAt(1)
+      : {
+          k,
+          tx: W / 2 - ((W / 2 - from.tx) / from.k) * k,
+          ty: H / 2 - ((H / 2 - from.ty) / from.k) * k,
+        };
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    const t0 = performance.now();
+    const DUR = 180;
+    const ease = (t) => 1 - (1 - t) * (1 - t);
+    const step = (now) => {
+      const t = Math.min(1, (now - t0) / DUR);
+      const e = ease(t);
+      setView({
+        k: from.k + (to.k - from.k) * e,
+        tx: from.tx + (to.tx - from.tx) * e,
+        ty: from.ty + (to.ty - from.ty) * e,
+      });
+      if (t < 1) animRef.current = requestAnimationFrame(step);
+    };
+    animRef.current = requestAnimationFrame(step);
+  }, []);
+  useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
+
+  const zoomIn = useCallback(() => zoomTo(viewRef.current.k * 1.2), [zoomTo]);
+  const zoomOut = useCallback(() => zoomTo(viewRef.current.k / 1.2), [zoomTo]);
+  const zoomReset = useCallback(() => zoomTo(1, { reset: true }), [zoomTo]);
+
+  // +/- mirror the buttons when the graph has focus.
+  const onKeyDown = useCallback((e) => {
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomIn(); }
+    else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut(); }
+    else if (e.key === '0') { e.preventDefault(); zoomReset(); }
+  }, [zoomIn, zoomOut, zoomReset]);
+
   // Screen event → svg-space (0..W/H) and world-space (pre-transform) points.
   const toSvg = (e) => {
     const r = svgRef.current.getBoundingClientRect();
@@ -212,7 +256,8 @@ export default function NetworkGraph({ spec, initialZoom = 1 }) {
   const { k, tx, ty } = view;
 
   return (
-    <div className="net-graph">
+    <div className="net-graph" tabIndex={0} onKeyDown={onKeyDown}>
+      <ZoomControls onIn={zoomIn} onOut={zoomOut} onReset={zoomReset} />
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
