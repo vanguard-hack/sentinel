@@ -1,5 +1,5 @@
 /* Overview layout + explorer default view. */
-import { buildOverview } from '../utils/crimelinks';
+import { buildOverview, networkToSpec } from '../utils/crimelinks';
 
 const mkRing = (id, size, district, type) => {
   const members = Array.from({ length: size }, (_, i) => ({
@@ -121,4 +121,20 @@ test('scales to many rings without blowing up', () => {
   expect(ov.nodes.length).toBeGreaterThan(1800);
   // layout is O(n): comfortably under a second even for the full set
   expect(Date.now() - t0).toBeLessThan(1500);
+});
+
+test('ring detail renders the whole ring — no trimming, no dropped edges', () => {
+  // Previously capped at 60 members, which also silently dropped every edge
+  // touching a trimmed member, so the graph disagreed with its own header.
+  const big = mkRing('big', 90, 'Kodagu', 'Theft');
+  const spec = networkToSpec(big);
+  expect(spec.nodes).toHaveLength(big.members.length);
+  expect(spec.links).toHaveLength(big.edges.length);
+  expect(spec.trimmed).toBe(0);
+  // every link still refers to a node that is actually rendered
+  const ids = new Set(spec.nodes.map((n) => n.id));
+  spec.links.forEach((l) => {
+    expect(ids.has(l.source)).toBe(true);
+    expect(ids.has(l.target)).toBe(true);
+  });
 });

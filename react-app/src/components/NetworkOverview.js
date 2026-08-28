@@ -55,10 +55,12 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
       const b = nodes[l.t];
       if (!a || !b) return;
       const near = hoverRing != null && (l.a === hoverRing || l.b === hoverRing);
-      ctx.lineWidth = Math.max(1.1, (near ? 3.4 : 2.4) / k);
+      // Held roughly constant on screen so it survives zooming out, but capped
+      // so it never turns into a heavy slab when zoomed in.
+      ctx.lineWidth = Math.min(1.6, Math.max(0.7, (near ? 1.7 : 1.15) / k));
       ctx.strokeStyle = hoverRing == null
-        ? 'rgba(37,58,95,0.55)'
-        : (near ? 'rgba(37,99,235,0.9)' : 'rgba(37,58,95,0.13)');
+        ? 'rgba(96,116,148,0.42)'
+        : (near ? 'rgba(37,99,235,0.85)' : 'rgba(96,116,148,0.10)');
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
@@ -67,13 +69,13 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
 
     // Co-offending links inside each ring — lighter, they read as cluster
     // texture rather than structure.
-    ctx.lineWidth = Math.max(0.4, 1.1 / k);
+    ctx.lineWidth = Math.min(1, Math.max(0.35, 0.75 / k));
     links.forEach((l) => {
       const a = nodes[l.s];
       const b = nodes[l.t];
       ctx.strokeStyle = hoverRing == null
-        ? 'rgba(51,65,90,0.62)'
-        : (l.ring === hoverRing ? 'rgba(37,99,235,0.85)' : 'rgba(51,65,90,0.14)');
+        ? 'rgba(118,134,160,0.45)'
+        : (l.ring === hoverRing ? 'rgba(37,99,235,0.75)' : 'rgba(118,134,160,0.09)');
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);

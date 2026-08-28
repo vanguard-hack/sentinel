@@ -143,7 +143,36 @@ export default function NetworkGraph({ spec, initialZoom = 1 }) {
 
   const zoomIn = useCallback(() => zoomTo(viewRef.current.k * 1.2), [zoomTo]);
   const zoomOut = useCallback(() => zoomTo(viewRef.current.k / 1.2), [zoomTo]);
-  const zoomReset = useCallback(() => zoomTo(1, { reset: true }), [zoomTo]);
+  // Fit the whole ring in view rather than snapping to k=1 — with every member
+  // now drawn (no trimming), a large ring should still land fully on screen.
+  const zoomReset = useCallback(() => {
+    const ns = sim.current.nodes;
+    if (!ns || !ns.length) { zoomTo(1, { reset: true }); return; }
+    const xs = ns.map((n) => n.x);
+    const ys = ns.map((n) => n.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const pad = 60;
+    const k = Math.max(MIN_K, Math.min(MAX_K, Math.min(W / (maxX - minX + pad), H / (maxY - minY + pad))));
+    const from = viewRef.current;
+    const to = { k, tx: W / 2 - ((minX + maxX) / 2) * k, ty: H / 2 - ((minY + maxY) / 2) * k };
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    const t0 = performance.now();
+    const ease = (t) => 1 - (1 - t) * (1 - t);
+    const step = (now) => {
+      const t = Math.min(1, (now - t0) / 180);
+      const e = ease(t);
+      setView({
+        k: from.k + (to.k - from.k) * e,
+        tx: from.tx + (to.tx - from.tx) * e,
+        ty: from.ty + (to.ty - from.ty) * e,
+      });
+      if (t < 1) animRef.current = requestAnimationFrame(step);
+    };
+    animRef.current = requestAnimationFrame(step);
+  }, [zoomTo]);
 
   // +/- mirror the buttons when the graph has focus.
   const onKeyDown = useCallback((e) => {

@@ -220,13 +220,13 @@ export async function fetchCrimeNetwork() {
 
 // Turn a network into a spec for <NetworkGraph>. Oversized rings are trimmed to
 // their highest-degree core so the force layout stays readable.
-export function networkToSpec(net, cap = 60) {
-  const keep = new Set(net.members.slice(0, cap).map((p) => p.pid));
-  const nodes = net.members
-    .filter((p) => keep.has(p.pid))
-    .map((p) => ({ id: p.pid, label: p.name.split(' ')[0], group: p.district }));
-  const links = net.edges.filter((e) => keep.has(e.source) && keep.has(e.target));
-  return { nodes, links, trimmed: net.members.length - nodes.length };
+// The whole ring, always. This used to keep only the 60 best-connected members
+// and silently drop every edge touching the rest, so the graph disagreed with
+// the "N members · M links" header above it. An investigator comparing the two
+// has no way to tell which is right, so the graph now renders the ring in full.
+export function networkToSpec(net) {
+  const nodes = net.members.map((p) => ({ id: p.pid, label: p.name.split(' ')[0], group: p.district }));
+  return { nodes, links: net.edges, trimmed: 0 };
 }
 
 // ── Full-network overview ───────────────────────────────────────────────────
@@ -336,10 +336,10 @@ export function buildOverview(networks) {
     const placed = [];
     // Biggest ring first so it anchors the middle of the cluster.
     const ordered = [...members].sort((a, b) => networks[b].size - networks[a].size);
-    let field = 40 + Math.sqrt(members.length) * 46;
+    let field = 52 + Math.sqrt(members.length) * 62;
     ordered.forEach((ri, n) => {
       const R = ringRadius(networks[ri].size);
-      const gap = 14 + rnd() * 14;
+      const gap = 26 + rnd() * 20;
       let pos = null;
       if (n === 0) {
         pos = { x: 0, y: 0 };
@@ -367,9 +367,9 @@ export function buildOverview(networks) {
   // Scatter the super-clusters themselves.
   const placedClusters = [];
   const totalArea = clusterMeta.reduce((a, c) => a + Math.PI * (c.radius + 30) ** 2, 0);
-  let field = Math.sqrt((totalArea * 1.9) / Math.PI);
+  let field = Math.sqrt((totalArea * 3.0) / Math.PI);
   clusterMeta.forEach((c, ci) => {
-    const gap = 30 + rnd() * 30;
+    const gap = 58 + rnd() * 46;
     let pos = null;
     if (ci === 0) {
       pos = { cx: 0, cy: 0 };
