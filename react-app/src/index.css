@@ -6579,7 +6579,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .rb-zoom-side {
   position: absolute;
   top: 0;
-  left: 6px;
+  right: 14px;
   display: flex;
   flex-direction: column;
   gap: 3px;
