@@ -29,6 +29,9 @@ export default function CrimeLinks() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [sel, setSel] = useState(null);
+  // Which ring is focused on the map. Separate from `sel` (the drill-in), so
+  // focusing highlights in place instead of swapping the view.
+  const [focusRing, setFocusRing] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -55,24 +58,8 @@ export default function CrimeLinks() {
     [data]
   );
 
-  // The canvas needs real colours; the SVG graph can use CSS variables but
-  // canvas fill styles cannot, so resolve them once against the theme.
-  const districts = useMemo(() => {
-    const set = [];
-    (overview?.nodes || []).forEach((n) => { if (!set.includes(n.group)) set.push(n.group); });
-    return set;
-  }, [overview]);
-  const palette = useMemo(() => {
-    if (typeof window === 'undefined') return [];
-    const cs = getComputedStyle(document.documentElement);
-    return ['--rp-cat-0', '--rp-cat-1', '--rp-cat-2', '--rp-cat-3', '--rp-cat-4', '--rp-cat-5']
-      .map((v) => cs.getPropertyValue(v).trim() || '#2563eb');
-  }, []);
-  const colorFor = useCallback(
-    (g) => palette[Math.max(0, districts.indexOf(g)) % (palette.length || 1)] || '#2563eb',
-    [palette, districts]
-  );
   const spec = useMemo(() => (net ? networkToSpec(net) : null), [net]);
+
   const ringCrimes = useMemo(() => {
     if (!net || !data) return [];
     return net.caseIds
@@ -157,7 +144,7 @@ export default function CrimeLinks() {
                       showing the {overview.shown} largest of {overview.total} rings
                       {' · '}{overview.clusters} connected group{overview.clusters === 1 ? '' : 's'}
                       {overview.isolated ? ` · ${overview.isolated} standalone` : ''}
-                      {' · '}click a ring to open it
+                      {' · '}click a ring to focus it, double-click to open
                     </span>
                     <span className="cl-edge-key">
                       each circle is a ring, sized by members
@@ -166,7 +153,8 @@ export default function CrimeLinks() {
                   </div>
                   <NetworkOverview
                     overview={overview}
-                    colorFor={colorFor}
+                    selected={focusRing}
+                    onSelect={setFocusRing}
                     onPick={(ringIdx) => setSel(data.networks[ringIdx]?.id ?? null)}
                   />
                 </>

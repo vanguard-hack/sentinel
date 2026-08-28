@@ -118,3 +118,24 @@ test('ring detail renders the whole ring — no trimming, no dropped edges', () 
     expect(ids.has(l.target)).toBe(true);
   });
 });
+
+test('node size tracks ring membership, and nodes are large enough to read', () => {
+  const nets = [mkRing('big', 20, 'Kodagu', 'Theft'), mkRing('mid', 9, 'Udupi', 'Theft'), mkRing('small', 3, 'Gadag', 'Theft')];
+  nets.forEach((n, i) => { n.rank = i + 1; });
+  const { nodes } = buildOverview(nets);
+  const [big, mid, small] = nodes;
+  expect(big.r).toBeGreaterThan(mid.r);
+  expect(mid.r).toBeGreaterThan(small.r);
+  // meaningfully bigger than the old dot-sized nodes
+  expect(small.r).toBeGreaterThan(8);
+});
+
+test('focusing does not move anything — layout depends only on the data', () => {
+  const nets = Array.from({ length: 25 }, (_, i) => mkRing(`r${i}`, i < 4 ? 14 - i : 4, `D${i % 5}`, 'Theft'));
+  nets.forEach((n, i) => { n.rank = i + 1; });
+  // buildOverview takes no selection argument at all, so a click cannot
+  // possibly re-run the layout with different positions
+  const a = buildOverview(nets).nodes.map((n) => [Math.round(n.x), Math.round(n.y), Math.round(n.r)]);
+  const b = buildOverview(nets).nodes.map((n) => [Math.round(n.x), Math.round(n.y), Math.round(n.r)]);
+  expect(a).toEqual(b);
+});

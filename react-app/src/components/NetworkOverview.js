@@ -15,11 +15,14 @@ import ZoomControls from './ZoomControls';
 const MIN_K = 0.25;
 const MAX_K = 8;
 
-export default function NetworkOverview({ overview, colorFor, onPick }) {
+export default function NetworkOverview({ overview, onPick, selected, onSelect }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const [view, setView] = useState({ k: 1, tx: 0, ty: 0 });
   const [hover, setHover] = useState(null);
+  // Focus is a highlight, never a re-layout: positions stay put so the map an
+  // officer has learned never rearranges under them.
+  const focus = selected;
   const viewRef = useRef(view);
   viewRef.current = view;
   const panRef = useRef(null);
@@ -46,13 +49,16 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     ctx.translate(tx, ty);
     ctx.scale(k, k);
 
-    // Neighbours of the hovered ring, so hovering traces its connections.
+    // The active ring — clicked if there is a selection, else hovered — plus
+    // everything it links to. Only that sub-network lights up; the rest of the
+    // map stays visible but recedes.
+    const active = focus != null ? focus : hover;
     let near = null;
-    if (hover != null) {
-      near = new Set([hover]);
+    if (active != null) {
+      near = new Set([active]);
       links.forEach((l) => {
-        if (l.s === hover) near.add(l.t);
-        if (l.t === hover) near.add(l.s);
+        if (l.s === active) near.add(l.t);
+        if (l.t === active) near.add(l.s);
       });
     }
 
@@ -60,29 +66,33 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     links.forEach((l) => {
       const a = nodes[l.s];
       const b = nodes[l.t];
-      const on = near ? (near.has(l.s) && near.has(l.t)) : true;
-      ctx.lineWidth = Math.min(1.4, Math.max(0.45, (on && near ? 1.3 : 0.8) / k));
+      // Only edges of the focused ring itself are drawn hot, matching the
+      // reference: its spokes stand out, the rest of the map falls away.
+      const spoke = near && (l.s === active || l.t === active);
+      ctx.lineWidth = Math.min(1.8, Math.max(0.45, (spoke ? 1.6 : 0.8) / k));
       ctx.strokeStyle = near
-        ? (on ? 'rgba(37,99,235,0.75)' : 'rgba(120,136,160,0.10)')
-        : 'rgba(120,136,160,0.38)';
+        ? (spoke ? 'rgba(99,102,241,0.85)' : 'rgba(140,152,175,0.13)')
+        : 'rgba(140,152,175,0.42)';
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
       ctx.stroke();
     });
 
+    // One colour throughout — the only thing colour encodes here is focus.
     nodes.forEach((n, i) => {
-      const dim = near ? !near.has(i) : false;
-      ctx.globalAlpha = dim ? 0.18 : 1;
-      ctx.fillStyle = colorFor(n.group);
+      const inFocus = near ? near.has(i) : true;
+      ctx.globalAlpha = inFocus ? 1 : 0.16;
+      ctx.fillStyle = i === active ? '#4f46e5' : (inFocus && near ? '#818cf8' : '#94a3b8');
       ctx.beginPath();
       ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
       ctx.fill();
-      if (i === hover) {
-        ctx.strokeStyle = 'rgba(37,99,235,0.95)';
+      if (i === active || i === hover) {
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = 'rgba(79,70,229,0.9)';
         ctx.lineWidth = 2 / k;
         ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r + 3 / k, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, n.r + 3.5 / k, 0, Math.PI * 2);
         ctx.stroke();
       }
     });
@@ -94,19 +104,19 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     const fontPx = Math.max(8, Math.min(13, 11 / k));
     ctx.font = `${fontPx}px Inter, system-ui, sans-serif`;
     nodes.forEach((n, i) => {
-      const big = n.r > 12;
-      if (!big && k < 1.6 && i !== hover) return;
-      const dim = near ? !near.has(i) : false;
-      ctx.globalAlpha = dim ? 0.12 : 1;
+      const inFocus = near ? near.has(i) : true;
+      const big = n.r > 20;
+      if (!big && k < 1.5 && i !== active && i !== hover && !(near && inFocus)) return;
+      ctx.globalAlpha = inFocus ? 1 : 0.14;
       ctx.lineWidth = 3 / k;
-      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-      ctx.strokeText(n.label, n.x, n.y + n.r + 3 / k);
-      ctx.fillStyle = 'rgba(38,50,70,0.92)';
-      ctx.fillText(n.label, n.x, n.y + n.r + 3 / k);
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.strokeText(n.label, n.x, n.y + n.r + 4 / k);
+      ctx.fillStyle = i === active ? '#4338ca' : 'rgba(38,50,70,0.92)';
+      ctx.fillText(n.label, n.x, n.y + n.r + 4 / k);
     });
     ctx.globalAlpha = 1;
     ctx.restore();
-  }, [nodes, links, hover, colorFor]);
+  }, [nodes, links, hover, focus]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -215,7 +225,8 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
       panRef.current = null;
       if (p && !p.moved) {
         const i = pick(ev);
-        if (i != null && onPick) onPick(nodes[i].ring);
+        // Select rather than navigate — the map must not rearrange on a click.
+        if (onSelect) onSelect(i == null ? null : nodes[i].ring);
       }
     };
     window.addEventListener('mousemove', move);
@@ -228,7 +239,7 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     setHover((h) => (h === i ? h : i));
   };
 
-  const hovered = hover != null ? nodes[hover] : null;
+  const tip = hover != null ? nodes[hover] : (focus != null ? nodes[focus] : null);
 
   return (
     <div className="net-graph net-overview" ref={wrapRef} tabIndex={0}
@@ -251,14 +262,20 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
         onMouseDown={onDown}
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
-        onDoubleClick={() => fit()}
+        onDoubleClick={(e) => {
+          const i = pick(e);
+          if (i != null && onPick) onPick(nodes[i].ring);
+          else fit();
+        }}
       />
-      {hovered && (
+      {tip && (
         <div className="net-ov-tip">
-          <strong>{hovered.label}</strong>
-          <span>{hovered.size} members · {hovered.crimes} crimes</span>
-          <span>{hovered.group} · {hovered.type}</span>
-          <span className="net-ov-tip-hint">Click to open this ring</span>
+          <strong>{tip.label}</strong>
+          <span>{tip.size} members · {tip.crimes} crimes</span>
+          <span>{tip.group} · {tip.type}</span>
+          <span className="net-ov-tip-hint">
+            {focus != null ? 'Double-click to open this ring' : 'Click to focus its links'}
+          </span>
         </div>
       )}
     </div>

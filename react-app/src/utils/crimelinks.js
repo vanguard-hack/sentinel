@@ -314,7 +314,7 @@ function layoutForce(nodes, links, rnd, iterations = 420) {
         let d2 = dx * dx + dy * dy;
         if (d2 < 0.01) { dx = (rnd() - 0.5) * 0.5; dy = (rnd() - 0.5) * 0.5; d2 = 0.25; }
         // Bigger rings push harder, so they claim the space their label needs.
-        const push = (2600 + (nodes[i].r + nodes[j].r) * 130) / d2;
+        const push = (3200 + (nodes[i].r + nodes[j].r) * 210) / d2;
         const d = Math.sqrt(d2);
         const fx = (dx / d) * push;
         const fy = (dy / d) * push;
@@ -328,7 +328,7 @@ function layoutForce(nodes, links, rnd, iterations = 420) {
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const d = Math.hypot(dx, dy) || 1;
-      const rest = 90 + a.r + b.r;
+      const rest = 110 + a.r + b.r;
       const f = (d - rest) * 0.012;
       const fx = (dx / d) * f;
       const fy = (dy / d) * f;
@@ -361,7 +361,7 @@ export function buildOverview(networks, { topN = 70 } = {}) {
     size: net.size,
     crimes: net.caseIds.length,
     type: net.topType || '—',
-    r: 6 + Math.sqrt(net.size) * 3.4,
+    r: 10 + Math.sqrt(net.size) * 6.2,
     x: 0,
     y: 0,
   }));
