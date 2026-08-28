@@ -14,6 +14,7 @@ import ZoomControls from './ZoomControls';
 // whole scene in one pass.
 const MIN_K = 0.25;
 const MAX_K = 8;
+const JIGGLE_MS = 620;
 
 export default function NetworkOverview({ overview, onPick, selected, onSelect }) {
   const canvasRef = useRef(null);
@@ -28,6 +29,12 @@ export default function NetworkOverview({ overview, onPick, selected, onSelect }
   const panRef = useRef(null);
   const animRef = useRef(null);
   const sizeRef = useRef({ w: 900, h: 560 });
+  // A short settle-wobble when a ring is focused. It is a RENDER offset only —
+  // node coordinates are never written to, so the map is in exactly the same
+  // place once it dies down. Anything else would defeat stable positions.
+  const jiggleRef = useRef({ t0: 0, running: false });
+  const jiggleRafRef = useRef(null);
+  const drawRef = useRef(null);
 
   const { nodes, links } = overview;
 
@@ -62,10 +69,27 @@ export default function NetworkOverview({ overview, onPick, selected, onSelect }
       });
     }
 
+    // Offsets decay to zero over JIGGLE_MS; each node gets its own phase so
+    // the group shivers rather than sliding as one block.
+    const jig = jiggleRef.current;
+    const elapsed = jig.running ? performance.now() - jig.t0 : Infinity;
+    const decay = elapsed < JIGGLE_MS ? (1 - elapsed / JIGGLE_MS) ** 2 : 0;
+    const offset = (i) => {
+      if (!decay || !near || !near.has(i)) return { dx: 0, dy: 0 };
+      const amp = (i === active ? 2.6 : 4.2) * decay;
+      const ph = i * 1.7;
+      return {
+        dx: Math.sin(elapsed / 42 + ph) * amp,
+        dy: Math.cos(elapsed / 37 + ph * 1.3) * amp,
+      };
+    };
+    const px = (i) => nodes[i].x + offset(i).dx;
+    const py = (i) => nodes[i].y + offset(i).dy;
+
     ctx.lineCap = 'round';
     links.forEach((l) => {
-      const a = nodes[l.s];
-      const b = nodes[l.t];
+      const a = { x: px(l.s), y: py(l.s) };
+      const b = { x: px(l.t), y: py(l.t) };
       // Only edges of the focused ring itself are drawn hot, matching the
       // reference: its spokes stand out, the rest of the map falls away.
       const spoke = near && (l.s === active || l.t === active);
@@ -82,17 +106,19 @@ export default function NetworkOverview({ overview, onPick, selected, onSelect }
     // One colour throughout — the only thing colour encodes here is focus.
     nodes.forEach((n, i) => {
       const inFocus = near ? near.has(i) : true;
+      const x = px(i);
+      const y = py(i);
       ctx.globalAlpha = inFocus ? 1 : 0.16;
       ctx.fillStyle = i === active ? '#4f46e5' : (inFocus && near ? '#818cf8' : '#94a3b8');
       ctx.beginPath();
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.arc(x, y, n.r, 0, Math.PI * 2);
       ctx.fill();
       if (i === active || i === hover) {
         ctx.globalAlpha = 1;
         ctx.strokeStyle = 'rgba(79,70,229,0.9)';
         ctx.lineWidth = 2 / k;
         ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r + 3.5 / k, 0, Math.PI * 2);
+        ctx.arc(x, y, n.r + 3.5 / k, 0, Math.PI * 2);
         ctx.stroke();
       }
     });
@@ -110,9 +136,11 @@ export default function NetworkOverview({ overview, onPick, selected, onSelect }
       ctx.globalAlpha = inFocus ? 1 : 0.14;
       ctx.lineWidth = 3 / k;
       ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-      ctx.strokeText(n.label, n.x, n.y + n.r + 4 / k);
+      const lx = px(i);
+      const ly = py(i) + n.r + 4 / k;
+      ctx.strokeText(n.label, lx, ly);
       ctx.fillStyle = i === active ? '#4338ca' : 'rgba(38,50,70,0.92)';
-      ctx.fillText(n.label, n.x, n.y + n.r + 4 / k);
+      ctx.fillText(n.label, lx, ly);
     });
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -131,6 +159,7 @@ export default function NetworkOverview({ overview, onPick, selected, onSelect }
   }, [draw]);
 
   useEffect(() => { draw(); }, [draw, view]);
+  drawRef.current = draw;
 
   const animateTo = useCallback((to) => {
     const from = viewRef.current;
@@ -166,8 +195,33 @@ export default function NetworkOverview({ overview, onPick, selected, onSelect }
     animateTo(to);
   }, [nodes, animateTo]);
 
+  // On focus: settle-wobble, and ease in a little so the ring and its links
+  // fill more of the canvas without losing the surrounding map.
+  useEffect(() => {
+    if (focus == null || !nodes[focus]) return undefined;
+    jiggleRef.current = { t0: performance.now(), running: true };
+    const tick = () => {
+      const done = performance.now() - jiggleRef.current.t0 >= JIGGLE_MS;
+      if (done) jiggleRef.current.running = false;
+      drawRef.current?.();
+      if (!done) jiggleRafRef.current = requestAnimationFrame(tick);
+    };
+    jiggleRafRef.current = requestAnimationFrame(tick);
+
+    const { w, h } = sizeRef.current;
+    const v = viewRef.current;
+    const n = nodes[focus];
+    const k = Math.min(MAX_K, Math.max(v.k, v.k * 1.35));
+    animateTo({ k, tx: w / 2 - n.x * k, ty: h / 2 - n.y * k });
+
+    return () => { if (jiggleRafRef.current) cancelAnimationFrame(jiggleRafRef.current); };
+  }, [focus, nodes, animateTo]);
+
   useEffect(() => { fit(false); }, [fit]);
-  useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
+  useEffect(() => () => {
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    if (jiggleRafRef.current) cancelAnimationFrame(jiggleRafRef.current);
+  }, []);
 
   const zoomBy = useCallback((factor) => {
     const { w, h } = sizeRef.current;
