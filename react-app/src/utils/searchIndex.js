@@ -5,7 +5,7 @@
 // section id once the page mounts (see ScrollToHash); `query` selects a tab.
 import {
   Home, AlertTriangle, Map, Brain, Database, MessageSquare, Users,
-  NotebookPen, ShieldCheck, UserCircle, TrendingUp, Share2, Fingerprint, ScrollText,
+  NotebookPen, ShieldCheck, UserCircle, TrendingUp, Share2, Fingerprint, ScrollText, Images,
   LineChart, Landmark, CalendarDays, Network, BarChart3, PieChart,
   Activity, Table, Clock, Headset, Building2,
 } from 'lucide-react';
@@ -30,6 +30,9 @@ export const SEARCH_INDEX = [
   { id: 'investigation-diary', feature: 'investigationDiary', group: 'Pages', Icon: NotebookPen,
     title: 'Investigation Diary', sub: 'Case diaries (BNSS S.172)', to: '/investigation-diary',
     keywords: 'investigation diary case diary bnss 172 cctns testimony statement evidence timeline' },
+  { id: 'records', feature: 'records', group: 'Pages', Icon: Images,
+    title: 'Records', sub: 'Digitised paper documents', to: '/records',
+    keywords: 'records digitise digitize scan scanned ocr photo camera upload bulk import paper document text extract table archive' },
   { id: 'report-studio', feature: 'reportStudio', group: 'Pages', Icon: ScrollText,
     title: 'Report Studio', sub: 'Draft statutory police reports', to: '/report-studio',
     keywords: 'report studio builder fir charge sheet final report arrest memo seizure mahazar udr death missing person general diary gd law order crime analysis performance case status court iif cctns template pdf draft' },

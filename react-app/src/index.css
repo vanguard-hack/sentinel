@@ -6599,3 +6599,127 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   .rb-zoom-rail { height: auto; display: flex; justify-content: center; margin-bottom: 10px; }
   .rb-zoom-side { position: static; flex-direction: row; }
 }
+
+/* ── Records digitisation ──────────────────────────────────────────────── */
+.dg-drop {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 20px 22px; margin: 4px 0 14px; cursor: pointer; text-align: left;
+  color: var(--text-2); background: color-mix(in srgb, var(--bg-1) 60%, transparent);
+  border: 1.5px dashed var(--border-bright); border-radius: 14px;
+  transition: border-color .12s, background .12s, color .12s;
+}
+.dg-drop:hover, .dg-drop.over {
+  color: var(--blue-600); border-color: var(--blue-500);
+  background: color-mix(in srgb, var(--blue-400) 7%, transparent);
+}
+.dg-drop strong { display: block; font-size: 13px; font-weight: 600; color: var(--text-0); }
+.dg-drop.over strong, .dg-drop:hover strong { color: var(--blue-600); }
+.dg-drop span { display: block; font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
+
+.dg-queue {
+  margin-bottom: 14px; padding: 11px 13px;
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: 12px;
+}
+.dg-queue-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; font-weight: 600; color: var(--text-1);
+}
+.dg-queue-head span { display: inline-flex; align-items: center; gap: 6px; }
+@keyframes dg-spin { to { transform: rotate(360deg); } }
+.dg-spin { animation: dg-spin 1s linear infinite; }
+.dg-queue-list { margin-top: 8px; max-height: 190px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.dg-queue-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 5px 9px; font-size: 11.5px; border-radius: 8px; background: var(--bg-2);
+}
+.dg-queue-name { color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dg-queue-status { flex: 0 0 auto; color: var(--text-3); font-size: 11px; }
+.dg-queue-item.done .dg-queue-status { color: var(--green); }
+.dg-queue-item.failed .dg-queue-status { color: var(--red); }
+.dg-queue-item.working .dg-queue-status { color: var(--blue-600); }
+.dg-queue-foot { margin-top: 8px; font-size: 11px; color: var(--red); }
+
+.dg-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: 12px; padding-bottom: 20px;
+}
+.dg-card {
+  display: flex; flex-direction: column; gap: 7px; padding: 14px; text-align: left;
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: 14px;
+  cursor: pointer; transition: border-color .12s, transform .12s;
+}
+.dg-card:hover { border-color: var(--border-bright); transform: translateY(-1px); }
+.dg-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dg-card-type {
+  font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  color: var(--blue-600); background: color-mix(in srgb, var(--blue-400) 12%, transparent);
+  border-radius: 999px; padding: 3px 9px;
+}
+.dg-card-warn {
+  font-size: 10px; font-weight: 600; color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 14%, transparent); border-radius: 999px; padding: 3px 8px;
+}
+.dg-card-title { font-size: 13px; font-weight: 600; color: var(--text-0); line-height: 1.35; }
+.dg-card-summary {
+  margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--text-2);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.dg-card-meta { display: flex; flex-wrap: wrap; gap: 5px 10px; font-size: 10.5px; color: var(--text-3); }
+.dg-card-meta span { display: inline-flex; align-items: center; gap: 3px; }
+.dg-card-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--border);
+  font-size: 10.5px; color: var(--text-3);
+}
+
+/* Detail */
+.dg-detail-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.dg-title-input {
+  flex: 1 1 260px; font: inherit; font-size: 15px; font-weight: 700; color: var(--text-0);
+  background: transparent; border: 1px solid transparent; border-radius: 9px; padding: 7px 9px;
+}
+.dg-title-input:hover, .dg-title-input:focus { border-color: var(--border); background: var(--bg-2); outline: none; }
+.dg-detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 18px; align-items: start; }
+@media (max-width: 900px) { .dg-detail { grid-template-columns: 1fr; } }
+.dg-scan {
+  position: sticky; top: 12px; padding: 10px;
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: 14px;
+}
+.dg-scan img { width: 100%; height: auto; border-radius: 9px; display: block; background: #fff; }
+.dg-scan-meta { margin-top: 8px; font-size: 10.5px; color: var(--text-3); text-align: center; }
+.dg-extract {
+  padding: 16px 18px; background: var(--bg-1);
+  border: 1px solid var(--border); border-radius: 14px;
+}
+.dg-summary { margin: 0 0 14px; font-size: 12.5px; line-height: 1.55; color: var(--text-1); }
+.dg-h3 {
+  display: flex; align-items: center; gap: 6px; margin: 16px 0 8px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-3);
+}
+.dg-h3:first-child { margin-top: 0; }
+.dg-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.dg-field { padding: 8px 10px; background: var(--bg-2); border-radius: 9px; }
+.dg-field-k {
+  display: block; font-size: 9.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--text-3);
+}
+.dg-field-v { display: block; font-size: 12px; color: var(--text-0); margin-top: 2px; word-break: break-word; }
+.dg-table-wrap { margin-top: 14px; }
+.dg-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.dg-table th, .dg-table td {
+  border: 1px solid var(--border); padding: 5px 8px; text-align: left; vertical-align: top; color: var(--text-1);
+}
+.dg-table th { background: var(--bg-3); font-weight: 700; color: var(--text-0); }
+.dg-text-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.dg-text-actions { display: flex; gap: 4px; }
+.dg-text {
+  margin: 0; padding: 12px 14px; max-height: 460px; overflow: auto;
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6; color: var(--text-1);
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 11px;
+  white-space: pre-wrap; word-break: break-word;
+}
+.dg-text-edit {
+  width: 100%; min-height: 320px; padding: 12px 14px; resize: vertical;
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6; color: var(--text-0);
+  background: var(--bg-2); border: 1px solid var(--blue-500); border-radius: 11px; outline: none;
+}
+.dg-note { margin: 8px 0 0; font-size: 10.5px; font-style: italic; color: var(--text-3); }

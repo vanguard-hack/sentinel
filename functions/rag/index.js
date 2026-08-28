@@ -190,6 +190,7 @@ AI Analytics [/ai-analytics]: the machine-learning workspace. Tabs:
 Case Files [/case-files]: browse and query the raw FIR data store with column filters and CSV export.
 Investigation Diary [/investigation-diary]: BNSS S.172 case diaries mapped to CCTNS — diary entries, S.161 statements/testimony (typed, recorded with speech-to-text, or uploaded and OCR'd), evidence, persons, a timeline, findings, an AI cited summary and PDF export.
 Report Studio [/report-studio]: draft, edit and file statutory & administrative police reports from prescribed templates — FIR (IIF-1), Case Diary (S.192 BNSS), Arrest/Court Surrender Memo (IIF-3), Charge Sheet / Final Report (IIF-5), UDR/Death Report, Missing Person Report, Property Seizure Memo (IIF-4), Daily Station Report/General Diary, Law & Order Report, Crime Analysis Report, Police Performance Report and Court/Case Status Report. Paged A4 editor with zoom, add-page (continuation/accused/property sheets), autosave to the archive, AI narrative polish, finalize (read-only lock) and PDF download.
+Records [/records]: digitised paper records — officers photograph, scan, drag-drop or bulk-upload documents; Zia OCR extracts the text and an AI pass classifies the document, pulls out key fields and reconstructs any tables. Everything is searchable, and questions about scanned paper are answered from this store.
 Assistant [/assistant]: this chat — ask about data, law, or the platform.
 Personnel Directory [/personnel]: officer directory (rank, unit, district). Sub-pages: Duty Roster [/personnel/roster] (shift schedule), Org Chart [/personnel/org-chart] (command hierarchy).
 Access & Audit [/access]: admin only — assign roles and browse/export the audit trail of who did what, where and when.
@@ -1740,6 +1741,311 @@ async function handleInvestigationSummary(req, res) {
   });
 }
 
+// ── Records Digitisation (paper files → searchable digital records) ─────────
+// Police records still live largely on paper. Officers photograph or scan a
+// document here; Zia OCR lifts the text, an LLM pass classifies it and pulls
+// out key fields and any tabular data, and the result is stored so it can be
+// read back, searched, and answered from by the assistant.
+//
+// Everything lives in Stratus (the project cannot create Data Store tables
+// programmatically): the original image, one JSON record per document, and a
+// small index so the gallery loads fast.
+const DIG_PREFIX = 'digitise/';
+const DIG_INDEX_KEY = 'digitise/index.json';
+const digFileKey = (id, ext) => `${DIG_PREFIX}files/${id}.${ext}`;
+const digRecKey = (id) => `${DIG_PREFIX}records/${id}.json`;
+
+async function loadDigIndex(bucket) {
+  try {
+    const parsed = JSON.parse((await streamToString(await bucket.getObject(DIG_INDEX_KEY))) || '{}');
+    return Array.isArray(parsed.records) ? parsed.records : [];
+  } catch {
+    return [];
+  }
+}
+async function saveDigIndex(bucket, records) {
+  await bucket.putObject(DIG_INDEX_KEY, Buffer.from(JSON.stringify({ records, updatedAt: Date.now() })));
+}
+const digSummary = (rec) => ({
+  id: rec.id, batchId: rec.batchId || '', filename: rec.filename, mime: rec.mime,
+  title: rec.title || rec.filename, docType: rec.docType || 'Unclassified',
+  summary: rec.summary || '', tableCount: (rec.tables || []).length,
+  textLength: (rec.text || '').length, status: rec.status || 'processed',
+  caseMasterId: rec.caseMasterId || '', crimeNo: rec.crimeNo || '',
+  uploadedBy: rec.uploadedBy || '', uploadedByName: rec.uploadedByName || '',
+  createdAt: rec.createdAt, updatedAt: rec.updatedAt,
+});
+
+// Ask the model to classify the page and pull out fields and tables. Strictly
+// extractive: police records must never gain facts that were not on the paper.
+const DIG_EXTRACT_SYSTEM =
+  'You structure OCR text taken from a scanned Indian police document. Return ONLY a JSON object:\n' +
+  '{"docType": string, "title": string, "summary": string, "fields": {label: value},\n' +
+  ' "tables": [{"title": string, "columns": [string], "rows": [[string]]}]}\n' +
+  'docType: one of FIR, Case Diary, Charge Sheet, Arrest Memo, Seizure Memo, Inquest/UDR, ' +
+  'Missing Person, General Diary, Statement, Court Document, Correspondence, Register/Ledger, Other.\n' +
+  'title: a short human label (include a crime/case number if visible).\n' +
+  'summary: one or two sentences on what the document is.\n' +
+  'fields: key particulars actually present (crime no., FIR no., dates, police station, ' +
+  'district, sections of law, names, ranks). Omit anything not in the text.\n' +
+  'tables: any tabular data you can reconstruct; use [] when the page has none.\n' +
+  'COPY values verbatim from the OCR text. Never invent, infer or complete a value. ' +
+  'If the text is too garbled to read, return empty fields and tables. Output JSON only.';
+
+async function digStructure(text) {
+  const empty = { docType: '', title: '', summary: '', fields: {}, tables: [] };
+  if (!text || text.trim().length < 12) return empty;
+  const raw = await callGroq(
+    [
+      { role: 'system', content: DIG_EXTRACT_SYSTEM },
+      { role: 'user', content: text.slice(0, 12000) },
+    ],
+    { maxTokens: 1600, temperature: 0, timeoutMs: 20_000 }
+  );
+  if (!raw) return empty;
+  try {
+    const match = raw.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(match ? match[0] : raw);
+    const tables = (Array.isArray(parsed.tables) ? parsed.tables : []).slice(0, 12).map((t) => ({
+      title: String(t.title || '').slice(0, 160),
+      columns: (Array.isArray(t.columns) ? t.columns : []).slice(0, 20).map((c) => String(c).slice(0, 120)),
+      rows: (Array.isArray(t.rows) ? t.rows : []).slice(0, 200)
+        .map((r) => (Array.isArray(r) ? r.slice(0, 20).map((c) => String(c == null ? '' : c).slice(0, 500)) : [])),
+    })).filter((t) => t.columns.length || t.rows.length);
+    const fields = {};
+    if (parsed.fields && typeof parsed.fields === 'object' && !Array.isArray(parsed.fields)) {
+      Object.entries(parsed.fields).slice(0, 40).forEach(([k, v]) => {
+        if (v == null || v === '') return;
+        fields[String(k).slice(0, 80)] = String(v).slice(0, 500);
+      });
+    }
+    return {
+      docType: String(parsed.docType || '').slice(0, 60),
+      title: String(parsed.title || '').slice(0, 160),
+      summary: String(parsed.summary || '').slice(0, 600),
+      fields,
+      tables,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+// POST /digitise/upload?filename=&mime=&batchId=&caseMasterId=  body: hex bytes
+async function handleDigitiseUpload(req, res) {
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+
+  const filename = (urlParam(req, 'filename') || 'scan.jpg').slice(0, 180);
+  const mimeParam = urlParam(req, 'mime');
+  const mime = /^image\/(jpeg|png)$/.test(mimeParam) ? mimeParam : 'image/jpeg';
+  const batchId = (urlParam(req, 'batchId') || '').slice(0, 40);
+  const caseMasterId = (urlParam(req, 'caseMasterId') || '').slice(0, 80);
+
+  const hex = (await readBody(req)).trim();
+  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) return json(res, 400, { error: 'invalid encoding' });
+  const buf = Buffer.from(hex, 'hex');
+  if (!buf.length) return json(res, 400, { error: 'empty file' });
+  if (buf.length > 8 * 1024 * 1024) return json(res, 413, { error: 'image too large (8MB max)' });
+
+  const id = mediaId();
+  const ext = MEDIA_EXT_BY_MIME[mime] || 'jpg';
+  const key = digFileKey(id, ext);
+  await bucket.putObject(key, buf);
+
+  // Zia needs a real read stream (see handleOcr) — a bare Buffer is rejected.
+  let text = '';
+  let ocrError = '';
+  const tmpPath = path.join(os.tmpdir(), `dig-${id}.${ext}`);
+  try {
+    fs.writeFileSync(tmpPath, buf);
+    const result = await app.zia().extractOpticalCharacters(
+      fs.createReadStream(tmpPath),
+      { modelType: 'OCR', language: 'eng' }
+    );
+    text = (result && result.text) || '';
+  } catch (e) {
+    ocrError = e.message || String(e);
+  } finally {
+    try { fs.unlinkSync(tmpPath); } catch { /* best-effort */ }
+  }
+
+  const structured = text ? await digStructure(text) : { docType: '', title: '', summary: '', fields: {}, tables: [] };
+  const now = Date.now();
+  const rec = {
+    id,
+    batchId,
+    filename,
+    mime,
+    key,
+    bytes: buf.length,
+    text,
+    docType: structured.docType || 'Unclassified',
+    title: structured.title || filename,
+    summary: structured.summary || '',
+    fields: structured.fields,
+    tables: structured.tables,
+    caseMasterId,
+    crimeNo: (structured.fields && (structured.fields['Crime No.'] || structured.fields['Crime No'] || structured.fields.crimeNo)) || '',
+    status: ocrError ? 'ocr-failed' : 'processed',
+    error: ocrError,
+    uploadedBy: String(caller.email_id || '').toLowerCase(),
+    uploadedByName: `${caller.first_name || ''} ${caller.last_name || ''}`.trim() || String(caller.email_id || ''),
+    createdAt: now,
+    updatedAt: now,
+  };
+  await bucket.putObject(digRecKey(id), Buffer.from(JSON.stringify(rec)));
+  const idx = await loadDigIndex(bucket);
+  idx.push(digSummary(rec));
+  await saveDigIndex(bucket, idx);
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'digitise-upload', feature: 'Records', path: '/records', detail: filename,
+  }], caller);
+  return json(res, 200, { record: rec });
+}
+
+async function handleDigitise(req, res, action) {
+  const body = action === 'list' ? {} : JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+
+  if (action === 'list') {
+    const records = await loadDigIndex(bucket);
+    return json(res, 200, { records: records.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)) });
+  }
+
+  const id = String(body.id || '').trim();
+  if (!/^[A-Za-z0-9_-]{4,64}$/.test(id)) return json(res, 400, { error: 'valid id is required' });
+
+  if (action === 'get') {
+    try {
+      const rec = JSON.parse((await streamToString(await bucket.getObject(digRecKey(id)))) || 'null');
+      if (!rec) return json(res, 404, { error: 'Record not found' });
+      return json(res, 200, { record: rec });
+    } catch {
+      return json(res, 404, { error: 'Record not found' });
+    }
+  }
+
+  if (action === 'delete') {
+    try { await bucket.deleteObject(digRecKey(id)); } catch { /* keep going */ }
+    await saveDigIndex(bucket, (await loadDigIndex(bucket)).filter((r) => r.id !== id));
+    await storeAuditEvents(req, app, bucket, [{
+      action: 'digitise-delete', feature: 'Records', path: '/records', detail: id,
+    }], caller);
+    return json(res, 200, { ok: true });
+  }
+
+  if (action === 'update') {
+    let rec;
+    try {
+      rec = JSON.parse((await streamToString(await bucket.getObject(digRecKey(id)))) || 'null');
+    } catch { rec = null; }
+    if (!rec) return json(res, 404, { error: 'Record not found' });
+    // Officers correct OCR mistakes; the original scan is untouched.
+    if (typeof body.text === 'string') rec.text = body.text.slice(0, 200_000);
+    if (typeof body.title === 'string') rec.title = body.title.slice(0, 160);
+    if (typeof body.docType === 'string') rec.docType = body.docType.slice(0, 60);
+    if (typeof body.caseMasterId === 'string') rec.caseMasterId = body.caseMasterId.slice(0, 80);
+    if (typeof body.crimeNo === 'string') rec.crimeNo = body.crimeNo.slice(0, 120);
+    if (Array.isArray(body.tables)) rec.tables = body.tables.slice(0, 12);
+    rec.updatedAt = Date.now();
+    await bucket.putObject(digRecKey(id), Buffer.from(JSON.stringify(rec)));
+    const idx = (await loadDigIndex(bucket)).filter((r) => r.id !== id);
+    idx.push(digSummary(rec));
+    await saveDigIndex(bucket, idx);
+    return json(res, 200, { record: rec });
+  }
+
+  return json(res, 400, { error: 'unknown action' });
+}
+
+// Serves a stored scan to an authenticated officer. Evidence images are never
+// reachable by public URL.
+async function handleDigitiseFile(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+  const key = String(body.key || '');
+  if (!key.startsWith(`${DIG_PREFIX}files/`)) return json(res, 400, { error: 'invalid key' });
+  try {
+    const stream = await bucket.getObject(key);
+    const chunks = [];
+    for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+    const buf = Buffer.concat(chunks);
+    return json(res, 200, { data: buf.toString('base64') });
+  } catch {
+    return json(res, 404, { error: 'File not found' });
+  }
+}
+
+// Keyword search across the digitised corpus. Used by the Records page and by
+// the assistant, so officers can ask questions about scanned paper.
+async function searchDigitised(bucket, query, limit = 6) {
+  const q = String(query || '').toLowerCase().trim();
+  if (q.length < 2) return [];
+  const terms = [...new Set(q.split(/\s+/).filter((t) => t.length > 2))].slice(0, 8);
+  if (!terms.length) return [];
+  const index = await loadDigIndex(bucket);
+  // Rank on the summary index first so only promising records are fetched.
+  const shortlist = index
+    .map((r) => {
+      const hay = `${r.title} ${r.docType} ${r.summary} ${r.crimeNo} ${r.filename}`.toLowerCase();
+      return { r, score: terms.reduce((n, t) => n + (hay.includes(t) ? 2 : 0), 0) };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 40);
+
+  const hits = [];
+  for (const { r, score } of shortlist) {
+    let rec;
+    try {
+      rec = JSON.parse((await streamToString(await bucket.getObject(digRecKey(r.id)))) || 'null');
+    } catch { rec = null; }
+    if (!rec) continue;
+    const text = String(rec.text || '').toLowerCase();
+    const textScore = terms.reduce((n, t) => n + (text.includes(t) ? 1 : 0), 0);
+    const total = score + textScore;
+    if (!total) continue;
+    // A window around the first hit gives the assistant usable context.
+    const first = terms.map((t) => text.indexOf(t)).filter((i) => i >= 0).sort((a, b) => a - b)[0] || 0;
+    hits.push({
+      id: rec.id,
+      title: rec.title,
+      docType: rec.docType,
+      filename: rec.filename,
+      score: total,
+      excerpt: String(rec.text || '').slice(Math.max(0, first - 200), Math.max(0, first - 200) + 900),
+    });
+  }
+  return hits.sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+async function handleDigitiseSearch(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+  const hits = await searchDigitised(bucket, body.query, Math.min(20, Number(body.limit) || 8));
+  return json(res, 200, { hits });
+}
+
 // ── Report Studio (statutory & administrative report documents) ─────────────
 // FIR, case diary, arrest memo, charge sheet, seizure memo, UDR, missing
 // person, GD and management reports drafted in the Report Studio editor.
@@ -2094,6 +2400,13 @@ module.exports = async (req, res) => {
     if (path.endsWith('/investigation/append')) return await handleInvestigation(req, res, 'append');
     if (path.endsWith('/investigation/update')) return await handleInvestigation(req, res, 'update');
     if (path.endsWith('/investigation/delete')) return await handleInvestigation(req, res, 'delete');
+    if (path.endsWith('/digitise/upload')) return await handleDigitiseUpload(req, res);
+    if (path.endsWith('/digitise/list')) return await handleDigitise(req, res, 'list');
+    if (path.endsWith('/digitise/get')) return await handleDigitise(req, res, 'get');
+    if (path.endsWith('/digitise/update')) return await handleDigitise(req, res, 'update');
+    if (path.endsWith('/digitise/delete')) return await handleDigitise(req, res, 'delete');
+    if (path.endsWith('/digitise/file')) return await handleDigitiseFile(req, res);
+    if (path.endsWith('/digitise/search')) return await handleDigitiseSearch(req, res);
     if (path.endsWith('/reportdocs/list')) return await handleReportDocs(req, res, 'list');
     if (path.endsWith('/reportdocs/get')) return await handleReportDocs(req, res, 'get');
     if (path.endsWith('/reportdocs/save')) return await handleReportDocs(req, res, 'save');
@@ -2385,7 +2698,44 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Fallback LLM: only when the knowledge base genuinely has no answer.
+    // Before falling back to general knowledge, consult the digitised paper
+    // records — scanned documents are station-specific and will never be in
+    // the knowledge base, so they are often the only place an answer exists.
+    if (isNegative(text)) {
+      try {
+        const digApp = catalystSDK.initialize(req);
+        const digBucket = digApp.stratus().bucket(CONV_BUCKET);
+        const hits = await searchDigitised(digBucket, query, 4);
+        if (hits.length) {
+          const context = hits
+            .map((h, i) => `[${i + 1}] ${h.title} (${h.docType}, file ${h.filename}):\n${h.excerpt}`)
+            .join('\n\n');
+          const answer = await callGroq(
+            [
+              {
+                role: 'system',
+                content:
+                  'Answer strictly from these digitised police documents — scans of paper records ' +
+                  'read by OCR, so expect occasional garbled characters. Cite the bracketed source ' +
+                  'number after any statement drawn from a document. Never state anything the ' +
+                  'documents do not contain; if they do not answer the question, say so plainly.',
+              },
+              { role: 'user', content: `Question: ${query}\n\nDocuments:\n${context}` },
+            ],
+            { maxTokens: 700, temperature: 0.2, timeoutMs: 15_000 }
+          );
+          if (answer && answer.trim() && !isNegative(answer)) {
+            text = answer.trim();
+            components = [];
+            source = 'digitised-records';
+          }
+        }
+      } catch (e) {
+        console.error('digitised search failed (non-fatal):', e && e.message);
+      }
+    }
+
+    // Fallback LLM: only when neither the knowledge base nor the scans answer.
     if (isNegative(text)) {
       const fb = await callGroq(
         [{ role: 'system', content: FALLBACK_SYSTEM }, ...history, { role: 'user', content: query }],

@@ -5,7 +5,7 @@ import {
   Shield, Home, AlertTriangle, Map, Brain, Database,
   MessageSquare, Users, ChevronLeft, ChevronRight, Sun, Moon, LogOut,
   UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, Headset, Building2,
-  ScrollText,
+  ScrollText, Images,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccess } from '../context/AccessContext';
@@ -23,6 +23,7 @@ const NAV = [
   { to: '/case-files', Icon: Database, key: 'caseFiles' },
   { to: '/investigation-diary', Icon: NotebookPen, key: 'investigationDiary', label: 'Investigation Diary' },
   { to: '/report-studio', Icon: ScrollText, key: 'reportStudio', label: 'Report Studio' },
+  { to: '/records', Icon: Images, key: 'records', label: 'Records' },
   { to: '/custody', Icon: Building2, key: 'custody', label: 'Inmate Registry' },
   { to: '/assistant', Icon: MessageSquare, key: 'assistant' },
   {

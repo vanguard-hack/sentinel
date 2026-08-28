@@ -19,6 +19,8 @@ import InvestigationDiary from './pages/InvestigationDiary';
 import InvestigationCase from './pages/InvestigationCase';
 import ReportStudio from './pages/ReportStudio';
 import ReportEditor from './pages/ReportEditor';
+import Records from './pages/Records';
+import RecordDetail from './pages/RecordDetail';
 import HelpCenter from './pages/HelpCenter';
 import Custody from './pages/Custody';
 import CustodyRecord from './pages/CustodyRecord';
@@ -66,7 +68,9 @@ function AppRoutes() {
                 <Route path="/access" element={guarded('access', <AccessAudit />)} />
                 <Route path="/investigation-diary" element={guarded('investigationDiary', <InvestigationDiary />)} />
                 <Route path="/investigation-diary/:caseMasterId" element={guarded('investigationDiary', <InvestigationCase />)} />
-                <Route path="/report-studio" element={guarded('reportStudio', <ReportStudio />)} />
+                <Route path="/records" element={guarded('records', <Records />)} />
+              <Route path="/records/:recordId" element={guarded('records', <RecordDetail />)} />
+              <Route path="/report-studio" element={guarded('reportStudio', <ReportStudio />)} />
                 <Route path="/report-studio/:reportId" element={guarded('reportStudio', <ReportEditor />)} />
                 <Route path="/custody" element={guarded('custody', <Custody />)} />
                 <Route path="/custody/:personId" element={guarded('custody', <CustodyRecord />)} />
