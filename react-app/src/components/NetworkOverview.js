@@ -15,8 +15,11 @@ import ZoomControls from './ZoomControls';
 const MIN_K = 0.25;
 const MAX_K = 8;
 const JIGGLE_MS = 620;
+// Focus zoom, as a multiple of the fit-everything zoom — a fixed destination,
+// not a step.
+const FOCUS_ZOOM = 2.1;
 
-export default function NetworkOverview({ overview, onPick, selected, onSelect }) {
+export default function NetworkOverview({ overview, selected, onSelect }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const [view, setView] = useState({ k: 1, tx: 0, ty: 0 });
@@ -33,6 +36,10 @@ export default function NetworkOverview({ overview, onPick, selected, onSelect }
   // node coordinates are never written to, so the map is in exactly the same
   // place once it dies down. Anything else would defeat stable positions.
   const jiggleRef = useRef({ t0: 0, running: false });
+  // The zoom the whole map fits at. Focus targets a fixed multiple of THIS,
+  // never of the current zoom — otherwise each click compounded on the last
+  // and the map crept further in with every ring inspected.
+  const baseKRef = useRef(1);
   const jiggleRafRef = useRef(null);
   const drawRef = useRef(null);
 
@@ -190,6 +197,7 @@ export default function NetworkOverview({ overview, onPick, selected, onSelect }
     const maxY = Math.max(...ys);
     const pad = 90;
     const k = Math.min(w / (maxX - minX + pad), h / (maxY - minY + pad), MAX_K);
+    baseKRef.current = k;
     const to = { k, tx: w / 2 - ((minX + maxX) / 2) * k, ty: h / 2 - ((minY + maxY) / 2) * k };
     if (!animate) { setView(to); return; }
     animateTo(to);
@@ -209,9 +217,10 @@ export default function NetworkOverview({ overview, onPick, selected, onSelect }
     jiggleRafRef.current = requestAnimationFrame(tick);
 
     const { w, h } = sizeRef.current;
-    const v = viewRef.current;
     const n = nodes[focus];
-    const k = Math.min(MAX_K, Math.max(v.k, v.k * 1.35));
+    // Absolute target: every ring focuses to the same zoom, whatever was on
+    // screen before, so clicking around never walks the zoom inwards.
+    const k = Math.min(MAX_K, baseKRef.current * FOCUS_ZOOM);
     animateTo({ k, tx: w / 2 - n.x * k, ty: h / 2 - n.y * k });
 
     return () => { if (jiggleRafRef.current) cancelAnimationFrame(jiggleRafRef.current); };
@@ -316,11 +325,7 @@ export default function NetworkOverview({ overview, onPick, selected, onSelect }
         onMouseDown={onDown}
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
-        onDoubleClick={(e) => {
-          const i = pick(e);
-          if (i != null && onPick) onPick(nodes[i].ring);
-          else fit();
-        }}
+        onDoubleClick={() => fit()}
       />
       {tip && (
         <div className="net-ov-tip">
@@ -328,7 +333,7 @@ export default function NetworkOverview({ overview, onPick, selected, onSelect }
           <span>{tip.size} members · {tip.crimes} crimes</span>
           <span>{tip.group} · {tip.type}</span>
           <span className="net-ov-tip-hint">
-            {focus != null ? 'Double-click to open this ring' : 'Click to focus its links'}
+            {focus != null ? 'Open it from the list to see its members' : 'Click to focus its links'}
           </span>
         </div>
       )}
