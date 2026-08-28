@@ -7,7 +7,7 @@ import {
 import TopBar from '../components/TopBar';
 import { useConfirm } from '../components/ConfirmDialog';
 import {
-  listRecords, deleteRecord, uploadScan, newBatchId, recordsToCsv,
+  listRecords, deleteRecord, uploadScan, newBatchId, recordsToCsv, searchRecords,
 } from '../utils/digitise';
 import { logAudit } from '../utils/audit';
 
@@ -26,6 +26,8 @@ export default function Records() {
   const [error, setError] = useState(null);
   const [q, setQ] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [hits, setHits] = useState(null);   // full-text matches inside document text
+  const [searching, setSearching] = useState(false);
   const [queue, setQueue] = useState([]); // { key, name, status, error }
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef(null);
@@ -36,6 +38,27 @@ export default function Records() {
   }, []);
   useEffect(() => { refresh(); }, [refresh]);
 
+  // The index only carries titles and summaries, so a plain client filter can
+  // never find a phrase that appears inside a document. Anything longer than a
+  // couple of characters is searched server-side across the extracted text.
+  useEffect(() => {
+    const needle = q.trim();
+    if (needle.length < 3) { setHits(null); setSearching(false); return undefined; }
+    setSearching(true);
+    const t = setTimeout(() => {
+      searchRecords(needle, 30)
+        .then((h) => setHits(h))
+        .catch(() => setHits(null))
+        .finally(() => setSearching(false));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const excerptFor = useCallback(
+    (id) => (hits || []).find((h) => h.id === id)?.excerpt || '',
+    [hits],
+  );
+
   const docTypes = useMemo(() => {
     const set = new Set((records || []).map((r) => r.docType).filter(Boolean));
     return [...set].sort();
@@ -44,13 +67,15 @@ export default function Records() {
   const filtered = useMemo(() => {
     if (!records) return [];
     const needle = q.trim().toLowerCase();
+    const textMatches = new Set((hits || []).map((h) => h.id));
     return records.filter((r) => {
       if (typeFilter !== 'all' && r.docType !== typeFilter) return false;
       if (!needle) return true;
+      if (textMatches.has(r.id)) return true;
       return `${r.title} ${r.docType} ${r.summary} ${r.crimeNo || ''} ${r.filename} ${r.uploadedByName || ''}`
         .toLowerCase().includes(needle);
     });
-  }, [records, q, typeFilter]);
+  }, [records, q, typeFilter, hits]);
 
   // Bulk ingest: a shared batch id ties the pages of one physical file
   // together, and a small worker pool keeps the queue moving.
@@ -217,6 +242,7 @@ export default function Records() {
 
         <h2 className="rb-section-title">
           Digitised records {records ? <span className="rb-count">({filtered.length})</span> : null}
+          {searching && <span className="rb-count"> · searching document text…</span>}
         </h2>
         <div className="aa-toolbar rb-filters">
           <div className="cf-search">
@@ -261,7 +287,9 @@ export default function Records() {
                 {r.status === 'ocr-failed' && <span className="dg-card-warn">Text not read</span>}
               </div>
               <div className="dg-card-title">{r.title}</div>
-              {r.summary && <p className="dg-card-summary">{r.summary}</p>}
+              {excerptFor(r.id)
+                ? <p className="dg-card-summary dg-card-hit">…{excerptFor(r.id).slice(0, 220).trim()}…</p>
+                : r.summary && <p className="dg-card-summary">{r.summary}</p>}
               <div className="dg-card-meta">
                 <span><FileText size={11} /> {r.filename}</span>
                 {r.tableCount > 0 && <span>{r.tableCount} table{r.tableCount === 1 ? '' : 's'}</span>}

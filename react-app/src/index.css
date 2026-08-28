@@ -6723,3 +6723,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   background: var(--bg-2); border: 1px solid var(--blue-500); border-radius: 11px; outline: none;
 }
 .dg-note { margin: 8px 0 0; font-size: 10.5px; font-style: italic; color: var(--text-3); }
+.dg-card-hit {
+  color: var(--text-1); font-style: italic;
+  border-left: 2px solid var(--blue-400); padding-left: 8px;
+}

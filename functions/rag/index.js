@@ -2034,6 +2034,43 @@ async function searchDigitised(bucket, query, limit = 6) {
   return hits.sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
+// Answer a question from the digitised paper records. Returns null when the
+// scans have nothing to say, so callers can carry on to their normal source.
+async function answerFromDigitised(req, query) {
+  try {
+    const app = catalystSDK.initialize(req);
+    const bucket = app.stratus().bucket(CONV_BUCKET);
+    const hits = await searchDigitised(bucket, query, 4);
+    if (!hits.length) return null;
+    const context = hits
+      .map((h, i) => `[${i + 1}] ${h.title} (${h.docType}, file ${h.filename}):\n${h.excerpt}`)
+      .join('\n\n');
+    const answer = await callGroq(
+      [
+        {
+          role: 'system',
+          content:
+            'Answer strictly from these digitised police documents — scans of paper records read by ' +
+            'OCR, so expect occasional garbled characters. Cite the bracketed source number after any ' +
+            'statement drawn from a document. Never state anything the documents do not contain; if ' +
+            'they genuinely do not answer the question, reply exactly: NO_ANSWER',
+        },
+        { role: 'user', content: `Question: ${query}\n\nDocuments:\n${context}` },
+      ],
+      { maxTokens: 700, temperature: 0.2, timeoutMs: 15_000 }
+    );
+    if (!answer || !answer.trim() || /NO_ANSWER/i.test(answer) || isNegative(answer)) return null;
+    return {
+      text: answer.trim(),
+      sources: hits.map((h) => `Digitised record: ${h.title} (${h.filename})`),
+      hits: hits.length,
+    };
+  } catch (e) {
+    console.error('digitised answer failed (non-fatal):', e && e.message);
+    return null;
+  }
+}
+
 async function handleDigitiseSearch(req, res) {
   const body = JSON.parse((await readBody(req)) || '{}');
   const app = catalystSDK.initialize(req);
@@ -2576,6 +2613,18 @@ module.exports = async (req, res) => {
             if (s.unanswerable) {
               // The database genuinely can't answer this — say so honestly
               // rather than running an unrelated query or guessing.
+              // The Data Store can't answer — but the scanned paper records
+              // might, so consult them before giving up.
+              const fromScans = await answerFromDigitised(req, query);
+              if (fromScans) {
+                return json(res, 200, {
+                  answer: fromScans.text,
+                  components: [],
+                  source: 'digitised-records',
+                  sources: fromScans.sources,
+                  expandedQuery: searchQuery === query ? undefined : searchQuery,
+                });
+              }
               return json(res, 200, {
                 answer: s.unanswerable,
                 components: [],
@@ -2701,37 +2750,14 @@ module.exports = async (req, res) => {
     // Before falling back to general knowledge, consult the digitised paper
     // records — scanned documents are station-specific and will never be in
     // the knowledge base, so they are often the only place an answer exists.
+    let digitisedSources = null;
     if (isNegative(text)) {
-      try {
-        const digApp = catalystSDK.initialize(req);
-        const digBucket = digApp.stratus().bucket(CONV_BUCKET);
-        const hits = await searchDigitised(digBucket, query, 4);
-        if (hits.length) {
-          const context = hits
-            .map((h, i) => `[${i + 1}] ${h.title} (${h.docType}, file ${h.filename}):\n${h.excerpt}`)
-            .join('\n\n');
-          const answer = await callGroq(
-            [
-              {
-                role: 'system',
-                content:
-                  'Answer strictly from these digitised police documents — scans of paper records ' +
-                  'read by OCR, so expect occasional garbled characters. Cite the bracketed source ' +
-                  'number after any statement drawn from a document. Never state anything the ' +
-                  'documents do not contain; if they do not answer the question, say so plainly.',
-              },
-              { role: 'user', content: `Question: ${query}\n\nDocuments:\n${context}` },
-            ],
-            { maxTokens: 700, temperature: 0.2, timeoutMs: 15_000 }
-          );
-          if (answer && answer.trim() && !isNegative(answer)) {
-            text = answer.trim();
-            components = [];
-            source = 'digitised-records';
-          }
-        }
-      } catch (e) {
-        console.error('digitised search failed (non-fatal):', e && e.message);
+      const fromScans = await answerFromDigitised(req, query);
+      if (fromScans) {
+        text = fromScans.text;
+        components = [];
+        source = 'digitised-records';
+        digitisedSources = fromScans.sources;
       }
     }
 
@@ -2784,15 +2810,17 @@ module.exports = async (req, res) => {
     // Attribution: knowledge-base document titles, and only for RAG answers —
     // conversational/general-knowledge replies carry no sources row at all.
     const sources =
-      source === 'rag'
-        ? [
-            ...new Set(
-              (first.data.retrieved_nodes || [])
-                .map((n) => n && n.document_title)
-                .filter(Boolean)
-            ),
-          ]
-        : [];
+      source === 'digitised-records'
+        ? (digitisedSources || [])
+        : source === 'rag'
+          ? [
+              ...new Set(
+                (first.data.retrieved_nodes || [])
+                  .map((n) => n && n.document_title)
+                  .filter(Boolean)
+              ),
+            ]
+          : [];
 
     return json(res, 200, {
       answer,
