@@ -52,10 +52,12 @@ export default function CrimeLinks() {
     [data, sel]
   );
 
-  // Laid out once per dataset, not per render — see buildOverview. Every ring
-  // is drawn, so any row in the list can be highlighted on the map.
+  // Laid out once per dataset, not per render — see buildOverview. Only the
+  // most significant rings are drawn: the long tail of three-member rings
+  // added nodes without adding readable structure. The list still carries
+  // every ring, and selecting one off-map still shows its members and crimes.
   const overview = useMemo(
-    () => (data ? buildOverview(data.networks, { topN: data.networks.length }) : null),
+    () => (data ? buildOverview(data.networks, { topN: 45 }) : null),
     [data]
   );
 
@@ -151,16 +153,11 @@ export default function CrimeLinks() {
                     <span>
                       {net
                         ? `${net.size} members · ${net.edges.length} links · ${net.caseIds.length} crimes · ${net.district}${net.dateFrom ? ` · ${net.dateFrom} → ${net.dateTo}` : ''}`
-                        : `${overview.shown} rings · ${overview.clusters} connected group${overview.clusters === 1 ? '' : 's'}${overview.isolated ? ` · ${overview.isolated} standalone` : ''} · hover or click a ring to trace its links`}
+                        : `showing the ${overview.shown} largest of ${overview.total} rings · ${overview.clusters} connected group${overview.clusters === 1 ? '' : 's'} · hover or click a ring to trace its links`}
                     </span>
                     <span className="cl-edge-key">
                       each circle is a ring, sized by members
                       <i className="cl-edge-thick" /> linked rings share a district or crime type
-                      {net && (
-                        <button type="button" className="cl-back" onClick={() => setSel(null)}>
-                          Clear selection
-                        </button>
-                      )}
                     </span>
                   </div>
                   <NetworkOverview
