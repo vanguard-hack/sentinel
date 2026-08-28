@@ -6,7 +6,7 @@ import {
 import TopBar from '../components/TopBar';
 import {
   listInvestigations, createInvestigation, searchCases, fetchCaseSections,
-  coldCaseFlag, statusColor, STATUS_OPTIONS,
+  statusColor, STATUS_OPTIONS,
 } from '../utils/investigation';
 import { loadPersonnel } from '../utils/personnel';
 
@@ -210,7 +210,6 @@ export default function InvestigationDiary() {
         {shown.length > 0 && (
           <div className="inv-grid">
             {shown.map((c) => {
-              const cold = coldCaseFlag(c);
               return (
                 <button key={c.caseMasterId} className="inv-card" onClick={() => navigate(`/investigation-diary/${c.caseMasterId}`)}>
                   <div className="inv-card-top">
@@ -225,7 +224,6 @@ export default function InvestigationDiary() {
                   <div className="inv-card-foot">
                     <span>{c.diaryCount} diary {c.diaryCount === 1 ? 'entry' : 'entries'}</span>
                     <span>Last updated: {c.lastDiaryDate || 'none yet'}</span>
-                    {cold && <span className={`inv-cold-badge inv-cold-${cold.level}`}>{cold.label}</span>}
                   </div>
                 </button>
               );

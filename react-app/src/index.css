@@ -6567,3 +6567,35 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .rb-link-list strong { font-size: 12.5px; font-weight: 600; color: var(--text-0); }
 .rb-link-list span { font-size: 11px; color: var(--text-3); }
 .rb-link-empty { padding: 22px 18px; text-align: center; font-size: 12px; color: var(--text-3); }
+
+/* ── Report Studio: side zoom control & narrative sizing ───────────────── */
+/* The min-height belongs to the bordered editor itself; putting it on the
+   wrapper left a tall empty gap under short entries. */
+.rb-richfield .tiptap { min-height: var(--rb-field-min, 60px); }
+
+/* Zoom sits beside the page. height:0 keeps it out of the vertical flow so it
+   doesn't push the sheet down, and sticky holds it in view while scrolling. */
+.rb-zoom-rail { position: sticky; top: 10px; height: 0; z-index: 15; }
+.rb-zoom-side {
+  position: absolute;
+  top: 0;
+  left: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  padding: 5px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-card);
+}
+.rb-zoom-side .rb-zoom-pct {
+  min-width: 0; width: 38px; padding: 4px 0;
+  font-size: 10.5px; text-align: center; border: 0; background: none;
+}
+.rb-zoom-side .rb-zoom-pct:hover { background: var(--hover-overlay); border-radius: 7px; }
+@media (max-width: 1000px) {
+  .rb-zoom-rail { height: auto; display: flex; justify-content: center; margin-bottom: 10px; }
+  .rb-zoom-side { position: static; flex-direction: row; }
+}

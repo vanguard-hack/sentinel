@@ -395,11 +395,6 @@ export default function ReportEditor() {
             </span>
           </div>
           <div className="rb-toolbar-spacer" />
-          <div className="rb-zoom">
-            <button type="button" className="cf-icon-btn" title="Zoom out" onClick={() => setZoom((z) => Math.max(50, z - 10))}><ZoomOut size={15} /></button>
-            <button type="button" className="rb-zoom-pct" title="Fit width" onClick={fitWidth}>{zoom}%</button>
-            <button type="button" className="cf-icon-btn" title="Zoom in" onClick={() => setZoom((z) => Math.min(150, z + 10))}><ZoomIn size={15} /></button>
-          </div>
           <CaseLink
             report={report}
             locked={locked}
@@ -421,6 +416,13 @@ export default function ReportEditor() {
         {error && <div className="aa-error rb-editor-error"><AlertTriangle size={16} /> {error}</div>}
 
         <div className="rb-canvas" ref={canvasRef}>
+          <div className="rb-zoom-rail">
+          <div className="rb-zoom-side">
+            <button type="button" className="cf-icon-btn" title="Zoom in" onClick={() => setZoom((z) => Math.min(150, z + 10))}><ZoomIn size={15} /></button>
+            <button type="button" className="rb-zoom-pct" title="Fit width" onClick={fitWidth}>{zoom}%</button>
+            <button type="button" className="cf-icon-btn" title="Zoom out" onClick={() => setZoom((z) => Math.max(50, z - 10))}><ZoomOut size={15} /></button>
+          </div>
+          </div>
           <div className="rb-zoom-stage" style={{ zoom: zoom / 100 }}>
             {report.pages.map((page, pi) => {
               const isBlank = page.sheetId === 'blank';

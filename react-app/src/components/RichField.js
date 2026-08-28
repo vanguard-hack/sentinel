@@ -86,7 +86,7 @@ export default function RichField({
     <EditorContent
       editor={editor}
       className="rb-richfield"
-      style={{ minHeight: `${Math.max(2, minLines) * 19 + 12}px` }}
+      style={{ '--rb-field-min': `${Math.max(2, minLines) * 19 + 12}px` }}
     />
   );
 }
