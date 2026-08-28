@@ -29,6 +29,36 @@ test('overview lays out every ring with no shared nodes between them', () => {
   });
 });
 
+test('ring centres are scattered, not on a regular curve', () => {
+  // The spiral packing this replaced produced centres whose distance from the
+  // middle grew monotonically — visibly mathematical. Real scatter should not.
+  const nets = Array.from({ length: 60 }, (_, i) => mkRing(`r${i}`, 4, `D${i % 8}`, 'Theft'));
+  nets.forEach((n, i) => { n.rank = i + 1; });
+  const { rings } = buildOverview(nets);
+  const cx = rings.reduce((a, r) => a + r.cx, 0) / rings.length;
+  const cy = rings.reduce((a, r) => a + r.cy, 0) / rings.length;
+  const d = rings.map((r) => Math.hypot(r.cx - cx, r.cy - cy));
+  let monotonic = 0;
+  for (let i = 1; i < d.length; i++) if (d[i] > d[i - 1]) monotonic++;
+  // A spiral gives ~100% increasing; scattered placement should be near chance.
+  expect(monotonic / (d.length - 1)).toBeLessThan(0.75);
+});
+
+test('rings do not sit on top of each other', () => {
+  const nets = Array.from({ length: 40 }, (_, i) => mkRing(`r${i}`, i < 5 ? 15 : 4, 'D', 'Theft'));
+  nets.forEach((n, i) => { n.rank = i + 1; });
+  const { rings } = buildOverview(nets);
+  let overlaps = 0;
+  for (let i = 0; i < rings.length; i++) {
+    for (let j = i + 1; j < rings.length; j++) {
+      const dist = Math.hypot(rings[i].cx - rings[j].cx, rings[i].cy - rings[j].cy);
+      if (dist < (rings[i].r + rings[j].r) * 0.8) overlaps++;
+    }
+  }
+  // dart-throwing falls back after 60 tries, so allow a couple of near-misses
+  expect(overlaps).toBeLessThan(4);
+});
+
 test('layout is deterministic and bounded', () => {
   const nets = [mkRing('a', 6, 'Kodagu', 'Theft'), mkRing('b', 3, 'Udupi', 'Cheating')];
   nets.forEach((n, i) => { n.rank = i + 1; });

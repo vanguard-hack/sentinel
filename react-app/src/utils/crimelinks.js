@@ -235,55 +235,108 @@ export function networkToSpec(net, cap = 60) {
 //
 // Layout is computed here rather than simulated in the browser on each load: a
 // force pass over every node at once would be slow and would tangle unrelated
-// rings together. Instead each ring gets a cheap local layout (a ring of
-// members around its most-connected member, which reproduces the hub-and-spoke
-// shape the detail view shows), and the rings are then packed onto a spiral by
-// size — largest near the centre. The result is deterministic, O(n), and reads
-// as distinct clusters, which is what the data actually is.
+// rings together.
+//
+// Placement is deliberately irregular. Packing the rings on a spiral (the
+// obvious approach) produced a visibly mathematical pattern — evenly spaced
+// dots radiating from a centre — which reads as generated rather than as real
+// case data. Instead rings are scattered by dart-throwing with rejection: a
+// random position is drawn, kept only if it clears everything already placed,
+// and the search area grows as it fills. Members inside a ring are likewise
+// placed at random angles and radii around their hub rather than on a neat
+// circle. The PRNG is seeded, so the scatter is irregular but identical on
+// every load — the same network never re-arranges itself under the officer.
 //
 // Note on topology: a "ring" here is a connected component of the co-offending
 // graph, so two rings can never share a member — if they did they would be one
 // ring. Overlapping rings would require a different definition (community
 // detection inside a component) rather than a change to this layout.
+
+// Deterministic PRNG (mulberry32) — irregular placement without randomness
+// that changes between loads.
+function seededRandom(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 export function buildOverview(networks) {
+  const rnd = seededRandom(0x5E27); // fixed: same layout every load
   const nodes = [];
   const links = [];
   const rings = [];
 
-  // Ring radius grows with membership; spiral spacing grows with it too so
-  // clusters don't overlap.
-  const ringRadius = (n) => 14 + Math.sqrt(n) * 9;
+  const ringRadius = (n) => 16 + Math.sqrt(n) * 11;
 
-  let angle = 0;
-  let spiral = 0;
-  networks.forEach((net, ri) => {
-    const R = ringRadius(net.size);
-    // Golden-angle spiral: even packing without collision tests.
-    spiral += 1;
-    angle += 2.39996;
-    const dist = 26 * Math.sqrt(spiral) * (1 + ri / Math.max(1, networks.length) * 1.6);
-    const cx = Math.cos(angle) * dist;
-    const cy = Math.sin(angle) * dist;
+  // Scatter the ring centres. Largest first so the big clusters claim space,
+  // then the long tail fills the gaps — which is what produces the uneven,
+  // clumpy spread real networks have.
+  const placed = [];
+  const ordered = networks.map((net, i) => ({ net, i, R: ringRadius(net.size) }));
+  const totalArea = ordered.reduce((a, o) => a + Math.PI * (o.R + 14) ** 2, 0);
+  // Start with roughly 2.2x the area the rings need, so there is room to look
+  // scattered rather than packed.
+  let field = Math.sqrt((totalArea * 2.2) / Math.PI);
 
+  ordered.forEach((o) => {
+    const gap = 12 + rnd() * 16;
+    let pos = null;
+    for (let attempt = 0; attempt < 60 && !pos; attempt++) {
+      // Uniform over the disc (sqrt keeps it from bunching at the centre).
+      const a = rnd() * Math.PI * 2;
+      const d = Math.sqrt(rnd()) * field;
+      const cx = Math.cos(a) * d;
+      const cy = Math.sin(a) * d;
+      const clash = placed.some((q) => Math.hypot(q.cx - cx, q.cy - cy) < q.R + o.R + gap);
+      if (!clash) pos = { cx, cy };
+      if (attempt === 30) field *= 1.12; // grow the field if it is getting tight
+    }
+    if (!pos) {
+      // Give up on separation rather than loop forever; a rare overlap reads
+      // as two rings sitting close, which is fine.
+      const a = rnd() * Math.PI * 2;
+      pos = { cx: Math.cos(a) * field * 1.15, cy: Math.sin(a) * field * 1.15 };
+    }
+    placed.push({ cx: pos.cx, cy: pos.cy, R: o.R, o });
+  });
+
+  placed.forEach(({ cx, cy, R, o }) => {
+    const { net, i: ri } = o;
     const members = net.members;
     const idx = new Map();
     const base = nodes.length;
+
     members.forEach((m, i) => {
       idx.set(m.pid, base + i);
-      // Member 0 is the most connected (members are pre-sorted by degree), so
-      // it anchors the centre and the rest fan around it.
-      const a = (i / Math.max(1, members.length - 1)) * Math.PI * 2;
-      const rr = i === 0 ? 0 : R * (0.6 + 0.4 * ((i % 3) / 2));
+      // Members are pre-sorted by degree, so member 0 is the hub and anchors
+      // the centre; the rest sit at random angles and depths around it, which
+      // gives each ring its own irregular shape.
+      let x;
+      let y;
+      if (i === 0) {
+        x = cx + (rnd() - 0.5) * R * 0.22;
+        y = cy + (rnd() - 0.5) * R * 0.22;
+      } else {
+        const a = rnd() * Math.PI * 2;
+        const rr = R * (0.35 + rnd() * 0.65);
+        x = cx + Math.cos(a) * rr;
+        y = cy + Math.sin(a) * rr;
+      }
       nodes.push({
         id: m.pid,
         label: m.name || m.names?.[0] || m.pid,
         group: m.district || '—',
         deg: m.degree || 0,
         ring: ri,
-        x: cx + Math.cos(a) * rr,
-        y: cy + Math.sin(a) * rr,
+        x,
+        y,
       });
     });
+
     net.edges.forEach((e) => {
       const s = idx.get(e.source);
       const t = idx.get(e.target);

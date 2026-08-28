@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ZoomControls from './ZoomControls';
 
 // Whole-linkage-landscape view: every ring drawn at once.
@@ -24,12 +24,6 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
 
   const { nodes, links, rings } = overview;
 
-  // Labels only for ring hubs — at this density every name is unreadable.
-  const hubs = useMemo(
-    () => rings.map((r) => r).filter((r) => r.size >= 8),
-    [rings],
-  );
-
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -51,13 +45,13 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     const hoverRing = hover != null ? nodes[hover].ring : null;
 
     // Links first, faint — they read as cluster texture at this zoom.
-    ctx.lineWidth = Math.max(0.15, 0.6 / k);
+    ctx.lineWidth = Math.max(0.4, 1.1 / k);
     links.forEach((l) => {
       const a = nodes[l.s];
       const b = nodes[l.t];
       ctx.strokeStyle = hoverRing == null
-        ? 'rgba(120,135,160,0.28)'
-        : (l.ring === hoverRing ? 'rgba(37,99,235,0.55)' : 'rgba(120,135,160,0.10)');
+        ? 'rgba(51,65,90,0.62)'
+        : (l.ring === hoverRing ? 'rgba(37,99,235,0.85)' : 'rgba(51,65,90,0.14)');
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
@@ -81,18 +75,8 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     });
     ctx.globalAlpha = 1;
 
-    // Hub labels appear once there is room for them.
-    if (k > 1.5) {
-      ctx.fillStyle = 'rgba(70,82,100,0.9)';
-      ctx.font = `${Math.min(13, 9 / Math.sqrt(k) + 5)}px Inter, system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      hubs.forEach((r) => {
-        if (!r.label) return;
-        ctx.fillText(r.label, r.cx, r.cy - r.r - 3 / k);
-      });
-    }
     ctx.restore();
-  }, [nodes, links, hubs, hover, colorFor]);
+  }, [nodes, links, hover, colorFor]);
 
   // Keep the canvas matched to its container.
   useEffect(() => {
@@ -119,7 +103,10 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     const maxX = Math.max(...xs);
     const minY = Math.min(...ys);
     const maxY = Math.max(...ys);
-    const k = Math.min(w / (maxX - minX + 60), h / (maxY - minY + 60), MAX_K);
+    // Generous padding: the overview is meant to show the whole landscape, so
+    // it should start further out than a tight bounding-box fit.
+    const pad = 140;
+    const k = Math.min(w / (maxX - minX + pad), h / (maxY - minY + pad), MAX_K) * 0.9;
     const target = {
       k,
       tx: w / 2 - ((minX + maxX) / 2) * k,
