@@ -318,11 +318,6 @@ export default function NetworkOverview({ overview, selected, onSelect }) {
           <strong>{tip.label}</strong>
           <span>{tip.size} members · {tip.crimes} crimes</span>
           <span>{tip.group} · {tip.type}</span>
-          <span className="net-ov-tip-hint">
-            {focus != null && hover == null
-              ? 'Pinned · click empty space to clear'
-              : 'Click to pin · open it from the list for members'}
-          </span>
         </div>
       )}
     </div>
