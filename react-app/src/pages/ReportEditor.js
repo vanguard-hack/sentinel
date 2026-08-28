@@ -8,7 +8,7 @@ import TopBar from '../components/TopBar';
 import { useConfirm } from '../components/ConfirmDialog';
 import { reportTypeById, extraSheetDefs, initSheetValues } from '../data/reportTemplates';
 import { getReport, saveReport, newReportId, downloadReportPdf, aiPolish } from '../utils/reportStudio';
-import { listInvestigations } from '../utils/investigation';
+import { listInvestigations, searchCases } from '../utils/investigation';
 import { logAudit } from '../utils/audit';
 import lazyWithReload from '../utils/lazyWithReload';
 
@@ -159,18 +159,27 @@ export default function ReportEditor() {
 
   const type = report ? reportTypeById(report.typeId) : null;
   const locked = report?.status === 'final';
+  // Read the query param as a primitive: useSearchParams() hands back a new
+  // object every render, and depending on it re-ran the loader continuously —
+  // each pass overwriting local edits (a just-linked case, most visibly) with
+  // the stored copy.
+  const newTypeParam = searchParams.get('type');
+  // Held in a ref for the same reason: the loader must depend only on what
+  // identifies the report, never on a callback whose identity may change.
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   // Load or create.
   useEffect(() => {
     let live = true;
     if (reportId === 'new') {
-      const t = reportTypeById(searchParams.get('type'));
+      const t = reportTypeById(newTypeParam);
       if (!t) { setError('Unknown report type'); return undefined; }
       const rec = freshReport(t);
       setReport(rec);
       // Claim a real URL immediately so refresh/back behave, and persist the shell.
       saveReport(rec)
-        .then(() => { if (live) { setSavedAt(Date.now()); navigate(`/report-studio/${rec.id}`, { replace: true }); } })
+        .then(() => { if (live) { setSavedAt(Date.now()); navigateRef.current(`/report-studio/${rec.id}`, { replace: true }); } })
         .catch((e) => live && setError(e.message));
       logAudit('create-report', 'Report Studio', t.name);
       return () => { live = false; };
@@ -188,7 +197,7 @@ export default function ReportEditor() {
       })
       .catch((e) => live && setError(e.message));
     return () => { live = false; };
-  }, [reportId, searchParams, navigate]);
+  }, [reportId, newTypeParam]);
 
   // Debounced autosave whenever the document changes.
   useEffect(() => {
@@ -380,7 +389,7 @@ export default function ReportEditor() {
             aria-label="Report title"
           />
           <div className="rb-toolbar-center">
-            <span className={`rb-chip ${locked ? 'final' : 'draft'}`}>{locked ? 'Final' : 'Draft'}</span>
+            {locked && <span className="rb-chip final">Read-only</span>}
             <span className="rb-savestate">
               {saving ? 'Saving…' : dirty ? 'Unsaved edits' : savedAt ? `Saved ${new Date(savedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : ''}
             </span>
@@ -499,27 +508,46 @@ export default function ReportEditor() {
 function CaseLink({ report, locked, onLink }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [cases, setCases] = useState(null);
   const [q, setQ] = useState('');
+  const [recent, setRecent] = useState(null);   // cases that already have a diary
+  const [results, setResults] = useState(null); // full CaseMaster search
+  const [searching, setSearching] = useState(false);
+  const [err, setErr] = useState(null);
   const linked = !!report.caseMasterId;
 
   useEffect(() => {
-    if (!open || cases) return;
-    listInvestigations().then(setCases).catch(() => setCases([]));
-  }, [open, cases]);
+    if (!open || recent) return;
+    listInvestigations().then(setRecent).catch(() => setRecent([]));
+  }, [open, recent]);
 
-  const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const list = cases || [];
-    if (!needle) return list.slice(0, 40);
-    return list
-      .filter((c) => `${c.crimeNo || ''} ${c.caseNo || ''} ${c.station || ''} ${c.district || ''} ${c.sections || ''} ${c.ioName || ''}`
-        .toLowerCase().includes(needle))
-      .slice(0, 40);
-  }, [cases, q]);
+  // Searching hits the whole CaseMaster table, so a report can be linked to any
+  // registered case — not only those an investigation diary was opened for.
+  useEffect(() => {
+    const needle = q.trim();
+    if (!open || needle.length < 2) { setResults(null); setSearching(false); return undefined; }
+    setSearching(true);
+    const t = setTimeout(() => {
+      searchCases(needle)
+        .then((rows) => { setResults(rows); setErr(null); })
+        .catch((e) => { setResults([]); setErr(e.message); })
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q, open]);
+
+  const close = () => { setOpen(false); setQ(''); setResults(null); setErr(null); };
+  const choose = (c) => {
+    onLink(c);
+    close();
+  };
+
+  const list = results !== null ? results : (recent || []);
+  const heading = results !== null
+    ? `${results.length} matching case${results.length === 1 ? '' : 's'}`
+    : 'Cases with an open investigation';
 
   return (
-    <div className="rb-caselink">
+    <>
       {linked ? (
         <span className="rb-caselink-chip">
           <button
@@ -542,43 +570,57 @@ function CaseLink({ report, locked, onLink }) {
           className="cf-icon-btn"
           title="Link this report to a case"
           disabled={locked}
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => setOpen(true)}
         >
           <Link2Off size={15} />
         </button>
       )}
 
       {open && !linked && (
-        <>
-          <div className="rb-caselink-scrim" onClick={() => setOpen(false)} />
-          <div className="rb-caselink-menu">
-            <div className="rb-caselink-head">
-              <Search size={14} />
+        <div className="cd-scrim rb-link-scrim" onMouseDown={close}>
+          <div className="rb-link-modal" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="rb-link-head">
+              <div>
+                <h3>Link this report to a case</h3>
+                <p>Search every registered case by crime number or case number.</p>
+              </div>
+              <button type="button" className="rb-link-x" onClick={close} aria-label="Close"><X size={16} /></button>
+            </div>
+
+            <div className="rb-link-search">
+              <Search size={15} />
               <input
                 autoFocus
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search cases by crime no., station, sections…"
+                placeholder="Crime No. or Case No. — e.g. 0042/2026"
               />
             </div>
-            <div className="rb-caselink-list">
-              {!cases && <div className="rb-caselink-empty">Loading cases…</div>}
-              {cases && !shown.length && <div className="rb-caselink-empty">No matching cases.</div>}
-              {shown.map((c) => (
-                <button
-                  key={c.caseMasterId}
-                  type="button"
-                  onClick={() => { onLink(c); setOpen(false); }}
-                >
+
+            {err && <div className="aa-error"><AlertTriangle size={15} /> {err}</div>}
+            <div className="rb-link-heading">{searching ? 'Searching…' : heading}</div>
+
+            <div className="rb-link-list">
+              {!recent && results === null && <div className="rb-link-empty">Loading…</div>}
+              {!searching && list.length === 0 && (
+                <div className="rb-link-empty">
+                  {q.trim().length >= 2 ? 'No case matches that number.' : 'Type at least two characters to search all cases.'}
+                </div>
+              )}
+              {list.map((c) => (
+                <button key={c.caseMasterId} type="button" onClick={() => choose(c)}>
                   <strong>{c.crimeNo || c.caseNo || c.caseMasterId}</strong>
-                  <span>{[c.station, c.district, c.sections].filter(Boolean).join(' · ')}</span>
+                  <span>
+                    {[c.station, c.district, c.caseType || c.sections, c.registeredDate]
+                      .filter(Boolean).join(' · ')}
+                  </span>
                 </button>
               ))}
             </div>
           </div>
-        </>
+        </div>
       )}
-    </div>
+    </>
   );
 }
 
