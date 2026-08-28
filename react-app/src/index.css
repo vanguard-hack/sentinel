@@ -6784,7 +6784,9 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .net-ov-tip strong { font-size: 12.5px; color: var(--text-0); }
 .net-ov-tip span { font-size: 11px; color: var(--text-3); }
 
-.cl-ring-scroll { height: 560px; overflow-y: auto; padding-right: 4px; }
+/* Fills the column (which stretches to the graph's height) rather than taking
+   a fixed height, so no dead space is left under the last visible ring. */
+.cl-ring-scroll { position: absolute; inset: 0; overflow-y: auto; padding-right: 4px; }
 .cl-back {
   align-self: flex-start; margin-bottom: 6px; padding: 4px 10px; cursor: pointer;
   font: inherit; font-size: 11.5px; font-weight: 600; color: var(--blue-600);
