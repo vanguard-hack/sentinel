@@ -4,7 +4,7 @@ import React, { useCallback, useRef, useState } from 'react';
 // rings; with hundreds of them every ring should be reachable, but mounting a
 // row per ring wastes DOM for a list where a dozen are visible. Only the
 // visible window (plus a small overscan) is mounted.
-const ROW = 78;      // keep in step with .cl-ring height + gap in index.css
+const ROW = 58;      // keep in step with .cl-ring height + gap in index.css
 const OVERSCAN = 6;
 
 export default function RingList({ networks, selectedId, onSelect }) {

@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Share2, AlertTriangle, Crown, Shuffle, Repeat, Users, MapPin, Network, RefreshCw,
 } from 'lucide-react';
-import { fetchCrimeNetwork, networkToSpec, buildOverview } from '../utils/crimelinks';
-import NetworkGraph from './NetworkGraph';
+import { fetchCrimeNetwork, buildOverview } from '../utils/crimelinks';
 import NetworkOverview from './NetworkOverview';
 import RingList from './RingList';
 
@@ -31,7 +30,8 @@ export default function CrimeLinks() {
   const [sel, setSel] = useState(null);
   // Which ring is focused on the map. Separate from `sel` (the drill-in), so
   // focusing highlights in place instead of swapping the view.
-  const [focusRing, setFocusRing] = useState(null);
+  // Index of the selected ring within the map, so a sidebar pick highlights it
+  // there instead of swapping in a second graph.
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -52,13 +52,19 @@ export default function CrimeLinks() {
     [data, sel]
   );
 
-  // Laid out once per dataset, not per render — see buildOverview.
+  // Laid out once per dataset, not per render — see buildOverview. Every ring
+  // is drawn, so any row in the list can be highlighted on the map.
   const overview = useMemo(
-    () => (data ? buildOverview(data.networks) : null),
+    () => (data ? buildOverview(data.networks, { topN: data.networks.length }) : null),
     [data]
   );
 
-  const spec = useMemo(() => (net ? networkToSpec(net) : null), [net]);
+  // The selected ring's position in the map.
+  const focusIdx = useMemo(() => {
+    if (sel == null || !overview) return null;
+    const i = overview.nodes.findIndex((n) => n.id === sel);
+    return i < 0 ? null : i;
+  }, [sel, overview]);
 
   const ringCrimes = useMemo(() => {
     if (!net || !data) return [];
@@ -136,38 +142,32 @@ export default function CrimeLinks() {
             </div>
 
             <div className="cl-graph-wrap">
-              {!net && overview && (
+              {overview && (
                 <>
                   <div className="cl-ring-title">
-                    <strong>All rings · linkage map</strong>
+                    <strong>
+                      {net ? `Ring #${net.rank} · ${net.leader.name}` : 'All rings · linkage map'}
+                    </strong>
                     <span>
-                      showing the {overview.shown} largest of {overview.total} rings
-                      {' · '}{overview.clusters} connected group{overview.clusters === 1 ? '' : 's'}
-                      {overview.isolated ? ` · ${overview.isolated} standalone` : ''}
-                      {' · '}hover or click a ring to trace its links · open it from the list
+                      {net
+                        ? `${net.size} members · ${net.edges.length} links · ${net.caseIds.length} crimes · ${net.district}${net.dateFrom ? ` · ${net.dateFrom} → ${net.dateTo}` : ''}`
+                        : `${overview.shown} rings · ${overview.clusters} connected group${overview.clusters === 1 ? '' : 's'}${overview.isolated ? ` · ${overview.isolated} standalone` : ''} · hover or click a ring to trace its links`}
                     </span>
                     <span className="cl-edge-key">
                       each circle is a ring, sized by members
                       <i className="cl-edge-thick" /> linked rings share a district or crime type
+                      {net && (
+                        <button type="button" className="cl-back" onClick={() => setSel(null)}>
+                          Clear selection
+                        </button>
+                      )}
                     </span>
                   </div>
                   <NetworkOverview
                     overview={overview}
-                    selected={focusRing}
-                    onSelect={setFocusRing}
+                    selected={focusIdx}
+                    onSelect={(i) => setSel(i == null ? null : overview.nodes[i]?.id ?? null)}
                   />
-                </>
-              )}
-              {net && (
-                <>
-                  <div className="cl-ring-title">
-                    <button type="button" className="cl-back" onClick={() => setSel(null)}>
-                      ← Show all rings
-                    </button>
-                    <strong>Ring #{net.rank} · {net.leader.name}</strong>
-                    <span>{net.size} members · {net.edges.length} links · {net.caseIds.length} crimes · {net.district}{net.dateFrom ? ` · ${net.dateFrom} → ${net.dateTo}` : ''}</span>
-                  </div>
-                  <NetworkGraph spec={spec} initialZoom={0.78} />
                 </>
               )}
             </div>
