@@ -144,7 +144,7 @@ export default function CrimeLinks() {
                       showing the {overview.shown} largest of {overview.total} rings
                       {' · '}{overview.clusters} connected group{overview.clusters === 1 ? '' : 's'}
                       {overview.isolated ? ` · ${overview.isolated} standalone` : ''}
-                      {' · '}click a ring to focus it · open it from the list
+                      {' · '}hover or click a ring to trace its links · open it from the list
                     </span>
                     <span className="cl-edge-key">
                       each circle is a ring, sized by members
