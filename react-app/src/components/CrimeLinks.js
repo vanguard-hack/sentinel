@@ -57,7 +57,7 @@ export default function CrimeLinks() {
   // added nodes without adding readable structure. The list still carries
   // every ring, and selecting one off-map still shows its members and crimes.
   const overview = useMemo(
-    () => (data ? buildOverview(data.networks, { topN: 170 }) : null),
+    () => (data ? buildOverview(data.networks, { topN: 100 }) : null),
     [data]
   );
 
