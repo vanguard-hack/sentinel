@@ -14,6 +14,8 @@ import { logAudit } from '../utils/audit';
 // The rich-document editor pulls in Tiptap/ProseMirror (~150 kB gzipped), so
 // it is code-split: only reports that actually open a document page pay for it.
 const DocEditor = lazy(() => import('../components/DocEditor'));
+const DocToolbar = lazy(() => import('../components/DocToolbar'));
+const RichField = lazy(() => import('../components/RichField'));
 
 // A4 at 96dpi. The on-screen sheet mirrors what SmartBrowz prints server-side.
 const PAGE_W = 794;
@@ -92,16 +94,28 @@ function freshReport(type) {
   };
 }
 
-// Auto-growing textarea for template narrative blocks.
-function AutoTextarea({ value, minLines, ...rest }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.max(el.scrollHeight, (minLines || 3) * 19 + 12)}px`;
-  }, [value, minLines]);
-  return <textarea ref={ref} rows={minLines || 3} value={value} {...rest} />;
+// Narrative values are stored as HTML. These convert between that and the
+// plain prose the AI-polish endpoint expects.
+function plainText(html) {
+  const s = String(html == null ? '' : html);
+  if (!/^\s*</.test(s)) return s;
+  return s
+    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function textToHtml(text) {
+  return String(text || '')
+    .split(/\n{2,}/)
+    .map((para) => `<p>${para
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br/>')}</p>`)
+    .join('');
 }
 
 export default function ReportEditor() {
@@ -119,6 +133,9 @@ export default function ReportEditor() {
   const [aiBusy, setAiBusy] = useState(null); // "uid:fieldId" of narrative being polished
   const [aiUndo, setAiUndo] = useState(null); // { key, prev }
   const confirm = useConfirm();
+  // Which rich narrative field has focus, so each sheet's shared toolbar
+  // knows what to act on.
+  const [activeCtx, setActiveCtx] = useState(null); // { editor, pageUid }
   const canvasRef = useRef(null);
   const reportRef = useRef(null);
   reportRef.current = report;
@@ -283,7 +300,10 @@ export default function ReportEditor() {
 
   const polish = async (uid, fieldId, label) => {
     const page = reportRef.current.pages.find((p) => p.uid === uid);
-    const text = (page?.values[fieldId] || '').trim();
+    const prev = page?.values[fieldId] || '';
+    // Narrative values are HTML — the model works on plain prose, so strip
+    // markup on the way out and rebuild paragraphs on the way back.
+    const text = plainText(prev).trim();
     if (!text) return;
     const key = `${uid}:${fieldId}`;
     setAiBusy(key);
@@ -297,8 +317,8 @@ export default function ReportEditor() {
         await new Promise((s) => setTimeout(s, 1500));
         polished = await aiPolish({ text, label, reportName: type?.name });
       }
-      setValue(uid, fieldId, polished);
-      setAiUndo({ key, prev: text });
+      setValue(uid, fieldId, textToHtml(polished));
+      setAiUndo({ key, prev });
       setError(null);
     } catch (e) {
       setError(`AI assist failed — ${e.message}`);
@@ -406,6 +426,14 @@ export default function ReportEditor() {
                       </Suspense>
                     ) : (
                       <>
+                        {!locked && (
+                          <Suspense fallback={null}>
+                            <DocToolbar
+                              editor={activeCtx && activeCtx.pageUid === page.uid ? activeCtx.editor : null}
+                              pageTools={false}
+                            />
+                          </Suspense>
+                        )}
                         <div className="rb-sheet-hdr">
                           <div className="rb-sheet-org">KARNATAKA STATE POLICE</div>
                           <h2>{sheet.title}</h2>
@@ -425,6 +453,7 @@ export default function ReportEditor() {
                             aiBusy={aiBusy}
                             aiUndo={aiUndo}
                             setAiUndo={setAiUndo}
+                            onFocusEditor={(ed) => setActiveCtx({ editor: ed, pageUid: page.uid })}
                           />
                         ))}
                       </>
@@ -539,7 +568,7 @@ function CaseLink({ report, locked, onLink }) {
 
 /* ── Template-sheet blocks (statutory forms keep their prescribed layout) ─── */
 
-function Block({ block: b, bi, page, locked, setValue, setCell, addRow, polish, aiBusy, aiUndo, setAiUndo }) {
+function Block({ block: b, bi, page, locked, setValue, setCell, addRow, polish, aiBusy, aiUndo, setAiUndo, onFocusEditor }) {
   const v = page.values || {};
   if (b.kind === 'fields') {
     return (
@@ -607,12 +636,18 @@ function Block({ block: b, bi, page, locked, setValue, setCell, addRow, polish, 
       <div className="rb-narrative">
         <div className="rb-legend">{b.label}</div>
         <div className="rb-nar-box">
-          <AutoTextarea
-            value={v[b.id] || ''}
-            minLines={Math.min(b.lines || 3, 10)}
-            disabled={locked}
-            onChange={(e) => { setValue(page.uid, b.id, e.target.value); if (aiUndo && aiUndo.key === key) setAiUndo(null); }}
-          />
+          <Suspense fallback={<div className="rb-nar-loading">Loading…</div>}>
+            <RichField
+              value={v[b.id] || ''}
+              minLines={Math.min(b.lines || 3, 10)}
+              locked={locked}
+              onFocusEditor={onFocusEditor}
+              onChange={(html) => {
+                setValue(page.uid, b.id, html);
+                if (aiUndo && aiUndo.key === key) setAiUndo(null);
+              }}
+            />
+          </Suspense>
           {!locked && (
             <span className="rb-nar-fabs">
               {aiUndo && aiUndo.key === key && (
@@ -621,7 +656,7 @@ function Block({ block: b, bi, page, locked, setValue, setCell, addRow, polish, 
                   <RotateCcw size={12} />
                 </button>
               )}
-              <button type="button" className="rb-ai-fab" disabled={aiBusy === key || !(v[b.id] || '').trim()}
+              <button type="button" className="rb-ai-fab" disabled={aiBusy === key || !plainText(v[b.id]).trim()}
                 title="AI polish — rewrite in formal report language (facts preserved)"
                 onClick={() => polish(page.uid, b.id, b.label)}>
                 <Sparkles size={12} className={aiBusy === key ? 'rb-spin' : undefined} />

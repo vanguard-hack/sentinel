@@ -66,8 +66,14 @@ function blockHtml(b, bi, values) {
   }
   if (b.kind === 'narrative') {
     const minH = Math.max(24, (b.lines || 4) * 13);
+    // Narrative values are rich HTML from the editor; older reports may still
+    // hold plain text, which keeps its line breaks.
+    const raw = values[b.id];
+    const inner = /^\s*</.test(String(raw || ''))
+      ? sanitize(raw)
+      : val(raw).replace(/\n/g, '<br/>');
     return `<div class="legend">${esc(b.label)}</div>
-      <div class="nar" style="min-height:${minH}px">${val(values[b.id]).replace(/\n/g, '<br/>')}</div>`;
+      <div class="nar docbody" style="min-height:${minH}px">${inner}</div>`;
   }
   if (b.kind === 'note') return `<p class="note">${esc(b.text)}</p>`;
   if (b.kind === 'signatures') {
@@ -202,6 +208,9 @@ export function buildReportHtml(type, report) {
     /* Same 682×1005 content box as the editor so absolutely positioned
        text boxes print exactly where they were placed. */
     .docbody { position: relative; width: 682px; height: 1005px; font-size: 11px; line-height: 1.5; }
+    /* the same rich styles apply to narrative fields, but they flow in the
+       sheet rather than being the fixed page box */
+    .nar.docbody { position: static; width: auto; height: auto; }
     .docbody h1 { font-size: 20px; margin: 10px 0 6px; }
     .docbody h2 { font-size: 17px; margin: 9px 0 5px; }
     .docbody h3 { font-size: 14px; margin: 8px 0 4px; }
