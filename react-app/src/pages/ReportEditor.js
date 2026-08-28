@@ -136,6 +136,9 @@ export default function ReportEditor() {
   // Which rich narrative field has focus, so each sheet's shared toolbar
   // knows what to act on.
   const [activeCtx, setActiveCtx] = useState(null); // { editor, pageUid }
+  // First rich field on each page, used as the toolbar's target until the
+  // officer focuses a specific one.
+  const [pageEditors, setPageEditors] = useState({}); // pageUid -> editor
   const canvasRef = useRef(null);
   const reportRef = useRef(null);
   reportRef.current = report;
@@ -426,10 +429,12 @@ export default function ReportEditor() {
                       </Suspense>
                     ) : (
                       <>
-                        {!locked && (
+                        {!locked && (sheet.blocks || []).some((b) => b.kind === 'narrative') && (
                           <Suspense fallback={null}>
                             <DocToolbar
-                              editor={activeCtx && activeCtx.pageUid === page.uid ? activeCtx.editor : null}
+                              editor={activeCtx && activeCtx.pageUid === page.uid
+                                ? activeCtx.editor
+                                : pageEditors[page.uid] || null}
                               pageTools={false}
                             />
                           </Suspense>
@@ -454,6 +459,7 @@ export default function ReportEditor() {
                             aiUndo={aiUndo}
                             setAiUndo={setAiUndo}
                             onFocusEditor={(ed) => setActiveCtx({ editor: ed, pageUid: page.uid })}
+                            onEditorReady={(ed) => setPageEditors((m) => (m[page.uid] ? m : { ...m, [page.uid]: ed }))}
                           />
                         ))}
                       </>
@@ -568,7 +574,7 @@ function CaseLink({ report, locked, onLink }) {
 
 /* ── Template-sheet blocks (statutory forms keep their prescribed layout) ─── */
 
-function Block({ block: b, bi, page, locked, setValue, setCell, addRow, polish, aiBusy, aiUndo, setAiUndo, onFocusEditor }) {
+function Block({ block: b, bi, page, locked, setValue, setCell, addRow, polish, aiBusy, aiUndo, setAiUndo, onFocusEditor, onEditorReady }) {
   const v = page.values || {};
   if (b.kind === 'fields') {
     return (
@@ -642,6 +648,7 @@ function Block({ block: b, bi, page, locked, setValue, setCell, addRow, polish, 
               minLines={Math.min(b.lines || 3, 10)}
               locked={locked}
               onFocusEditor={onFocusEditor}
+              onReady={onEditorReady}
               onChange={(html) => {
                 setValue(page.uid, b.id, html);
                 if (aiUndo && aiUndo.key === key) setAiUndo(null);

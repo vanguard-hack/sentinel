@@ -27,10 +27,12 @@ export function toHtml(value) {
 }
 
 export default function RichField({
-  value, locked, minLines = 3, placeholder, onChange, onFocusEditor, onBlurEditor,
+  value, locked, minLines = 3, placeholder, onChange, onFocusEditor, onBlurEditor, onReady,
 }) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
   const extensions = useMemo(() => [
     StarterKit.configure({ link: { openOnClick: false } }),
@@ -52,6 +54,12 @@ export default function RichField({
   useEffect(() => {
     if (editor) editor.setEditable(!locked);
   }, [editor, locked]);
+
+  // Announce the instance so the sheet's shared toolbar can bind to it before
+  // anything is focused — otherwise the toolbar would sit disabled on open.
+  useEffect(() => {
+    if (editor && onReadyRef.current) onReadyRef.current(editor);
+  }, [editor]);
 
   // Adopt external changes (e.g. AI polish replacing the text) without
   // clobbering what the officer is typing.
