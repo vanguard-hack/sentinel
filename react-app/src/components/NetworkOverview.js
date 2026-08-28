@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ZoomControls from './ZoomControls';
 
 // Whole-linkage-landscape view: every ring drawn at once.
@@ -23,6 +23,7 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
   const sizeRef = useRef({ w: 900, h: 560 });
 
   const { nodes, links, rings } = overview;
+  const interLinks = useMemo(() => overview.interLinks || [], [overview]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -44,7 +45,28 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
 
     const hoverRing = hover != null ? nodes[hover].ring : null;
 
-    // Links first, faint — they read as cluster texture at this zoom.
+    // Ring-to-ring links first and heaviest. These carry the shape of the
+    // whole landscape, so their width is held roughly constant on screen
+    // (divided by k) — otherwise they vanish exactly when zoomed out, which is
+    // when they matter most.
+    ctx.lineCap = 'round';
+    interLinks.forEach((l) => {
+      const a = nodes[l.s];
+      const b = nodes[l.t];
+      if (!a || !b) return;
+      const near = hoverRing != null && (l.a === hoverRing || l.b === hoverRing);
+      ctx.lineWidth = Math.max(1.1, (near ? 3.4 : 2.4) / k);
+      ctx.strokeStyle = hoverRing == null
+        ? 'rgba(37,58,95,0.55)'
+        : (near ? 'rgba(37,99,235,0.9)' : 'rgba(37,58,95,0.13)');
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    });
+
+    // Co-offending links inside each ring — lighter, they read as cluster
+    // texture rather than structure.
     ctx.lineWidth = Math.max(0.4, 1.1 / k);
     links.forEach((l) => {
       const a = nodes[l.s];
@@ -76,7 +98,7 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     ctx.globalAlpha = 1;
 
     ctx.restore();
-  }, [nodes, links, hover, colorFor]);
+  }, [nodes, links, interLinks, hover, colorFor]);
 
   // Keep the canvas matched to its container.
   useEffect(() => {
@@ -105,8 +127,8 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     const maxY = Math.max(...ys);
     // Generous padding: the overview is meant to show the whole landscape, so
     // it should start further out than a tight bounding-box fit.
-    const pad = 140;
-    const k = Math.min(w / (maxX - minX + pad), h / (maxY - minY + pad), MAX_K) * 0.9;
+    const pad = 60;
+    const k = Math.min(w / (maxX - minX + pad), h / (maxY - minY + pad), MAX_K) * 1.05;
     const target = {
       k,
       tx: w / 2 - ((minX + maxX) / 2) * k,

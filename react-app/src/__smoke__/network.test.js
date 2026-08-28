@@ -59,6 +59,41 @@ test('rings do not sit on top of each other', () => {
   expect(overlaps).toBeLessThan(4);
 });
 
+test('most rings are joined into connected groups, a few stand alone', () => {
+  // districts and crime types repeat across rings, as in the real data
+  const DISTRICTS = ['Kodagu', 'Udupi', 'Gadag', 'Hassan', 'Mysuru'];
+  const TYPES = ['Theft', 'Cheating', 'Rash Driving'];
+  const nets = Array.from({ length: 120 }, (_, i) =>
+    mkRing(`r${i}`, i < 8 ? 16 - i : 4, DISTRICTS[i % DISTRICTS.length], TYPES[i % TYPES.length]));
+  // a handful with a district and type all of their own — these should stay isolated
+  nets.push(mkRing('lone1', 3, 'Lonely', 'Unique Offence'));
+  nets.push(mkRing('lone2', 3, 'Solitary', 'Odd Offence'));
+  nets.forEach((n, i) => { n.rank = i + 1; });
+
+  const ov = buildOverview(nets);
+  expect(ov.interLinks.length).toBeGreaterThan(0);
+  // the great majority of rings hang together
+  const joined = nets.length - ov.isolated;
+  expect(joined / nets.length).toBeGreaterThan(0.9);
+  // but a genuinely unique ring is not forced into a group
+  expect(ov.isolated).toBeGreaterThan(0);
+});
+
+test('ring links only ever join hubs of different rings', () => {
+  const nets = [
+    mkRing('a', 6, 'Kodagu', 'Theft'),
+    mkRing('b', 5, 'Kodagu', 'Theft'),
+    mkRing('c', 4, 'Udupi', 'Theft'),
+  ];
+  nets.forEach((n, i) => { n.rank = i + 1; });
+  const ov = buildOverview(nets);
+  ov.interLinks.forEach((l) => {
+    expect(ov.nodes[l.s].ring).not.toBe(ov.nodes[l.t].ring);
+    // and they are attribute links, never claims of co-offending
+    expect(['district', 'type']).toContain(l.kind);
+  });
+});
+
 test('layout is deterministic and bounded', () => {
   const nets = [mkRing('a', 6, 'Kodagu', 'Theft'), mkRing('b', 3, 'Udupi', 'Cheating')];
   nets.forEach((n, i) => { n.rank = i + 1; });

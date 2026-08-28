@@ -237,23 +237,28 @@ export function networkToSpec(net, cap = 60) {
 // force pass over every node at once would be slow and would tangle unrelated
 // rings together.
 //
-// Placement is deliberately irregular. Packing the rings on a spiral (the
-// obvious approach) produced a visibly mathematical pattern — evenly spaced
-// dots radiating from a centre — which reads as generated rather than as real
-// case data. Instead rings are scattered by dart-throwing with rejection: a
-// random position is drawn, kept only if it clears everything already placed,
-// and the search area grows as it fills. Members inside a ring are likewise
-// placed at random angles and radii around their hub rather than on a neat
-// circle. The PRNG is seeded, so the scatter is irregular but identical on
-// every load — the same network never re-arranges itself under the officer.
+// TWO KINDS OF EDGE, and the distinction matters:
 //
-// Note on topology: a "ring" here is a connected component of the co-offending
-// graph, so two rings can never share a member — if they did they would be one
-// ring. Overlapping rings would require a different definition (community
-// detection inside a component) rather than a change to this layout.
+//   • Co-offending links (thin, inside a ring) — two people named as accused
+//     in the same FIR. This is the hard evidence the ring is built from. A
+//     "ring" is a connected component of these links, which is exactly why two
+//     rings can never share a member: if they did, they would be one ring.
+//
+//   • Ring links (thick, between rings) — two rings that operate in the same
+//     district or around the same primary crime type. These are NOT claims
+//     that anyone co-offended across rings; they say "these groups work the
+//     same ground or the same racket", which is a real, derivable lead and is
+//     labelled as such in the UI.
+//
+// Inventing person-to-person links across rings would have been the easy way
+// to make the picture connected, but it would put relationships on screen that
+// the case records do not support — not acceptable in an investigative tool.
+// Attribute links give the connected structure honestly.
+//
+// Placement is deliberately irregular: rings are scattered by dart-throwing
+// with rejection rather than packed on a spiral, which read as generated. The
+// PRNG is seeded, so the scatter is irregular but identical on every load.
 
-// Deterministic PRNG (mulberry32) — irregular placement without randomness
-// that changes between loads.
 function seededRandom(seed) {
   let a = seed >>> 0;
   return () => {
@@ -264,62 +269,153 @@ function seededRandom(seed) {
   };
 }
 
+// Connect rings that share operating ground or crime type. Within a district
+// the rings hang off the district's biggest ring, and district hubs are then
+// joined where they share a primary crime type — which pulls most rings into a
+// few large super-clusters while leaving genuinely unique rings isolated.
+function buildRingLinks(networks) {
+  const links = [];
+  const byDistrict = new Map();
+  const byType = new Map();
+
+  networks.forEach((net, i) => {
+    const d = net.district || '—';
+    const t = net.topType || '—';
+    if (d !== '—') (byDistrict.get(d) || byDistrict.set(d, []).get(d)).push(i);
+    if (t !== '—') (byType.get(t) || byType.set(t, []).get(t)).push(i);
+  });
+
+  // District hub-and-spoke: rings sorted by size, everything hangs off the
+  // largest, so each district becomes one cluster.
+  const districtHub = new Map();
+  byDistrict.forEach((idxs, district) => {
+    const sorted = [...idxs].sort((a, b) => networks[b].size - networks[a].size);
+    const hub = sorted[0];
+    districtHub.set(district, hub);
+    sorted.slice(1).forEach((i) => links.push({ a: hub, b: i, kind: 'district', label: district }));
+  });
+
+  // Bridge districts that work the same racket, chaining the district hubs of
+  // each crime type. This is what joins the district clusters into a handful
+  // of large components rather than dozens of islands.
+  byType.forEach((idxs, type) => {
+    const hubs = [...new Set(idxs.map((i) => districtHub.get(networks[i].district || '—')).filter((h) => h != null))];
+    for (let i = 1; i < hubs.length; i++) {
+      links.push({ a: hubs[i - 1], b: hubs[i], kind: 'type', label: type });
+    }
+  });
+
+  return links;
+}
+
 export function buildOverview(networks) {
-  const rnd = seededRandom(0x5E27); // fixed: same layout every load
+  const rnd = seededRandom(0x5E27);
   const nodes = [];
   const links = [];
   const rings = [];
 
-  const ringRadius = (n) => 16 + Math.sqrt(n) * 11;
+  const ringRadius = (n) => 15 + Math.sqrt(n) * 10;
+  const ringLinks = buildRingLinks(networks);
 
-  // Scatter the ring centres. Largest first so the big clusters claim space,
-  // then the long tail fills the gaps — which is what produces the uneven,
-  // clumpy spread real networks have.
-  const placed = [];
-  const ordered = networks.map((net, i) => ({ net, i, R: ringRadius(net.size) }));
-  const totalArea = ordered.reduce((a, o) => a + Math.PI * (o.R + 14) ** 2, 0);
-  // Start with roughly 2.2x the area the rings need, so there is room to look
-  // scattered rather than packed.
-  let field = Math.sqrt((totalArea * 2.2) / Math.PI);
-
-  ordered.forEach((o) => {
-    const gap = 12 + rnd() * 16;
-    let pos = null;
-    for (let attempt = 0; attempt < 60 && !pos; attempt++) {
-      // Uniform over the disc (sqrt keeps it from bunching at the centre).
-      const a = rnd() * Math.PI * 2;
-      const d = Math.sqrt(rnd()) * field;
-      const cx = Math.cos(a) * d;
-      const cy = Math.sin(a) * d;
-      const clash = placed.some((q) => Math.hypot(q.cx - cx, q.cy - cy) < q.R + o.R + gap);
-      if (!clash) pos = { cx, cy };
-      if (attempt === 30) field *= 1.12; // grow the field if it is getting tight
-    }
-    if (!pos) {
-      // Give up on separation rather than loop forever; a rare overlap reads
-      // as two rings sitting close, which is fine.
-      const a = rnd() * Math.PI * 2;
-      pos = { cx: Math.cos(a) * field * 1.15, cy: Math.sin(a) * field * 1.15 };
-    }
-    placed.push({ cx: pos.cx, cy: pos.cy, R: o.R, o });
+  // Super-clusters: connected components of the ring-level graph, so linked
+  // rings can be laid out together instead of scattered across the canvas.
+  const parent = networks.map((_, i) => i);
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const union = (a, b) => { const ra = find(a); const rb = find(b); if (ra !== rb) parent[ra] = rb; };
+  ringLinks.forEach((l) => union(l.a, l.b));
+  const groups = new Map();
+  networks.forEach((_, i) => {
+    const r = find(i);
+    (groups.get(r) || groups.set(r, []).get(r)).push(i);
   });
 
-  placed.forEach(({ cx, cy, R, o }) => {
-    const { net, i: ri } = o;
-    const members = net.members;
+  // Lay out each super-cluster locally, then scatter the super-clusters.
+  const clusters = [...groups.values()].sort((a, b) => b.length - a.length);
+  const localPos = new Map(); // ringIdx -> { x, y } relative to its cluster
+  const clusterMeta = clusters.map((members) => {
+    const placed = [];
+    // Biggest ring first so it anchors the middle of the cluster.
+    const ordered = [...members].sort((a, b) => networks[b].size - networks[a].size);
+    let field = 40 + Math.sqrt(members.length) * 46;
+    ordered.forEach((ri, n) => {
+      const R = ringRadius(networks[ri].size);
+      const gap = 14 + rnd() * 14;
+      let pos = null;
+      if (n === 0) {
+        pos = { x: 0, y: 0 };
+      } else {
+        for (let attempt = 0; attempt < 50 && !pos; attempt++) {
+          const a = rnd() * Math.PI * 2;
+          const d = Math.sqrt(rnd()) * field;
+          const x = Math.cos(a) * d;
+          const y = Math.sin(a) * d;
+          if (!placed.some((q) => Math.hypot(q.x - x, q.y - y) < q.R + R + gap)) pos = { x, y };
+          if (attempt === 25) field *= 1.14;
+        }
+        if (!pos) {
+          const a = rnd() * Math.PI * 2;
+          pos = { x: Math.cos(a) * field * 1.2, y: Math.sin(a) * field * 1.2 };
+        }
+      }
+      placed.push({ ...pos, R });
+      localPos.set(ri, pos);
+    });
+    const radius = Math.max(...placed.map((p) => Math.hypot(p.x, p.y) + p.R), 30);
+    return { members, radius };
+  });
+
+  // Scatter the super-clusters themselves.
+  const placedClusters = [];
+  const totalArea = clusterMeta.reduce((a, c) => a + Math.PI * (c.radius + 30) ** 2, 0);
+  let field = Math.sqrt((totalArea * 1.9) / Math.PI);
+  clusterMeta.forEach((c, ci) => {
+    const gap = 30 + rnd() * 30;
+    let pos = null;
+    if (ci === 0) {
+      pos = { cx: 0, cy: 0 };
+    } else {
+      for (let attempt = 0; attempt < 70 && !pos; attempt++) {
+        const a = rnd() * Math.PI * 2;
+        const d = Math.sqrt(rnd()) * field;
+        const cx = Math.cos(a) * d;
+        const cy = Math.sin(a) * d;
+        if (!placedClusters.some((q) => Math.hypot(q.cx - cx, q.cy - cy) < q.radius + c.radius + gap)) pos = { cx, cy };
+        if (attempt === 35) field *= 1.12;
+      }
+      if (!pos) {
+        const a = rnd() * Math.PI * 2;
+        pos = { cx: Math.cos(a) * field * 1.2, cy: Math.sin(a) * field * 1.2 };
+      }
+    }
+    placedClusters.push({ ...pos, radius: c.radius });
+    c.cx = pos.cx;
+    c.cy = pos.cy;
+  });
+
+  // Absolute ring centres.
+  const ringCentre = new Map();
+  clusterMeta.forEach((c) => {
+    c.members.forEach((ri) => {
+      const lp = localPos.get(ri) || { x: 0, y: 0 };
+      ringCentre.set(ri, { cx: c.cx + lp.x, cy: c.cy + lp.y });
+    });
+  });
+
+  // Nodes and within-ring (co-offending) edges.
+  const hubNode = new Map(); // ringIdx -> node index of its most-connected member
+  networks.forEach((net, ri) => {
+    const { cx, cy } = ringCentre.get(ri) || { cx: 0, cy: 0 };
+    const R = ringRadius(net.size);
     const idx = new Map();
     const base = nodes.length;
-
-    members.forEach((m, i) => {
+    net.members.forEach((m, i) => {
       idx.set(m.pid, base + i);
-      // Members are pre-sorted by degree, so member 0 is the hub and anchors
-      // the centre; the rest sit at random angles and depths around it, which
-      // gives each ring its own irregular shape.
       let x;
       let y;
       if (i === 0) {
-        x = cx + (rnd() - 0.5) * R * 0.22;
-        y = cy + (rnd() - 0.5) * R * 0.22;
+        x = cx + (rnd() - 0.5) * R * 0.2;
+        y = cy + (rnd() - 0.5) * R * 0.2;
+        hubNode.set(ri, base + i);
       } else {
         const a = rnd() * Math.PI * 2;
         const rr = R * (0.35 + rnd() * 0.65);
@@ -336,7 +432,6 @@ export function buildOverview(networks) {
         y,
       });
     });
-
     net.edges.forEach((e) => {
       const s = idx.get(e.source);
       const t = idx.get(e.target);
@@ -344,6 +439,11 @@ export function buildOverview(networks) {
     });
     rings.push({ id: net.id, rank: net.rank, cx, cy, r: R, size: net.size, label: net.leader?.name || '' });
   });
+
+  // Ring-to-ring edges, drawn hub to hub.
+  const interLinks = ringLinks
+    .map((l) => ({ s: hubNode.get(l.a), t: hubNode.get(l.b), kind: l.kind, label: l.label, a: l.a, b: l.b }))
+    .filter((l) => l.s != null && l.t != null);
 
   // Normalise into a 0..1000 box so the renderer can fit any dataset size.
   const xs = nodes.map((n) => n.x);
@@ -359,5 +459,15 @@ export function buildOverview(networks) {
   nodes.forEach((n) => { n.x = n.x * scale + offX; n.y = n.y * scale + offY; });
   rings.forEach((r) => { r.cx = r.cx * scale + offX; r.cy = r.cy * scale + offY; r.r *= scale; });
 
-  return { nodes, links, rings };
+  const connectedRings = new Set();
+  interLinks.forEach((l) => { connectedRings.add(l.a); connectedRings.add(l.b); });
+
+  return {
+    nodes,
+    links,
+    interLinks,
+    rings,
+    clusters: clusterMeta.length,
+    isolated: networks.length - connectedRings.size,
+  };
 }

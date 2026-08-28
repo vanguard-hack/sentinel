@@ -6793,3 +6793,8 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   border: 1px solid color-mix(in srgb, var(--blue-400) 35%, transparent); border-radius: 999px;
 }
 .cl-back:hover { background: color-mix(in srgb, var(--blue-400) 18%, transparent); }
+.cl-edge-key { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; font-size: 11px; color: var(--text-3); }
+.cl-edge-key i { display: inline-block; width: 18px; border-radius: 2px; margin-left: 8px; }
+.cl-edge-key i:first-child { margin-left: 0; }
+.cl-edge-thin { height: 1px; background: rgba(51,65,90,0.62); }
+.cl-edge-thick { height: 3px; background: rgba(37,58,95,0.75); }
