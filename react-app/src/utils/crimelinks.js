@@ -230,34 +230,23 @@ export function networkToSpec(net) {
 }
 
 // ── Full-network overview ───────────────────────────────────────────────────
-// Every ring laid out at once, so an officer sees the whole linkage landscape
-// before drilling into one.
+// One node per RING, not per person.
 //
-// Layout is computed here rather than simulated in the browser on each load: a
-// force pass over every node at once would be slow and would tangle unrelated
-// rings together.
+// Drawing every member of every ring put ~1,000 unlabelled dots on screen: the
+// structure was there but nothing was legible, and no officer could tell one
+// cluster from another. Graph explorers that work at this scale (Connected
+// Papers, Obsidian's graph view) draw one labelled node per entity and let you
+// open it for detail — so a node here is a ring, sized by membership, coloured
+// by district, labelled by its leader. The members live one click away in the
+// ring view, which already draws them in full.
 //
-// TWO KINDS OF EDGE, and the distinction matters:
-//
-//   • Co-offending links (thin, inside a ring) — two people named as accused
-//     in the same FIR. This is the hard evidence the ring is built from. A
-//     "ring" is a connected component of these links, which is exactly why two
-//     rings can never share a member: if they did, they would be one ring.
-//
-//   • Ring links (thick, between rings) — two rings that operate in the same
-//     district or around the same primary crime type. These are NOT claims
-//     that anyone co-offended across rings; they say "these groups work the
-//     same ground or the same racket", which is a real, derivable lead and is
-//     labelled as such in the UI.
-//
-// Inventing person-to-person links across rings would have been the easy way
-// to make the picture connected, but it would put relationships on screen that
-// the case records do not support — not acceptable in an investigative tool.
-// Attribute links give the connected structure honestly.
-//
-// Placement is deliberately irregular: rings are scattered by dart-throwing
-// with rejection rather than packed on a spiral, which read as generated. The
-// PRNG is seeded, so the scatter is irregular but identical on every load.
+// EDGES between rings are attribute links, not co-offending. A ring is a
+// connected component of the co-offending graph, so two rings can never share
+// a member — if they did they would be one ring. These edges say "these groups
+// work the same district, or the same racket", which is a real lead derived
+// from the case records. Inventing person-to-person links across rings would
+// have made the picture connected by asserting relationships the records do
+// not support.
 
 function seededRandom(seed) {
   let a = seed >>> 0;
@@ -269,183 +258,129 @@ function seededRandom(seed) {
   };
 }
 
-// Connect rings that share operating ground or crime type. Within a district
-// the rings hang off the district's biggest ring, and district hubs are then
-// joined where they share a primary crime type — which pulls most rings into a
-// few large super-clusters while leaving genuinely unique rings isolated.
-function buildRingLinks(networks) {
+// Rings sharing operating ground or crime type. Within a district rings hang
+// off the district's largest; district hubs are then bridged where they share
+// a primary crime type, which pulls most rings into a few components while
+// leaving genuinely unique ones standalone.
+function buildRingLinks(nets) {
   const links = [];
   const byDistrict = new Map();
   const byType = new Map();
-
-  networks.forEach((net, i) => {
+  nets.forEach((net, i) => {
     const d = net.district || '—';
     const t = net.topType || '—';
     if (d !== '—') (byDistrict.get(d) || byDistrict.set(d, []).get(d)).push(i);
     if (t !== '—') (byType.get(t) || byType.set(t, []).get(t)).push(i);
   });
 
-  // District hub-and-spoke: rings sorted by size, everything hangs off the
-  // largest, so each district becomes one cluster.
   const districtHub = new Map();
   byDistrict.forEach((idxs, district) => {
-    const sorted = [...idxs].sort((a, b) => networks[b].size - networks[a].size);
-    const hub = sorted[0];
-    districtHub.set(district, hub);
-    sorted.slice(1).forEach((i) => links.push({ a: hub, b: i, kind: 'district', label: district }));
+    const sorted = [...idxs].sort((a, b) => nets[b].size - nets[a].size);
+    districtHub.set(district, sorted[0]);
+    sorted.slice(1).forEach((i) => links.push({ a: sorted[0], b: i, kind: 'district', label: district }));
   });
-
-  // Bridge districts that work the same racket, chaining the district hubs of
-  // each crime type. This is what joins the district clusters into a handful
-  // of large components rather than dozens of islands.
   byType.forEach((idxs, type) => {
-    const hubs = [...new Set(idxs.map((i) => districtHub.get(networks[i].district || '—')).filter((h) => h != null))];
-    for (let i = 1; i < hubs.length; i++) {
-      links.push({ a: hubs[i - 1], b: hubs[i], kind: 'type', label: type });
-    }
+    const hubs = [...new Set(idxs.map((i) => districtHub.get(nets[i].district || '—')).filter((h) => h != null))];
+    for (let i = 1; i < hubs.length; i++) links.push({ a: hubs[i - 1], b: hubs[i], kind: 'type', label: type });
   });
-
   return links;
 }
 
-export function buildOverview(networks) {
-  const rnd = seededRandom(0x5E27);
-  const nodes = [];
-  const links = [];
-  const rings = [];
-
-  const ringRadius = (n) => 15 + Math.sqrt(n) * 10;
-  const ringLinks = buildRingLinks(networks);
-
-  // Super-clusters: connected components of the ring-level graph, so linked
-  // rings can be laid out together instead of scattered across the canvas.
-  const parent = networks.map((_, i) => i);
-  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
-  const union = (a, b) => { const ra = find(a); const rb = find(b); if (ra !== rb) parent[ra] = rb; };
-  ringLinks.forEach((l) => union(l.a, l.b));
-  const groups = new Map();
-  networks.forEach((_, i) => {
-    const r = find(i);
-    (groups.get(r) || groups.set(r, []).get(r)).push(i);
+// Force-directed layout, run once here rather than in the browser on every
+// load. Repulsion is O(n²), which is fine for a few hundred rings and keeps
+// the code readable; springs pull linked rings together and a weak pull to the
+// centre stops disconnected rings drifting away.
+function layoutForce(nodes, links, rnd, iterations = 420) {
+  const n = nodes.length;
+  if (!n) return;
+  nodes.forEach((nd, i) => {
+    const a = (i / n) * Math.PI * 2 + rnd() * 0.6;
+    const r = 120 + rnd() * 260;
+    nd.x = Math.cos(a) * r;
+    nd.y = Math.sin(a) * r;
+    nd.vx = 0;
+    nd.vy = 0;
   });
 
-  // Lay out each super-cluster locally, then scatter the super-clusters.
-  const clusters = [...groups.values()].sort((a, b) => b.length - a.length);
-  const localPos = new Map(); // ringIdx -> { x, y } relative to its cluster
-  const clusterMeta = clusters.map((members) => {
-    const placed = [];
-    // Biggest ring first so it anchors the middle of the cluster.
-    const ordered = [...members].sort((a, b) => networks[b].size - networks[a].size);
-    let field = 52 + Math.sqrt(members.length) * 62;
-    ordered.forEach((ri, n) => {
-      const R = ringRadius(networks[ri].size);
-      const gap = 26 + rnd() * 20;
-      let pos = null;
-      if (n === 0) {
-        pos = { x: 0, y: 0 };
-      } else {
-        for (let attempt = 0; attempt < 50 && !pos; attempt++) {
-          const a = rnd() * Math.PI * 2;
-          const d = Math.sqrt(rnd()) * field;
-          const x = Math.cos(a) * d;
-          const y = Math.sin(a) * d;
-          if (!placed.some((q) => Math.hypot(q.x - x, q.y - y) < q.R + R + gap)) pos = { x, y };
-          if (attempt === 25) field *= 1.14;
-        }
-        if (!pos) {
-          const a = rnd() * Math.PI * 2;
-          pos = { x: Math.cos(a) * field * 1.2, y: Math.sin(a) * field * 1.2 };
-        }
-      }
-      placed.push({ ...pos, R });
-      localPos.set(ri, pos);
-    });
-    const radius = Math.max(...placed.map((p) => Math.hypot(p.x, p.y) + p.R), 30);
-    return { members, radius };
-  });
+  const deg = nodes.map(() => 0);
+  links.forEach((l) => { deg[l.s] += 1; deg[l.t] += 1; });
 
-  // Scatter the super-clusters themselves.
-  const placedClusters = [];
-  const totalArea = clusterMeta.reduce((a, c) => a + Math.PI * (c.radius + 30) ** 2, 0);
-  let field = Math.sqrt((totalArea * 3.0) / Math.PI);
-  clusterMeta.forEach((c, ci) => {
-    const gap = 58 + rnd() * 46;
-    let pos = null;
-    if (ci === 0) {
-      pos = { cx: 0, cy: 0 };
-    } else {
-      for (let attempt = 0; attempt < 70 && !pos; attempt++) {
-        const a = rnd() * Math.PI * 2;
-        const d = Math.sqrt(rnd()) * field;
-        const cx = Math.cos(a) * d;
-        const cy = Math.sin(a) * d;
-        if (!placedClusters.some((q) => Math.hypot(q.cx - cx, q.cy - cy) < q.radius + c.radius + gap)) pos = { cx, cy };
-        if (attempt === 35) field *= 1.12;
-      }
-      if (!pos) {
-        const a = rnd() * Math.PI * 2;
-        pos = { cx: Math.cos(a) * field * 1.2, cy: Math.sin(a) * field * 1.2 };
+  for (let it = 0; it < iterations; it++) {
+    const cool = 1 - it / iterations;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        let dx = nodes[j].x - nodes[i].x;
+        let dy = nodes[j].y - nodes[i].y;
+        let d2 = dx * dx + dy * dy;
+        if (d2 < 0.01) { dx = (rnd() - 0.5) * 0.5; dy = (rnd() - 0.5) * 0.5; d2 = 0.25; }
+        // Bigger rings push harder, so they claim the space their label needs.
+        const push = (2600 + (nodes[i].r + nodes[j].r) * 130) / d2;
+        const d = Math.sqrt(d2);
+        const fx = (dx / d) * push;
+        const fy = (dy / d) * push;
+        nodes[i].vx -= fx; nodes[i].vy -= fy;
+        nodes[j].vx += fx; nodes[j].vy += fy;
       }
     }
-    placedClusters.push({ ...pos, radius: c.radius });
-    c.cx = pos.cx;
-    c.cy = pos.cy;
-  });
-
-  // Absolute ring centres.
-  const ringCentre = new Map();
-  clusterMeta.forEach((c) => {
-    c.members.forEach((ri) => {
-      const lp = localPos.get(ri) || { x: 0, y: 0 };
-      ringCentre.set(ri, { cx: c.cx + lp.x, cy: c.cy + lp.y });
+    links.forEach((l) => {
+      const a = nodes[l.s];
+      const b = nodes[l.t];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const rest = 90 + a.r + b.r;
+      const f = (d - rest) * 0.012;
+      const fx = (dx / d) * f;
+      const fy = (dy / d) * f;
+      a.vx += fx; a.vy += fy;
+      b.vx -= fx; b.vy -= fy;
     });
-  });
-
-  // Nodes and within-ring (co-offending) edges.
-  const hubNode = new Map(); // ringIdx -> node index of its most-connected member
-  networks.forEach((net, ri) => {
-    const { cx, cy } = ringCentre.get(ri) || { cx: 0, cy: 0 };
-    const R = ringRadius(net.size);
-    const idx = new Map();
-    const base = nodes.length;
-    net.members.forEach((m, i) => {
-      idx.set(m.pid, base + i);
-      let x;
-      let y;
-      if (i === 0) {
-        x = cx + (rnd() - 0.5) * R * 0.2;
-        y = cy + (rnd() - 0.5) * R * 0.2;
-        hubNode.set(ri, base + i);
-      } else {
-        const a = rnd() * Math.PI * 2;
-        const rr = R * (0.35 + rnd() * 0.65);
-        x = cx + Math.cos(a) * rr;
-        y = cy + Math.sin(a) * rr;
-      }
-      nodes.push({
-        id: m.pid,
-        label: m.name || m.names?.[0] || m.pid,
-        group: m.district || '—',
-        deg: m.degree || 0,
-        ring: ri,
-        x,
-        y,
-      });
+    nodes.forEach((nd) => {
+      // Weak centring, weaker for well-connected rings so hubs stay central.
+      nd.vx += -nd.x * 0.0016 * (1 + 1 / (1 + deg[nodes.indexOf(nd)] || 1)) * 0;
+      nd.vx += -nd.x * 0.0018;
+      nd.vy += -nd.y * 0.0018;
+      nd.vx *= 0.86; nd.vy *= 0.86;
+      nd.x += nd.vx * cool;
+      nd.y += nd.vy * cool;
     });
-    net.edges.forEach((e) => {
-      const s = idx.get(e.source);
-      const t = idx.get(e.target);
-      if (s != null && t != null) links.push({ s, t, ring: ri });
-    });
-    rings.push({ id: net.id, rank: net.rank, cx, cy, r: R, size: net.size, label: net.leader?.name || '' });
-  });
+  }
+}
 
-  // Ring-to-ring edges, drawn hub to hub.
-  const interLinks = ringLinks
-    .map((l) => ({ s: hubNode.get(l.a), t: hubNode.get(l.b), kind: l.kind, label: l.label, a: l.a, b: l.b }))
-    .filter((l) => l.s != null && l.t != null);
+export function buildOverview(networks, { topN = 70 } = {}) {
+  const rnd = seededRandom(0x5E27);
+  // networks arrive sorted largest-first, so the top slice is the most
+  // significant rings — the rest stay reachable from the sidebar.
+  const shown = networks.slice(0, Math.max(1, topN));
 
-  // Normalise into a 0..1000 box so the renderer can fit any dataset size.
+  const nodes = shown.map((net, i) => ({
+    ring: i,
+    id: net.id,
+    label: `${String(net.leader?.name || '—').split(' ')[0]}’s ring`,
+    group: net.district || '—',
+    size: net.size,
+    crimes: net.caseIds.length,
+    type: net.topType || '—',
+    r: 6 + Math.sqrt(net.size) * 3.4,
+    x: 0,
+    y: 0,
+  }));
+
+  const ringLinks = buildRingLinks(shown)
+    .filter((l) => l.a < nodes.length && l.b < nodes.length)
+    .map((l) => ({ s: l.a, t: l.b, kind: l.kind, label: l.label }));
+
+  layoutForce(nodes, ringLinks, rnd);
+
+  // Connected groups, for the header.
+  const parent = nodes.map((_, i) => i);
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  ringLinks.forEach((l) => { const a = find(l.s); const b = find(l.t); if (a !== b) parent[a] = b; });
+  const groups = new Set(nodes.map((_, i) => find(i)));
+  const linked = new Set();
+  ringLinks.forEach((l) => { linked.add(l.s); linked.add(l.t); });
+
+  // Normalise into a 0..1000 box so the renderer can fit any dataset.
   const xs = nodes.map((n) => n.x);
   const ys = nodes.map((n) => n.y);
   const minX = Math.min(...xs, 0);
@@ -453,21 +388,19 @@ export function buildOverview(networks) {
   const minY = Math.min(...ys, 0);
   const maxY = Math.max(...ys, 1);
   const span = Math.max(maxX - minX, maxY - minY) || 1;
-  const scale = 960 / span;
-  const offX = 20 - minX * scale;
-  const offY = 20 - minY * scale;
-  nodes.forEach((n) => { n.x = n.x * scale + offX; n.y = n.y * scale + offY; });
-  rings.forEach((r) => { r.cx = r.cx * scale + offX; r.cy = r.cy * scale + offY; r.r *= scale; });
-
-  const connectedRings = new Set();
-  interLinks.forEach((l) => { connectedRings.add(l.a); connectedRings.add(l.b); });
+  const scale = 900 / span;
+  nodes.forEach((n) => {
+    n.x = (n.x - minX) * scale + 50;
+    n.y = (n.y - minY) * scale + 50;
+    n.r *= Math.max(0.6, Math.min(1.6, scale));
+  });
 
   return {
     nodes,
-    links,
-    interLinks,
-    rings,
-    clusters: clusterMeta.length,
-    isolated: networks.length - connectedRings.size,
+    links: ringLinks,
+    shown: nodes.length,
+    total: networks.length,
+    clusters: groups.size,
+    isolated: nodes.length - linked.size,
   };
 }

@@ -1,15 +1,19 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ZoomControls from './ZoomControls';
 
-// Whole-linkage-landscape view: every ring drawn at once.
+// Ring-level map of the whole linkage landscape.
 //
-// Rendered to a 2D canvas rather than SVG. The detail view's ~20 nodes are fine
-// as DOM elements, but the overview draws every member of every ring — already
-// well over a thousand, and several thousand if the case data grows — where one
-// SVG element per node makes layout and hit-testing the bottleneck. A canvas
-// redraws the same scene in a single pass.
-const MIN_K = 0.3;
-const MAX_K = 12;
+// One labelled node per ring, in the manner of Connected Papers / Obsidian's
+// graph view: drawing every individual put a thousand anonymous dots on screen
+// where nothing could be read. Node size is ring membership, colour is
+// district, and an edge means two rings share a district or a crime type — a
+// lead, not a claim that anyone co-offended across rings.
+//
+// Drawn to a 2D canvas rather than SVG: one DOM element per node plus its
+// label is the bottleneck once there are hundreds, and a canvas redraws the
+// whole scene in one pass.
+const MIN_K = 0.25;
+const MAX_K = 8;
 
 export default function NetworkOverview({ overview, colorFor, onPick }) {
   const canvasRef = useRef(null);
@@ -22,8 +26,7 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
   const animRef = useRef(null);
   const sizeRef = useRef({ w: 900, h: 560 });
 
-  const { nodes, links, rings } = overview;
-  const interLinks = useMemo(() => overview.interLinks || [], [overview]);
+  const { nodes, links } = overview;
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -43,39 +46,25 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     ctx.translate(tx, ty);
     ctx.scale(k, k);
 
-    const hoverRing = hover != null ? nodes[hover].ring : null;
+    // Neighbours of the hovered ring, so hovering traces its connections.
+    let near = null;
+    if (hover != null) {
+      near = new Set([hover]);
+      links.forEach((l) => {
+        if (l.s === hover) near.add(l.t);
+        if (l.t === hover) near.add(l.s);
+      });
+    }
 
-    // Ring-to-ring links first and heaviest. These carry the shape of the
-    // whole landscape, so their width is held roughly constant on screen
-    // (divided by k) — otherwise they vanish exactly when zoomed out, which is
-    // when they matter most.
     ctx.lineCap = 'round';
-    interLinks.forEach((l) => {
-      const a = nodes[l.s];
-      const b = nodes[l.t];
-      if (!a || !b) return;
-      const near = hoverRing != null && (l.a === hoverRing || l.b === hoverRing);
-      // Held roughly constant on screen so it survives zooming out, but capped
-      // so it never turns into a heavy slab when zoomed in.
-      ctx.lineWidth = Math.min(1.6, Math.max(0.7, (near ? 1.7 : 1.15) / k));
-      ctx.strokeStyle = hoverRing == null
-        ? 'rgba(96,116,148,0.42)'
-        : (near ? 'rgba(37,99,235,0.85)' : 'rgba(96,116,148,0.10)');
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-    });
-
-    // Co-offending links inside each ring — lighter, they read as cluster
-    // texture rather than structure.
-    ctx.lineWidth = Math.min(1, Math.max(0.35, 0.75 / k));
     links.forEach((l) => {
       const a = nodes[l.s];
       const b = nodes[l.t];
-      ctx.strokeStyle = hoverRing == null
-        ? 'rgba(118,134,160,0.45)'
-        : (l.ring === hoverRing ? 'rgba(37,99,235,0.75)' : 'rgba(118,134,160,0.09)');
+      const on = near ? (near.has(l.s) && near.has(l.t)) : true;
+      ctx.lineWidth = Math.min(1.4, Math.max(0.45, (on && near ? 1.3 : 0.8) / k));
+      ctx.strokeStyle = near
+        ? (on ? 'rgba(37,99,235,0.75)' : 'rgba(120,136,160,0.10)')
+        : 'rgba(120,136,160,0.38)';
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
@@ -83,26 +72,42 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     });
 
     nodes.forEach((n, i) => {
-      const r = (1.6 + Math.min(4.2, n.deg * 0.62)) / Math.max(0.6, Math.sqrt(k));
-      const dim = hoverRing != null && n.ring !== hoverRing;
-      ctx.globalAlpha = dim ? 0.22 : 1;
+      const dim = near ? !near.has(i) : false;
+      ctx.globalAlpha = dim ? 0.18 : 1;
       ctx.fillStyle = colorFor(n.group);
       ctx.beginPath();
-      ctx.arc(n.x, n.y, Math.max(0.8, r), 0, Math.PI * 2);
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
       ctx.fill();
       if (i === hover) {
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = '#2563eb';
-        ctx.lineWidth = 1.6 / k;
+        ctx.strokeStyle = 'rgba(37,99,235,0.95)';
+        ctx.lineWidth = 2 / k;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r + 3 / k, 0, Math.PI * 2);
         ctx.stroke();
       }
     });
+
+    // Labels: the largest rings always, everything else once zoomed in — the
+    // same progressive disclosure the reference graph views use.
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const fontPx = Math.max(8, Math.min(13, 11 / k));
+    ctx.font = `${fontPx}px Inter, system-ui, sans-serif`;
+    nodes.forEach((n, i) => {
+      const big = n.r > 12;
+      if (!big && k < 1.6 && i !== hover) return;
+      const dim = near ? !near.has(i) : false;
+      ctx.globalAlpha = dim ? 0.12 : 1;
+      ctx.lineWidth = 3 / k;
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.strokeText(n.label, n.x, n.y + n.r + 3 / k);
+      ctx.fillStyle = 'rgba(38,50,70,0.92)';
+      ctx.fillText(n.label, n.x, n.y + n.r + 3 / k);
+    });
     ctx.globalAlpha = 1;
-
     ctx.restore();
-  }, [nodes, links, interLinks, hover, colorFor]);
+  }, [nodes, links, hover, colorFor]);
 
-  // Keep the canvas matched to its container.
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return undefined;
@@ -117,37 +122,13 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
 
   useEffect(() => { draw(); }, [draw, view]);
 
-  // Fit the whole network into the viewport.
-  const fit = useCallback((animate = true) => {
-    const { w, h } = sizeRef.current;
-    const xs = nodes.map((n) => n.x);
-    const ys = nodes.map((n) => n.y);
-    if (!xs.length) return;
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-    // Generous padding: the overview is meant to show the whole landscape, so
-    // it should start further out than a tight bounding-box fit.
-    const pad = 60;
-    const k = Math.min(w / (maxX - minX + pad), h / (maxY - minY + pad), MAX_K) * 1.05;
-    const target = {
-      k,
-      tx: w / 2 - ((minX + maxX) / 2) * k,
-      ty: h / 2 - ((minY + maxY) / 2) * k,
-    };
-    if (!animate) { setView(target); return; }
-    animateTo(target);
-  }, [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const animateTo = useCallback((to) => {
     const from = viewRef.current;
     if (animRef.current) cancelAnimationFrame(animRef.current);
     const t0 = performance.now();
-    const DUR = 200;
     const ease = (t) => 1 - (1 - t) * (1 - t);
     const step = (now) => {
-      const t = Math.min(1, (now - t0) / DUR);
+      const t = Math.min(1, (now - t0) / 200);
       const e = ease(t);
       setView({
         k: from.k + (to.k - from.k) * e,
@@ -158,6 +139,22 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     };
     animRef.current = requestAnimationFrame(step);
   }, []);
+
+  const fit = useCallback((animate = true) => {
+    const { w, h } = sizeRef.current;
+    if (!nodes.length) return;
+    const xs = nodes.map((n) => n.x);
+    const ys = nodes.map((n) => n.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const pad = 90;
+    const k = Math.min(w / (maxX - minX + pad), h / (maxY - minY + pad), MAX_K);
+    const to = { k, tx: w / 2 - ((minX + maxX) / 2) * k, ty: h / 2 - ((minY + maxY) / 2) * k };
+    if (!animate) { setView(to); return; }
+    animateTo(to);
+  }, [nodes, animateTo]);
 
   useEffect(() => { fit(false); }, [fit]);
   useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
@@ -170,7 +167,6 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     animateTo({ k, tx: w / 2 - (w / 2 - v.tx) * scale, ty: h / 2 - (h / 2 - v.ty) * scale });
   }, [animateTo]);
 
-  // Wheel zoom about the cursor (native listener — React's is passive).
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return undefined;
@@ -195,10 +191,10 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
     const x = (e.clientX - r.left - tx) / k;
     const y = (e.clientY - r.top - ty) / k;
     let best = null;
-    let bestD = 10 / k;
+    let bestD = Infinity;
     nodes.forEach((n, i) => {
       const d = Math.hypot(n.x - x, n.y - y);
-      if (d < bestD) { bestD = d; best = i; }
+      if (d < n.r + 6 / k && d < bestD) { bestD = d; best = i; }
     });
     return best;
   };
@@ -260,7 +256,8 @@ export default function NetworkOverview({ overview, colorFor, onPick }) {
       {hovered && (
         <div className="net-ov-tip">
           <strong>{hovered.label}</strong>
-          <span>{hovered.group} · {hovered.deg} link{hovered.deg === 1 ? '' : 's'} · ring #{rings[hovered.ring]?.rank}</span>
+          <span>{hovered.size} members · {hovered.crimes} crimes</span>
+          <span>{hovered.group} · {hovered.type}</span>
           <span className="net-ov-tip-hint">Click to open this ring</span>
         </div>
       )}

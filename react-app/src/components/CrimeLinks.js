@@ -152,16 +152,16 @@ export default function CrimeLinks() {
               {!net && overview && (
                 <>
                   <div className="cl-ring-title">
-                    <strong>All rings · full linkage network</strong>
+                    <strong>All rings · linkage map</strong>
                     <span>
-                      {data.networks.length} rings · {overview.nodes.length} people · {overview.links.length} co-offending links
+                      showing the {overview.shown} largest of {overview.total} rings
                       {' · '}{overview.clusters} connected group{overview.clusters === 1 ? '' : 's'}
                       {overview.isolated ? ` · ${overview.isolated} standalone` : ''}
-                      {' · '}click any cluster to open that ring
+                      {' · '}click a ring to open it
                     </span>
                     <span className="cl-edge-key">
-                      <i className="cl-edge-thin" /> co-offending (same FIR)
-                      <i className="cl-edge-thick" /> ring link (shared district or crime type)
+                      each circle is a ring, sized by members
+                      <i className="cl-edge-thick" /> linked rings share a district or crime type
                     </span>
                   </div>
                   <NetworkOverview
