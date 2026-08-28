@@ -68,5 +68,10 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "jest": {
+    "transformIgnorePatterns": [
+      "node_modules/(?!(@tiptap|prosemirror-[a-z-]+|rope-sequence|w3c-keyname|orderedmap|crelt|linkifyjs)/)"
+    ]
   }
 }
