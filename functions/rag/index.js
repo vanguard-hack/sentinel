@@ -79,7 +79,13 @@ const AGUI_TRANSFORM =
   '"links":[{"source":s,"target":s}]} (use for relationships between people/gangs/entities). ' +
   'RULE: if the values are per Karnataka district, ALWAYS use geo-map (not bar-chart), ' +
   'with plain district names (e.g. "Bengaluru City", "Kalaburagi" — no DIST suffix). ' +
-  'Choose the 1-2 components that best fit the data. Output ONLY the fenced block.' +
+  'Choose the 1-2 components that best fit the data. ' +
+  // The renderer normalises stray markup anyway, but keeping it out of the
+  // JSON in the first place gives cleaner cells and shorter payloads.
+  'CELL FORMAT: cell values must be PLAIN TEXT — no HTML tags (never <br>), no ' +
+  'markdown bold/italic markers, no bullet characters. Keep each cell to a short ' +
+  'phrase; if a cell would need several points, split it into separate rows. ' +
+  'Output ONLY the fenced block.' +
   '\n\nTEXT:\n';
 
 // ── Groq (fallback LLM + query expansion) ──────────────────────────────────

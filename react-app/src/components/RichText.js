@@ -1,51 +1,41 @@
 import React from 'react';
+import { parseBlocks, renderInline } from '../utils/richFormat';
 
-// Minimal markdown renderer for assistant prose: headings, blockquotes,
-// ***bold italic***, **bold**, *italic*, _italic_, ~~strikethrough~~, `code`.
-// Built as React elements (never dangerouslySetInnerHTML) so model output
-// can't inject markup. Anything unrecognised renders as plain text.
-
-const INLINE_RE =
-  /(\*\*\*[^*\n]+\*\*\*|\*\*[^*\n]+\*\*|\*[^*\n]+\*|__[^_\n]+__|_[^_\n]+_|~~[^~\n]+~~|`[^`\n]+`)/g;
-
-function renderInline(text) {
-  return text.split(INLINE_RE).map((part, i) => {
-    if (/^\*\*\*[^*\n]+\*\*\*$/.test(part))
-      return <strong key={i}><em>{part.slice(3, -3)}</em></strong>;
-    if (/^\*\*[^*\n]+\*\*$/.test(part)) return <strong key={i}>{part.slice(2, -2)}</strong>;
-    if (/^\*[^*\n]+\*$/.test(part)) return <em key={i}>{part.slice(1, -1)}</em>;
-    if (/^__[^_\n]+__$/.test(part)) return <strong key={i}>{part.slice(2, -2)}</strong>;
-    if (/^_[^_\n]+_$/.test(part)) return <em key={i}>{part.slice(1, -1)}</em>;
-    if (/^~~[^~\n]+~~$/.test(part)) return <del key={i}>{part.slice(2, -2)}</del>;
-    if (/^`[^`\n]+`$/.test(part)) return <code key={i}>{part.slice(1, -1)}</code>;
-    return part;
-  });
-}
-
+// Assistant prose. The parsing lives in utils/richFormat so table cells, card
+// bodies and prose all format identically — see the note there on why model
+// output has to be normalised before display.
 export default function RichText({ text }) {
-  const lines = String(text || '').split('\n');
+  const blocks = parseBlocks(text);
+  if (!blocks.length) return null;
   return (
-    <>
-      {lines.map((ln, i) => {
-        const h = ln.match(/^(#{1,4})\s+(.*)/);
-        if (h) {
+    <div className="rf-prose">
+      {blocks.map((b, i) => {
+        if (b.type === 'h') {
+          return <div key={i} className={`as-md-h as-md-h${b.level}`}>{renderInline(b.text, `h${i}`)}</div>;
+        }
+        if (b.type === 'quote') {
+          return <div key={i} className="as-md-quote">{renderInline(b.text, `q${i}`)}</div>;
+        }
+        if (b.type === 'hr') return <hr key={i} className="rf-hr" />;
+        if (b.type === 'list') {
+          const List = b.ordered ? 'ol' : 'ul';
           return (
-            <div key={i} className={`as-md-h as-md-h${h[1].length}`}>
-              {renderInline(h[2])}
-            </div>
+            <List key={i} className="rf-list">
+              {b.items.map((it, j) => <li key={j}>{renderInline(it, `l${i}-${j}`)}</li>)}
+            </List>
           );
         }
-        const q = ln.match(/^>\s?(.*)/);
-        if (q) {
-          return (
-            <div key={i} className="as-md-quote">
-              {renderInline(q[1])}
-            </div>
-          );
-        }
-        if (!ln.trim()) return <div key={i} className="as-md-gap" />;
-        return <div key={i}>{renderInline(ln)}</div>;
+        return (
+          <p key={i} className="rf-p">
+            {b.lines.map((ln, j) => (
+              <React.Fragment key={j}>
+                {j > 0 && <br />}
+                {renderInline(ln, `p${i}-${j}`)}
+              </React.Fragment>
+            ))}
+          </p>
+        );
       })}
-    </>
+    </div>
   );
 }

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { HBarList, Donut } from './Charts';
+import { renderCell, renderInline, normaliseText } from '../utils/richFormat';
 import GeoHeatMap from './GeoHeatMap';
 import NetworkGraph from './NetworkGraph';
 
@@ -35,12 +36,12 @@ function AguiTable({ spec, pageSize = 8 }) {
       <div className="cf-table-wrap">
         <table className="cf-table">
           <thead>
-            <tr>{columns.map((c, i) => <th key={i}>{String(c)}</th>)}</tr>
+            <tr>{columns.map((c, i) => <th key={i}>{renderInline(normaliseText(c), `th${i}`)}</th>)}</tr>
           </thead>
           <tbody>
             {slice.map((r, i) => (
               <tr key={i}>
-                {columns.map((_, j) => <td key={j}>{r[j] == null ? '—' : String(r[j])}</td>)}
+                {columns.map((_, j) => <td key={j}>{renderCell(r[j])}</td>)}
               </tr>
             ))}
           </tbody>
@@ -102,11 +103,11 @@ function AguiCards({ spec }) {
             onKeyDown={nav ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(it.to); } } : undefined}
           >
             <div className="agui-card-head">
-              {it.title && <span className="agui-card-title">{it.title}</span>}
-              {it.badge && <span className="agui-card-badge">{it.badge}</span>}
+              {it.title && <span className="agui-card-title">{renderInline(normaliseText(it.title), 'ct')}</span>}
+              {it.badge && <span className="agui-card-badge">{normaliseText(it.badge)}</span>}
             </div>
-            {it.subtitle && <div className="agui-card-sub">{it.subtitle}</div>}
-            {it.body && <div className="agui-card-body">{it.body}</div>}
+            {it.subtitle && <div className="agui-card-sub">{renderInline(normaliseText(it.subtitle), 'cs')}</div>}
+            {it.body && <div className="agui-card-body">{renderCell(it.body)}</div>}
             {nav && <span className="agui-card-open">Open <ArrowRight size={13} /></span>}
           </div>
         );
@@ -135,7 +136,7 @@ function AguiComponent({ spec }) {
   if (!body) return null;
   return (
     <div className="agui-block">
-      {spec.title && <div className="agui-block-title">{spec.title}</div>}
+      {spec.title && <div className="agui-block-title">{renderInline(normaliseText(spec.title), 'bt')}</div>}
       {body}
     </div>
   );

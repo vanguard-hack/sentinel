@@ -6727,3 +6727,28 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   color: var(--text-1); font-style: italic;
   border-left: 2px solid var(--blue-400); padding-left: 8px;
 }
+
+/* ── Assistant output typography ───────────────────────────────────────── */
+/* One rhythm for every assistant surface: prose, table cells, card bodies. */
+.rf-prose > *:first-child { margin-top: 0; }
+.rf-prose > *:last-child { margin-bottom: 0; }
+.rf-p { margin: 0 0 9px; line-height: 1.6; }
+.rf-list { margin: 0 0 9px; padding-left: 20px; }
+.rf-list li { margin: 3px 0; line-height: 1.6; }
+.rf-list li::marker { color: var(--text-3); }
+.rf-hr { border: 0; border-top: 1px solid var(--border); margin: 12px 0; }
+.rf-prose a { color: var(--blue-600); text-decoration: underline; text-underline-offset: 2px; word-break: break-word; }
+.rf-prose a:hover { color: var(--blue-700); }
+.rf-prose code, .cf-table code, .agui-card code {
+  font-family: var(--font-mono); font-size: .92em; padding: 1px 5px; border-radius: 5px;
+  background: var(--bg-3); color: var(--text-0);
+}
+.rf-prose strong { font-weight: 650; color: var(--text-0); }
+
+/* Multi-line table cells: "a<br>b" becomes real lines, not a run-on string. */
+.rf-cell-line { display: block; line-height: 1.55; }
+.rf-cell-line + .rf-cell-line { margin-top: 3px; }
+.rf-cell-bullet { color: var(--text-3); margin-right: 6px; }
+.cf-table td, .cf-table th { vertical-align: top; }
+.cf-table td a, .agui-card a { color: var(--blue-600); word-break: break-word; }
+.agui-card-body .rf-cell-line { font-size: inherit; }
