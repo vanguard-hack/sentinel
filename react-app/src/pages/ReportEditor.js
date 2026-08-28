@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle, ChevronDown, ChevronUp, FileDown, Link2, Link2Off, Plus,
@@ -10,12 +10,15 @@ import { reportTypeById, extraSheetDefs, initSheetValues } from '../data/reportT
 import { getReport, saveReport, newReportId, downloadReportPdf, aiPolish } from '../utils/reportStudio';
 import { listInvestigations } from '../utils/investigation';
 import { logAudit } from '../utils/audit';
+import lazyWithReload from '../utils/lazyWithReload';
 
 // The rich-document editor pulls in Tiptap/ProseMirror (~150 kB gzipped), so
 // it is code-split: only reports that actually open a document page pay for it.
-const DocEditor = lazy(() => import('../components/DocEditor'));
-const DocToolbar = lazy(() => import('../components/DocToolbar'));
-const RichField = lazy(() => import('../components/RichField'));
+// lazyWithReload recovers the case where a deploy replaced the chunk while the
+// tab was open — otherwise the stale request fails and blanks the screen.
+const DocEditor = lazyWithReload(() => import('../components/DocEditor'), 'doc-editor');
+const DocToolbar = lazyWithReload(() => import('../components/DocToolbar'), 'doc-toolbar');
+const RichField = lazyWithReload(() => import('../components/RichField'), 'rich-field');
 
 // A4 at 96dpi. The on-screen sheet mirrors what SmartBrowz prints server-side.
 const PAGE_W = 794;
