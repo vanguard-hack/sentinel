@@ -86,6 +86,15 @@ function elementsToDoc(elements) {
   return { type: 'doc', content: flat.length ? flat : [{ type: 'paragraph' }] };
 }
 
+// The toolbar targets the focused field, else the sheet's first field. Either
+// can have been destroyed (page removed, instance swapped), and a destroyed
+// editor throws when queried — so never hand one to the toolbar.
+function pickEditor(activeCtx, pageEditors, pageUid) {
+  const live = (ed) => (ed && !ed.isDestroyed ? ed : null);
+  if (activeCtx && activeCtx.pageUid === pageUid && live(activeCtx.editor)) return activeCtx.editor;
+  return live(pageEditors[pageUid]);
+}
+
 function freshReport(type) {
   return {
     id: newReportId(),
@@ -435,9 +444,7 @@ export default function ReportEditor() {
                         {!locked && (sheet.blocks || []).some((b) => b.kind === 'narrative') && (
                           <Suspense fallback={null}>
                             <DocToolbar
-                              editor={activeCtx && activeCtx.pageUid === page.uid
-                                ? activeCtx.editor
-                                : pageEditors[page.uid] || null}
+                              editor={pickEditor(activeCtx, pageEditors, page.uid)}
                               pageTools={false}
                             />
                           </Suspense>

@@ -33,6 +33,10 @@ export default function RichField({
   onChangeRef.current = onChange;
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  // Last HTML this field emitted or accepted. Tracking it means the sync
+  // effect below never has to ask the editor for its HTML — calling getHTML()
+  // on a destroyed editor dereferences a null schema and throws.
+  const lastHtmlRef = useRef(toHtml(value));
 
   const extensions = useMemo(() => [
     StarterKit.configure({ link: { openOnClick: false } }),
@@ -46,27 +50,36 @@ export default function RichField({
     extensions,
     content: toHtml(value),
     editable: !locked,
-    onUpdate: ({ editor: ed }) => onChangeRef.current(ed.getHTML(), ed.getText()),
+    onUpdate: ({ editor: ed }) => {
+      if (ed.isDestroyed) return;
+      const html = ed.getHTML();
+      lastHtmlRef.current = html;
+      onChangeRef.current(html, ed.getText());
+    },
     onFocus: ({ editor: ed }) => onFocusEditor && onFocusEditor(ed),
     onBlur: () => onBlurEditor && onBlurEditor(),
   }, [extensions]);
 
   useEffect(() => {
-    if (editor) editor.setEditable(!locked);
+    if (editor && !editor.isDestroyed) editor.setEditable(!locked);
   }, [editor, locked]);
 
   // Announce the instance so the sheet's shared toolbar can bind to it before
   // anything is focused — otherwise the toolbar would sit disabled on open.
   useEffect(() => {
-    if (editor && onReadyRef.current) onReadyRef.current(editor);
+    if (editor && !editor.isDestroyed && onReadyRef.current) onReadyRef.current(editor);
   }, [editor]);
 
   // Adopt external changes (e.g. AI polish replacing the text) without
-  // clobbering what the officer is typing.
+  // clobbering what the officer is typing. The editor may already be torn down
+  // when this runs — a page removed, or the instance swapped — so bail out
+  // rather than touching a destroyed instance.
   useEffect(() => {
-    if (!editor || editor.isFocused) return;
+    if (!editor || editor.isDestroyed || editor.isFocused) return;
     const next = toHtml(value);
-    if (next !== editor.getHTML()) editor.commands.setContent(next, { emitUpdate: false });
+    if (next === lastHtmlRef.current) return;
+    lastHtmlRef.current = next;
+    editor.commands.setContent(next, { emitUpdate: false });
   }, [editor, value]);
 
   return (

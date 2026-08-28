@@ -33,12 +33,14 @@ export default function DocEditor({ value, html, locked, onChange }) {
     content: value || (html || ''),
     editable: !locked,
     onUpdate: ({ editor: ed }) => {
+      // Serialising a destroyed editor dereferences a null schema and throws.
+      if (ed.isDestroyed) return;
       onChangeRef.current({ doc: ed.getJSON(), html: ed.getHTML() });
     },
   }, [extensions]);
 
   useEffect(() => {
-    if (editor) editor.setEditable(!locked);
+    if (editor && !editor.isDestroyed) editor.setEditable(!locked);
   }, [editor, locked]);
 
   if (!editor) return <div className="rb-doc-loading">Loading editor…</div>;
