@@ -10,7 +10,9 @@ export default function SlashMenu({ commands, active, onPick, onHover }) {
   // Keep the highlighted row in view when arrowing past the fold.
   useEffect(() => {
     const el = listRef.current?.querySelector('.sc-item.active');
-    if (el) el.scrollIntoView({ block: 'nearest' });
+    // Guarded: not every environment implements scrollIntoView, and failing to
+    // scroll must never take the menu down with it.
+    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' });
   }, [active]);
 
   if (!commands.length) return null;

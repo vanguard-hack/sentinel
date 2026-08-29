@@ -67,8 +67,10 @@ export const COMMANDS = [
   },
 ];
 
-export const visibleCommands = (role) =>
-  COMMANDS.filter((c) => !c.roles || c.roles.includes(role));
+// `showAll` is used while the caller's role is still loading: hiding commands
+// then would flash a two-item menu. The backend re-checks on execution.
+export const visibleCommands = (role, showAll = false) =>
+  COMMANDS.filter((c) => showAll || !c.roles || c.roles.includes(role));
 
 // The dropdown opens only when '/' starts the message — mid-sentence slashes
 // (dates, "and/or", file paths) must not hijack typing.
@@ -77,8 +79,8 @@ export function slashQuery(text) {
   return m ? m[1].toLowerCase() : null;
 }
 
-export function filterCommands(role, fragment) {
-  const list = visibleCommands(role);
+export function filterCommands(role, fragment, showAll = false) {
+  const list = visibleCommands(role, showAll);
   if (!fragment) return list;
   const f = fragment.toLowerCase();
   return list.filter((c) => c.name.startsWith(f));

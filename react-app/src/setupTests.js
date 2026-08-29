@@ -27,3 +27,10 @@ if (typeof Range !== 'undefined') {
 if (typeof Element !== 'undefined' && !Element.prototype.getClientRects) {
   Element.prototype.getClientRects = emptyRectList;
 }
+
+// jsdom implements no layout, so scrollIntoView is absent. Components that
+// keep a highlighted row in view call it; stub it so tests exercise the
+// component rather than crashing on the environment.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = function scrollIntoView() {};
+}

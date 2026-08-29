@@ -84,7 +84,7 @@ export default function Assistant() {
   // Slash commands. The menu opens only on a leading '/', so an ordinary
   // message containing a slash is untouched.
   const { t } = useTranslation();
-  const { role: appRole } = useAccess();
+  const { role: appRole, ready: roleReady } = useAccess();
   const [slashIdx, setSlashIdx] = useState(0);
   const [slashOpen, setSlashOpen] = useState(true);
   const [cmdHint, setCmdHint] = useState(null); // { kind, text, apply }
@@ -439,7 +439,10 @@ export default function Assistant() {
   // Menu visibility is derived from the text, not stored — so it can never
   // disagree with what is actually in the composer.
   const slashFrag = slashQuery(input);
-  const slashList = slashFrag === null ? [] : filterCommands(appRole, slashFrag);
+  // Before roles load `appRole` is null, which would offer only the two
+  // role-less commands. Show the full set until it resolves; the backend
+  // re-checks the role on execution regardless.
+  const slashList = slashFrag === null ? [] : filterCommands(roleReady ? appRole : null, slashFrag, !roleReady);
   const menuOpen = slashOpen && slashFrag !== null && slashList.length > 0;
 
   useEffect(() => { setSlashIdx(0); setSlashOpen(true); }, [slashFrag]);
