@@ -68,7 +68,46 @@ const toHex = (buf) => {
   return out;
 };
 
-export async function uploadScan(file, { batchId = '', caseMasterId = '' } = {}) {
+// Render every page of a PDF to a JPEG blob. pdf.js is heavy (~350 kB), so it
+// is imported only when a PDF actually turns up. Scanned files arrive as PDFs
+// at least as often as images, and Zia OCR only accepts images.
+export async function pdfToImages(file, onProgress) {
+  const pdfjs = await import('pdfjs-dist');
+  // Run the parser on the main thread: the worker is a separate asset that
+  // CRA does not emit, and a scanned page renders fast enough without it.
+  pdfjs.GlobalWorkerOptions.workerSrc = '';
+  const data = new Uint8Array(await file.arrayBuffer());
+  const doc = await pdfjs.getDocument({ data, disableWorker: true, isEvalSupported: false }).promise;
+  const out = [];
+  const count = Math.min(doc.numPages, 40);
+  for (let i = 1; i <= count; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    const page = await doc.getPage(i);
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(2.2, MAX_EDGE / Math.max(base.width, base.height));
+    const viewport = page.getViewport({ scale: Math.max(1, scale) });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // eslint-disable-next-line no-await-in-loop
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    // eslint-disable-next-line no-await-in-loop
+    const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', JPEG_QUALITY));
+    if (blob) {
+      const name = file.name.replace(/\.pdf$/i, '');
+      out.push(new File([blob], `${name} — p${i}.jpg`, { type: 'image/jpeg' }));
+    }
+    if (onProgress) onProgress(i, count);
+  }
+  return out;
+}
+
+export const isPdf = (file) => /pdf/i.test(file.type) || /\.pdf$/i.test(file.name);
+
+export async function uploadScan(file, { batchId = '', caseMasterId = '', appendTo = '' } = {}) {
   const blob = await normaliseImage(file);
   const hex = toHex(await blob.arrayBuffer());
   const qs = new URLSearchParams({
@@ -76,6 +115,7 @@ export async function uploadScan(file, { batchId = '', caseMasterId = '' } = {})
     mime: 'image/jpeg',
     batchId,
     caseMasterId,
+    appendTo,
   });
   const res = await fetch(`/server/rag/digitise/upload?${qs}`, {
     method: 'POST',

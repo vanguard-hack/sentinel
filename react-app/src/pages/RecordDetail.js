@@ -16,7 +16,7 @@ export default function RecordDetail() {
   const { recordId } = useParams();
   const navigate = useNavigate();
   const [rec, setRec] = useState(null);
-  const [imgUrl, setImgUrl] = useState(null);
+  const [imgUrls, setImgUrls] = useState([]);
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -27,12 +27,23 @@ export default function RecordDetail() {
   useEffect(() => {
     let live = true;
     getRecord(recordId)
-      .then((r) => {
+      .then(async (r) => {
         if (!live) return;
         setRec(r);
         setDraft(r.text || '');
         origText.current = r.text || '';
-        return fetchScanUrl(r.key).then((u) => live && setImgUrl(u)).catch(() => {});
+        // A document can be several photographed pages; older records carry a
+        // single `key` instead of a pages array.
+        const keys = (r.pages || []).length ? r.pages.map((pg) => pg.key) : [r.key];
+        const urls = [];
+        for (const k of keys) {
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            urls.push(await fetchScanUrl(k));
+          } catch { /* a missing page shouldn't hide the rest */ }
+          if (!live) return;
+          setImgUrls([...urls]);
+        }
       })
       .catch((e) => live && setError(e.message));
     return () => { live = false; };
@@ -122,11 +133,18 @@ export default function RecordDetail() {
 
         <div className="dg-detail">
           <div className="dg-scan">
-            {imgUrl
-              ? <img src={imgUrl} alt={rec.filename} />
+            {imgUrls.length
+              ? imgUrls.map((u, i) => (
+                  <figure key={i} className="dg-scan-page">
+                    <img src={u} alt={`${rec.filename} — page ${i + 1}`} />
+                    {imgUrls.length > 1 && <figcaption>Page {i + 1} of {(rec.pages || []).length || imgUrls.length}</figcaption>}
+                  </figure>
+                ))
               : <div className="aa-loading">Loading scan…</div>}
             <div className="dg-scan-meta">
-              {rec.filename} · {Math.round((rec.bytes || 0) / 1024)} KB
+              {(rec.pages || []).length > 1
+                ? `${rec.pages.length} pages · ${Math.round((rec.bytes || 0) / 1024)} KB`
+                : `${rec.filename} · ${Math.round((rec.bytes || 0) / 1024)} KB`}
               {rec.uploadedByName ? ` · ${rec.uploadedByName}` : ''}
             </div>
           </div>

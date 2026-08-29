@@ -1776,6 +1776,7 @@ const digSummary = (rec) => ({
   id: rec.id, batchId: rec.batchId || '', filename: rec.filename, mime: rec.mime,
   title: rec.title || rec.filename, docType: rec.docType || 'Unclassified',
   summary: rec.summary || '', tableCount: (rec.tables || []).length,
+  pageCount: (rec.pages || []).length || 1,
   textLength: (rec.text || '').length, status: rec.status || 'processed',
   caseMasterId: rec.caseMasterId || '', crimeNo: rec.crimeNo || '',
   uploadedBy: rec.uploadedBy || '', uploadedByName: rec.uploadedByName || '',
@@ -1851,6 +1852,9 @@ async function handleDigitiseUpload(req, res) {
   const mime = /^image\/(jpeg|png)$/.test(mimeParam) ? mimeParam : 'image/jpeg';
   const batchId = (urlParam(req, 'batchId') || '').slice(0, 40);
   const caseMasterId = (urlParam(req, 'caseMasterId') || '').slice(0, 80);
+  // Adding a page to an existing document rather than filing a new one — the
+  // Adobe-Scan pattern, where a physical file is several photographed pages.
+  const appendTo = (urlParam(req, 'appendTo') || '').slice(0, 64);
 
   const hex = (await readBody(req)).trim();
   if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) return json(res, 400, { error: 'invalid encoding' });
@@ -1880,14 +1884,53 @@ async function handleDigitiseUpload(req, res) {
     try { fs.unlinkSync(tmpPath); } catch { /* best-effort */ }
   }
 
-  const structured = text ? await digStructure(text) : { docType: '', title: '', summary: '', fields: {}, tables: [] };
   const now = Date.now();
+  const page = { key, filename, mime, bytes: buf.length, text, addedAt: now };
+
+  // Appending: fold the new page into the existing document and re-read the
+  // whole thing, so fields and tables reflect every page rather than the first.
+  if (appendTo) {
+    let existing = null;
+    try {
+      existing = JSON.parse((await streamToString(await bucket.getObject(digRecKey(appendTo)))) || 'null');
+    } catch { existing = null; }
+    if (existing && !existing.deleted) {
+      const pages = [...(existing.pages || []), page];
+      const combined = pages.map((pg) => pg.text || '').filter(Boolean).join('\n\n');
+      const restructured = combined ? await digStructure(combined) : null;
+      const merged = {
+        ...existing,
+        pages,
+        text: combined,
+        bytes: pages.reduce((a, pg) => a + (pg.bytes || 0), 0),
+        docType: (restructured && restructured.docType) || existing.docType,
+        title: existing.titleEdited ? existing.title : ((restructured && restructured.title) || existing.title),
+        summary: (restructured && restructured.summary) || existing.summary,
+        fields: (restructured && Object.keys(restructured.fields).length) ? restructured.fields : existing.fields,
+        tables: (restructured && restructured.tables.length) ? restructured.tables : existing.tables,
+        status: combined ? 'processed' : existing.status,
+        updatedAt: now,
+      };
+      await bucket.putObject(digRecKey(appendTo), Buffer.from(JSON.stringify(merged)));
+      const idx0 = (await loadDigIndex(bucket)).filter((r) => r.id !== appendTo);
+      idx0.push(digSummary(merged));
+      await saveDigIndex(bucket, idx0);
+      await storeAuditEvents(req, app, bucket, [{
+        action: 'digitise-add-page', feature: 'Records', path: '/records', detail: filename,
+      }], caller);
+      return json(res, 200, { record: merged });
+    }
+    // The document vanished under us — fall through and file this as its own.
+  }
+
+  const structured = text ? await digStructure(text) : { docType: '', title: '', summary: '', fields: {}, tables: [] };
   const rec = {
     id,
     batchId,
     filename,
     mime,
     key,
+    pages: [page],
     bytes: buf.length,
     text,
     docType: structured.docType || 'Unclassified',
@@ -1959,7 +2002,7 @@ async function handleDigitise(req, res, action) {
     if (!rec) return json(res, 404, { error: 'Record not found' });
     // Officers correct OCR mistakes; the original scan is untouched.
     if (typeof body.text === 'string') rec.text = body.text.slice(0, 200_000);
-    if (typeof body.title === 'string') rec.title = body.title.slice(0, 160);
+    if (typeof body.title === 'string') { rec.title = body.title.slice(0, 160); rec.titleEdited = true; }
     if (typeof body.docType === 'string') rec.docType = body.docType.slice(0, 60);
     if (typeof body.caseMasterId === 'string') rec.caseMasterId = body.caseMasterId.slice(0, 80);
     if (typeof body.crimeNo === 'string') rec.crimeNo = body.crimeNo.slice(0, 120);

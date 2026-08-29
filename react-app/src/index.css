@@ -6854,3 +6854,52 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   .inv-pager { flex-direction: column; }
   .inv-perpage { position: static; }
 }
+
+/* ── Records: one capture area, and the staged-page tray ───────────────── */
+.dg-drop { cursor: default; align-items: center; gap: 16px; flex-wrap: wrap; }
+.dg-drop-icon { flex: 0 0 auto; }
+.dg-drop-copy { flex: 1 1 240px; min-width: 0; }
+.dg-drop-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+
+.dg-tray {
+  margin-bottom: 14px; padding: 12px 14px;
+  background: var(--bg-1); border: 1px solid var(--border-bright); border-radius: 14px;
+}
+.dg-tray-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; font-weight: 600; color: var(--text-1); margin-bottom: 10px;
+}
+.dg-tray-head span { display: inline-flex; align-items: center; gap: 6px; }
+.dg-tray-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.dg-thumb {
+  position: relative; flex: 0 0 auto; width: 78px; height: 100px;
+  border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--bg-2);
+}
+.dg-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dg-thumb-no {
+  position: absolute; left: 4px; bottom: 4px; padding: 1px 6px; border-radius: 999px;
+  font-size: 10px; font-weight: 700; color: #fff; background: rgba(15, 23, 42, .72);
+}
+.dg-thumb-x {
+  position: absolute; top: 3px; right: 3px; display: flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0; cursor: pointer; border: 0; border-radius: 999px;
+  color: #fff; background: rgba(15, 23, 42, .66);
+}
+.dg-thumb-x:hover { background: var(--red); }
+.dg-thumb-add {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  cursor: pointer; color: var(--text-3); background: var(--bg-2);
+  border: 1px dashed var(--border-bright); font: inherit; font-size: 10.5px;
+}
+.dg-thumb-add:hover { color: var(--blue-600); border-color: var(--blue-500); }
+.dg-tray-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* Long filenames must never run past the card edge */
+.dg-card-title, .dg-card-meta span, .dg-card-summary {
+  overflow-wrap: anywhere; word-break: break-word; min-width: 0;
+}
+.dg-card-meta { min-width: 0; }
+.dg-scan-page { margin: 0 0 10px; }
+.dg-scan-page:last-of-type { margin-bottom: 0; }
+.dg-scan-page figcaption { margin-top: 4px; font-size: 10.5px; color: var(--text-3); text-align: center; }
+.dg-scan { max-height: 78vh; overflow-y: auto; }
