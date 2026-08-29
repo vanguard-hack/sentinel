@@ -6903,3 +6903,52 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .dg-scan-page:last-of-type { margin-bottom: 0; }
 .dg-scan-page figcaption { margin-top: 4px; font-size: 10.5px; color: var(--text-3); text-align: center; }
 .dg-scan { max-height: 78vh; overflow-y: auto; }
+
+/* ── Multilingual: Indic script rendering ──────────────────────────────── */
+/* Devanagari and Kannada need taller line boxes than Latin or glyphs clip on
+   the ascenders and vowel signs. The script is set on <html> by i18n.js. */
+:root[data-script="deva"] {
+  --font: 'Noto Sans Devanagari', 'Inter', system-ui, -apple-system, sans-serif;
+}
+:root[data-script="knda"] {
+  --font: 'Noto Sans Kannada', 'Inter', system-ui, -apple-system, sans-serif;
+}
+:root[data-script="deva"] body,
+:root[data-script="knda"] body { line-height: 1.7; }
+:root[data-script="deva"] .sb-item-label,
+:root[data-script="knda"] .sb-item-label,
+:root[data-script="deva"] .aa-title h1,
+:root[data-script="knda"] .aa-title h1 { line-height: 1.45; }
+/* Mixed-script text (an English crime number inside a Kannada sentence) falls
+   back through the stack rather than rendering as boxes. */
+:root[data-script="deva"] code, :root[data-script="knda"] code,
+:root[data-script="deva"] .cl-crimeno, :root[data-script="knda"] .cl-crimeno {
+  font-family: var(--font-mono);
+}
+
+/* Language switcher */
+.sb-lang { position: relative; margin-bottom: 8px; }
+.sb-lang-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px 10px; cursor: pointer; font: inherit; font-size: 12.5px;
+  color: var(--text-2); background: none; border: 1px solid transparent; border-radius: 10px;
+}
+.sb-lang-btn:hover, .sb-lang-btn.open { background: var(--bg-2); color: var(--text-0); }
+.app-sidebar.rail .sb-lang-btn { justify-content: center; }
+.sb-lang-name { font-weight: 600; }
+.sb-lang-menu {
+  position: absolute; bottom: calc(100% + 6px); left: 0; right: 0; min-width: 180px;
+  z-index: 60; padding: 5px; display: flex; flex-direction: column;
+  background: var(--bg-1); border: 1px solid var(--border-bright);
+  border-radius: 9px; box-shadow: var(--shadow-card);
+}
+.app-sidebar.rail .sb-lang-menu { left: 8px; right: auto; }
+.sb-lang-menu button {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 7px 9px; cursor: pointer; font: inherit; font-size: 12.5px;
+  color: var(--text-1); background: none; border: 0; border-radius: 7px;
+}
+.sb-lang-menu button:hover { background: var(--hover-overlay); }
+.sb-lang-menu button.active { color: var(--blue-600); font-weight: 600; }
+.sb-lang-en { margin-left: auto; font-size: 11px; color: var(--text-3); }
+.sb-lang-menu button.active .sb-lang-en { color: var(--blue-600); }

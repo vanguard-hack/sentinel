@@ -3,6 +3,8 @@
 // `generateReply` for a call to a Catalyst serverless function that proxies a
 // real model (e.g. Claude) when you're ready.
 
+import { currentLang } from '../i18n';
+
 const STORAGE_KEY = 'sentinel-chat-sessions';
 
 export const uid = () =>
@@ -282,7 +284,7 @@ export async function generateReply(history) {
     const res = await fetch('/server/rag/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, history: shortTerm, summary }),
+      body: JSON.stringify({ query, history: shortTerm, summary, preferred_lang: currentLang() }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {

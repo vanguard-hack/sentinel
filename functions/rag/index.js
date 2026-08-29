@@ -160,6 +160,94 @@ async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeout
   return null;
 }
 
+// ── Multilingual support (English / Hindi / Kannada) ────────────────────────
+// Officers ask in the language they work in; retrieval and the Data Store are
+// English. So a request carries the language the UI is in (`preferred_lang`),
+// the query is identified and normalised to English for retrieval, and the
+// answer is generated back in the officer's language.
+const SUPPORTED_LANGS = ['en', 'hi', 'kn'];
+const LANG_NAME = { en: 'English', hi: 'Hindi', kn: 'Kannada' };
+
+// Language identification.
+//
+// Devanagari and Kannada occupy distinct Unicode blocks, so their PRESENCE is
+// decisive — no probabilistic model needed. The reverse is not true: Latin
+// script is NOT evidence of English, because Hinglish and Kanglish ("FIR ka
+// detail dijiye") are typed in Latin, and an identifier-only query
+// ("KA01AB1234") carries no linguistic signal at all. For Latin text the
+// officer's selected language decides, which is the setting they chose
+// deliberately.
+function detectLang(text, preferred) {
+  const s = String(text || '');
+  const deva = (s.match(/[\u0900-\u097F]/g) || []).length;
+  const knda = (s.match(/[\u0C80-\u0CFF]/g) || []).length;
+  const latin = (s.match(/[A-Za-z]/g) || []).length;
+  const indic = deva + knda;
+  const total = indic + latin;
+  const pref = SUPPORTED_LANGS.includes(preferred) ? preferred : 'en';
+
+  if (!total) return { lang: pref, confidence: 0, indic: false };
+
+  if (indic > 0) {
+    const lang = deva >= knda ? 'hi' : 'kn';
+    const confidence = Math.max(deva, knda) / total;
+    // A third of the letters in an Indic script is plenty — these queries are
+    // routinely peppered with Latin identifiers and section numbers.
+    if (confidence >= 0.35) return { lang, confidence, indic: true };
+    return { lang: pref, confidence, indic: true, mixed: true };
+  }
+
+  // Pure Latin: English if that is what they selected, otherwise transliterated
+  // Hindi/Kannada, which the normaliser handles.
+  return { lang: pref, confidence: 1, indic: false, mixed: pref !== 'en' };
+}
+
+// Translate a non-English question into English for retrieval, keeping the
+// identifiers that must survive verbatim (crime numbers, sections, plates).
+async function normaliseToEnglish(query, lang) {
+  if (lang === 'en') return query;
+  const out = await callGroq(
+    [
+      {
+        role: 'system',
+        content:
+          'Translate this police query into English for a database and document search. ' +
+          'Keep every identifier EXACTLY as written — crime and FIR numbers, IPC/BNS section ' +
+          'numbers, vehicle registration numbers, dates, proper names. Translate the rest, ' +
+          'using standard Indian police vocabulary (चोरी → theft, ಕಳವು → theft, ' +
+          'दुर्घटना → accident, ಅಪಘಾತ → accident). Output ONLY the English query.',
+      },
+      { role: 'user', content: query },
+    ],
+    { maxTokens: 220, temperature: 0, timeoutMs: 10_000, model: GROQ_MODEL_FAST }
+  );
+  return (out && out.trim()) || query;
+}
+
+// Re-express an English answer in the officer's language. Used at the end of
+// every path, so the language of the reply never depends on which pipeline
+// produced it.
+async function localiseAnswer(text, lang) {
+  if (lang === 'en' || !text || !text.trim()) return text;
+  const out = await callGroq(
+    [
+      {
+        role: 'system',
+        content:
+          `Rewrite the following police assistant answer in ${LANG_NAME[lang]}. Preserve every ` +
+          'number, name, date, crime/FIR number, vehicle registration and section of law exactly ' +
+          'as written — transliterate nothing that identifies a record. Keep any markdown ' +
+          'structure (headings, lists, tables) intact. Legal precision matters more than ' +
+          'elegance: if a term has no accepted translation, keep the English term and gloss it ' +
+          'in brackets. Output ONLY the rewritten answer.',
+      },
+      { role: 'user', content: text },
+    ],
+    { maxTokens: 1400, temperature: 0.2, timeoutMs: 20_000 }
+  );
+  return (out && out.trim()) || text;
+}
+
 const EXPAND_PROMPT =
   'Rewrite the user question as ONE clear, self-contained question for searching a ' +
   'police crime-analytics knowledge base (FIRs, gangs, police stations, modus operandi, ' +
@@ -1870,6 +1958,8 @@ async function handleDigitiseUpload(req, res) {
   // Zia needs a real read stream (see handleOcr) — a bare Buffer is rejected.
   let text = '';
   let ocrError = '';
+  const langParam = (urlParam(req, 'lang') || 'eng').toLowerCase();
+  const ocrLang = ['eng', 'kan', 'hin'].includes(langParam) ? langParam : 'eng';
   const tmpPath = path.join(os.tmpdir(), `dig-${id}.${ext}`);
   try {
     fs.writeFileSync(tmpPath, buf);
@@ -2505,8 +2595,16 @@ module.exports = async (req, res) => {
     if (path.endsWith('/investigation/ocr')) return await handleOcr(req, res);
 
     const body = JSON.parse((await readBody(req)) || '{}');
-    const query = (body.query || '').trim();
-    if (!query) return json(res, 400, { error: 'query is required' });
+    const rawQuery = (body.query || '').trim();
+    if (!rawQuery) return json(res, 400, { error: 'query is required' });
+
+    // Multilingual entry point. Everything downstream — routing, ZCQL, RAG —
+    // works on English; the officer's language is carried through and applied
+    // to the answer at the very end.
+    const preferredLang = SUPPORTED_LANGS.includes(body.preferred_lang) ? body.preferred_lang : 'en';
+    const lid = detectLang(rawQuery, preferredLang);
+    const responseLang = lid.lang;
+    const query = responseLang === 'en' ? rawQuery : await normaliseToEnglish(rawQuery, responseLang);
 
     // Conversation memory from the client: `history` is the short-term window
     // (recent turns, verbatim); `summary` is the long-term digest of older
@@ -2614,9 +2712,11 @@ module.exports = async (req, res) => {
         );
         if (chat && chat.trim()) {
           return json(res, 200, {
-            answer: chat.trim(),
+            answer: await localiseAnswer(chat.trim(), responseLang),
             components: [],
             source: 'chat',
+            detected_lang: lid.lang,
+            response_lang: responseLang,
             sources: [],
           });
         }
@@ -2630,9 +2730,11 @@ module.exports = async (req, res) => {
         if (guide && guide.trim()) {
           const g = extractAgui(guide);
           return json(res, 200, {
-            answer: g.text || guide.trim(),
+            answer: await localiseAnswer(g.text || guide.trim(), responseLang),
             components: g.components,
             source: 'guide',
+            detected_lang: lid.lang,
+            response_lang: responseLang,
             sources: [],
           });
         }
@@ -2667,17 +2769,31 @@ module.exports = async (req, res) => {
               const fromScans = await answerFromDigitised(req, query);
               if (fromScans) {
                 return json(res, 200, {
-                  answer: fromScans.text,
+                  answer: await localiseAnswer(fromScans.text, responseLang),
                   components: [],
                   source: 'digitised-records',
+              detected_lang: lid.lang,
+              response_lang: responseLang,
+                detected_lang: lid.lang,
+                response_lang: responseLang,
+                  detected_lang: lid.lang,
+                  response_lang: responseLang,
+            detected_lang: lid.lang,
+            response_lang: responseLang,
                   sources: fromScans.sources,
                   expandedQuery: searchQuery === query ? undefined : searchQuery,
                 });
               }
               return json(res, 200, {
-                answer: s.unanswerable,
+                answer: await localiseAnswer(s.unanswerable, responseLang),
                 components: [],
                 source: 'zcql',
+              detected_lang: lid.lang,
+              response_lang: responseLang,
+                detected_lang: lid.lang,
+                response_lang: responseLang,
+            detected_lang: lid.lang,
+            response_lang: responseLang,
                 sources: ['Data Store'],
                 expandedQuery: searchQuery === query ? undefined : searchQuery,
               });
@@ -2744,9 +2860,13 @@ module.exports = async (req, res) => {
             // answer the question, so don't show them.
             const showComponents = flat.length > 0 && !isNegative(answerText);
             return json(res, 200, {
-              answer: answerText,
+              answer: await localiseAnswer(answerText, responseLang),
               components: showComponents ? components : [],
               source: 'zcql',
+              detected_lang: lid.lang,
+              response_lang: responseLang,
+            detected_lang: lid.lang,
+            response_lang: responseLang,
               sources: ['Data Store: ' + zcql.tablesInQuery(q).join(', ')],
               zcql: q,
               expandedQuery: searchQuery === query ? undefined : searchQuery,
@@ -2871,11 +2991,34 @@ module.exports = async (req, res) => {
             ]
           : [];
 
+    // One place where the reply becomes the officer's language, so it can
+    // never depend on which pipeline answered.
+    if (responseLang !== 'en') answer = await localiseAnswer(answer, responseLang);
+
+    // Audit trail keeps the query as the officer typed it AND the English it
+    // was normalised to, so a later reviewer can see what was actually searched.
+    if (responseLang !== 'en') {
+      try {
+        const auditApp = catalystSDK.initialize(req);
+        const auditBucket = auditApp.stratus().bucket(CONV_BUCKET);
+        await storeAuditEvents(req, auditApp, auditBucket, [{
+          action: 'assistant-query', feature: 'Assistant', path: '/assistant',
+          detail: `[${lid.lang}→en] ${rawQuery.slice(0, 160)} :: ${query.slice(0, 160)}`,
+        }], await requestUser(auditApp));
+      } catch (e) {
+        console.error('language audit failed (non-fatal):', e && e.message);
+      }
+    }
+
     return json(res, 200, {
       answer,
       components,
       source,
       sources,
+      detected_lang: lid.lang,
+      response_lang: responseLang,
+      lid_confidence: Number(lid.confidence.toFixed(2)),
+      normalized_query: responseLang === 'en' ? undefined : query,
       expandedQuery: searchQuery === query ? undefined : searchQuery,
       zcqlDebug,
       raw: first.data,
