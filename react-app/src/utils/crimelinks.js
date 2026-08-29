@@ -191,15 +191,17 @@ export async function fetchCrimeNetwork() {
 
   // Key players across the whole graph (by connections, then activity).
   const linked = [...persons.values()].filter((p) => p.degree > 0);
+  // Kept deep rather than trimmed to a dozen — the panels paginate, so an
+  // analyst can work down the ranking instead of only seeing the head of it.
   const keyPlayers = [...linked]
     .sort((a, b) => b.degree - a.degree || b.caseCount - a.caseCount)
-    .slice(0, 12);
+    .slice(0, 300);
 
   // Repeat offenders (≥2 cases), most active first.
   const repeatOffenders = [...persons.values()]
     .filter((p) => p.caseCount >= 2)
     .sort((a, b) => b.caseCount - a.caseCount || b.degree - a.degree)
-    .slice(0, 12);
+    .slice(0, 300);
 
   return {
     caseById,

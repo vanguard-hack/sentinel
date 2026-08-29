@@ -6799,3 +6799,13 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .cl-edge-key i:first-child { margin-left: 0; }
 .cl-edge-thin { height: 1px; background: rgba(51,65,90,0.62); }
 .cl-edge-thick { height: 3px; background: rgba(37,58,95,0.75); }
+
+/* Offender rankings: two paginated panels sharing the full card width */
+.cl-players-row { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+@media (max-width: 860px) { .cl-players-row { grid-template-columns: 1fr; } }
+.cl-rank-panel { display: flex; flex-direction: column; min-width: 0; }
+.cl-rank-head { margin-bottom: 10px; }
+.cl-rank-head h3 { margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--text-0); }
+.cl-rank-head span { display: block; margin-top: 2px; font-size: 0.76rem; color: var(--text-3); }
+.cl-rank-panel .cl-rank { flex: 1; }
+.cl-rank-pager { margin-top: 10px; }

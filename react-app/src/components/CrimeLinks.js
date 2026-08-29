@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Share2, AlertTriangle, Crown, Shuffle, Repeat, Users, MapPin, Network, RefreshCw,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { fetchCrimeNetwork, buildOverview } from '../utils/crimelinks';
 import NetworkOverview from './NetworkOverview';
@@ -19,6 +20,51 @@ function Kpi({ value, label }) {
     <div className="cl-kpi">
       <span className="cl-kpi-value">{value}</span>
       <span className="cl-kpi-label">{label}</span>
+    </div>
+  );
+}
+
+
+// A ranked offender list, five to a page. The full ranking runs to hundreds of
+// people; showing it all made the card taller than the screen, and showing
+// only a dozen hid most of it.
+function RankPanel({ title, subtitle, people, renderMeta, renderNums }) {
+  const PAGE = 5;
+  const [page, setPage] = useState(0);
+  const pages = Math.max(1, Math.ceil(people.length / PAGE));
+  const cur = Math.min(page, pages - 1);
+  const slice = people.slice(cur * PAGE, cur * PAGE + PAGE);
+
+  return (
+    <div className="cl-rank-panel">
+      <div className="cl-rank-head">
+        <h3>{title}</h3>
+        <span>{subtitle}</span>
+      </div>
+      <ol className="cl-rank" start={cur * PAGE + 1}>
+        {slice.map((p) => (
+          <li key={p.pid}>
+            <span className="cl-rank-name">{p.name}</span>
+            <span className="cl-rank-meta">{renderMeta(p)}</span>
+            <span className="cl-rank-nums">{renderNums(p)}</span>
+          </li>
+        ))}
+      </ol>
+      <div className="cf-pager cl-rank-pager">
+        <span className="cf-pager-info">
+          {cur * PAGE + 1}–{Math.min(people.length, (cur + 1) * PAGE)} of {people.length}
+        </span>
+        <div className="cf-pager-controls">
+          <button className="cf-page-btn" disabled={cur === 0}
+            onClick={() => setPage(cur - 1)} aria-label="Previous page">
+            <ChevronLeft size={14} />
+          </button>
+          <button className="cf-page-btn" disabled={cur >= pages - 1}
+            onClick={() => setPage(cur + 1)} aria-label="Next page">
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -111,7 +157,7 @@ export default function CrimeLinks() {
         <div className="rp-card-head cl-head">
           <div>
             <h2><Share2 size={16} /> Crime links & criminal networks</h2>
-            <span className="rp-card-sub">Offenders linked when named in the same FIR; the same person tracked across FIRs</span>
+            <span className="rp-card-sub">Offenders linked when named in the same FIR — the same person is tracked across FIRs</span>
           </div>
           <button className="cf-icon-btn" onClick={load} title="Rebuild network"><RefreshCw size={15} /></button>
         </div>
@@ -131,7 +177,7 @@ export default function CrimeLinks() {
       <section className="rp-card rp-card-wide">
         <div className="rp-card-head">
           <h2>Network explorer</h2>
-          <span className="rp-card-sub">{data.networks.length} rings · the whole network is shown; pick one to inspect its members and linked crimes</span>
+          <span className="rp-card-sub">{data.networks.length} rings · The whole network is shown — pick one to inspect its members and linked crimes</span>
         </div>
         <div className="rp-card-body">
           <div className="cl-explorer">
@@ -153,11 +199,11 @@ export default function CrimeLinks() {
                     <span>
                       {net
                         ? `${net.size} members · ${net.edges.length} links · ${net.caseIds.length} crimes · ${net.district}${net.dateFrom ? ` · ${net.dateFrom} → ${net.dateTo}` : ''}`
-                        : `showing the ${overview.shown} largest of ${overview.total} rings · ${overview.clusters} connected group${overview.clusters === 1 ? '' : 's'} · hover or click a ring to trace its links`}
+                        : `Showing the ${overview.shown} largest of ${overview.total} rings · ${overview.clusters} connected group${overview.clusters === 1 ? '' : 's'} · Hover or click a ring to trace its links`}
                     </span>
                     <span className="cl-edge-key">
-                      each circle is a ring, sized by members
-                      <i className="cl-edge-thick" /> linked rings share a district or crime type
+                      Each circle is a ring, sized by members
+                      <i className="cl-edge-thick" /> Linked rings share a district or crime type
                     </span>
                   </div>
                   <NetworkOverview
@@ -220,37 +266,24 @@ export default function CrimeLinks() {
       </section>
 
       {/* Key players + repeat offenders */}
-      <div className="rp-grid cl-players">
-        <section className="rp-card">
-          <div className="rp-card-head"><h2>Most connected offenders</h2><span className="rp-card-sub">Highest degree centrality — likely coordinators</span></div>
-          <div className="rp-card-body">
-            <ol className="cl-rank">
-              {data.keyPlayers.map((p) => (
-                <li key={p.pid}>
-                  <span className="cl-rank-name">{p.name}</span>
-                  <span className="cl-rank-meta"><MapPin size={11} /> {p.district}</span>
-                  <span className="cl-rank-nums">{p.degree} links · {p.caseCount} crimes</span>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </section>
-
-        <section className="rp-card">
-          <div className="rp-card-head"><h2>Repeat offenders</h2><span className="rp-card-sub">Named in the most FIRs</span></div>
-          <div className="rp-card-body">
-            <ol className="cl-rank">
-              {data.repeatOffenders.map((p) => (
-                <li key={p.pid}>
-                  <span className="cl-rank-name">{p.name}</span>
-                  <span className="cl-rank-meta">{p.topType}</span>
-                  <span className="cl-rank-nums">{p.caseCount} crimes · {p.degree} associates</span>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </section>
-      </div>
+      <section className="rp-card rp-card-wide">
+        <div className="rp-card-body cl-players-row">
+          <RankPanel
+            title="Most connected offenders"
+            subtitle="Highest degree centrality — likely coordinators"
+            people={data.keyPlayers}
+            renderMeta={(p) => <><MapPin size={11} /> {p.district}</>}
+            renderNums={(p) => `${p.degree} links · ${p.caseCount} crimes`}
+          />
+          <RankPanel
+            title="Repeat offenders"
+            subtitle="Named in the most FIRs"
+            people={data.repeatOffenders}
+            renderMeta={(p) => p.topType}
+            renderNums={(p) => `${p.caseCount} crimes · ${p.degree} associates`}
+          />
+        </div>
+      </section>
     </>
   );
 }
