@@ -189,8 +189,8 @@ export default function NetworkOverview({ overview, selected, onSelect }) {
     const minY = Math.min(...ys);
     const maxY = Math.max(...ys);
     // Tighter padding, so the map starts closer in and fills the canvas.
-    const pad = 30;
-    const k = Math.min(w / (maxX - minX + pad), h / (maxY - minY + pad), MAX_K) * 1.12;
+    const pad = 55;
+    const k = Math.min(w / (maxX - minX + pad), h / (maxY - minY + pad), MAX_K);
     const to = { k, tx: w / 2 - ((minX + maxX) / 2) * k, ty: h / 2 - ((minY + maxY) / 2) * k };
     if (!animate) { setView(to); return; }
     animateTo(to);

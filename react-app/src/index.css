@@ -6801,22 +6801,31 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .cl-edge-thick { height: 3px; background: rgba(37,58,95,0.75); }
 
 /* Offender rankings: two paginated panels sharing the full card width */
-/* `.rp-card .rp-card-body` sets flex-direction:column at higher specificity,
-   which stacked these two panels; match that specificity so they stay side by
-   side across the full card width. minmax(0,1fr) lets long names shrink
-   instead of forcing the columns apart. */
-.rp-card .rp-card-body.cl-players-row {
+/* The two ranking cards stay separate but share the full width. */
+.cl-players-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 26px;
-  align-items: start;
+  gap: 16px;
 }
-@media (max-width: 680px) {
-  .rp-card .rp-card-body.cl-players-row { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 680px) { .cl-players-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Pager: one joined control, centred under the list. No counts — the arrows
+   are the whole interface. */
+.cl-pager { display: flex; justify-content: center; margin-top: 12px; }
+.cl-pager-nav {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--bg-1);
 }
-.cl-rank-panel { display: flex; flex-direction: column; min-width: 0; }
-.cl-rank-head { margin-bottom: 10px; }
-.cl-rank-head h3 { margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--text-0); }
-.cl-rank-head span { display: block; margin-top: 2px; font-size: 0.76rem; color: var(--text-3); }
-.cl-rank-panel .cl-rank { flex: 1; }
-.cl-rank-pager { margin-top: 10px; }
+.cl-pager-nav button {
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 30px; padding: 0; cursor: pointer;
+  color: var(--text-2); background: none; border: 0;
+}
+.cl-pager-nav button + button { border-left: 1px solid var(--border); }
+.cl-pager-nav button:hover:not(:disabled) { background: var(--hover-overlay); color: var(--blue-600); }
+.cl-pager-nav button:disabled { opacity: .35; cursor: default; }
+.cl-pager-nav button:focus-visible { outline: 2px solid var(--blue-400); outline-offset: -2px; }
+

@@ -25,10 +25,10 @@ function Kpi({ value, label }) {
 }
 
 
-// A ranked offender list, five to a page. The full ranking runs to hundreds of
-// people; showing it all made the card taller than the screen, and showing
-// only a dozen hid most of it.
-function RankPanel({ title, subtitle, people, renderMeta, renderNums }) {
+// A ranked offender list in its own card, five to a page. The full ranking
+// runs to hundreds; showing it all made the card taller than the screen, and
+// showing only a dozen hid most of it.
+function RankCard({ title, subtitle, people, renderMeta, renderNums }) {
   const PAGE = 5;
   const [page, setPage] = useState(0);
   const pages = Math.max(1, Math.ceil(people.length / PAGE));
@@ -36,36 +36,43 @@ function RankPanel({ title, subtitle, people, renderMeta, renderNums }) {
   const slice = people.slice(cur * PAGE, cur * PAGE + PAGE);
 
   return (
-    <div className="cl-rank-panel">
-      <div className="cl-rank-head">
-        <h3>{title}</h3>
-        <span>{subtitle}</span>
+    <section className="rp-card">
+      <div className="rp-card-head">
+        <h2>{title}</h2>
+        <span className="rp-card-sub">{subtitle}</span>
       </div>
-      <ol className="cl-rank" start={cur * PAGE + 1}>
-        {slice.map((p) => (
-          <li key={p.pid}>
-            <span className="cl-rank-name">{p.name}</span>
-            <span className="cl-rank-meta">{renderMeta(p)}</span>
-            <span className="cl-rank-nums">{renderNums(p)}</span>
-          </li>
-        ))}
-      </ol>
-      <div className="cf-pager cl-rank-pager">
-        <span className="cf-pager-info">
-          {cur * PAGE + 1}–{Math.min(people.length, (cur + 1) * PAGE)} of {people.length}
-        </span>
-        <div className="cf-pager-controls">
-          <button className="cf-page-btn" disabled={cur === 0}
-            onClick={() => setPage(cur - 1)} aria-label="Previous page">
-            <ChevronLeft size={14} />
-          </button>
-          <button className="cf-page-btn" disabled={cur >= pages - 1}
-            onClick={() => setPage(cur + 1)} aria-label="Next page">
-            <ChevronRight size={14} />
-          </button>
+      <div className="rp-card-body">
+        <ol className="cl-rank" start={cur * PAGE + 1}>
+          {slice.map((p) => (
+            <li key={p.pid}>
+              <span className="cl-rank-name">{p.name}</span>
+              <span className="cl-rank-meta">{renderMeta(p)}</span>
+              <span className="cl-rank-nums">{renderNums(p)}</span>
+            </li>
+          ))}
+        </ol>
+        <div className="cl-pager">
+          <div className="cl-pager-nav" role="group" aria-label={`${title} pages`}>
+            <button
+              type="button"
+              disabled={cur === 0}
+              onClick={() => setPage(cur - 1)}
+              aria-label="Previous page"
+            >
+              <ChevronLeft size={15} />
+            </button>
+            <button
+              type="button"
+              disabled={cur >= pages - 1}
+              onClick={() => setPage(cur + 1)}
+              aria-label="Next page"
+            >
+              <ChevronRight size={15} />
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -265,25 +272,23 @@ export default function CrimeLinks() {
         </div>
       </section>
 
-      {/* Key players + repeat offenders */}
-      <section className="rp-card rp-card-wide">
-        <div className="rp-card-body cl-players-row">
-          <RankPanel
-            title="Most connected offenders"
-            subtitle="Highest degree centrality — likely coordinators"
-            people={data.keyPlayers}
-            renderMeta={(p) => <><MapPin size={11} /> {p.district}</>}
-            renderNums={(p) => `${p.degree} links · ${p.caseCount} crimes`}
-          />
-          <RankPanel
-            title="Repeat offenders"
-            subtitle="Named in the most FIRs"
-            people={data.repeatOffenders}
-            renderMeta={(p) => p.topType}
-            renderNums={(p) => `${p.caseCount} crimes · ${p.degree} associates`}
-          />
-        </div>
-      </section>
+      {/* Key players + repeat offenders — two separate cards, side by side */}
+      <div className="rp-card-wide cl-players-grid">
+        <RankCard
+          title="Most connected offenders"
+          subtitle="Highest degree centrality — likely coordinators"
+          people={data.keyPlayers}
+          renderMeta={(p) => <><MapPin size={11} /> {p.district}</>}
+          renderNums={(p) => `${p.degree} links · ${p.caseCount} crimes`}
+        />
+        <RankCard
+          title="Repeat offenders"
+          subtitle="Named in the most FIRs"
+          people={data.repeatOffenders}
+          renderMeta={(p) => p.topType}
+          renderNums={(p) => `${p.caseCount} crimes · ${p.degree} associates`}
+        />
+      </div>
     </>
   );
 }
