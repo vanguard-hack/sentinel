@@ -6901,8 +6901,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 }
 
 /* ── Records: one capture area, and the staged-page tray ───────────────── */
-/* The panel itself opens the file picker, so it must look clickable. */
+/* The panel itself opens the file picker, so it must look clickable — and it
+   is focusable now that the Choose files button is gone. */
 .dg-drop { cursor: pointer; align-items: center; gap: 16px; flex-wrap: wrap; }
+.dg-drop:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; }
 .dg-drop-icon { flex: 0 0 auto; }
 .dg-drop-copy { flex: 1 1 240px; min-width: 0; }
 .dg-drop-actions { display: flex; gap: 8px; flex: 0 0 auto; }
@@ -13622,8 +13624,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 }
 
 /* ── Records: one capture area, and the staged-page tray ───────────────── */
-/* The panel itself opens the file picker, so it must look clickable. */
+/* The panel itself opens the file picker, so it must look clickable — and it
+   is focusable now that the Choose files button is gone. */
 .dg-drop { cursor: pointer; align-items: center; gap: 16px; flex-wrap: wrap; }
+.dg-drop:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; }
 .dg-drop-icon { flex: 0 0 auto; }
 .dg-drop-copy { flex: 1 1 240px; min-width: 0; }
 .dg-drop-actions { display: flex; gap: 8px; flex: 0 0 auto; }

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, Camera, CheckCircle2, FileDown, FileText, Images, Layers,
-  Loader2, Search, Trash2, Upload, X, FilePlus2, Files,
+  Loader2, Search, Trash2, X, FilePlus2, Files,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -300,16 +300,18 @@ export default function Records() {
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
-          // The whole panel opens the picker, not just the button in it: a
-          // large area that says "drop files here" reads as clickable, and
-          // finding out it isn't is a small, avoidable annoyance.
-          //
-          // No role="button" or tabIndex, deliberately. The panel already
-          // contains two real buttons, so making it one too would nest
-          // interactive elements and add a duplicate tab stop for a shortcut
-          // that is pure mouse convenience — keyboard users reach both actions
-          // through the buttons themselves.
+          // The panel itself opens the file picker — with the Choose files
+          // button gone it is the only way to browse, so it also has to be
+          // reachable by keyboard. That does nest the camera button inside a
+          // role="button", which is not ideal; leaving file browsing
+          // mouse-only would be considerably worse.
+          role="button"
+          tabIndex={0}
+          aria-label={t('records.chooseFiles')}
           onClick={() => fileRef.current?.click()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click(); }
+          }}
         >
           <Layers size={22} strokeWidth={1.7} className="dg-drop-icon" />
           <div className="dg-drop-copy">
@@ -317,22 +319,15 @@ export default function Records() {
             <span>{t('records.dropHint')}</span>
           </div>
           <div className="dg-drop-actions">
-            {/* Both buttons sit inside the clickable panel, so they must stop
-                the click bubbling — otherwise the camera button would also
-                open the file picker behind it. */}
+            {/* Sits inside the clickable panel, so it stops the click bubbling
+                — otherwise taking a photo would also open the file picker
+                behind it. */}
             <button
               type="button"
               className="aa-btn"
               onClick={(e) => { e.stopPropagation(); cameraRef.current?.click(); }}
             >
               <Camera size={15} /> {t('records.takePhoto')}
-            </button>
-            <button
-              type="button"
-              className="aa-btn primary"
-              onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}
-            >
-              <Upload size={15} /> {t('records.chooseFiles')}
             </button>
           </div>
         </div>
