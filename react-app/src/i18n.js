@@ -45,6 +45,10 @@ const SCRIPT = { en: 'latin', hi: 'deva', kn: 'knda' };
 
 function applyLangAttributes(lng) {
   const code = LANG_CODES.includes(lng) ? lng : 'en';
+  // No document outside a browser (a Node-environment test, or any future
+  // server-side render) — the attributes are purely presentational, so there
+  // is nothing to do rather than anything to fail over.
+  if (typeof document === 'undefined') return;
   const root = document.documentElement;
   root.setAttribute('lang', code);
   root.setAttribute('data-script', SCRIPT[code] || 'latin');

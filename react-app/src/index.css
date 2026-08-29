@@ -6686,7 +6686,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .dg-card-meta span { display: inline-flex; align-items: center; gap: 3px; }
 .dg-card-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--border);
+  /* auto, not a fixed gap: grid stretches every card to the tallest in its
+     row, so a card with no summary would otherwise float its date and author
+     up under the title while its neighbours' sit at the bottom. */
+  margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border);
   font-size: 10.5px; color: var(--text-3);
 }
 
@@ -13379,7 +13382,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .dg-card-meta span { display: inline-flex; align-items: center; gap: 3px; }
 .dg-card-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--border);
+  /* auto, not a fixed gap: grid stretches every card to the tallest in its
+     row, so a card with no summary would otherwise float its date and author
+     up under the title while its neighbours' sit at the bottom. */
+  margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border);
   font-size: 10.5px; color: var(--text-3);
 }
 

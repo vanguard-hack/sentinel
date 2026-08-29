@@ -105,6 +105,15 @@ export async function pdfToImages(file, onProgress) {
   return out;
 }
 
+// Files that already contain their text (spreadsheets, documents, decks,
+// transcripts) are filed here rather than through the scan pipeline: the
+// browser extracts the text and only the text is sent.
+export async function ingestExtracted({ filename, mime, text, tables, sourceKind, note, batchId = '', caseMasterId = '' }) {
+  return post('/server/rag/digitise/ingest', {
+    filename, mime, text, tables, sourceKind, note, batchId, caseMasterId,
+  }).then((d) => d.record);
+}
+
 export const isPdf = (file) => /pdf/i.test(file.type) || /\.pdf$/i.test(file.name);
 
 export async function uploadScan(file, { batchId = '', caseMasterId = '', appendTo = '' } = {}) {

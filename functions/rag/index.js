@@ -2019,6 +2019,7 @@ async function saveDigIndex(bucket, records) {
 }
 const digSummary = (rec) => ({
   id: rec.id, batchId: rec.batchId || '', filename: rec.filename, mime: rec.mime,
+  sourceKind: rec.sourceKind || 'scan',
   title: rec.title || rec.filename, docType: rec.docType || 'Unclassified',
   summary: rec.summary || '', tableCount: (rec.tables || []).length,
   pageCount: (rec.pages || []).length || 1,
@@ -2205,6 +2206,85 @@ async function handleDigitiseUpload(req, res) {
   return json(res, 200, { record: rec });
 }
 
+// POST /digitise/ingest — file a record whose text did NOT come from OCR.
+//
+// Spreadsheets, documents, decks, text files and transcripts already contain
+// their text; the browser extracts it (see utils/extract.js) and posts it
+// here. Everything downstream is identical to a scan: the same AI structuring
+// pass, the same record shape, the same search index. Only the way the text
+// was obtained differs, and `sourceKind` records that honestly.
+async function handleDigitiseIngest(req, res) {
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const filename = String(body.filename || 'document').slice(0, 180);
+  const mime = String(body.mime || 'application/octet-stream').slice(0, 120);
+  const sourceKind = String(body.sourceKind || 'file').slice(0, 24);
+  const text = String(body.text || '');
+  const note = String(body.note || '').slice(0, 300);
+  const batchId = String(body.batchId || '').slice(0, 40);
+  const caseMasterId = String(body.caseMasterId || '').slice(0, 80);
+  if (!text.trim()) return json(res, 400, { error: 'no text was extracted from this file' });
+  // Generous, but bounded: the structuring pass only reads the first 12k
+  // anyway, and the rest is kept for search.
+  if (text.length > 400_000) return json(res, 413, { error: 'extracted text too large (400k characters max)' });
+
+  // Tables the client reconstructed (a spreadsheet's sheets). Sanitised to the
+  // same shape and limits the AI pass produces, so both paths store alike.
+  const tables = (Array.isArray(body.tables) ? body.tables : []).slice(0, 20).map((t) => ({
+    title: String(t.title || '').slice(0, 160),
+    columns: (Array.isArray(t.columns) ? t.columns : []).slice(0, 30).map((c) => String(c).slice(0, 120)),
+    rows: (Array.isArray(t.rows) ? t.rows : []).slice(0, 500)
+      .map((r) => (Array.isArray(r) ? r.slice(0, 30).map((c) => String(c == null ? '' : c).slice(0, 500)) : [])),
+  })).filter((t) => t.columns.length || t.rows.length);
+
+  const structured = await digStructure(text);
+  const now = Date.now();
+  const id = mediaId();
+  const rec = {
+    id,
+    batchId,
+    filename,
+    mime,
+    sourceKind,
+    key: '',            // no stored original: the text IS the record here
+    pages: [],
+    bytes: Buffer.byteLength(text, 'utf8'),
+    text,
+    docType: structured.docType || 'Unclassified',
+    title: structured.title || filename,
+    summary: structured.summary || '',
+    fields: structured.fields,
+    // A spreadsheet's real sheets beat anything the model would reconstruct
+    // from their flattened text, so client tables win when present.
+    tables: tables.length ? tables : structured.tables,
+    caseMasterId,
+    crimeNo: (structured.fields && (structured.fields['Crime No.'] || structured.fields['Crime No'] || structured.fields.crimeNo)) || '',
+    status: 'processed',
+    error: '',
+    note,
+    uploadedBy: String(caller.email_id || '').toLowerCase(),
+    uploadedByName: `${caller.first_name || ''} ${caller.last_name || ''}`.trim() || String(caller.email_id || ''),
+    createdAt: now,
+    updatedAt: now,
+  };
+  await bucket.putObject(digRecKey(id), Buffer.from(JSON.stringify(rec)));
+  const idx = await loadDigIndex(bucket);
+  idx.push(digSummary(rec));
+  await saveDigIndex(bucket, idx);
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'digitise-ingest', feature: 'Records', path: '/records',
+    detail: `${filename} (${sourceKind}, ${text.length} chars)`,
+  }], caller);
+  return json(res, 200, { record: rec });
+}
+
 async function handleDigitise(req, res, action) {
   const body = action === 'list' ? {} : JSON.parse((await readBody(req)) || '{}');
   const app = catalystSDK.initialize(req);
@@ -2323,6 +2403,7 @@ async function searchDigitised(bucket, query, limit = 6) {
       title: rec.title,
       docType: rec.docType,
       filename: rec.filename,
+      sourceKind: rec.sourceKind || 'scan',
       score: total,
       excerpt: String(rec.text || '').slice(Math.max(0, first - 200), Math.max(0, first - 200) + 900),
     });
@@ -2338,18 +2419,34 @@ async function answerFromDigitised(req, query) {
     const bucket = app.stratus().bucket(CONV_BUCKET);
     const hits = await searchDigitised(bucket, query, 4);
     if (!hits.length) return null;
+    const KIND_NOTE = {
+      scan: 'scanned paper, read by OCR',
+      image: 'scanned paper, read by OCR',
+      pdf: 'scanned PDF, read by OCR',
+      sheet: 'spreadsheet',
+      word: 'word-processed document',
+      slides: 'presentation',
+      text: 'text file',
+      audio: 'transcript of an audio recording',
+      video: 'transcript of a video recording',
+    };
     const context = hits
-      .map((h, i) => `[${i + 1}] ${h.title} (${h.docType}, file ${h.filename}):\n${h.excerpt}`)
+      .map((h, i) =>
+        `[${i + 1}] ${h.title} (${h.docType}, ${KIND_NOTE[h.sourceKind] || 'document'}, ` +
+        `file ${h.filename}):\n${h.excerpt}`)
       .join('\n\n');
     const answer = await callGroq(
       [
         {
           role: 'system',
           content:
-            'Answer strictly from these digitised police documents — scans of paper records read by ' +
-            'OCR, so expect occasional garbled characters. Cite the bracketed source number after any ' +
-            'statement drawn from a document. Never state anything the documents do not contain; if ' +
-            'they genuinely do not answer the question, reply exactly: NO_ANSWER',
+            'Answer strictly from these police records. Each is labelled with how it was captured: ' +
+            'OCR of scanned paper (expect occasional garbled characters), a spreadsheet, a document, ' +
+            'a presentation, or a TRANSCRIPT of a recording (expect spoken phrasing and the ' +
+            'occasional misheard word — never quote a transcript as if it were a signed statement). ' +
+            'Cite the bracketed source number after any statement drawn from a record. Never state ' +
+            'anything the records do not contain; if they genuinely do not answer the question, ' +
+            'reply exactly: NO_ANSWER',
         },
         { role: 'user', content: `Question: ${query}\n\nDocuments:\n${context}` },
       ],
@@ -2778,6 +2875,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/investigation/update')) return await handleInvestigation(req, res, 'update');
     if (path.endsWith('/investigation/delete')) return await handleInvestigation(req, res, 'delete');
     if (path.endsWith('/digitise/upload')) return await handleDigitiseUpload(req, res);
+    if (path.endsWith('/digitise/ingest')) return await handleDigitiseIngest(req, res);
     if (path.endsWith('/digitise/list')) return await handleDigitise(req, res, 'list');
     if (path.endsWith('/digitise/get')) return await handleDigitise(req, res, 'get');
     if (path.endsWith('/digitise/update')) return await handleDigitise(req, res, 'update');

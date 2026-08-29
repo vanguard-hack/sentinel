@@ -8,8 +8,10 @@ import TopBar from '../components/TopBar';
 import { useConfirm } from '../components/ConfirmDialog';
 import {
   listRecords, deleteRecord, uploadScan, newBatchId, recordsToCsv, searchRecords,
-  pdfToImages, isPdf,
+  pdfToImages, isPdf, ingestExtracted,
 } from '../utils/digitise';
+import { extractText, detectKind, isPageKind, KIND_LABEL } from '../utils/extract';
+import { transcribeAudio } from '../utils/assistant';
 import { logAudit } from '../utils/audit';
 import { useTranslation } from 'react-i18next';
 
@@ -81,13 +83,52 @@ export default function Records() {
     });
   }, [records, q, typeFilter, hits]);
 
+  // Read and file everything that carries its own text. Each file becomes one
+  // record; the queue reports them alongside scanned pages so the officer sees
+  // one list, not two.
+  const fileReadable = useCallback(async (files) => {
+    const batchId = newBatchId();
+    setQueue((prev) => [
+      ...prev,
+      ...files.map((f) => ({ key: `${batchId}-${f.name}`, name: f.name, status: 'waiting' })),
+    ]);
+    for (const f of files) {
+      const key = `${batchId}-${f.name}`;
+      const mark = (patch) => setQueue((prev) => prev.map((x) => (x.key === key ? { ...x, ...patch } : x)));
+      mark({ status: 'working' });
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const { text, tables, kind, note } = await extractText(f, {
+          transcribe: (blob, name) => transcribeAudio(new File([blob], name || 'audio.wav', { type: 'audio/wav' })),
+          onProgress: (m) => mark({ detail: m }),
+        });
+        // eslint-disable-next-line no-await-in-loop
+        await ingestExtracted({
+          filename: f.name,
+          mime: f.type || 'application/octet-stream',
+          text, tables, note, sourceKind: kind, batchId,
+        });
+        mark({ status: 'done', detail: '' });
+        logAudit('records-ingest', 'Records', `${f.name} (${kind})`);
+      } catch (e) {
+        mark({ status: 'failed', error: e.message, detail: '' });
+      }
+    }
+    refresh();
+  }, [refresh]);
+
   // Files (and PDF pages) are staged, not uploaded — the officer decides what
   // belongs to which document before anything is filed.
   const stage = useCallback(async (files) => {
     const list = [...files];
     const accepted = [];
-    let skipped = 0;
+    const problems = [];
+    // Files that already contain their text never enter the page tray — a
+    // spreadsheet or a recording is not a page of anything, so it is read and
+    // filed on the spot rather than waiting to be assembled into a document.
+    const readable = [];
     for (const f of list) {
+      const kind = detectKind(f);
       if (isPdf(f)) {
         try {
           setPreparing(`Reading ${f.name}…`);
@@ -95,17 +136,24 @@ export default function Records() {
           const pages = await pdfToImages(f, (i, n) => setPreparing(`Reading ${f.name} — page ${i} of ${n}…`));
           accepted.push(...pages);
         } catch (e) {
-          setError(`Could not read ${f.name} — ${e.message}`);
+          problems.push(`${f.name} — ${e.message}`);
         } finally {
           setPreparing(null);
         }
-      } else if (/^image\//.test(f.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name)) {
+      } else if (isPageKind(kind)) {
         accepted.push(f);
+      } else if (kind === 'unsupported' || kind === 'legacy') {
+        // Named explicitly: "skipped" without a reason leaves the officer
+        // guessing whether the file was too big, wrong, or simply lost.
+        problems.push(kind === 'legacy'
+          ? `${f.name} is in the old Office format — re-save it as .docx, .xlsx or .pptx`
+          : `${f.name} is not a file type Records can read`);
       } else {
-        skipped += 1;
+        readable.push(f);
       }
     }
-    if (skipped) setError(`${skipped} file${skipped === 1 ? '' : 's'} skipped — only JPG, PNG, WebP, HEIC and PDF files can be scanned.`);
+    if (readable.length) fileReadable(readable);
+    if (problems.length) setError(problems.join(' · '));
     if (!accepted.length) return;
     setTray((prev) => [
       ...prev,
@@ -115,7 +163,7 @@ export default function Records() {
         url: URL.createObjectURL(file),
       })),
     ]);
-  }, []);
+  }, [fileReadable]);
 
   const dropPage = (key) => setTray((prev) => {
     const gone = prev.find((p) => p.key === key);
@@ -210,7 +258,7 @@ export default function Records() {
         />
         <input
           ref={fileRef} type="file" multiple hidden
-          accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+          accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.gif,.bmp,.tif,.tiff,.pdf,.docx,.docm,.xlsx,.xlsm,.xls,.csv,.tsv,.ods,.pptx,.pptm,.txt,.md,.log,.json,.xml,.rtf,.eml,.vtt,.srt,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.amr,.mp4,.mov,.m4v,.webm,.3gp,image/*,application/pdf,audio/*,video/*,text/*"
           onChange={(e) => { if (e.target.files?.length) stage(e.target.files); e.target.value = ''; }}
         />
 
@@ -280,8 +328,8 @@ export default function Records() {
             <div className="dg-queue-head">
               <span>
                 {busy > 0
-                  ? <><Loader2 size={14} className="dg-spin" /> Reading {busy} page{busy === 1 ? '' : 's'}…</>
-                  : <><CheckCircle2 size={14} /> {done} page{done === 1 ? '' : 's'} digitised</>}
+                  ? <><Loader2 size={14} className="dg-spin" /> Reading {busy} file{busy === 1 ? '' : 's'}…</>
+                  : <><CheckCircle2 size={14} /> {done} file{done === 1 ? '' : 's'} digitised</>}
               </span>
               {busy === 0 && (
                 <button type="button" className="cf-icon-btn" title="Clear" onClick={() => setQueue([])}>
@@ -295,7 +343,7 @@ export default function Records() {
                   <span className="dg-queue-name">{x.name}</span>
                   <span className="dg-queue-status">
                     {x.status === 'waiting' && 'Waiting'}
-                    {x.status === 'working' && 'Reading…'}
+                    {x.status === 'working' && (x.detail || 'Reading…')}
                     {x.status === 'done' && 'Done'}
                     {x.status === 'failed' && (x.error || 'Failed')}
                   </span>
@@ -304,7 +352,7 @@ export default function Records() {
             </div>
             {failed.length > 0 && (
               <div className="dg-queue-foot">
-                {failed.length} page{failed.length === 1 ? '' : 's'} could not be read — try a sharper, better-lit photo.
+                {failed.length} file{failed.length === 1 ? '' : 's'} could not be read. For a photographed page, try a sharper, better-lit shot.
               </div>
             )}
           </div>
@@ -368,6 +416,9 @@ export default function Records() {
                 : r.summary && <p className="dg-card-summary">{r.summary}</p>}
               <div className="dg-card-meta">
                 <span><FileText size={11} /> {r.filename}</span>
+                {r.sourceKind && r.sourceKind !== 'scan' && KIND_LABEL[r.sourceKind] && (
+                  <span>{KIND_LABEL[r.sourceKind]}</span>
+                )}
                 {r.pageCount > 1 && <span><Files size={11} /> {r.pageCount} pages</span>}
                 {r.tableCount > 0 && <span>{r.tableCount} table{r.tableCount === 1 ? '' : 's'}</span>}
                 {r.crimeNo && <span>{r.crimeNo}</span>}
