@@ -18,6 +18,10 @@ import TopBar from '../components/TopBar';
 import i18n from '../i18n';
 import { useAuth } from '../context/AuthContext';
 import { exportConversationPdf } from '../utils/reportPdf';
+import SlashMenu from '../components/SlashMenu';
+import { useAccess } from '../context/AccessContext';
+import { slashQuery, filterCommands, parseCommand, closestCommand } from '../utils/slashCommands';
+import { useTranslation } from 'react-i18next';
 
 // Short, domain-relevant prompts shown on an empty conversation.
 const SUGGESTIONS = [
@@ -77,6 +81,13 @@ export default function Assistant() {
   const histRef = useRef({ idx: null, draft: '' });
 
   const textareaRef = useRef(null);
+  // Slash commands. The menu opens only on a leading '/', so an ordinary
+  // message containing a slash is untouched.
+  const { t } = useTranslation();
+  const { role: appRole } = useAccess();
+  const [slashIdx, setSlashIdx] = useState(0);
+  const [slashOpen, setSlashOpen] = useState(true);
+  const [cmdHint, setCmdHint] = useState(null); // { kind, text, apply }
   const fileRef = useRef(null);
   const threadRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -281,6 +292,50 @@ export default function Assistant() {
     const text = (typeof override === 'string' ? override : input).trim();
     if ((!text && attachments.length === 0) || sending) return;
 
+    // Slash commands are validated here rather than at the backend, so a typo
+    // or a missing argument is corrected in place instead of costing a round
+    // trip and an error bubble.
+    const parsed = parseCommand(text);
+    if (parsed) {
+      if (!parsed.cmd) {
+        const near = closestCommand(parsed.name, appRole);
+        if (near) {
+          // A near miss gets a one-click correction; anything else falls
+          // through and is asked as an ordinary question.
+          setCmdHint({
+            kind: 'suggest',
+            text: `“/${parsed.name}” isn’t a command.`,
+            label: `Did you mean /${near.name}?`,
+            apply: () => { setInput(`/${near.name}${near.arg ? ' ' : ''}`); setCmdHint(null); textareaRef.current?.focus(); },
+          });
+          return;
+        }
+      } else {
+        const allowed = !parsed.cmd.roles || parsed.cmd.roles.includes(appRole);
+        if (!allowed) {
+          setCmdHint({ kind: 'denied', text: `/${parsed.cmd.name} isn’t available for your role.` });
+          return;
+        }
+        if (parsed.cmd.needsArg && !parsed.arg) {
+          setCmdHint({
+            kind: 'arg',
+            text: `/${parsed.cmd.name} needs a value — ${parsed.cmd.arg}`,
+          });
+          textareaRef.current?.focus();
+          return;
+        }
+        if (parsed.cmd.name === 'clear') {
+          // Client-side only — no request, no page reload: the chat context IS
+          // the active conversation, so starting a fresh one clears it.
+          setInput('');
+          setCmdHint(null);
+          startNewChat();
+          return;
+        }
+      }
+    }
+    setCmdHint(null);
+
     const userMsg = {
       id: uid(),
       role: 'user',
@@ -360,7 +415,7 @@ export default function Assistant() {
     } finally {
       setSending(false);
     }
-  }, [input, attachments, sending, activeId, sessions, pushSession]);
+  }, [input, attachments, sending, activeId, sessions, pushSession, appRole, startNewChat]);
 
   // Cycle previous/next questions with Up/Down (readline-style).
   const navigateHistory = (dir) => {
@@ -381,7 +436,39 @@ export default function Assistant() {
     return true;
   };
 
+  // Menu visibility is derived from the text, not stored — so it can never
+  // disagree with what is actually in the composer.
+  const slashFrag = slashQuery(input);
+  const slashList = slashFrag === null ? [] : filterCommands(appRole, slashFrag);
+  const menuOpen = slashOpen && slashFrag !== null && slashList.length > 0;
+
+  useEffect(() => { setSlashIdx(0); setSlashOpen(true); }, [slashFrag]);
+
+  const applyCommand = useCallback((cmd) => {
+    // Commands that take no argument are ready to run; the rest leave the
+    // cursor after a space, waiting for the value.
+    setInput(`/${cmd.name}${cmd.needsArg || cmd.arg ? ' ' : ''}`);
+    setSlashOpen(false);
+    setCmdHint(null);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (el) { el.focus(); const n = el.value.length; el.setSelectionRange(n, n); }
+    });
+  }, []);
+
   const onKeyDown = (e) => {
+    if (menuOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault(); setSlashIdx((i) => (i + 1) % slashList.length); return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault(); setSlashIdx((i) => (i - 1 + slashList.length) % slashList.length); return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault(); applyCommand(slashList[slashIdx] || slashList[0]); return;
+      }
+      if (e.key === 'Escape') { e.preventDefault(); setSlashOpen(false); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       send();
@@ -711,6 +798,23 @@ export default function Assistant() {
 
           {/* ── Composer ── */}
           <div className="as-composer-wrap">
+            {cmdHint && (
+              <div className="sc-hint">
+                <span>{cmdHint.text}</span>
+                {cmdHint.apply && (
+                  <button type="button" onClick={cmdHint.apply}>{cmdHint.label}</button>
+                )}
+                <button type="button" className="sc-hint-x" aria-label="Dismiss" onClick={() => setCmdHint(null)}>×</button>
+              </div>
+            )}
+            {menuOpen && (
+              <SlashMenu
+                commands={slashList}
+                active={slashIdx}
+                onHover={setSlashIdx}
+                onPick={applyCommand}
+              />
+            )}
             <div className="as-composer">
               {attachments.length > 0 && (
                 <div className="as-attach-row">
@@ -748,7 +852,7 @@ export default function Assistant() {
                   ref={textareaRef}
                   className="as-input"
                   rows={1}
-                  placeholder="Message Sentinel…   (↑/↓ for history)"
+                  placeholder={t('slash.placeholder', 'Ask a question or type / for commands…')}
                   value={input}
                   onChange={(e) => { setInput(e.target.value); histRef.current.idx = null; }}
                   onKeyDown={onKeyDown}

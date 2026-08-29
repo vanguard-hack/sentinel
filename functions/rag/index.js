@@ -160,6 +160,84 @@ async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeout
   return null;
 }
 
+// ── Slash commands ──────────────────────────────────────────────────────────
+// A fixed set of shortcuts for the queries officers repeat. Each one becomes a
+// precise, pre-written question for the pipeline that already answers it,
+// rather than a parallel query stack: the same ZCQL guardrails, the same role
+// checks, the same audit trail.
+//
+// Where Sentinel genuinely has no such data — there is no vehicle registry in
+// the Data Store — the command says so plainly instead of returning something
+// invented. A fabricated ownership record in a police tool is worse than no
+// answer at all.
+const SLASH_ROLES = {
+  fir: ['admin', 'supervisor', 'investigator'],
+  case: ['admin', 'supervisor', 'investigator'],
+  suspect: ['admin', 'supervisor', 'investigator'],
+  vehicle: ['admin', 'supervisor', 'investigator'],
+  person: ['admin', 'supervisor', 'investigator'],
+  'crime-stats': ['admin', 'supervisor', 'investigator', 'analyst', 'policymaker'],
+  hotspot: ['admin', 'supervisor', 'investigator', 'analyst', 'policymaker'],
+  wanted: ['admin', 'supervisor', 'investigator'],
+  missing: ['admin', 'supervisor', 'investigator'],
+  help: null,
+};
+// Commands touching person or case records — logged on every execution.
+const SLASH_SENSITIVE = new Set(['fir', 'case', 'suspect', 'vehicle', 'person', 'wanted', 'missing']);
+
+const SLASH_HELP = [
+  ['/fir [FIR number]', 'Get FIR details and current status'],
+  ['/case [case ID]', 'Case summary, IO assigned, current stage'],
+  ['/suspect [name or ID]', 'Criminal record / antecedents check'],
+  ['/vehicle [registration no]', 'Vehicle ownership & crime linkage check'],
+  ['/person [name or phone]', 'Person search across connected records'],
+  ['/crime-stats [district/PS] [date range]', 'Crime count summary by type'],
+  ['/hotspot [area]', 'Crime hotspot data for a location'],
+  ['/wanted [name or area]', 'Search wanted/absconding offenders list'],
+  ['/missing [name or ID]', 'Missing person case lookup'],
+  ['/help', 'List all available commands'],
+  ['/clear', 'Clear current chat context'],
+];
+
+function parseSlash(text) {
+  const s = String(text || '').trim();
+  if (!s.startsWith('/')) return null;
+  const sp = s.indexOf(' ');
+  const name = (sp === -1 ? s.slice(1) : s.slice(1, sp)).toLowerCase();
+  const arg = sp === -1 ? '' : s.slice(sp + 1).trim();
+  if (!name || !(name in SLASH_ROLES)) return null;
+  return { name, arg };
+}
+
+// Turn a command into the question the existing pipeline answers best. The
+// wording matters: it is what the router and the ZCQL generator see.
+function slashToQuery(name, arg) {
+  switch (name) {
+    case 'fir':
+      return `Show the FIR with crime number ${arg} — registration date, police station, district, sections of law, case status and brief facts.`;
+    case 'case':
+      return `Show case ${arg} — case number, investigating officer, police station, district, current case status and registration date.`;
+    case 'suspect':
+      return `List every case in which the accused person ${arg} is named, with crime number, date, police station and case status.`;
+    case 'person':
+      return `Find every record naming the person ${arg} — as accused, complainant or victim — with the crime number and date of each case.`;
+    case 'crime-stats':
+      return arg
+        ? `Give a crime count summary by crime type for ${arg}.`
+        : 'Give a crime count summary by crime major head across all districts.';
+    case 'hotspot':
+      return arg
+        ? `Which police stations and areas in ${arg} have the highest number of registered crimes? List the top ones by count.`
+        : 'Which districts have the highest number of registered crimes? List the top districts by count.';
+    case 'wanted':
+      return arg
+        ? `List accused persons connected to ${arg} who have no arrest or surrender record, with their crime numbers and case status.`
+        : 'List accused persons who have no arrest or surrender record, with their crime numbers and case status.';
+    default:
+      return arg || name;
+  }
+}
+
 // ── Multilingual support (English / Hindi / Kannada) ────────────────────────
 // Officers ask in the language they work in; retrieval and the Data Store are
 // English. So a request carries the language the UI is in (`preferred_lang`),
@@ -2604,7 +2682,78 @@ module.exports = async (req, res) => {
     const preferredLang = SUPPORTED_LANGS.includes(body.preferred_lang) ? body.preferred_lang : 'en';
     const lid = detectLang(rawQuery, preferredLang);
     const responseLang = lid.lang;
-    const query = responseLang === 'en' ? rawQuery : await normaliseToEnglish(rawQuery, responseLang);
+
+    // ── Slash commands ───────────────────────────────────────────────────
+    // Resolved before anything else: a command is an explicit instruction, so
+    // it should never be re-interpreted by the router.
+    const slash = parseSlash(rawQuery);
+    let slashName = null;
+    if (slash) {
+      slashName = slash.name;
+      const slashApp = catalystSDK.initialize(req);
+      const slashBucket = slashApp.stratus().bucket(CONV_BUCKET);
+      const { role: slashRole, caller: slashCaller } = await myRole(slashApp, slashBucket);
+      const allowed = SLASH_ROLES[slash.name];
+      if (allowed && (!slashCaller || !allowed.includes(slashRole))) {
+        return json(res, 200, {
+          answer: await localiseAnswer(
+            `The /${slash.name} command isn't available for your role.`, responseLang),
+          components: [], source: 'command',
+          detected_lang: lid.lang, response_lang: responseLang,
+        });
+      }
+
+      // Compliance: who ran what, against which argument, and when.
+      if (SLASH_SENSITIVE.has(slash.name)) {
+        await storeAuditEvents(req, slashApp, slashBucket, [{
+          action: `command:/${slash.name}`, feature: 'Assistant', path: '/assistant',
+          detail: slash.arg ? slash.arg.slice(0, 200) : '(no argument)',
+        }], slashCaller);
+      }
+
+      if (slash.name === 'help') {
+        const lines = SLASH_HELP.map(([c, d]) => `- \`${c}\` — ${d}`).join('\n');
+        return json(res, 200, {
+          answer: await localiseAnswer(`**Available commands**\n\n${lines}`, responseLang),
+          components: [], source: 'command',
+          detected_lang: lid.lang, response_lang: responseLang,
+        });
+      }
+
+      // No vehicle registry is connected to Sentinel. Saying so is the honest
+      // answer; inventing an ownership record would be far worse than none.
+      if (slash.name === 'vehicle') {
+        return json(res, 200, {
+          answer: await localiseAnswer(
+            `Sentinel has no vehicle registry connected, so \`/vehicle\` cannot look up ownership for **${slash.arg}**.\n\n` +
+            'The case records do hold vehicle details inside FIR brief facts where an officer recorded them — ' +
+            `try asking "which FIRs mention ${slash.arg}" to search that text instead.`, responseLang),
+          components: [], source: 'command',
+          detected_lang: lid.lang, response_lang: responseLang,
+        });
+      }
+
+      // Missing-person cases are not a structured registry either; they live in
+      // digitised paper and drafted reports, which is where this searches.
+      if (slash.name === 'missing') {
+        const hits = await searchDigitised(slashBucket, `missing person ${slash.arg}`, 5);
+        const answer = hits.length
+          ? `**Missing-person records matching “${slash.arg}”**\n\n` +
+            hits.map((h, i) => `${i + 1}. **${h.title}** (${h.docType}) — ${h.excerpt.slice(0, 180).trim()}…`).join('\n')
+          : `No missing-person record matching “${slash.arg}” was found.\n\n` +
+            'Sentinel holds no structured missing-person registry — this searches digitised paper records, ' +
+            'so a case only appears here once its file has been scanned into Records.';
+        return json(res, 200, {
+          answer: await localiseAnswer(answer, responseLang),
+          components: [], source: 'command',
+          detected_lang: lid.lang, response_lang: responseLang,
+        });
+      }
+    }
+
+    const commandQuery = slash ? slashToQuery(slash.name, slash.arg) : null;
+    const query = commandQuery
+      || (responseLang === 'en' ? rawQuery : await normaliseToEnglish(rawQuery, responseLang));
 
     // Conversation memory from the client: `history` is the short-term window
     // (recent turns, verbatim); `summary` is the long-term digest of older
@@ -3017,6 +3166,7 @@ module.exports = async (req, res) => {
       sources,
       detected_lang: lid.lang,
       response_lang: responseLang,
+      command: slashName || undefined,
       lid_confidence: Number(lid.confidence.toFixed(2)),
       normalized_query: responseLang === 'en' ? undefined : query,
       expandedQuery: searchQuery === query ? undefined : searchQuery,
