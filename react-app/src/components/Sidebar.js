@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { splitEmail } from '../utils/profile';
 import {
   Shield, Home, AlertTriangle, Map, Brain, Database,
   MessageSquare, Users, ChevronRight, Sun, Moon, LogOut,
@@ -66,6 +67,10 @@ export default function Sidebar() {
     [user?.first_name, user?.last_name].filter(Boolean).join(' ') ||
     user?.email_id || 'Officer';
   const role = isAdmin ? 'Admin' : ROLE_LABELS[appRole] || 'Officer';
+  // The name falls back to the address when an account has no first or last
+  // name, and printing it again underneath would say nothing new.
+  const email = displayName === user?.email_id ? '' : (user?.email_id || '');
+  const mail = splitEmail(email);
 
   // Hide what the route guard would block anyway. Until roles load the full
   // list shows (the guard still protects every route), so the sidebar never
@@ -182,11 +187,21 @@ export default function Sidebar() {
             <button
               className={`sb-account ${menuOpen ? 'open' : ''}`}
               onClick={() => setMenuOpen((o) => !o)}
-              title={collapsed ? displayName : undefined}
+              title={collapsed ? [displayName, email].filter(Boolean).join(' · ') : undefined}
             >
               <Avatar user={user} size={34} />
               <span className="sb-account-id">
                 <span className="sb-account-name">{displayName}</span>
+                {mail && (
+                  // Two spans, not one string: the local part is what gives way
+                  // when the address is too long, so the domain survives. The
+                  // full address is on the title for the cases where it does
+                  // not fit at all.
+                  <span className="sb-account-mail" title={email}>
+                    <span className="sb-account-mail-user">{mail.user}</span>
+                    {mail.domain && <span className="sb-account-mail-domain">{mail.domain}</span>}
+                  </span>
+                )}
                 <span className="sb-account-role">{role}</span>
               </span>
               <ChevronsUpDown size={15} className="sb-account-caret" />

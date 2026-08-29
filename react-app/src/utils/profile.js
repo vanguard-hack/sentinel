@@ -28,3 +28,18 @@ export async function saveProfile(email, fields) {
   if (!res.ok) throw new Error(data.error || data.message || `save failed (HTTP ${res.status})`);
   return data.profile || fields;
 }
+
+// Split an address at its last "@" so the two halves can be truncated
+// independently.
+//
+// A plain ellipsis over the whole string eats the end first, turning
+// "deepujphnson777@gmail.com" into "deepujphnson777@gm…" — which drops the one
+// part that says WHICH account is signed in. Splitting lets the local part give
+// way instead, so what survives is "deepujp…@gmail.com".
+export function splitEmail(email) {
+  const addr = String(email || '').trim();
+  if (!addr) return null;
+  const at = addr.lastIndexOf('@');
+  if (at <= 0 || at === addr.length - 1) return { user: addr, domain: '' };
+  return { user: addr.slice(0, at), domain: addr.slice(at) };
+}

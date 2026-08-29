@@ -14248,3 +14248,57 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 /* The full text is the document, so it gets room to be read rather than the
    letterbox a details-summary gave it. */
 .as-src-fulltext { max-height: 420px; }
+
+/* ── Sidebar account: the signed-in officer's address ────────────────────── */
+/* Appended at the end deliberately: the .sb-account block appears twice
+   earlier in this stylesheet, and rules that must win over both belong after
+   both. */
+
+/* The text column is the only thing that may shrink — the avatar and the
+   caret are fixed — and it is clipped as a hard stop, so nothing inside it can
+   widen the button or spill past its edge whatever the address turns out to
+   be. */
+.sb-account-id { overflow: hidden; }
+
+.sb-account-name { line-height: 1.3; }
+
+.sb-account-mail {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-3);
+}
+/* Middle truncation without measuring anything: the local part is the half
+   that gives way, so the domain — which says which account this is — survives.
+   Ellipsis over the whole address would eat the domain first. */
+.sb-account-mail-user {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The domain keeps its natural width, but never more than the line minus a few
+   characters of the local part — so "@gmail.com" always shows in full, a very
+   long domain truncates rather than swallowing the whole line, and neither can
+   push the button wider or escape it. */
+.sb-account-mail-domain {
+  flex: 0 0 auto;
+  max-width: calc(100% - 4ch);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Three stacked lines: the role steps back so it does not compete with the
+   address for the eye. */
+.sb-account-role {
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-4);
+  line-height: 1.4;
+}
