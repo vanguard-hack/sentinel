@@ -108,8 +108,14 @@ export default function RecordDetail() {
       <div className="cf-page">
         <TopBar title="Record" parent="Records" parentTo="/records" />
         <div className="pp-body">
-          <button type="button" className="dg-back" onClick={() => navigate('/records')}>
-            <ArrowLeft size={15} /> Records
+          <button
+            type="button"
+            className="dg-back"
+            onClick={() => navigate('/records')}
+            title="Back to records"
+            aria-label="Back to records"
+          >
+            <ArrowLeft size={16} />
           </button>
           <div className="aa-error"><AlertTriangle size={16} /> {error}</div>
         </div>
@@ -131,8 +137,14 @@ export default function RecordDetail() {
       <div className="pp-body">
         {error && <div className="aa-error"><AlertTriangle size={16} /> {error}</div>}
 
-        <button type="button" className="dg-back" onClick={() => navigate('/records')}>
-          <ArrowLeft size={15} /> Records
+        <button
+          type="button"
+          className="dg-back"
+          onClick={() => navigate('/records')}
+          title="Back to records"
+          aria-label="Back to records"
+        >
+          <ArrowLeft size={16} />
         </button>
 
         <div className="dg-detail-head">

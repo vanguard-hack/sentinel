@@ -2365,6 +2365,86 @@ const MIME_BY_EXT = {
 const mimeForKey = (key) =>
   MIME_BY_EXT[String(key).split('.').pop().toLowerCase()] || 'application/octet-stream';
 
+// POST /digitise/source-url  { id, ext } -> { url, key }
+//
+// Hands the browser a short-lived pre-signed PUT so it can send the file
+// STRAIGHT to Stratus. Routing a recording through the function meant
+// hex-encoding it (doubling it on the wire), holding it in the function's
+// memory, and doing it all inside a request budget shared with OCR and the
+// model — fine for a photographed page, wrong for a 40-minute interview.
+// Direct upload has none of those limits.
+async function handleDigitiseSourceUrl(req, res) {
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const id = String(body.id || '').slice(0, 64);
+  const ext = String(body.ext || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8);
+  if (!id) return json(res, 400, { error: 'id is required' });
+
+  const key = digFileKey(id, ext);
+  try {
+    const signed = await bucket.generatePreSignedUrl(key, 'PUT', { expiryIn: '900' });
+    const url = signed && (signed.signature || signed.url);
+    if (!url) return json(res, 502, { error: 'no signed url returned' });
+    return json(res, 200, { url, key });
+  } catch (e) {
+    // Reported, not hidden: the caller falls back to uploading through the
+    // function, and knowing WHY the fast path was unavailable is the
+    // difference between a one-line config fix and a guessing game.
+    return json(res, 502, { error: 'presign failed: ' + ((e && e.message) || e) });
+  }
+}
+
+// POST /digitise/source-done  { id, key } — record the upload after the
+// browser has PUT the bytes. The object is verified server-side rather than
+// taken on trust: a client that says it uploaded and did not would otherwise
+// leave a record pointing at nothing.
+async function handleDigitiseSourceDone(req, res) {
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const id = String(body.id || '').slice(0, 64);
+  const key = String(body.key || '');
+  if (!id || !key.startsWith(`${DIG_PREFIX}files/`)) return json(res, 400, { error: 'id and key are required' });
+
+  let bytes = 0;
+  try {
+    const head = await bucket.headObject(key);
+    bytes = Number((head && (head.content_length || head.size)) || 0);
+  } catch {
+    return json(res, 404, { error: 'the upload did not arrive' });
+  }
+  return await finishSourceAttach(req, res, app, bucket, caller, id, key, bytes);
+}
+
+// Shared tail of both attach paths.
+async function finishSourceAttach(req, res, app, bucket, caller, id, key, bytes) {
+  let rec;
+  try {
+    rec = JSON.parse((await streamToString(await bucket.getObject(digRecKey(id)))) || 'null');
+  } catch { rec = null; }
+  if (!rec || rec.deleted) return json(res, 404, { error: 'record not found' });
+
+  const merged = { ...rec, key, sourceBytes: bytes || rec.sourceBytes || 0, updatedAt: Date.now() };
+  await bucket.putObject(digRecKey(id), Buffer.from(JSON.stringify(merged)));
+  const idx = (await loadDigIndex(bucket)).filter((r) => r.id !== id);
+  idx.push(digSummary(merged));
+  await saveDigIndex(bucket, idx);
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'digitise-source', feature: 'Records', path: '/records',
+    detail: `${rec.filename} (${bytes} bytes)`,
+  }], caller);
+  return json(res, 200, { record: merged });
+}
+
 // POST /digitise/source?id=&ext=  body: hex bytes
 // Attaches the ORIGINAL file to a record that was ingested as text. A
 // transcript is not a substitute for the recording it came from — an officer
@@ -2387,20 +2467,9 @@ async function handleDigitiseSource(req, res) {
   if (!buf.length) return json(res, 400, { error: 'empty file' });
   if (buf.length > 20 * 1024 * 1024) return json(res, 413, { error: 'file too large to keep (20MB max)' });
 
-  let rec;
-  try {
-    rec = JSON.parse((await streamToString(await bucket.getObject(digRecKey(id)))) || 'null');
-  } catch { rec = null; }
-  if (!rec || rec.deleted) return json(res, 404, { error: 'record not found' });
-
   const key = digFileKey(id, ext);
   await bucket.putObject(key, buf);
-  const merged = { ...rec, key, sourceBytes: buf.length, updatedAt: Date.now() };
-  await bucket.putObject(digRecKey(id), Buffer.from(JSON.stringify(merged)));
-  const idx = (await loadDigIndex(bucket)).filter((r) => r.id !== id);
-  idx.push(digSummary(merged));
-  await saveDigIndex(bucket, idx);
-  return json(res, 200, { record: merged });
+  return await finishSourceAttach(req, res, app, bucket, caller, id, key, buf.length);
 }
 
 async function handleDigitiseFile(req, res) {
@@ -2940,6 +3009,8 @@ module.exports = async (req, res) => {
     if (path.endsWith('/digitise/update')) return await handleDigitise(req, res, 'update');
     if (path.endsWith('/digitise/delete')) return await handleDigitise(req, res, 'delete');
     if (path.endsWith('/digitise/file')) return await handleDigitiseFile(req, res);
+    if (path.endsWith('/digitise/source-url')) return await handleDigitiseSourceUrl(req, res);
+    if (path.endsWith('/digitise/source-done')) return await handleDigitiseSourceDone(req, res);
     if (path.endsWith('/digitise/source')) return await handleDigitiseSource(req, res);
     if (path.endsWith('/digitise/search')) return await handleDigitiseSearch(req, res);
     if (path.endsWith('/reportdocs/list')) return await handleReportDocs(req, res, 'list');
@@ -2971,6 +3042,7 @@ module.exports = async (req, res) => {
     let ragSources = []; // set when a BOTH fan-out contributed knowledge-base prose
     let validatorChecks = []; // what the ZCQL validator verified or refused
     let slashName = null; // set when the query was an explicit /command
+    let digitisedPromise = null; // in-flight search of the station's own uploads
 
     // Who is asking, for the clearance filter. Resolved once and memoised:
     // every redaction decision below depends on it.
@@ -3531,6 +3603,13 @@ module.exports = async (req, res) => {
     // safety net whenever both text2zcql and RAG come up short.
     let first;
     try {
+      // The station's own uploads are searched CONCURRENTLY with the knowledge
+      // base, not after it. They used to be a last resort, which meant a
+      // question about a document an officer had just uploaded could be
+      // answered from general material instead — the scan or recording sitting
+      // right there was never consulted because the knowledge base had said
+      // something plausible. Running both costs nothing in wall-clock time.
+      digitisedPromise = answerFromDigitised(req, query).catch(() => null);
       // If the route was BOTH and the ZCQL half fell through, the fan-out
       // call is already in flight — reuse it rather than paying for it twice.
       first = (fanoutRag && (await fanoutRag)) || (await callRag(searchQuery, documents, 30_000));
@@ -3566,7 +3645,9 @@ module.exports = async (req, res) => {
     // the knowledge base, so they are often the only place an answer exists.
     let digitisedSources = null;
     if (isNegative(text)) {
-      const fromScans = await answerFromDigitised(req, query);
+      const fromScans = digitisedPromise
+        ? await digitisedPromise
+        : await answerFromDigitised(req, query);
       if (fromScans) {
         text = fromScans.text;
         components = [];

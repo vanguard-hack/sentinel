@@ -109,14 +109,19 @@ export default function Records() {
           text, tables, note, sourceKind: kind, batchId,
         });
         // Keep the original next to the text it produced, so a recording can
-        // be played back and a document downloaded as filed. Best-effort: a
-        // file too large to store still leaves a complete, searchable record,
-        // which is worth far more than the attachment.
+        // be played back and a document downloaded as filed. The text is
+        // already filed, so a failure here does not lose the record — but it
+        // is REPORTED rather than swallowed: silently dropping the source of a
+        // transcript is exactly the kind of gap nobody notices until the
+        // recording is needed and it is not there.
+        let sourceWarning = '';
         try {
           // eslint-disable-next-line no-await-in-loop
           await attachSource(filed.id, f);
-        } catch { /* the text is filed either way */ }
-        mark({ status: 'done', detail: '' });
+        } catch (e) {
+          sourceWarning = `filed, but the original was not kept — ${e.message}`;
+        }
+        mark({ status: sourceWarning ? 'partial' : 'done', detail: '', error: sourceWarning });
         logAudit('records-ingest', 'Records', `${f.name} (${kind})`);
       } catch (e) {
         mark({ status: 'failed', error: e.message, detail: '' });
@@ -260,7 +265,7 @@ export default function Records() {
   };
 
   const busy = queue.filter((x) => x.status === 'waiting' || x.status === 'working').length;
-  const done = queue.filter((x) => x.status === 'done').length;
+  const done = queue.filter((x) => x.status === 'done' || x.status === 'partial').length;
   const failed = queue.filter((x) => x.status === 'failed');
 
   return (
@@ -394,6 +399,7 @@ export default function Records() {
                     {x.status === 'waiting' && 'Waiting'}
                     {x.status === 'working' && (x.detail || 'Reading…')}
                     {x.status === 'done' && 'Done'}
+                    {x.status === 'partial' && (x.error || 'Filed without the original')}
                     {x.status === 'failed' && (x.error || 'Failed')}
                   </span>
                 </div>

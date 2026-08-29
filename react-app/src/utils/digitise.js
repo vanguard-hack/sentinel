@@ -61,11 +61,20 @@ export function normaliseImage(file) {
   });
 }
 
+const HEX_BYTE = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
 const toHex = (buf) => {
   const bytes = new Uint8Array(buf);
-  let out = '';
-  for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
-  return out;
+  // Built in chunks and joined: appending to one string a few million times
+  // is measurably slow on a phone, which is where scans come from.
+  const parts = [];
+  const CHUNK = 8192;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    let s = '';
+    const end = Math.min(i + CHUNK, bytes.length);
+    for (let j = i; j < end; j++) s += HEX_BYTE[bytes[j]];
+    parts.push(s);
+  }
+  return parts.join('');
 };
 
 // Render every page of a PDF to a JPEG blob. pdf.js is heavy (~350 kB), so it
@@ -161,11 +170,42 @@ export async function fetchFileUrl(key) {
 // court will ask for the source.
 export async function attachSource(id, file) {
   const ext = (file.name.match(/\.([a-z0-9]+)$/i)?.[1] || 'bin').toLowerCase();
+
+  // Preferred path: ask for a pre-signed PUT and send the file straight to
+  // Stratus. Nothing is hex-encoded, nothing is held in the function's memory,
+  // and there is no request budget to run out of — which is what a 40-minute
+  // interview needs.
+  let presignError = '';
+  try {
+    const { url, key } = await post('/server/rag/digitise/source-url', { id, ext });
+    const put = await fetch(url, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    });
+    if (!put.ok) throw new Error(`upload rejected (HTTP ${put.status})`);
+    const done = await post('/server/rag/digitise/source-done', { id, key });
+    return done.record;
+  } catch (e) {
+    // Most likely cause is the bucket not allowing a cross-origin PUT from the
+    // app. Fall back rather than fail — but keep the reason, so a file that is
+    // simply too big for the fallback reports why the fast path was skipped.
+    presignError = (e && e.message) || String(e);
+  }
+
+  // Fallback: through the function as hex. Works, but doubles the payload, so
+  // it is bounded — beyond this the honest answer is that it was not kept.
+  const buf = await file.arrayBuffer();
+  if (buf.byteLength > 6 * 1024 * 1024) {
+    throw new Error(
+      `direct upload unavailable (${presignError}) and the file is too large for the fallback`
+    );
+  }
   const qs = new URLSearchParams({ id, ext }).toString();
   const res = await fetch(`/server/rag/digitise/source?${qs}`, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
-    body: toHex(await file.arrayBuffer()),
+    body: toHex(buf),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);

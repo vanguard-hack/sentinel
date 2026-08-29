@@ -6741,10 +6741,14 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 /* Back to the list. Sits above the title, left-aligned, and reads as a
    direction rather than a full-width bar at the foot of the page. */
 .dg-back {
-  display: inline-flex; align-items: center; gap: 6px;
-  margin-bottom: 12px; padding: 6px 12px 6px 9px;
-  font-size: 12px; font-weight: 500; color: var(--text-2);
-  background: var(--bg-1); border: 1px solid var(--border); border-radius: 999px;
+  /* A square icon button, not a labelled bar: the arrow beside a page title is
+     already unambiguous, and a full-width control for "go back" crowds out the
+     content it sits above. */
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; flex: 0 0 auto;
+  margin-bottom: 10px; padding: 0;
+  color: var(--text-2);
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: 9px;
   cursor: pointer; transition: color .12s, border-color .12s, background .12s;
 }
 .dg-back:hover {
@@ -13474,10 +13478,14 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 /* Back to the list. Sits above the title, left-aligned, and reads as a
    direction rather than a full-width bar at the foot of the page. */
 .dg-back {
-  display: inline-flex; align-items: center; gap: 6px;
-  margin-bottom: 12px; padding: 6px 12px 6px 9px;
-  font-size: 12px; font-weight: 500; color: var(--text-2);
-  background: var(--bg-1); border: 1px solid var(--border); border-radius: 999px;
+  /* A square icon button, not a labelled bar: the arrow beside a page title is
+     already unambiguous, and a full-width control for "go back" crowds out the
+     content it sits above. */
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; flex: 0 0 auto;
+  margin-bottom: 10px; padding: 0;
+  color: var(--text-2);
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: 9px;
   cursor: pointer; transition: color .12s, border-color .12s, background .12s;
 }
 .dg-back:hover {
