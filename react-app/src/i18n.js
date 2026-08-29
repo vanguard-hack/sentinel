@@ -10,9 +10,9 @@ import kn from './locales/kn/translation.json';
 // every assistant request as `preferred_lang`, so the reply comes back in the
 // same language the interface is in.
 export const LANGUAGES = [
-  { code: 'en', label: 'English', native: 'English' },
-  { code: 'hi', label: 'Hindi', native: 'हिन्दी' },
-  { code: 'kn', label: 'Kannada', native: 'ಕನ್ನಡ' },
+  { code: 'en', label: 'English', native: 'English', short: 'EN' },
+  { code: 'hi', label: 'हिन्दी (Hindi)', native: 'हिन्दी', short: 'हिं' },
+  { code: 'kn', label: 'ಕನ್ನಡ (Kannada)', native: 'ಕನ್ನಡ', short: 'ಕನ' },
 ];
 
 export const LANG_CODES = LANGUAGES.map((l) => l.code);

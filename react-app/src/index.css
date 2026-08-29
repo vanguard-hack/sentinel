@@ -3255,7 +3255,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 .app-sidebar {
-  width: 234px;
+  width: 210px;
   flex-shrink: 0;
   position: sticky;
   top: 0;
@@ -3328,10 +3328,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 10px 12px 10px 15px;
+  padding: 8px 10px 8px 13px;
   border-radius: 10px;
   color: var(--text-2);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
   transition: background 0.14s, color 0.14s;
@@ -3424,7 +3424,9 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   font-size: 11.5px; color: var(--text-3);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.sb-account-caret { color: var(--text-3); flex-shrink: 0; transform: rotate(-90deg); }
+/* No rotation: the icon is already an up/down pair, and the old -90deg
+   (left over from a single left-chevron) laid it on its side. */
+.sb-account-caret { color: var(--text-3); flex-shrink: 0; }
 .app-sidebar.rail .sb-account { justify-content: center; padding: 8px; }
 
 .sb-menu {
@@ -9934,7 +9936,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 .app-sidebar {
-  width: 234px;
+  width: 210px;
   flex-shrink: 0;
   position: sticky;
   top: 0;
@@ -10007,10 +10009,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 10px 12px 10px 15px;
+  padding: 8px 10px 8px 13px;
   border-radius: 10px;
   color: var(--text-2);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
   transition: background 0.14s, color 0.14s;
@@ -10103,7 +10105,9 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   font-size: 11.5px; color: var(--text-3);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.sb-account-caret { color: var(--text-3); flex-shrink: 0; transform: rotate(-90deg); }
+/* No rotation: the icon is already an up/down pair, and the old -90deg
+   (left over from a single left-chevron) laid it on its side. */
+.sb-account-caret { color: var(--text-3); flex-shrink: 0; }
 .app-sidebar.rail .sb-account { justify-content: center; padding: 8px; }
 
 .sb-menu {
@@ -13587,33 +13591,25 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .dg-scan-page figcaption { margin-top: 4px; font-size: 10.5px; color: var(--text-3); text-align: center; }
 .dg-scan { max-height: 78vh; overflow-y: auto; }
 
-/* ── Multilingual: Indic script rendering ──────────────────────────────── */
-/* Devanagari and Kannada need taller line boxes than Latin or glyphs clip on
-   the ascenders and vowel signs. The script is set on <html> by i18n.js. */
-
-/* Language switcher */
-.sb-lang { position: relative; margin-bottom: 8px; }
-.sb-lang-btn {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 8px 10px; cursor: pointer; font: inherit; font-size: 12.5px;
-  color: var(--text-2); background: none; border: 1px solid transparent; border-radius: 10px;
+/* ── Language: segmented control in the top bar ────────────────────────── */
+.lang-seg {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 2px;
+  margin-left: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
 }
-.sb-lang-btn:hover, .sb-lang-btn.open { background: var(--bg-2); color: var(--text-0); }
-.app-sidebar.rail .sb-lang-btn { justify-content: center; }
-.sb-lang-name { font-weight: 600; }
-.sb-lang-menu {
-  position: absolute; bottom: calc(100% + 6px); left: 0; right: 0; min-width: 180px;
-  z-index: 60; padding: 5px; display: flex; flex-direction: column;
-  background: var(--bg-1); border: 1px solid var(--border-bright);
-  border-radius: 9px; box-shadow: var(--shadow-card);
+.lang-seg button {
+  min-width: 34px; height: 26px; padding: 0 9px; cursor: pointer;
+  font: inherit; font-size: 11.5px; font-weight: 600; line-height: 1;
+  color: var(--text-3); background: none; border: 0; border-radius: 999px;
+  transition: background .12s, color .12s;
 }
-.app-sidebar.rail .sb-lang-menu { left: 8px; right: auto; }
-.sb-lang-menu button {
-  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
-  padding: 7px 9px; cursor: pointer; font: inherit; font-size: 12.5px;
-  color: var(--text-1); background: none; border: 0; border-radius: 7px;
+.lang-seg button:hover { color: var(--text-0); }
+.lang-seg button.active {
+  color: #fff; background: var(--blue-500);
 }
-.sb-lang-menu button:hover { background: var(--hover-overlay); }
-.sb-lang-menu button.active { color: var(--blue-600); font-weight: 600; }
-.sb-lang-en { margin-left: auto; font-size: 11px; color: var(--text-3); }
-.sb-lang-menu button.active .sb-lang-en { color: var(--blue-600); }
+.lang-seg button:focus-visible { outline: 2px solid var(--blue-400); outline-offset: 1px; }
+@media (max-width: 620px) { .lang-seg button { min-width: 30px; padding: 0 6px; } }

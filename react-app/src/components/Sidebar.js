@@ -13,7 +13,6 @@ import { useLayout, useThemeMode } from '../context/LayoutContext';
 import { canAccess, ROLE_LABELS } from '../utils/access';
 import { logAudit } from '../utils/audit';
 import Avatar from './Avatar';
-import LanguageSwitcher from './LanguageSwitcher';
 
 // Every feature lives here. `soon` items are shown disabled.
 const NAV = [
@@ -150,7 +149,6 @@ export default function Sidebar() {
         </nav>
 
         <div className="sb-footer">
-          <LanguageSwitcher collapsed={collapsed} />
           {collapsed ? (
             <button
               className="sb-item sb-theme icononly"
