@@ -2541,6 +2541,24 @@ async function searchDigitised(bucket, query, limit = 6) {
 
 // Answer a question from the digitised paper records. Returns null when the
 // scans have nothing to say, so callers can carry on to their normal source.
+// One citation line for a digitised record.
+//
+// The record's title is usually derived FROM its filename, so naming both
+// produced "Patel Public School Road.m4a (Patel Public School Road.m4a)". The
+// filename is only worth adding when it says something the title does not —
+// which it does once an officer has renamed the record.
+function digitisedSourceLabel(h) {
+  const title = String((h && h.title) || '').trim();
+  const file = String((h && h.filename) || '').trim();
+  const stem = file.replace(/\.[^.]+$/, '');
+  // Compare the label actually shown, not the title — an untitled record falls
+  // back to its filename, and comparing the empty title would have let the
+  // same name through twice all over again.
+  const label = title || file;
+  const redundant = !file || label === file || label === stem;
+  return `Digitised record: ${label}${redundant ? '' : ` (${file})`}`;
+}
+
 async function answerFromDigitised(req, query) {
   try {
     const app = catalystSDK.initialize(req);
@@ -2583,7 +2601,7 @@ async function answerFromDigitised(req, query) {
     if (!answer || !answer.trim() || /NO_ANSWER/i.test(answer) || isNegative(answer)) return null;
     return {
       text: answer.trim(),
-      sources: hits.map((h) => `Digitised record: ${h.title} (${h.filename})`),
+      sources: [...new Set(hits.map(digitisedSourceLabel))],
       hits: hits.length,
     };
   } catch (e) {

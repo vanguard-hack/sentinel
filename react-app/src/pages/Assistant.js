@@ -783,10 +783,16 @@ export default function Assistant() {
                       {m.role === 'assistant' && Array.isArray(m.sources) && m.sources.length > 0 && (
                         <div className="as-msg-sources">
                           <FileText size={12} />
-                          <span>
-                            {m.source === 'fallback' ? '' : 'Sources: '}
-                            {m.sources.join(' · ')}
-                          </span>
+                          <div className="as-msg-source-list">
+                            {m.source !== 'fallback' && (
+                              <span className="as-msg-source">
+                                {m.sources.length === 1 ? 'Source' : 'Sources'}:
+                              </span>
+                            )}
+                            {[...new Set(m.sources)].map((src, i) => (
+                              <span className="as-msg-source" key={i}>{src}</span>
+                            ))}
+                          </div>
                         </div>
                       )}
                       {m.role === 'assistant' && m.content && (

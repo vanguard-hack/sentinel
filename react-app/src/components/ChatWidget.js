@@ -192,7 +192,14 @@ export default function ChatWidget() {
                       <AguiRenderer components={m.components} />
                       {Array.isArray(m.sources) && m.sources.length > 0 && (
                         <div className="cw-sources">
-                          {m.source === 'fallback' ? '' : 'Sources: '}{m.sources.join(' · ')}
+                          {m.source !== 'fallback' && (
+                            <span className="cw-source">
+                              {m.sources.length === 1 ? 'Source' : 'Sources'}:
+                            </span>
+                          )}
+                          {[...new Set(m.sources)].map((src, i) => (
+                            <span className="cw-source" key={i}>{src}</span>
+                          ))}
                         </div>
                       )}
                     </>

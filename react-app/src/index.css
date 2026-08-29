@@ -2233,12 +2233,19 @@ a:hover { color: var(--blue-500); }
 /* ── Assistant: answer source attribution ───────────────────────────────── */
 .as-msg-sources {
   display: flex;
-  align-items: center;
+  /* Top, not centre: with several sources the list is multi-line, and a
+     centred icon would float halfway down it. */
+  align-items: flex-start;
   gap: 6px;
   margin-top: 8px;
   font-size: 0.74rem;
   color: var(--text-4);
 }
+.as-msg-sources svg { flex: 0 0 auto; margin-top: 2px; }
+/* One source per line. Run together with separators, several long filenames
+   wrap into each other and it stops being clear where one ends. */
+.as-msg-source-list { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.as-msg-source { line-height: 1.45; word-break: break-word; }
 
 /* ── Dashboard: live analytics section ──────────────────────────────────── */
 .db-analytics {
@@ -2802,7 +2809,12 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .cw-msg-assistant .cw-bubble { background: var(--bg-2); color: var(--text-1); border-bottom-left-radius: 4px; }
 .cw-msg-assistant .agui-components { max-width: 100%; }
 .cw-msg-assistant .agui-block { padding: 10px 12px; }
-.cw-sources { font-size: 0.68rem; color: var(--text-4); margin-top: 4px; }
+/* One source per line, same as the full assistant view. */
+.cw-sources {
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: 0.68rem; color: var(--text-4); margin-top: 4px;
+}
+.cw-source { line-height: 1.45; word-break: break-word; }
 .cw-composer {
   display: flex;
   gap: 8px;
@@ -8956,12 +8968,19 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 /* ── Assistant: answer source attribution ───────────────────────────────── */
 .as-msg-sources {
   display: flex;
-  align-items: center;
+  /* Top, not centre: with several sources the list is multi-line, and a
+     centred icon would float halfway down it. */
+  align-items: flex-start;
   gap: 6px;
   margin-top: 8px;
   font-size: 0.74rem;
   color: var(--text-4);
 }
+.as-msg-sources svg { flex: 0 0 auto; margin-top: 2px; }
+/* One source per line. Run together with separators, several long filenames
+   wrap into each other and it stops being clear where one ends. */
+.as-msg-source-list { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.as-msg-source { line-height: 1.45; word-break: break-word; }
 
 /* ── Dashboard: live analytics section ──────────────────────────────────── */
 .db-analytics {
@@ -9525,7 +9544,12 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .cw-msg-assistant .cw-bubble { background: var(--bg-2); color: var(--text-1); border-bottom-left-radius: 4px; }
 .cw-msg-assistant .agui-components { max-width: 100%; }
 .cw-msg-assistant .agui-block { padding: 10px 12px; }
-.cw-sources { font-size: 0.68rem; color: var(--text-4); margin-top: 4px; }
+/* One source per line, same as the full assistant view. */
+.cw-sources {
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: 0.68rem; color: var(--text-4); margin-top: 4px;
+}
+.cw-source { line-height: 1.45; word-break: break-word; }
 .cw-composer {
   display: flex;
   gap: 8px;
