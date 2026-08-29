@@ -29,7 +29,7 @@ function Kpi({ value, label }) {
 // runs to hundreds; showing it all made the card taller than the screen, and
 // showing only a dozen hid most of it.
 function RankCard({ title, subtitle, people, renderMeta, renderNums }) {
-  const PAGE = 5;
+  const PAGE = 7;
   const [page, setPage] = useState(0);
   const pages = Math.max(1, Math.ceil(people.length / PAGE));
   const cur = Math.min(page, pages - 1);

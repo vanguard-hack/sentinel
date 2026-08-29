@@ -3,9 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Shield, Home, AlertTriangle, Map, Brain, Database,
-  MessageSquare, Users, ChevronLeft, ChevronRight, Sun, Moon, LogOut,
+  MessageSquare, Users, ChevronRight, Sun, Moon, LogOut,
   UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, Headset, Building2,
-  ScrollText, Images,
+  ScrollText, Images, ChevronsUpDown,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccess } from '../context/AccessContext';
@@ -189,7 +189,7 @@ export default function Sidebar() {
                 <span className="sb-account-name">{displayName}</span>
                 <span className="sb-account-role">{role}</span>
               </span>
-              <ChevronLeft size={15} className="sb-account-caret" />
+              <ChevronsUpDown size={15} className="sb-account-caret" />
             </button>
 
             {menuOpen && (

@@ -189,7 +189,11 @@ export default function NetworkOverview({ overview, selected, onSelect }) {
     const minY = Math.min(...ys);
     const maxY = Math.max(...ys);
     // Tighter padding, so the map starts closer in and fills the canvas.
-    const pad = 55;
+    // Node radii and their labels sit outside the coordinate bounds, so pad
+    // generously — the default view should show the whole network centred,
+    // with nothing clipped at the edges.
+    const maxR = nodes.reduce((m, n) => Math.max(m, n.r), 0);
+    const pad = 90 + maxR * 2;
     const k = Math.min(w / (maxX - minX + pad), h / (maxY - minY + pad), MAX_K);
     const to = { k, tx: w / 2 - ((minX + maxX) / 2) * k, ty: h / 2 - ((minY + maxY) / 2) * k };
     if (!animate) { setView(to); return; }
