@@ -203,7 +203,7 @@ export default function CrimeLinks() {
                     <tbody>
                       {ringCrimes.map((c) => (
                         <tr key={c.id}>
-                          <td className="cl-crimeno">{c.crimeNo}{c.heinous && <span className="cl-heinous" title="Heinous">●</span>}</td>
+                          <td className="cl-crimeno">{c.crimeNo}</td>
                           <td>{c.date}</td>
                           <td>{c.type}</td>
                           <td>{c.station}</td>
