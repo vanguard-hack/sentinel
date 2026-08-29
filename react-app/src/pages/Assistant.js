@@ -20,6 +20,8 @@ import i18n from '../i18n';
 import { useAuth } from '../context/AuthContext';
 import { exportConversationPdf } from '../utils/reportPdf';
 import SlashMenu from '../components/SlashMenu';
+import SourceCitations, { SourceViewer } from '../components/SourceCitations';
+import { normaliseSources } from '../utils/sources';
 import { useAccess } from '../context/AccessContext';
 import { slashQuery, filterCommands, parseCommand, closestCommand } from '../utils/slashCommands';
 import { useTranslation } from 'react-i18next';
@@ -58,6 +60,10 @@ export default function Assistant() {
   const [transcribing, setTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  // The citation the officer opened: which message, and which footnote number
+  // within it. One at a time, held here rather than per message, so opening a
+  // second source closes the first instead of stacking panels.
+  const [citation, setCitation] = useState(null);
   const [exporting, setExporting] = useState(false);
   const [menuId, setMenuId] = useState(null); // open kebab menu
   const [renamingId, setRenamingId] = useState(null);
@@ -95,6 +101,24 @@ export default function Assistant() {
 
   const active = sessions.find((s) => s.id === activeId) || null;
   const messages = useMemo(() => active?.messages || [], [active]);
+  // Normalised once per render of the thread, not once per chip: conversations
+  // saved before the unified contract hold plain strings, and every consumer
+  // below needs the same shape.
+  const sourcesByMessage = useMemo(() => {
+    const map = new Map();
+    for (const m of messages) {
+      if (m.role === 'assistant' && Array.isArray(m.sources) && m.sources.length) {
+        map.set(m.id, normaliseSources(m.sources));
+      }
+    }
+    return map;
+  }, [messages]);
+  const openSource = citation
+    ? (sourcesByMessage.get(citation.messageId) || []).find((c) => c.n === citation.n) || null
+    : null;
+  // A source panel belongs to the message it was opened from — switching
+  // conversations must not leave it hanging over a different thread.
+  useEffect(() => { setCitation(null); }, [activeId]);
 
   useEffect(() => { saveSessions(sessions); }, [sessions]);
 
@@ -776,24 +800,21 @@ export default function Assistant() {
                       )}
                       {m.content && (
                         <div className="as-msg-text">
-                          {m.role === 'assistant' ? <RichText text={m.content} /> : m.content}
+                          {m.role === 'assistant' ? (
+                            <RichText
+                              text={m.content}
+                              citationCount={(sourcesByMessage.get(m.id) || []).length}
+                              onCitation={(n) => setCitation({ messageId: m.id, n })}
+                            />
+                          ) : m.content}
                         </div>
                       )}
                       {m.role === 'assistant' && <AguiRenderer components={m.components} />}
-                      {m.role === 'assistant' && Array.isArray(m.sources) && m.sources.length > 0 && (
-                        <div className="as-msg-sources">
-                          <FileText size={12} />
-                          <div className="as-msg-source-list">
-                            {m.source !== 'fallback' && (
-                              <span className="as-msg-source">
-                                {m.sources.length === 1 ? 'Source' : 'Sources'}:
-                              </span>
-                            )}
-                            {[...new Set(m.sources)].map((src, i) => (
-                              <span className="as-msg-source" key={i}>{src}</span>
-                            ))}
-                          </div>
-                        </div>
+                      {m.role === 'assistant' && (
+                        <SourceCitations
+                          sources={sourcesByMessage.get(m.id)}
+                          onOpen={(n) => setCitation({ messageId: m.id, n })}
+                        />
                       )}
                       {m.role === 'assistant' && m.content && (
                         <div className="as-msg-actions">
@@ -980,6 +1001,11 @@ export default function Assistant() {
           </div>
         </div>
       )}
+
+      {/* The source the officer opened. Rendered once, here, rather than
+          inside the message loop: only one can be open, and a panel nested in
+          a scrolling thread inherits its clipping. */}
+      {openSource && <SourceViewer source={openSource} onClose={() => setCitation(null)} />}
     </div>
   );
 }

@@ -13778,3 +13778,356 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline;
 }
 .sc-hint-x { margin-left: auto; color: var(--text-3); cursor: pointer; background: none; border: 0; padding: 0; }
+
+/* ── Assistant: interactive source citations ─────────────────────────────── */
+/* Appended at the end of the file deliberately: the older .as-msg-sources
+   block appears twice earlier in this stylesheet, and rules that must win
+   over both belong after both. */
+
+.as-cite-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin-top: 10px;
+}
+.as-cite-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  color: var(--text-4);
+  flex: 0 0 auto;
+  padding-top: 4px;
+}
+.as-cite-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+
+.as-cite-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 320px;
+  padding: 5px 10px 5px 6px;
+  font: inherit;
+  font-size: 0.74rem;
+  text-align: left;
+  text-decoration: none;
+  color: var(--text-2);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
+}
+.as-cite-chip:hover,
+.as-cite-chip:focus-visible {
+  background: var(--bg-3);
+  border-color: var(--border-bright);
+  color: var(--text-0);
+}
+/* A citation with nothing behind it is not a button and must not look like
+   one — no pointer, no hover lift, just the attribution. */
+.as-cite-chip-flat { cursor: default; }
+.as-cite-chip-flat:hover { background: var(--bg-2); border-color: var(--border); color: var(--text-2); }
+
+.as-cite-n {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--bg-1);
+  background: var(--text-3);
+  border-radius: 50%;
+}
+.as-cite-chip:hover .as-cite-n { background: var(--blue-500); }
+.as-cite-chip-flat:hover .as-cite-n { background: var(--text-3); }
+.as-cite-icon { flex: 0 0 auto; color: var(--text-4); }
+.as-cite-text { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.as-cite-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-cite-sub {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  color: var(--text-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+.as-cite-out { flex: 0 0 auto; color: var(--text-4); }
+
+/* Inline footnote marker inside the prose. Sized to sit on the text baseline
+   without opening up the line height around it. */
+.rf-cite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  margin: 0 1px;
+  padding: 0 4px;
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  vertical-align: 2px;
+  color: var(--blue-500);
+  background: var(--blue-glow);
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.rf-cite:hover, .rf-cite:focus-visible { color: var(--bg-1); background: var(--blue-500); }
+
+/* ── The source viewer ───────────────────────────────────────────────────── */
+
+.as-src-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(8, 12, 20, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+/* Records slide in from the edge so the answer they support stays readable
+   beside them. */
+.as-src-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 81;
+  width: min(460px, 94vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border-left: 1px solid var(--border);
+  box-shadow: -18px 0 40px rgba(0, 0, 0, 0.18);
+}
+
+/* Documents take the centre: page images and long passages want the width. */
+.as-src-modal {
+  position: fixed;
+  z-index: 81;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(760px, 94vw);
+  max-height: min(86vh, 900px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+.as-src-drawer:focus-visible, .as-src-modal:focus-visible { outline: none; }
+
+.as-src-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.as-src-n {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--bg-1);
+  background: var(--blue-500);
+  border-radius: 50%;
+}
+.as-src-head-icon { flex: 0 0 auto; margin-top: 2px; color: var(--text-3); }
+.as-src-head-text { min-width: 0; flex: 1 1 auto; }
+.as-src-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--text-0);
+  overflow-wrap: anywhere;
+}
+.as-src-kind { margin: 2px 0 0; font-size: 0.74rem; color: var(--text-4); overflow-wrap: anywhere; }
+.as-src-close {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--text-3);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.as-src-close:hover { background: var(--bg-3); color: var(--text-0); }
+
+.as-src-body { flex: 1 1 auto; overflow-y: auto; padding: 16px 18px 22px; }
+
+.as-src-meta { margin: 0 0 4px; display: flex; flex-direction: column; gap: 8px; }
+.as-src-meta > div { display: grid; grid-template-columns: 116px 1fr; gap: 10px; align-items: baseline; }
+.as-src-meta dt {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+.as-src-meta dd { margin: 0; font-size: 0.8rem; color: var(--text-1); overflow-wrap: anywhere; }
+
+.as-src-h3 {
+  margin: 18px 0 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.as-src-code {
+  display: block;
+  padding: 7px 9px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--text-1);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.as-src-query { margin-top: 8px; }
+
+.as-src-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 14px 0 0;
+  padding: 9px 11px;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--gold-dark);
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px solid rgba(217, 119, 6, 0.22);
+  border-radius: var(--radius-sm);
+}
+.as-src-note svg { flex: 0 0 auto; margin-top: 2px; }
+
+.as-src-empty { margin: 14px 0 0; font-size: 0.78rem; line-height: 1.6; color: var(--text-4); }
+.as-src-prov { margin: 12px 0 0; font-size: 0.75rem; line-height: 1.6; color: var(--text-3); }
+
+.as-src-records { display: flex; flex-direction: column; gap: 10px; }
+.as-src-record {
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.as-src-field {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 10px;
+  padding: 4px 0;
+  align-items: baseline;
+}
+.as-src-field + .as-src-field { border-top: 1px solid var(--border); }
+.as-src-field-k { font-size: 0.7rem; color: var(--text-4); overflow-wrap: anywhere; }
+.as-src-field-v { font-size: 0.8rem; color: var(--text-1); overflow-wrap: anywhere; }
+
+/* The retrieved passage — the sentence the assistant actually read. */
+.as-src-passage {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+  line-height: 1.65;
+  color: var(--text-1);
+  background: var(--bg-2);
+  border-left: 3px solid var(--blue-400);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  overflow-wrap: anywhere;
+}
+.as-src-passage-loc {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.as-src-pages { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.as-src-page { margin: 0; }
+.as-src-page img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+.as-src-page figcaption { margin-top: 5px; font-size: 0.7rem; color: var(--text-4); text-align: center; }
+.as-src-media { display: block; width: 100%; margin-top: 14px; }
+
+.as-src-details { margin-top: 14px; }
+.as-src-details summary {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 4px 0;
+}
+.as-src-details summary:hover { color: var(--text-1); }
+.as-src-fulltext {
+  margin: 8px 0 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: var(--text-1);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.as-src-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 16px;
+  padding: 8px 13px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--blue-500);
+  background: var(--blue-glow);
+  border-radius: var(--radius-sm);
+}
+.as-src-open:hover { color: var(--bg-1); background: var(--blue-500); }
+
+@media (max-width: 640px) {
+  .as-src-modal { width: 96vw; max-height: 90vh; }
+  .as-src-meta > div,
+  .as-src-field { grid-template-columns: 1fr; gap: 2px; }
+}

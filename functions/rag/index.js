@@ -4,6 +4,7 @@ const catalystSDK = require('zcatalyst-sdk-node');
 const zcql = require('./zcql');
 const redaction = require('./redaction');
 const vision = require('./vision');
+const attribution = require('./sources');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -1455,6 +1456,11 @@ async function writeAuditEvents(req, app, bucket, events, sessionUser) {
       ip,
       location,
       device,
+      // The complete attribution array, stored beside the one-line detail.
+      // An answer's sources are part of the immutable record, not a display
+      // nicety: a reviewer has to be able to see what the officer was shown
+      // as the basis for it, months later, without the conversation.
+      ...(Array.isArray(e.sources) && e.sources.length ? { sources: e.sources.slice(0, 30) } : {}),
     };
   });
   const day = new Date(now).toISOString().slice(0, 10);
@@ -2541,25 +2547,14 @@ async function searchDigitised(bucket, query, limit = 6) {
 
 // Answer a question from the digitised paper records. Returns null when the
 // scans have nothing to say, so callers can carry on to their normal source.
-// One citation line for a digitised record.
 //
-// The record's title is usually derived FROM its filename, so naming both
-// produced "Patel Public School Road.m4a (Patel Public School Road.m4a)". The
-// filename is only worth adding when it says something the title does not —
-// which it does once an officer has renamed the record.
-function digitisedSourceLabel(h) {
-  const title = String((h && h.title) || '').trim();
-  const file = String((h && h.filename) || '').trim();
-  const stem = file.replace(/\.[^.]+$/, '');
-  // Compare the label actually shown, not the title — an untitled record falls
-  // back to its filename, and comparing the empty title would have let the
-  // same name through twice all over again.
-  const label = title || file;
-  const redundant = !file || label === file || label === stem;
-  return `Digitised record: ${label}${redundant ? '' : ` (${file})`}`;
-}
-
-async function answerFromDigitised(req, query) {
+// Clearance is checked BEFORE retrieval rather than over the citation
+// afterwards. Digitised paper is case material — statements, seizure memos,
+// interview recordings — and canInvestigate is what gates it everywhere else
+// in this function. Redacting only the source list would be theatre: the
+// content would already be in the prompt, and from there in the answer.
+async function answerFromDigitised(req, query, role) {
+  if (!canInvestigate(role)) return null;
   try {
     const app = catalystSDK.initialize(req);
     const bucket = app.stratus().bucket(CONV_BUCKET);
@@ -2599,11 +2594,10 @@ async function answerFromDigitised(req, query) {
       { maxTokens: 700, temperature: 0.2, timeoutMs: 15_000 }
     );
     if (!answer || !answer.trim() || /NO_ANSWER/i.test(answer) || isNegative(answer)) return null;
-    return {
-      text: answer.trim(),
-      sources: [...new Set(hits.map(digitisedSourceLabel))],
-      hits: hits.length,
-    };
+    // The hits themselves travel back, not just their labels. A citation is
+    // only worth having if the officer can open the record behind it, and
+    // that needs the record id and the passage that was actually read.
+    return { text: answer.trim(), hits };
   } catch (e) {
     console.error('digitised answer failed (non-fatal):', e && e.message);
     return null;
@@ -3054,10 +3048,13 @@ module.exports = async (req, res) => {
     const lid = detectLang(rawQuery, preferredLang);
     const responseLang = lid.lang;
 
+    const startedAt = Date.now();
+    const responseId = `resp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     let routeDecision = null; // route + confidence, carried into the audit record
     let fanoutRag = null; // in-flight RAG call when the route is BOTH
     let redactionLog = []; // what the clearance filter removed, for the audit record
-    let ragSources = []; // set when a BOTH fan-out contributed knowledge-base prose
+    let citedSources = []; // unified attribution for this answer, carried into the audit record
+    let ragCited = []; // set when a BOTH fan-out contributed knowledge-base prose
     let validatorChecks = []; // what the ZCQL validator verified or refused
     let slashName = null; // set when the query was an explicit /command
     let digitisedPromise = null; // in-flight search of the station's own uploads
@@ -3127,17 +3124,81 @@ module.exports = async (req, res) => {
           pc && pc.current_module ? `page=${pc.current_module}` : null,
           validatorChecks.length ? `validator=${validatorChecks.join('|')}` : null,
           redactionLog.length ? `redacted=${redaction.describe(redactionLog)}` : 'redacted=none',
+          citedSources.length ? `sources=${attribution.auditLine(citedSources)}` : 'sources=none',
         ].filter(Boolean);
         await storeAuditEvents(req, clearanceApp, clearanceBucket, [{
           action: 'assistant-query',
           feature: 'Assistant',
           path: (pc && pc.current_module) || '/assistant',
           detail: parts.join(' '),
+          // The detail column is capped; the array itself is stored whole.
+          sources: attribution.forAudit(citedSources),
         }], callerUser);
       } catch {
         // Auditing must never take an answer away from the officer.
       }
     }
+
+    // Sentinel has no badge-number field. The signed-in account is the
+    // identity every other audit event in this function is keyed on, so the
+    // contract's badge_id carries that rather than inventing a number.
+    const badgeId = () => (callerUser && callerUser.email_id) || null;
+
+    // Which lanes actually contributed — not which one the router picked. A
+    // BOTH question that found no records was answered by the knowledge base
+    // alone, and the metric should say so.
+    const pipelineRoute = (source, list) => {
+      const kinds = new Set((list || []).map((c) => c.source_type));
+      if (kinds.has(attribution.TYPES.DATABASE_RECORD) && kinds.has(attribution.TYPES.RAG_DOCUMENT)) {
+        return 'HYBRID_RAG_ZCQL';
+      }
+      return String(source || 'unknown').toUpperCase().replace(/-/g, '_');
+    };
+
+    // Knowledge-base attribution. The retrieval payload is the only place the
+    // document behind a RAG answer is named; when it names none, the corpus
+    // itself is still provenance worth stating, because an uncited answer
+    // reads as the model's own opinion.
+    const ragCitations = (r) => {
+      const nodes = (r && r.ok && r.data && r.data.retrieved_nodes) || [];
+      const cited = attribution.fromRagNodes(nodes);
+      return cited.length ? cited : attribution.knowledgeBaseFallback();
+    };
+
+    // Every answer leaves through here.
+    //
+    // Attribution, the clearance filter over it, tier-2 redaction, the audit
+    // event and the response contract used to be assembled separately at each
+    // of a dozen return sites — which is how English answers on the main path
+    // came to skip finalAnswer entirely, taking the tier-2 guard and the
+    // decision record with them. One exit makes that class of drift
+    // impossible.
+    const respondWith = async (text, payload = {}, citations) => {
+      const merged = attribution.merge(...(citations || []));
+      const guarded = attribution.clearanceFilter(merged, await resolveCaller());
+      if (guarded.removed.length) {
+        redactionLog = redactionLog.concat(
+          guarded.removed.map((field) => ({ field, count: 1, stage: 'citation' }))
+        );
+      }
+      citedSources = guarded.sources;
+      // finalAnswer runs the tier-2 guard and writes the decision record, so
+      // the citations have to be settled before it is called.
+      const answer = await finalAnswer(text, responseLang);
+      return json(res, 200, {
+        response_id: responseId,
+        badge_id: badgeId(),
+        answer,
+        sources: citedSources,
+        detected_lang: lid.lang,
+        response_lang: responseLang,
+        ...payload,
+        metrics: {
+          pipeline_route: pipelineRoute(payload.source, citedSources),
+          latency_ms: Date.now() - startedAt,
+        },
+      });
+    };
 
     // ── Slash commands ───────────────────────────────────────────────────
     // Resolved before anything else: a command is an explicit instruction, so
@@ -3177,12 +3238,10 @@ module.exports = async (req, res) => {
       const { role: slashRole, caller: slashCaller } = await myRole(slashApp, slashBucket);
       const allowed = SLASH_ROLES[slash.name];
       if (allowed && (!slashCaller || !allowed.includes(slashRole))) {
-        return json(res, 200, {
-          answer: await finalAnswer(
-            `The /${slash.name} command isn't available for your role.`, responseLang),
-          components: [], source: 'command',
-          detected_lang: lid.lang, response_lang: responseLang,
-        });
+        return await respondWith(
+          `The /${slash.name} command isn't available for your role.`,
+          { components: [], source: 'command' }
+        );
       }
 
       // Compliance: who ran what, against which argument, and when.
@@ -3195,24 +3254,20 @@ module.exports = async (req, res) => {
 
       if (slash.name === 'help') {
         const lines = SLASH_HELP.map(([c, d]) => `- \`${c}\` — ${d}`).join('\n');
-        return json(res, 200, {
-          answer: await finalAnswer(`**Available commands**\n\n${lines}`, responseLang),
+        return await respondWith(`**Available commands**\n\n${lines}`, {
           components: [], source: 'command',
-          detected_lang: lid.lang, response_lang: responseLang,
         });
       }
 
       // No vehicle registry is connected to Sentinel. Saying so is the honest
       // answer; inventing an ownership record would be far worse than none.
       if (slash.name === 'vehicle') {
-        return json(res, 200, {
-          answer: await finalAnswer(
-            `Sentinel has no vehicle registry connected, so \`/vehicle\` cannot look up ownership for **${slash.arg}**.\n\n` +
+        return await respondWith(
+          `Sentinel has no vehicle registry connected, so \`/vehicle\` cannot look up ownership for **${slash.arg}**.\n\n` +
             'The case records do hold vehicle details inside FIR brief facts where an officer recorded them — ' +
-            `try asking "which FIRs mention ${slash.arg}" to search that text instead.`, responseLang),
-          components: [], source: 'command',
-          detected_lang: lid.lang, response_lang: responseLang,
-        });
+            `try asking "which FIRs mention ${slash.arg}" to search that text instead.`,
+          { components: [], source: 'command' }
+        );
       }
 
       // Missing-person cases are not a structured registry either; they live in
@@ -3225,11 +3280,11 @@ module.exports = async (req, res) => {
           : `No missing-person record matching “${slash.arg}” was found.\n\n` +
             'Sentinel holds no structured missing-person registry — this searches digitised paper records, ' +
             'so a case only appears here once its file has been scanned into Records.';
-        return json(res, 200, {
-          answer: await finalAnswer(answer, responseLang),
-          components: [], source: 'command',
-          detected_lang: lid.lang, response_lang: responseLang,
-        });
+        return await respondWith(
+          answer,
+          { components: [], source: 'command' },
+          [attribution.fromDigitised(hits)]
+        );
       }
     }
 
@@ -3331,15 +3386,11 @@ module.exports = async (req, res) => {
         );
         if (seen && seen.trim()) {
           const v = extractAgui(seen);
-          return json(res, 200, {
-            answer: await finalAnswer(v.text || seen.trim(), responseLang),
+          return await respondWith(v.text || seen.trim(), {
             components: v.components,
             source: 'vision',
-            detected_lang: lid.lang,
-            response_lang: responseLang,
-            sources: digests.map((d) => `Attached image: ${d.filename}`),
             route: { route: 'VISION', confidence: 1, decided_by: 'attachment' },
-          });
+          }, [attribution.fromVision(digests)]);
         }
         // Groq unavailable — fall through so the officer still gets an answer.
       }
@@ -3392,14 +3443,7 @@ module.exports = async (req, res) => {
           { maxTokens: 220, temperature: 0.6, timeoutMs: 12_000 }
         );
         if (chat && chat.trim()) {
-          return json(res, 200, {
-            answer: await finalAnswer(chat.trim(), responseLang),
-            components: [],
-            source: 'chat',
-            detected_lang: lid.lang,
-            response_lang: responseLang,
-            sources: [],
-          });
+          return await respondWith(chat.trim(), { components: [], source: 'chat' });
         }
         // Groq unavailable mid-request — fall through to the RAG path below.
       }
@@ -3410,13 +3454,9 @@ module.exports = async (req, res) => {
         );
         if (guide && guide.trim()) {
           const g = extractAgui(guide);
-          return json(res, 200, {
-            answer: await finalAnswer(g.text || guide.trim(), responseLang),
+          return await respondWith(g.text || guide.trim(), {
             components: g.components,
             source: 'guide',
-            detected_lang: lid.lang,
-            response_lang: responseLang,
-            sources: [],
           });
         }
         // Groq unavailable mid-request — fall through to the RAG path below.
@@ -3462,16 +3502,12 @@ module.exports = async (req, res) => {
                 const rr = await fanoutRag;
                 const sop = rr && rr.ok ? extractAgui(pickAnswer(rr.data)) : null;
                 if (sop && sop.text && !isNegative(sop.text)) {
-                  return json(res, 200, {
-                    answer: await finalAnswer(sop.text.trim(), responseLang),
+                  return await respondWith(sop.text.trim(), {
                     components: sop.components,
                     source: 'rag',
-                    detected_lang: lid.lang,
-                    response_lang: responseLang,
-                    sources: ['Knowledge base'],
                     route: routeDecision,
                     expandedQuery: searchQuery === query ? undefined : searchQuery,
-                  });
+                  }, [ragCitations(rr)]);
                 }
                 // The knowledge base had nothing either (it currently holds no
                 // procedural documents). Abandon the data path entirely rather
@@ -3487,27 +3523,26 @@ module.exports = async (req, res) => {
               // rather than running an unrelated query or guessing.
               // The Data Store can't answer — but the scanned paper records
               // might, so consult them before giving up.
-              const fromScans = await answerFromDigitised(req, query);
+              const fromScans = await answerFromDigitised(req, query, await resolveCaller());
               if (fromScans) {
-                return json(res, 200, {
-                  answer: await finalAnswer(fromScans.text, responseLang),
+                return await respondWith(fromScans.text, {
                   components: [],
                   source: 'digitised-records',
-              detected_lang: lid.lang,
-              response_lang: responseLang,
-                  sources: fromScans.sources,
                   expandedQuery: searchQuery === query ? undefined : searchQuery,
-                });
+                }, [attribution.fromDigitised(fromScans.hits)]);
               }
-              return json(res, 200, {
-                answer: await finalAnswer(s.unanswerable, responseLang),
+              // Cited even though nothing was found: where we looked is part
+              // of the answer when the answer is "the records don't hold this".
+              return await respondWith(s.unanswerable, {
                 components: [],
                 source: 'zcql',
-              detected_lang: lid.lang,
-              response_lang: responseLang,
-                sources: ['Data Store'],
                 expandedQuery: searchQuery === query ? undefined : searchQuery,
-              });
+              }, [[{
+                source_type: attribution.TYPES.DATABASE_RECORD,
+                display_name: 'Data Store',
+                scope: 'Catalyst DataStore (ZCQL Read-Only)',
+                identifier: 'No matching records',
+              }]]);
             }
             q = s.query;
             rollup = s.rollup;
@@ -3586,24 +3621,25 @@ module.exports = async (req, res) => {
               const sop = rr && rr.ok ? extractAgui(pickAnswer(rr.data)) : null;
               if (sop && sop.text && !isNegative(sop.text)) {
                 answerText += `\n\n**Procedure**\n\n${sop.text.trim()}`;
-                ragSources = ['Knowledge base'];
+                ragCited = ragCitations(rr);
               }
             }
             // A negative prose ("no matching records", "does not answer...")
             // with a rendered data table is a contradiction — the rows didn't
             // answer the question, so don't show them.
             const showComponents = flat.length > 0 && !isNegative(answerText);
-            return json(res, 200, {
-              answer: await finalAnswer(answerText, responseLang),
+            return await respondWith(answerText, {
               components: showComponents ? components : [],
               source: 'zcql',
-              detected_lang: lid.lang,
-              response_lang: responseLang,
-              sources: ['Data Store: ' + zcql.tablesInQuery(q).join(', ')].concat(ragSources),
               route: routeDecision,
               zcql: q,
               expandedQuery: searchQuery === query ? undefined : searchQuery,
-            });
+            }, [
+              // The rows cited are the ones the caller was actually shown —
+              // already through the pre-retrieval clearance filter above.
+              attribution.fromZcql({ query: q, tables: zcql.tablesInQuery(q), rows: flat }),
+              ragCited,
+            ]);
           }
           // rows still null → fall through to RAG below
           zcqlDebug = { attempted: true, query: q, error: lastErr };
@@ -3627,7 +3663,7 @@ module.exports = async (req, res) => {
       // answered from general material instead — the scan or recording sitting
       // right there was never consulted because the knowledge base had said
       // something plausible. Running both costs nothing in wall-clock time.
-      digitisedPromise = answerFromDigitised(req, query).catch(() => null);
+      digitisedPromise = answerFromDigitised(req, query, await resolveCaller()).catch(() => null);
       // If the route was BOTH and the ZCQL half fell through, the fan-out
       // call is already in flight — reuse it rather than paying for it twice.
       first = (fanoutRag && (await fanoutRag)) || (await callRag(searchQuery, documents, 30_000));
@@ -3661,16 +3697,16 @@ module.exports = async (req, res) => {
     // Before falling back to general knowledge, consult the digitised paper
     // records — scanned documents are station-specific and will never be in
     // the knowledge base, so they are often the only place an answer exists.
-    let digitisedSources = null;
+    let digitisedHits = null;
     if (isNegative(text)) {
       const fromScans = digitisedPromise
         ? await digitisedPromise
-        : await answerFromDigitised(req, query);
+        : await answerFromDigitised(req, query, await resolveCaller());
       if (fromScans) {
         text = fromScans.text;
         components = [];
         source = 'digitised-records';
-        digitisedSources = fromScans.sources;
+        digitisedHits = fromScans.hits;
       }
     }
 
@@ -3720,24 +3756,15 @@ module.exports = async (req, res) => {
       source = 'fallback';
     }
 
-    // Attribution: knowledge-base document titles, and only for RAG answers —
-    // conversational/general-knowledge replies carry no sources row at all.
-    const sources =
+    // Attribution for whichever lane ended up answering. A general-knowledge
+    // fallback cites nothing, because it has nothing to cite — and a sources
+    // row there would imply a provenance that does not exist.
+    const citations =
       source === 'digitised-records'
-        ? (digitisedSources || [])
+        ? [attribution.fromDigitised(digitisedHits || [])]
         : source === 'rag'
-          ? [
-              ...new Set(
-                (first.data.retrieved_nodes || [])
-                  .map((n) => n && n.document_title)
-                  .filter(Boolean)
-              ),
-            ]
+          ? [ragCitations(first)]
           : [];
-
-    // One place where the reply becomes the officer's language, so it can
-    // never depend on which pipeline answered.
-    if (responseLang !== 'en') answer = await finalAnswer(answer, responseLang);
 
     // Audit trail keeps the query as the officer typed it AND the English it
     // was normalised to, so a later reviewer can see what was actually searched.
@@ -3754,20 +3781,16 @@ module.exports = async (req, res) => {
       }
     }
 
-    return json(res, 200, {
-      answer,
+    return await respondWith(answer, {
       components,
       source,
-      sources,
-      detected_lang: lid.lang,
-      response_lang: responseLang,
       command: slashName || undefined,
       lid_confidence: Number(lid.confidence.toFixed(2)),
       normalized_query: responseLang === 'en' ? undefined : query,
       expandedQuery: searchQuery === query ? undefined : searchQuery,
       zcqlDebug,
       raw: first.data,
-    });
+    }, citations);
   } catch (e) {
     return json(res, 500, { error: e.message || String(e) });
   }

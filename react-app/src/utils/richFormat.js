@@ -36,9 +36,45 @@ export function normaliseText(input) {
 const INLINE_RE =
   /(\[[^\]\n]+\]\((?:https?:\/\/|\/)[^)\s]+\)|\*\*\*[^*\n]+\*\*\*|\*\*[^*\n]+\*\*|(?<![\w*])\*[^*\n]+\*(?![\w*])|__[^_\n]+__|(?<![\w_])_[^_\n]+_(?![\w_])|~~[^~\n]+~~|`[^`\n]+`|https?:\/\/[^\s<>()]+)/g;
 
+// Footnote markers written into the prose by the model — "[1]", "[2]".
+//
+// These are real references: the digitised-records lane instructs the model to
+// cite the bracketed source number after any statement drawn from a record, so
+// the marker and the citation chip below the message are the same source. A
+// marker with no source behind it (a model writing "[3]" when three sources
+// were not returned) stays plain text — a button that opens nothing is worse
+// than no button.
+const CITE_RE = /(\[\d{1,2}\])/g;
+
+function withCitations(text, key, opts) {
+  const parts = text.split(CITE_RE);
+  if (parts.length === 1) return <React.Fragment key={key}>{text}</React.Fragment>;
+  return (
+    <React.Fragment key={key}>
+      {parts.filter((p) => p !== '').map((part, i) => {
+        const m = /^\[(\d{1,2})\]$/.exec(part);
+        const n = m ? Number(m[1]) : 0;
+        if (!n || n > opts.citationCount) return <React.Fragment key={i}>{part}</React.Fragment>;
+        return (
+          <button
+            key={i}
+            type="button"
+            className="rf-cite"
+            onClick={() => opts.onCitation(n)}
+            title={`Open source ${n}`}
+          >
+            {n}
+          </button>
+        );
+      })}
+    </React.Fragment>
+  );
+}
+
 // Inline markdown → React nodes. Used for prose, table cells and card bodies
-// alike so bold/links/code look the same everywhere.
-export function renderInline(text, keyPrefix = 'i') {
+// alike so bold/links/code look the same everywhere. `opts.onCitation` is
+// optional: without it a footnote marker renders exactly as it always did.
+export function renderInline(text, keyPrefix = 'i', opts = null) {
   const parts = String(text == null ? '' : text).split(INLINE_RE);
   return parts.filter((p) => p !== undefined && p !== '').map((part, i) => {
     const key = `${keyPrefix}-${i}`;
@@ -61,6 +97,7 @@ export function renderInline(text, keyPrefix = 'i') {
     if (/^_[^_\n]+_$/.test(part)) return <em key={key}>{part.slice(1, -1)}</em>;
     if (/^~~[^~\n]+~~$/.test(part)) return <del key={key}>{part.slice(2, -2)}</del>;
     if (/^`[^`\n]+`$/.test(part)) return <code key={key}>{part.slice(1, -1)}</code>;
+    if (opts && opts.onCitation) return withCitations(part, key, opts);
     return <React.Fragment key={key}>{part}</React.Fragment>;
   });
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { MessageSquare, X, ArrowUp, Bot, Maximize2, RotateCcw, Mic } from 'lucide-react';
 import {
@@ -7,6 +7,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import AguiRenderer from './AguiRenderer';
 import RichText from './RichText';
+import SourceCitations, { SourceViewer } from './SourceCitations';
+import { normaliseSources } from '../utils/sources';
 import Thinking from './Thinking';
 import i18n from '../i18n';
 
@@ -50,6 +52,8 @@ export default function ChatWidget() {
   const [sending, setSending] = useState(false);
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  // Which citation the officer opened, by message and footnote number.
+  const [citation, setCitation] = useState(null);
   const threadRef = useRef(null);
   const inputRef = useRef(null);
   const recorderRef = useRef(null);
@@ -155,6 +159,19 @@ export default function ChatWidget() {
 
   if (location.pathname.startsWith('/assistant')) return null;
 
+  const sourcesByMessage = useMemo(() => {
+    const map = new Map();
+    for (const m of messages) {
+      if (m.role === 'assistant' && Array.isArray(m.sources) && m.sources.length) {
+        map.set(m.id, normaliseSources(m.sources));
+      }
+    }
+    return map;
+  }, [messages]);
+  const openSource = citation
+    ? (sourcesByMessage.get(citation.messageId) || []).find((c) => c.n === citation.n) || null
+    : null;
+
   return (
     <>
       {open && (
@@ -188,20 +205,20 @@ export default function ChatWidget() {
                 <div key={m.id} className={`cw-msg cw-msg-${m.role}`}>
                   {m.role === 'assistant' ? (
                     <>
-                      {m.content && <div className="cw-bubble"><RichText text={m.content} /></div>}
-                      <AguiRenderer components={m.components} />
-                      {Array.isArray(m.sources) && m.sources.length > 0 && (
-                        <div className="cw-sources">
-                          {m.source !== 'fallback' && (
-                            <span className="cw-source">
-                              {m.sources.length === 1 ? 'Source' : 'Sources'}:
-                            </span>
-                          )}
-                          {[...new Set(m.sources)].map((src, i) => (
-                            <span className="cw-source" key={i}>{src}</span>
-                          ))}
+                      {m.content && (
+                        <div className="cw-bubble">
+                          <RichText
+                            text={m.content}
+                            citationCount={(sourcesByMessage.get(m.id) || []).length}
+                            onCitation={(n) => setCitation({ messageId: m.id, n })}
+                          />
                         </div>
                       )}
+                      <AguiRenderer components={m.components} />
+                      <SourceCitations
+                        sources={sourcesByMessage.get(m.id)}
+                        onOpen={(n) => setCitation({ messageId: m.id, n })}
+                      />
                     </>
                   ) : (
                     <div className="cw-bubble">{m.content}</div>
@@ -251,6 +268,11 @@ export default function ChatWidget() {
       >
         {open ? <X size={22} /> : <MessageSquare size={22} />}
       </button>
+
+      {/* The viewer is fixed to the viewport, so it is as usable from the
+          bubble as from the full page — a citation in a 380px panel is worth
+          no less than one in the conversation view. */}
+      {openSource && <SourceViewer source={openSource} onClose={() => setCitation(null)} />}
     </>
   );
 }

@@ -83,13 +83,43 @@ export function upsertLocalSession(session) {
 // officer across devices and survive cache clears. localStorage stays as an
 // instant cache; these sync it with the server.
 
+// Citations are persisted; the evidence attached to them is not.
+//
+// `records` and the full passages exist so the viewer can show the rows and
+// the retrieved text beside the answer. Saved into the conversation they would
+// push it past the server's 120 KB message budget, and the server makes room
+// by dropping the OLDEST exchanges — quietly trading the officer's history for
+// a snapshot of rows they can always ask for again. What survives is the
+// provenance itself, which is what a citation is for.
+const slimSource = (s) => {
+  if (!s || typeof s !== 'object') return s;
+  const out = { ...s };
+  if (out.records && out.records.length) {
+    delete out.records;
+    // Flagged rather than silently absent: the viewer must not tell an officer
+    // an answer had no matching rows when it simply is not carrying them.
+    out.records_trimmed = true;
+  }
+  delete out.query;
+  if (Array.isArray(out.passages) && out.passages.length) {
+    out.passages = out.passages.slice(0, 1).map((p) => ({
+      ...p,
+      excerpt: String(p.excerpt || '').slice(0, 300),
+    }));
+  }
+  if (Array.isArray(out.matched_record_ids)) out.matched_record_ids = out.matched_record_ids.slice(0, 12);
+  return out;
+};
+
 // Strip transient/bulky fields before persisting a message.
 const slimMsg = (m) => ({
   id: m.id,
   role: m.role,
   content: m.content,
   ...(m.components && m.components.length ? { components: m.components } : {}),
-  ...(m.sources && m.sources.length ? { sources: m.sources, source: m.source } : {}),
+  ...(m.sources && m.sources.length
+    ? { sources: m.sources.map(slimSource), source: m.source }
+    : {}),
   ...(m.files && m.files.length ? { files: m.files } : {}),
 });
 
