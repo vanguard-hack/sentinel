@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  NotebookPen, Search, X, Plus, AlertTriangle, ChevronRight, BookOpen,
+  NotebookPen, Search, X, Plus, AlertTriangle, ChevronRight, ChevronLeft, BookOpen,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import {
@@ -149,6 +149,9 @@ export default function InvestigationDiary() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('All');
   const [showNew, setShowNew] = useState(false);
+  // Cards per page, in multiples of six so the grid always fills evenly.
+  const [perPage, setPerPage] = useState(6);
+  const [page, setPage] = useState(0);
 
   const load = useCallback(() => {
     listInvestigations().then(setCases).catch((e) => setError(e.message));
@@ -165,6 +168,13 @@ export default function InvestigationDiary() {
         .some((v) => String(v || '').toLowerCase().includes(query));
     });
   }, [cases, q, status]);
+
+  // Filtering can shrink the list under the current page — clamp rather than
+  // stranding the officer on an empty page.
+  const pages = Math.max(1, Math.ceil(shown.length / perPage));
+  const cur = Math.min(page, pages - 1);
+  const pageCases = shown.slice(cur * perPage, cur * perPage + perPage);
+  useEffect(() => { setPage(0); }, [q, status, perPage]);
 
   return (
     <div className="cf-page">
@@ -209,7 +219,7 @@ export default function InvestigationDiary() {
 
         {shown.length > 0 && (
           <div className="inv-grid">
-            {shown.map((c) => {
+            {pageCases.map((c) => {
               return (
                 <button key={c.caseMasterId} className="inv-card" onClick={() => navigate(`/investigation-diary/${c.caseMasterId}`)}>
                   <div className="inv-card-top">
@@ -228,6 +238,31 @@ export default function InvestigationDiary() {
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {shown.length > perPage && (
+          <div className="inv-pager">
+            <div className="cl-pager-nav" role="group" aria-label="Investigation pages">
+              <button type="button" disabled={cur === 0}
+                onClick={() => setPage(cur - 1)} aria-label="Previous page">
+                <ChevronLeft size={15} />
+              </button>
+              <button type="button" disabled={cur >= pages - 1}
+                onClick={() => setPage(cur + 1)} aria-label="Next page">
+                <ChevronRight size={15} />
+              </button>
+            </div>
+            <label className="inv-perpage">
+              <span>Per page</span>
+              <select
+                className="aa-select"
+                value={perPage}
+                onChange={(e) => setPerPage(Number(e.target.value))}
+              >
+                {[6, 12, 18, 24, 30].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </label>
           </div>
         )}
       </div>

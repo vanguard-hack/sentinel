@@ -6830,3 +6830,27 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .cl-pager-nav button:disabled { opacity: .35; cursor: default; }
 .cl-pager-nav button:focus-visible { outline: 2px solid var(--blue-400); outline-offset: -2px; }
 
+
+/* Investigation diary pagination: arrows centred, page-size picker beside them */
+.inv-pager {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 18px 0 8px;
+}
+.inv-perpage {
+  position: absolute;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.inv-perpage .aa-select { height: 30px; padding: 0 26px 0 10px; border-radius: 8px; font-size: 11.5px; }
+@media (max-width: 620px) {
+  .inv-pager { flex-direction: column; }
+  .inv-perpage { position: static; }
+}
