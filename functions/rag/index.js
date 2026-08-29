@@ -2020,6 +2020,7 @@ async function saveDigIndex(bucket, records) {
 const digSummary = (rec) => ({
   id: rec.id, batchId: rec.batchId || '', filename: rec.filename, mime: rec.mime,
   sourceKind: rec.sourceKind || 'scan',
+  sourceBytes: rec.sourceBytes || 0,
   title: rec.title || rec.filename, docType: rec.docType || 'Unclassified',
   summary: rec.summary || '', tableCount: (rec.tables || []).length,
   pageCount: (rec.pages || []).length || 1,
@@ -2347,6 +2348,61 @@ async function handleDigitise(req, res, action) {
 
 // Serves a stored scan to an authenticated officer. Evidence images are never
 // reachable by public URL.
+const MIME_BY_EXT = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+  gif: 'image/gif', bmp: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff',
+  heic: 'image/heic', heif: 'image/heif', pdf: 'application/pdf',
+  mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac',
+  ogg: 'audio/ogg', opus: 'audio/ogg', flac: 'audio/flac', amr: 'audio/amr',
+  mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/mp4',
+  webm: 'video/webm', '3gp': 'video/3gpp',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  xls: 'application/vnd.ms-excel', csv: 'text/csv', tsv: 'text/tab-separated-values',
+  txt: 'text/plain', md: 'text/markdown', json: 'application/json', xml: 'application/xml',
+};
+const mimeForKey = (key) =>
+  MIME_BY_EXT[String(key).split('.').pop().toLowerCase()] || 'application/octet-stream';
+
+// POST /digitise/source?id=&ext=  body: hex bytes
+// Attaches the ORIGINAL file to a record that was ingested as text. A
+// transcript is not a substitute for the recording it came from — an officer
+// needs to hear the voice, and a court will ask for the source — so the file
+// is kept alongside the text it produced.
+async function handleDigitiseSource(req, res) {
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+  const id = (urlParam(req, 'id') || '').slice(0, 64);
+  const ext = (urlParam(req, 'ext') || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8);
+  if (!id) return json(res, 400, { error: 'id is required' });
+
+  const hex = (await readBody(req)).trim();
+  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) return json(res, 400, { error: 'invalid encoding' });
+  const buf = Buffer.from(hex, 'hex');
+  if (!buf.length) return json(res, 400, { error: 'empty file' });
+  if (buf.length > 20 * 1024 * 1024) return json(res, 413, { error: 'file too large to keep (20MB max)' });
+
+  let rec;
+  try {
+    rec = JSON.parse((await streamToString(await bucket.getObject(digRecKey(id)))) || 'null');
+  } catch { rec = null; }
+  if (!rec || rec.deleted) return json(res, 404, { error: 'record not found' });
+
+  const key = digFileKey(id, ext);
+  await bucket.putObject(key, buf);
+  const merged = { ...rec, key, sourceBytes: buf.length, updatedAt: Date.now() };
+  await bucket.putObject(digRecKey(id), Buffer.from(JSON.stringify(merged)));
+  const idx = (await loadDigIndex(bucket)).filter((r) => r.id !== id);
+  idx.push(digSummary(merged));
+  await saveDigIndex(bucket, idx);
+  return json(res, 200, { record: merged });
+}
+
 async function handleDigitiseFile(req, res) {
   const body = JSON.parse((await readBody(req)) || '{}');
   const app = catalystSDK.initialize(req);
@@ -2362,7 +2418,10 @@ async function handleDigitiseFile(req, res) {
     const chunks = [];
     for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
     const buf = Buffer.concat(chunks);
-    return json(res, 200, { data: buf.toString('base64') });
+    // The type is derived from the stored key, which carries the original
+    // extension. Without it the browser gets image/jpeg for everything and a
+    // recording will not play.
+    return json(res, 200, { data: buf.toString('base64'), mime: mimeForKey(key) });
   } catch {
     return json(res, 404, { error: 'File not found' });
   }
@@ -2881,6 +2940,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/digitise/update')) return await handleDigitise(req, res, 'update');
     if (path.endsWith('/digitise/delete')) return await handleDigitise(req, res, 'delete');
     if (path.endsWith('/digitise/file')) return await handleDigitiseFile(req, res);
+    if (path.endsWith('/digitise/source')) return await handleDigitiseSource(req, res);
     if (path.endsWith('/digitise/search')) return await handleDigitiseSearch(req, res);
     if (path.endsWith('/reportdocs/list')) return await handleReportDocs(req, res, 'list');
     if (path.endsWith('/reportdocs/get')) return await handleReportDocs(req, res, 'get');

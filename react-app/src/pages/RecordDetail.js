@@ -1,22 +1,20 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  AlertTriangle, Check, Copy, FileDown, Pencil, RotateCcw, Save, Table as TableIcon,
+  AlertTriangle, ArrowLeft, Check, Copy, FileDown, FileText, Pencil, RotateCcw,
+  Save, Table as TableIcon,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
-import { getRecord, updateRecord, fetchScanUrl } from '../utils/digitise';
-
-const DOC_TYPES = [
-  'FIR', 'Case Diary', 'Charge Sheet', 'Arrest Memo', 'Seizure Memo', 'Inquest/UDR',
-  'Missing Person', 'General Diary', 'Statement', 'Court Document', 'Correspondence',
-  'Register/Ledger', 'Other', 'Unclassified',
-];
+import { getRecord, updateRecord, fetchScanUrl, fetchFileUrl } from '../utils/digitise';
+import { provenanceOf, isMedia, isPaper, sizeOf } from '../utils/provenance';
 
 export default function RecordDetail() {
   const { recordId } = useParams();
   const navigate = useNavigate();
   const [rec, setRec] = useState(null);
   const [imgUrls, setImgUrls] = useState([]);
+  const [media, setMedia] = useState(null);   // { url, mime } for a recording
+  const [loadingSource, setLoadingSource] = useState(true);
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -32,9 +30,21 @@ export default function RecordDetail() {
         setRec(r);
         setDraft(r.text || '');
         origText.current = r.text || '';
+        // Only scanned paper has page images. A recording or a document has
+        // one stored original, fetched with its real type so it can play.
+        if (!isPaper(r.sourceKind)) {
+          if (r.key) {
+            try {
+              const m = await fetchFileUrl(r.key);
+              if (live) setMedia(m);
+            } catch { /* the text stands on its own without the original */ }
+          }
+          if (live) setLoadingSource(false);
+          return;
+        }
         // A document can be several photographed pages; older records carry a
         // single `key` instead of a pages array.
-        const keys = (r.pages || []).length ? r.pages.map((pg) => pg.key) : [r.key];
+        const keys = ((r.pages || []).length ? r.pages.map((pg) => pg.key) : [r.key]).filter(Boolean);
         const urls = [];
         for (const k of keys) {
           try {
@@ -44,10 +54,14 @@ export default function RecordDetail() {
           if (!live) return;
           setImgUrls([...urls]);
         }
+        if (live) setLoadingSource(false);
       })
       .catch((e) => live && setError(e.message));
     return () => { live = false; };
   }, [recordId]);
+
+  // An object URL outlives the component unless it is released.
+  useEffect(() => () => { if (media?.url) URL.revokeObjectURL(media.url); }, [media]);
 
   const patch = useCallback(async (fields) => {
     setSaving(true);
@@ -93,7 +107,12 @@ export default function RecordDetail() {
     return (
       <div className="cf-page">
         <TopBar title="Record" parent="Records" parentTo="/records" />
-        <div className="pp-body"><div className="aa-error"><AlertTriangle size={16} /> {error}</div></div>
+        <div className="pp-body">
+          <button type="button" className="dg-back" onClick={() => navigate('/records')}>
+            <ArrowLeft size={15} /> Records
+          </button>
+          <div className="aa-error"><AlertTriangle size={16} /> {error}</div>
+        </div>
       </div>
     );
   }
@@ -112,6 +131,10 @@ export default function RecordDetail() {
       <div className="pp-body">
         {error && <div className="aa-error"><AlertTriangle size={16} /> {error}</div>}
 
+        <button type="button" className="dg-back" onClick={() => navigate('/records')}>
+          <ArrowLeft size={15} /> Records
+        </button>
+
         <div className="dg-detail-head">
           <input
             className="dg-title-input"
@@ -121,30 +144,63 @@ export default function RecordDetail() {
             onBlur={(e) => patch({ title: e.target.value })}
             aria-label="Record title"
           />
-          <select
-            className="aa-select rb-select"
-            value={rec.docType}
-            onChange={(e) => { setRec((r) => ({ ...r, docType: e.target.value })); patch({ docType: e.target.value }); }}
-          >
-            {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
           {saving && <span className="rb-savestate">Saving…</span>}
         </div>
 
         <div className="dg-detail">
           <div className="dg-scan">
-            {imgUrls.length
-              ? imgUrls.map((u, i) => (
-                  <figure key={i} className="dg-scan-page">
-                    <img src={u} alt={`${rec.filename} — page ${i + 1}`} />
-                    {imgUrls.length > 1 && <figcaption>Page {i + 1} of {(rec.pages || []).length || imgUrls.length}</figcaption>}
-                  </figure>
-                ))
-              : <div className="aa-loading">Loading scan…</div>}
+            {isPaper(rec.sourceKind) && (
+              imgUrls.length
+                ? imgUrls.map((u, i) => (
+                    <figure key={i} className="dg-scan-page">
+                      <img src={u} alt={`${rec.filename} — page ${i + 1}`} />
+                      {imgUrls.length > 1 && <figcaption>Page {i + 1} of {(rec.pages || []).length || imgUrls.length}</figcaption>}
+                    </figure>
+                  ))
+                : <div className="aa-loading">{loadingSource ? 'Loading scan…' : 'The original scan is no longer stored.'}</div>
+            )}
+
+            {isMedia(rec.sourceKind) && (
+              media
+                ? (
+                  <div className="dg-player">
+                    {rec.sourceKind === 'video'
+                      ? <video className="dg-video" src={media.url} controls preload="metadata" />
+                      : <audio className="dg-audio" src={media.url} controls preload="metadata" />}
+                    <p className="dg-player-note">
+                      Play alongside the transcript to check anything the recognition may have misheard.
+                    </p>
+                  </div>
+                )
+                : (
+                  <div className="dg-nosource">
+                    <FileText size={20} strokeWidth={1.7} />
+                    <strong>{loadingSource ? 'Loading recording…' : 'Recording not stored'}</strong>
+                    {!loadingSource && (
+                      <span>The transcript below is the complete record. The original file was too large to keep, or was filed before recordings were retained.</span>
+                    )}
+                  </div>
+                )
+            )}
+
+            {!isPaper(rec.sourceKind) && !isMedia(rec.sourceKind) && (
+              <div className="dg-nosource">
+                <FileText size={20} strokeWidth={1.7} />
+                <strong>{provenanceOf(rec).label}</strong>
+                <span>{rec.filename}</span>
+                {media && (
+                  <a className="aa-btn" href={media.url} download={rec.filename}>
+                    <FileDown size={15} /> Download original
+                  </a>
+                )}
+              </div>
+            )}
+
             <div className="dg-scan-meta">
               {(rec.pages || []).length > 1
-                ? `${rec.pages.length} pages · ${Math.round((rec.bytes || 0) / 1024)} KB`
-                : `${rec.filename} · ${Math.round((rec.bytes || 0) / 1024)} KB`}
+                ? `${rec.pages.length} pages`
+                : rec.filename}
+              {sizeOf(rec, media) ? ` · ${sizeOf(rec, media)}` : ''}
               {rec.uploadedByName ? ` · ${rec.uploadedByName}` : ''}
             </div>
           </div>
@@ -185,7 +241,7 @@ export default function RecordDetail() {
             ))}
 
             <div className="dg-text-head">
-              <h3 className="dg-h3">Extracted text</h3>
+              <h3 className="dg-h3">{isMedia(rec.sourceKind) ? 'Transcript' : 'Extracted text'}</h3>
               <div className="dg-text-actions">
                 <button type="button" className="cf-icon-btn" title={copied ? 'Copied' : 'Copy text'} onClick={copyText}>
                   {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -211,7 +267,7 @@ export default function RecordDetail() {
               </div>
             </div>
 
-            {rec.status === 'ocr-failed' && (
+            {rec.status === 'ocr-failed' && isPaper(rec.sourceKind) && (
               <div className="aa-error">
                 <AlertTriangle size={15} /> The text could not be read from this scan
                 {rec.error ? ` (${rec.error})` : ''}. You can type it in by hand.
@@ -220,15 +276,10 @@ export default function RecordDetail() {
 
             {editing
               ? <textarea className="dg-text-edit" value={draft} onChange={(e) => setDraft(e.target.value)} />
-              : <pre className="dg-text">{rec.text || 'No text was extracted from this scan.'}</pre>}
-            <p className="dg-note">
-              Read by OCR — verify against the original before relying on it. Corrections you save here
-              are what the assistant will search.
-            </p>
+              : <pre className="dg-text">{rec.text || provenanceOf(rec).empty}</pre>}
+            <p className="dg-note">{provenanceOf(rec).note}</p>
           </div>
         </div>
-
-        <button type="button" className="aa-btn" onClick={() => navigate('/records')}>Back to records</button>
       </div>
     </div>
   );

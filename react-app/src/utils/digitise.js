@@ -143,6 +143,35 @@ export async function fetchScanUrl(key) {
   return `data:image/jpeg;base64,${d.data}`;
 }
 
+// Same fetch, but honouring the stored file's real type — a recording will not
+// play if the browser is handed it as image/jpeg. Returns an object URL rather
+// than a data: URL: media elements need to seek, and a 10MB base64 string in
+// the src attribute makes that miserable.
+export async function fetchFileUrl(key) {
+  const d = await post('/server/rag/digitise/file', { key });
+  const bin = atob(d.data);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const blob = new Blob([bytes], { type: d.mime || 'application/octet-stream' });
+  return { url: URL.createObjectURL(blob), mime: blob.type, bytes: blob.size };
+}
+
+// Keep the original file alongside the text it produced. A transcript is not a
+// substitute for the recording — an officer needs to hear the voice, and a
+// court will ask for the source.
+export async function attachSource(id, file) {
+  const ext = (file.name.match(/\.([a-z0-9]+)$/i)?.[1] || 'bin').toLowerCase();
+  const qs = new URLSearchParams({ id, ext }).toString();
+  const res = await fetch(`/server/rag/digitise/source?${qs}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: toHex(await file.arrayBuffer()),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data.record;
+}
+
 export function recordsToCsv(records) {
   const esc = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
   const head = ['Title', 'Document type', 'Crime No.', 'File', 'Uploaded by', 'Uploaded at', 'Summary', 'Extracted text'];

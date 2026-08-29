@@ -8,7 +8,7 @@ import TopBar from '../components/TopBar';
 import { useConfirm } from '../components/ConfirmDialog';
 import {
   listRecords, deleteRecord, uploadScan, newBatchId, recordsToCsv, searchRecords,
-  pdfToImages, isPdf, ingestExtracted,
+  pdfToImages, isPdf, ingestExtracted, attachSource,
 } from '../utils/digitise';
 import { extractText, detectKind, isPageKind, KIND_LABEL, filesFromClipboard } from '../utils/extract';
 import { transcribeAudio } from '../utils/assistant';
@@ -103,11 +103,19 @@ export default function Records() {
           onProgress: (m) => mark({ detail: m }),
         });
         // eslint-disable-next-line no-await-in-loop
-        await ingestExtracted({
+        const filed = await ingestExtracted({
           filename: f.name,
           mime: f.type || 'application/octet-stream',
           text, tables, note, sourceKind: kind, batchId,
         });
+        // Keep the original next to the text it produced, so a recording can
+        // be played back and a document downloaded as filed. Best-effort: a
+        // file too large to store still leaves a complete, searchable record,
+        // which is worth far more than the attachment.
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await attachSource(filed.id, f);
+        } catch { /* the text is filed either way */ }
         mark({ status: 'done', detail: '' });
         logAudit('records-ingest', 'Records', `${f.name} (${kind})`);
       } catch (e) {
