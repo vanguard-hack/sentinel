@@ -47,8 +47,8 @@ export default function TopBar({ title, parent, parentTo, search, children }) {
       </nav>
 
       {search && <div className="topbar-search">{search}</div>}
-      <div className="topbar-global"><GlobalSearch /></div>
       <LanguageSwitcher />
+      <div className="topbar-global"><GlobalSearch /></div>
       {children && <div className="topbar-actions">{children}</div>}
     </header>
   );

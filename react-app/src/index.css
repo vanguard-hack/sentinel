@@ -3366,7 +3366,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 
 .sb-footer {
   flex-shrink: 0;
-  padding: 10px 12px 14px;
+  padding: 10px 12px 8px;
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -10047,7 +10047,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 
 .sb-footer {
   flex-shrink: 0;
-  padding: 10px 12px 14px;
+  padding: 10px 12px 8px;
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -13613,3 +13613,8 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 }
 .lang-seg button:focus-visible { outline: 2px solid var(--blue-400); outline-offset: 1px; }
 @media (max-width: 620px) { .lang-seg button { min-width: 30px; padding: 0 6px; } }
+
+/* The language control takes over the right-alignment so it sits just left of
+   the search box, which stays furthest right. */
+.lang-seg { margin-left: auto; }
+.lang-seg + .topbar-global { margin-left: 10px; }
