@@ -28,6 +28,14 @@ if (typeof Element !== 'undefined' && !Element.prototype.getClientRects) {
   Element.prototype.getClientRects = emptyRectList;
 }
 
+// jsdom implements no Blob URL support. Components that fetch a stored file
+// create an object URL to render it and revoke it on unmount; without these the
+// unmount throws and takes the test with it.
+if (typeof URL !== 'undefined') {
+  if (!URL.createObjectURL) URL.createObjectURL = () => 'blob:test';
+  if (!URL.revokeObjectURL) URL.revokeObjectURL = () => {};
+}
+
 // jsdom implements no layout, so scrollIntoView is absent. Components that
 // keep a highlighted row in view call it; stub it so tests exercise the
 // component rather than crashing on the environment.

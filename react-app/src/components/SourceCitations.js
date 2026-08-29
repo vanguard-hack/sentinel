@@ -1,26 +1,31 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  FileText, Database, Globe, Image as ImageIcon, ExternalLink, X, ArrowUpRight, ShieldAlert,
+  FileText, Database, Globe, Image as ImageIcon, ExternalLink, X, ArrowUpRight,
+  ShieldAlert, FileDown, Table as TableIcon, Loader,
 } from 'lucide-react';
 import {
-  TYPES, TYPE_LABEL, isOpenable, subtitleOf, fieldLabel, columnsOf,
+  TYPES, TYPE_LABEL, isOpenable, subtitleOf, fieldLabel, columnsOf, locatePassage, externalUri,
 } from '../utils/sources';
 import { getRecord, fetchScanUrl, fetchFileUrl } from '../utils/digitise';
-import { provenanceOf, isPaper, isMedia } from '../utils/provenance';
+import { provenanceOf, isPaper, isMedia, sizeOf } from '../utils/provenance';
 
 // Interactive source attribution for an assistant answer.
 //
 // A citation an officer cannot open is a claim, not a source. So a chip is not
-// a label with a tooltip: clicking a document opens the document, clicking a
-// record opens the rows the query actually matched, and clicking a scan of a
-// seizure memo shows the photographed page. What was read is what gets shown.
+// a label with a tooltip: it opens the thing itself. A scanned FIR shows its
+// photographed pages, a filed spreadsheet shows its tables and its text, a
+// recording plays, a database citation lists the rows the query matched, and a
+// web source carries its full URL rather than a bare site name.
+//
+// And it goes one step past "here is the document": the passage the assistant
+// actually read is highlighted inside the document's own text. Knowing which
+// file an answer came from is provenance; seeing the sentence is verification.
 //
 // Which surface a citation opens into follows what it holds, not a house
-// style. A document wants width — page images, a long passage — so it takes a
-// centred viewer. A record is a field list read against the answer beside it,
-// so it slides in from the edge and leaves the conversation visible. A web
-// page belongs to the browser and opens as an ordinary link.
+// style. A document wants width — page images, tables, long text — so it takes
+// a centred viewer. A record is a field list read against the answer beside
+// it, so it slides in from the edge. A web page belongs to the browser.
 
 const ICONS = {
   [TYPES.RAG_DOCUMENT]: FileText,
@@ -30,6 +35,12 @@ const ICONS = {
 };
 
 const iconFor = (s) => ICONS[s.source_type] || FileText;
+
+// How many photographed pages load without being asked for. A filed document
+// can run to forty pages, and fetching every one through the authenticated
+// endpoint to fill a panel nobody scrolled would be rude to the connection an
+// officer is on.
+const PAGES_EAGER = 3;
 
 // ── The chip row ────────────────────────────────────────────────────────────
 
@@ -44,6 +55,12 @@ export default function SourceCitations({ sources, onOpen }) {
         {sources.map((s) => {
           const Icon = iconFor(s);
           const subtitle = subtitleOf(s);
+          // A web citation IS its link. A knowledge-base document that happens
+          // to publish a URL keeps its viewer — the retrieved passage is the
+          // reason the citation exists — and offers the URL beside it.
+          const webHref = s.source_type === TYPES.EXTERNAL_WEB ? externalUri(s) : null;
+          const jumpTo = s.record_id ? `/records/${s.record_id}` : null;
+          const jumpOut = !jumpTo ? externalUri(s) : null;
           const inner = (
             <>
               <span className="as-cite-n">{s.n}</span>
@@ -55,18 +72,20 @@ export default function SourceCitations({ sources, onOpen }) {
             </>
           );
 
-          // A web source is a link and behaves like one: a new tab, severed
-          // from this page's window, and middle-click still works because it
-          // is a real anchor rather than a button pretending to be one.
-          if (s.source_type === TYPES.EXTERNAL_WEB && s.uri) {
+          // Anything that lives at a URL is a link and behaves like one: a new
+          // tab, severed from this page's window, and middle-click still works
+          // because it is a real anchor rather than a button pretending to be
+          // one. The full address travels in the tooltip, so an officer can
+          // see where a link goes before following it.
+          if (webHref) {
             return (
               <a
                 key={s.source_id}
                 className="as-cite-chip"
-                href={s.uri}
+                href={webHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                title={`${s.display_name} — opens ${s.domain} in a new tab`}
+                title={`${s.display_name}\n${webHref}`}
               >
                 {inner}
                 <ExternalLink size={11} className="as-cite-out" aria-hidden="true" />
@@ -82,9 +101,8 @@ export default function SourceCitations({ sources, onOpen }) {
             );
           }
 
-          return (
+          const chip = (
             <button
-              key={s.source_id}
               type="button"
               className="as-cite-chip"
               onClick={() => onOpen(s.n)}
@@ -92,6 +110,38 @@ export default function SourceCitations({ sources, onOpen }) {
             >
               {inner}
             </button>
+          );
+          if (!jumpTo && !jumpOut) return <React.Fragment key={s.source_id}>{chip}</React.Fragment>;
+
+          return (
+            <span key={s.source_id} className="as-cite-chip-wrap">
+              {chip}
+              {/* The chip previews the source; this goes straight to it —
+                  the record's own page in Records, or the published document
+                  where the citation names one. */}
+              {jumpTo && (
+                <Link
+                  className="as-cite-jump"
+                  to={jumpTo}
+                  title={`Open ${s.display_name} in Records`}
+                  aria-label={`Open ${s.display_name} in Records`}
+                >
+                  <ArrowUpRight size={12} />
+                </Link>
+              )}
+              {jumpOut && (
+                <a
+                  className="as-cite-jump"
+                  href={jumpOut}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`Open the document\n${jumpOut}`}
+                  aria-label={`Open ${s.display_name}`}
+                >
+                  <ExternalLink size={11} />
+                </a>
+              )}
+            </span>
           );
         })}
       </div>
@@ -115,6 +165,7 @@ export function SourceViewer({ source, onClose }) {
   if (!source) return null;
   const drawer = source.source_type === TYPES.DATABASE_RECORD;
   const Icon = iconFor(source);
+  const href = externalUri(source);
 
   return (
     <>
@@ -131,7 +182,15 @@ export function SourceViewer({ source, onClose }) {
           <span className="as-src-n">{source.n}</span>
           <Icon size={16} className="as-src-head-icon" aria-hidden="true" />
           <div className="as-src-head-text">
-            <h2 className="as-src-title">{source.display_name}</h2>
+            <h2 className="as-src-title">
+              {/* The title is the way to the record itself — the most obvious
+                  place to look for it is the name of the thing. */}
+              {source.record_id ? (
+                <Link to={`/records/${source.record_id}`} onClick={onClose}>{source.display_name}</Link>
+              ) : href ? (
+                <a href={href} target="_blank" rel="noopener noreferrer">{source.display_name}</a>
+              ) : source.display_name}
+            </h2>
             <p className="as-src-kind">
               {TYPE_LABEL[source.source_type] || 'Source'}
               {subtitleOf(source) ? ` · ${subtitleOf(source)}` : ''}
@@ -144,7 +203,7 @@ export function SourceViewer({ source, onClose }) {
 
         <div className="as-src-body">
           {source.source_type === TYPES.DATABASE_RECORD && <RecordBody source={source} />}
-          {source.source_type === TYPES.RAG_DOCUMENT && <DocumentBody source={source} />}
+          {source.source_type === TYPES.RAG_DOCUMENT && <DocumentBody source={source} onClose={onClose} />}
           {source.source_type === TYPES.VISION_EXTRACTION && <VisionBody source={source} />}
         </div>
       </aside>
@@ -226,41 +285,54 @@ function RecordBody({ source }) {
 
 // ── Documents ───────────────────────────────────────────────────────────────
 
-function DocumentBody({ source }) {
+function DocumentBody({ source, onClose }) {
   const recordId = source.record_id;
   const [rec, setRec] = useState(null);
   const [pages, setPages] = useState([]);
-  const [media, setMedia] = useState(null);
+  const [allPages, setAllPages] = useState(false);
+  const [file, setFile] = useState(null);       // { url, mime, bytes } for the stored original
   const [state, setState] = useState(recordId ? 'loading' : 'none');
   const [error, setError] = useState('');
+  const urls = useRef([]);
+
+  const pageKeys = useMemo(() => {
+    if (!rec) return [];
+    return ((rec.pages || []).length ? rec.pages.map((p) => p.key) : [rec.key]).filter(Boolean);
+  }, [rec]);
 
   useEffect(() => {
     if (!recordId) return undefined;
     let live = true;
-    const urls = [];
+    // Reset first: the viewer is one component reused for whichever citation
+    // is open, so without this the previous record's pages sit under the new
+    // one's title until the fetch lands.
     setState('loading');
+    setRec(null);
+    setPages([]);
+    setAllPages(false);
+    setFile(null);
     getRecord(recordId)
       .then(async (r) => {
         if (!live) return;
         setRec(r);
         setState('ready');
-        // A recording or an office document has one stored original, fetched
-        // with its real type so it can actually play. Scanned paper has page
-        // images instead — often several.
+        // Scanned paper is a set of photographed pages. Everything else — a
+        // filed document, a spreadsheet, a recording — kept its original file
+        // alongside the text it produced, fetched with its real type so a PDF
+        // renders and a recording plays instead of arriving as a blob.
         if (!isPaper(r.sourceKind)) {
-          if (r.key) {
-            try {
-              const m = await fetchFileUrl(r.key);
-              if (!live) { URL.revokeObjectURL(m.url); return; }
-              urls.push(m.url);
-              setMedia(m);
-            } catch { /* the text stands on its own without the original */ }
-          }
+          if (!r.key) return;
+          try {
+            const f = await fetchFileUrl(r.key);
+            if (!live) { URL.revokeObjectURL(f.url); return; }
+            urls.current.push(f.url);
+            setFile(f);
+          } catch { /* the text below stands on its own without the original */ }
           return;
         }
         const keys = ((r.pages || []).length ? r.pages.map((p) => p.key) : [r.key]).filter(Boolean);
         const shown = [];
-        for (const k of keys.slice(0, 6)) {
+        for (const k of keys.slice(0, PAGES_EAGER)) {
           try {
             // eslint-disable-next-line no-await-in-loop
             shown.push(await fetchScanUrl(k));
@@ -276,16 +348,34 @@ function DocumentBody({ source }) {
       });
     return () => {
       live = false;
-      // Object URLs are a leak if the drawer is opened repeatedly.
-      urls.forEach((u) => URL.revokeObjectURL(u));
+      // Object URLs are a leak if the viewer is opened repeatedly.
+      urls.current.forEach((u) => URL.revokeObjectURL(u));
+      urls.current = [];
     };
   }, [recordId]);
 
+  const loadRemainingPages = async () => {
+    setAllPages(true);
+    const shown = [...pages];
+    for (const k of pageKeys.slice(pages.length)) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        shown.push(await fetchScanUrl(k));
+      } catch { /* skip the page that would not load */ }
+      setPages([...shown]);
+    }
+  };
+
+  const passage = (source.passages || []).find((p) => p && p.excerpt);
+  const paper = rec && isPaper(rec.sourceKind);
+  const media = rec && isMedia(rec.sourceKind);
+  const pdf = file && file.mime === 'application/pdf';
+
   return (
     <>
-      <Passages source={source} label="What the assistant read" />
-
-      {state === 'loading' && <p className="as-src-empty">Opening the record…</p>}
+      {state === 'loading' && (
+        <p className="as-src-empty"><Loader size={13} className="as-src-spin" /> Opening the record…</p>
+      )}
       {state === 'error' && (
         <p className="as-src-note">
           <ShieldAlert size={13} aria-hidden="true" />
@@ -298,46 +388,154 @@ function DocumentBody({ source }) {
         <>
           <p className="as-src-prov">{provenanceOf(rec).note}</p>
 
-          {pages.length > 0 && (
-            <div className="as-src-pages">
-              {pages.map((url, i) => (
-                <figure className="as-src-page" key={i}>
-                  <img src={url} alt={`Page ${i + 1} of ${rec.title || 'the record'}`} />
-                  {pages.length > 1 && <figcaption>Page {i + 1}</figcaption>}
-                </figure>
-              ))}
-            </div>
+          {/* ── The document itself ── */}
+
+          {paper && (
+            pages.length > 0 ? (
+              <div className="as-src-pages">
+                {pages.map((url, i) => (
+                  <figure className="as-src-page" key={i}>
+                    <img src={url} alt={`Page ${i + 1} of ${rec.title || 'the record'}`} />
+                    <figcaption>
+                      Page {i + 1}{pageKeys.length > 1 ? ` of ${pageKeys.length}` : ''}
+                    </figcaption>
+                  </figure>
+                ))}
+                {!allPages && pageKeys.length > pages.length && (
+                  <button type="button" className="as-src-more" onClick={loadRemainingPages}>
+                    Show the remaining {pageKeys.length - pages.length} page
+                    {pageKeys.length - pages.length === 1 ? '' : 's'}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="as-src-empty">The original scan is no longer stored — the text below is the record.</p>
+            )
           )}
 
-          {media && isMedia(rec.sourceKind) && (
+          {/* A stored PDF renders in place: the officer sees the document as
+              filed, not a description of it. */}
+          {pdf && (
+            <iframe className="as-src-pdf" src={file.url} title={`${rec.title || rec.filename} (PDF)`} />
+          )}
+
+          {media && file && (
             React.createElement(rec.sourceKind === 'video' ? 'video' : 'audio', {
-              className: 'as-src-media', src: media.url, controls: true,
+              className: 'as-src-media', src: file.url, controls: true, preload: 'metadata',
             })
           )}
 
-          {rec.text && (
-            <details className="as-src-details" open={!pages.length && !media}>
-              <summary>Full text of the record</summary>
-              <pre className="as-src-fulltext">{rec.text}</pre>
-            </details>
+          {/* An office document cannot render in a browser, so the extracted
+              text below IS the readable copy — but the original is one click
+              away, because a court asks for the file, not a transcription. */}
+          {file && !media && !pdf && (
+            <a className="as-src-file" href={file.url} download={rec.filename}>
+              <FileDown size={14} />
+              Open the original file — {rec.filename}
+              {sizeOf(rec, file) ? ` (${sizeOf(rec, file)})` : ''}
+            </a>
           )}
 
-          <Link className="as-src-open" to={`/records/${rec.id}`}>
-            Open the full record <ArrowUpRight size={14} />
+          {rec.summary && <p className="as-src-summary">{rec.summary}</p>}
+
+          {!!Object.keys(rec.fields || {}).length && (
+            <>
+              <h3 className="as-src-h3">Key particulars</h3>
+              <div className="as-src-record">
+                {Object.entries(rec.fields).map(([k, v]) => (
+                  <div className="as-src-field" key={k}>
+                    <span className="as-src-field-k">{k}</span>
+                    <span className="as-src-field-v">{String(v)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {(rec.tables || []).map((t, i) => (
+            <div className="as-src-table-wrap" key={i}>
+              <h3 className="as-src-h3"><TableIcon size={12} /> {t.title || `Table ${i + 1}`}</h3>
+              <div className="as-src-table-scroll">
+                <table className="as-src-table">
+                  {!!(t.columns || []).length && (
+                    <thead><tr>{t.columns.map((c, ci) => <th key={ci}>{c}</th>)}</tr></thead>
+                  )}
+                  <tbody>
+                    {(t.rows || []).map((row, ri) => (
+                      <tr key={ri}>{row.map((c, ci) => <td key={ci}>{c}</td>)}</tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+
+          <FullText
+            text={rec.text}
+            excerpt={passage && passage.excerpt}
+            label={media ? 'Transcript' : 'Full text of the record'}
+          />
+
+          <Link className="as-src-open" to={`/records/${rec.id}`} onClick={onClose}>
+            Open the full record in Records <ArrowUpRight size={14} />
           </Link>
         </>
       )}
 
       {/* A knowledge-base document has no stored file in Sentinel — the
-          retrieved passage above IS the citation, and pretending otherwise
-          with a dead "open" button would be worse than saying so. */}
+          retrieved passage IS the citation, and pretending otherwise with a
+          dead "open" button would be worse than saying so. */}
       {!recordId && (
-        <p className="as-src-empty">
-          {source.unresolved
-            ? 'The knowledge base answered this, but its retrieval did not name a document.'
-            : `From ${source.collection || 'the knowledge base'}${source.location ? ` — ${source.location}` : ''}.`}
-        </p>
+        <>
+          <Passages source={source} label="What the assistant read" />
+          {externalUri(source) ? (
+            <a className="as-src-open" href={externalUri(source)} target="_blank" rel="noopener noreferrer">
+              Open the document <ExternalLink size={13} />
+            </a>
+          ) : null}
+          <p className="as-src-empty">
+            {source.unresolved
+              ? 'The knowledge base answered this, but its retrieval did not name a document.'
+              : `From ${source.collection || 'the knowledge base'}${source.location ? ` — ${source.location}` : ''}.` +
+                (externalUri(source)
+                  ? ''
+                  : ' The document is held in the knowledge base rather than in Sentinel, so the passage above is the citation.')}
+          </p>
+        </>
       )}
+    </>
+  );
+}
+
+// The record's own text, with the cited passage highlighted in place and
+// scrolled to. This is the part that answers "on what basis?" — the officer
+// reads the sentence in its context rather than taking a summary on trust.
+function FullText({ text, excerpt, label }) {
+  const markRef = useRef(null);
+  const body = String(text || '');
+  const at = useMemo(() => locatePassage(body, excerpt), [body, excerpt]);
+
+  useEffect(() => {
+    if (markRef.current) markRef.current.scrollIntoView({ block: 'center' });
+  }, [at]);
+
+  if (!body.trim()) return null;
+  return (
+    <>
+      <h3 className="as-src-h3">{label}</h3>
+      {excerpt && !at && (
+        <blockquote className="as-src-passage">{excerpt}</blockquote>
+      )}
+      <pre className="as-src-fulltext">
+        {at ? (
+          <>
+            {body.slice(0, at.start)}
+            <mark className="as-src-mark" ref={markRef}>{body.slice(at.start, at.end)}</mark>
+            {body.slice(at.end)}
+          </>
+        ) : body}
+      </pre>
+      {at && <p className="as-src-marknote">Highlighted: the passage this answer was drawn from.</p>}
     </>
   );
 }
@@ -385,9 +583,8 @@ function VisionBody({ source }) {
 
 // ── Shared ──────────────────────────────────────────────────────────────────
 
-// The passages actually retrieved. This is the part of a citation that answers
-// "on what basis?" — the officer reads the sentence the assistant read, rather
-// than taking its summary on trust.
+// Retrieved passages shown on their own, for citations with no document behind
+// them to highlight inside.
 function Passages({ source, label }) {
   const passages = (source.passages || []).filter((p) => p && p.excerpt);
   if (!passages.length) return null;

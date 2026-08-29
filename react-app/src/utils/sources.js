@@ -84,7 +84,10 @@ export function isOpenable(s) {
 // carry meaning. Never a repeat of the display name.
 export function subtitleOf(s) {
   if (!s) return '';
-  if (s.source_type === TYPES.EXTERNAL_WEB) return s.domain || '';
+  // The whole address, not just the site. "mha.gov.in" tells an officer which
+  // organisation; the URL tells them which page — and following a link they
+  // could not read first is exactly what they should not have to do.
+  if (s.source_type === TYPES.EXTERNAL_WEB) return s.uri || s.domain || '';
   if (s.source_type === TYPES.DATABASE_RECORD) return s.identifier || s.scope || '';
   if (s.source_type === TYPES.VISION_EXTRACTION) return s.extracted_field || s.identifier || '';
   return s.location || s.collection || '';
@@ -106,4 +109,59 @@ export const columnsOf = (records) => {
     for (const k of Object.keys(r || {})) if (!seen.includes(k)) seen.push(k);
   }
   return seen;
+};
+
+// Where in the full text the cited passage sits.
+//
+// The point of showing a document is not "here is the file" — it is "here is
+// the sentence the answer came from". So the passage is located inside the
+// record's own text and highlighted there, which is what turns a citation into
+// something an officer can check at a glance.
+//
+// Three attempts, weakest last. The excerpt was sliced straight out of this
+// text, so an exact hit is the normal case; it can still miss because storage
+// truncates the excerpt, redaction rewrites an identifier inside it, or an
+// officer re-wrapped the text while correcting OCR.
+export function locatePassage(text, excerpt) {
+  const t = String(text || '');
+  const e = String(excerpt || '').trim();
+  if (!t || e.length < 12) return null;
+
+  let i = t.indexOf(e);
+  if (i >= 0) return { start: i, end: i + e.length };
+
+  // The opening run of the excerpt — enough to be unambiguous, short enough to
+  // survive a truncation or a redaction further along.
+  const head = e.slice(0, 80);
+  i = t.indexOf(head);
+  if (i >= 0) return { start: i, end: Math.min(t.length, i + e.length) };
+
+  // Whitespace-insensitive, with an index map back to the original so the
+  // highlight lands on the text actually being read rather than on a
+  // normalised copy of it.
+  const map = [];
+  let flat = '';
+  let inSpace = false;
+  for (let k = 0; k < t.length; k++) {
+    if (/\s/.test(t[k])) {
+      if (inSpace) continue;
+      inSpace = true;
+    } else {
+      inSpace = false;
+    }
+    flat += inSpace ? ' ' : t[k];
+    map.push(k);
+  }
+  const flatHead = head.replace(/\s+/g, ' ').trim().toLowerCase();
+  const j = flat.toLowerCase().indexOf(flatHead);
+  if (j < 0) return null;
+  const flatLen = e.replace(/\s+/g, ' ').trim().length;
+  const endIdx = Math.min(flat.length - 1, j + flatLen - 1);
+  return { start: map[j], end: map[endIdx] + 1 };
+}
+
+// Is this citation something the browser can simply navigate to?
+export const externalUri = (s) => {
+  const uri = s && s.uri;
+  return typeof uri === 'string' && /^https?:\/\//i.test(uri) ? uri : null;
 };

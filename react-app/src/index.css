@@ -14131,3 +14131,120 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   .as-src-meta > div,
   .as-src-field { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* ── Assistant citations: opening the source itself ──────────────────────── */
+
+/* The chip and its "go straight there" affordance travel as one pill, so the
+   jump target is unmistakably part of the same citation. */
+/* The wrapper is only rendered when there IS somewhere to jump to, so these
+   rules never square off a chip that stands alone. */
+.as-cite-chip-wrap { display: inline-flex; align-items: stretch; }
+.as-cite-chip-wrap .as-cite-chip { border-radius: 999px 0 0 999px; border-right: 0; }
+.as-cite-jump {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  color: var(--text-4);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 0 999px 999px 0;
+  text-decoration: none;
+}
+.as-cite-jump:hover, .as-cite-jump:focus-visible {
+  color: var(--bg-1);
+  background: var(--blue-500);
+  border-color: var(--blue-500);
+}
+/* A URL as a subtitle needs more width than a page label — it is the whole
+   point of showing it. */
+.as-cite-sub { max-width: 220px; direction: ltr; }
+
+.as-src-title a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--border-bright); }
+.as-src-title a:hover { color: var(--blue-500); border-bottom-color: var(--blue-500); }
+
+.as-src-spin { animation: as-src-spin 1s linear infinite; vertical-align: -2px; }
+@keyframes as-src-spin { to { transform: rotate(360deg); } }
+
+/* A stored PDF renders in place. Tall enough to read a page without the
+   viewer's own scrollbar fighting the document's. */
+.as-src-pdf {
+  display: block;
+  width: 100%;
+  height: min(60vh, 620px);
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+}
+
+/* The original file, for the formats a browser cannot render. */
+.as-src-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 9px 13px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text-1);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+.as-src-file:hover { color: var(--text-0); background: var(--bg-3); border-color: var(--border-bright); }
+
+.as-src-more {
+  align-self: flex-start;
+  padding: 8px 13px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--blue-500);
+  background: var(--blue-glow);
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.as-src-more:hover { color: var(--bg-1); background: var(--blue-500); }
+
+.as-src-summary {
+  margin: 14px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  color: var(--text-1);
+}
+
+.as-src-table-wrap { margin-top: 16px; }
+.as-src-table-scroll { overflow-x: auto; }
+.as-src-table { width: 100%; border-collapse: collapse; font-size: 0.74rem; }
+.as-src-table th, .as-src-table td {
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+  color: var(--text-1);
+}
+.as-src-table th { background: var(--bg-3); font-weight: 700; color: var(--text-0); }
+
+/* The cited sentence, highlighted where it sits in the document's own text. */
+.as-src-mark {
+  background: rgba(217, 119, 6, 0.28);
+  color: inherit;
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.28);
+}
+[data-theme="dark"] .as-src-mark {
+  background: rgba(234, 179, 8, 0.32);
+  box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.32);
+}
+.as-src-marknote {
+  margin: 6px 0 0;
+  font-size: 0.7rem;
+  color: var(--text-4);
+}
+/* The full text is the document, so it gets room to be read rather than the
+   letterbox a details-summary gave it. */
+.as-src-fulltext { max-height: 420px; }
