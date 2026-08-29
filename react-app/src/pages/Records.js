@@ -103,7 +103,7 @@ export default function Records() {
         skipped += 1;
       }
     }
-    if (skipped) setError(`${skipped} file${skipped === 1 ? '' : 's'} skipped — only images and PDFs can be scanned.`);
+    if (skipped) setError(`${skipped} file${skipped === 1 ? '' : 's'} skipped — only JPG, PNG, WebP, HEIC and PDF files can be scanned.`);
     if (!accepted.length) return;
     setTray((prev) => [
       ...prev,
@@ -209,7 +209,8 @@ export default function Records() {
           onChange={(e) => { if (e.target.files?.length) stage(e.target.files); e.target.value = ''; }}
         />
         <input
-          ref={fileRef} type="file" accept="image/*,application/pdf" multiple hidden
+          ref={fileRef} type="file" multiple hidden
+          accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
           onChange={(e) => { if (e.target.files?.length) stage(e.target.files); e.target.value = ''; }}
         />
 
@@ -222,7 +223,7 @@ export default function Records() {
           <Layers size={22} strokeWidth={1.7} className="dg-drop-icon" />
           <div className="dg-drop-copy">
             <strong>Drop scans here</strong>
-            <span>Images or PDFs · several pages at once is fine · up to 8 MB each</span>
+            <span>JPG, PNG, WebP, HEIC or PDF · Several pages at once is fine · Up to 8 MB each</span>
           </div>
           <div className="dg-drop-actions">
             <button type="button" className="aa-btn" onClick={() => cameraRef.current?.click()}>
