@@ -6801,8 +6801,19 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .cl-edge-thick { height: 3px; background: rgba(37,58,95,0.75); }
 
 /* Offender rankings: two paginated panels sharing the full card width */
-.cl-players-row { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
-@media (max-width: 860px) { .cl-players-row { grid-template-columns: 1fr; } }
+/* `.rp-card .rp-card-body` sets flex-direction:column at higher specificity,
+   which stacked these two panels; match that specificity so they stay side by
+   side across the full card width. minmax(0,1fr) lets long names shrink
+   instead of forcing the columns apart. */
+.rp-card .rp-card-body.cl-players-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 26px;
+  align-items: start;
+}
+@media (max-width: 680px) {
+  .rp-card .rp-card-body.cl-players-row { grid-template-columns: minmax(0, 1fr); }
+}
 .cl-rank-panel { display: flex; flex-direction: column; min-width: 0; }
 .cl-rank-head { margin-bottom: 10px; }
 .cl-rank-head h3 { margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--text-0); }
