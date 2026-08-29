@@ -12,6 +12,7 @@ import {
   allSections, allFacilities,
 } from '../utils/custody';
 import { Database } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const PER_PAGE = 12;
 const RELEASE_WINDOWS = [
@@ -37,6 +38,7 @@ function Kpi({ value, label, tone }) {
 }
 
 export default function Custody() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { isAdmin } = useAccess();
   const [data, setData] = useState(null);
@@ -101,14 +103,14 @@ export default function Custody() {
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const rows = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
-  if (loading) return (<div className="cf-page"><TopBar title="Inmate Registry" /><div className="cf-state"><div className="cf-spinner" /><p>Loading custodial records…</p></div></div>);
-  if (error) return (<div className="cf-page"><TopBar title="Inmate Registry" /><div className="cf-state cf-error"><AlertTriangle size={22} /><p>{error}</p><button className="cf-retry" onClick={load}>Retry</button></div></div>);
+  if (loading) return (<div className="cf-page"><TopBar title={t('pages.custody')} /><div className="cf-state"><div className="cf-spinner" /><p>{t('pages.custodyLoading')}</p></div></div>);
+  if (error) return (<div className="cf-page"><TopBar title={t('pages.custody')} /><div className="cf-state cf-error"><AlertTriangle size={22} /><p>{error}</p><button className="cf-retry" onClick={load}>{t('common.retry')}</button></div></div>);
 
   const a = data.analytics;
 
   return (
     <div className="cf-page">
-      <TopBar title="Inmate Registry">
+      <TopBar title={t('pages.custody')}>
         {isAdmin && data.tableReady && data.persistedCount < a.total && (
           <button className="aa-btn" onClick={runSeed} disabled={!!seeding} title="Write the registry to the Data Store">
             <Database size={14} /> {seeding ? `Persisting ${seeding.done}/${seeding.total}…` : `Persist to Data Store`}

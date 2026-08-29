@@ -44,7 +44,7 @@
       "desc": "Pattern recognition and predictive crime modelling"
     },
     "reports": {
-      "label": "Reports",
+      "label": "Home",
       "desc": "Statistical summaries and shift performance data"
     },
     "personnel": {
@@ -66,6 +66,30 @@
     "assistant": {
       "label": "Assistant",
       "desc": "Chat assistant for questions and case help"
+    },
+    "investigationDiary": {
+      "label": "Investigation Diary"
+    },
+    "reportStudio": {
+      "label": "Report Studio"
+    },
+    "records": {
+      "label": "Records"
+    },
+    "custody": {
+      "label": "Inmate Registry"
+    },
+    "access": {
+      "label": "Access & Audit"
+    },
+    "dutyRoster": {
+      "label": "Duty Roster"
+    },
+    "orgChart": {
+      "label": "Org Chart"
+    },
+    "directory": {
+      "label": "Directory"
     }
   },
   "common": {
@@ -167,5 +191,27 @@
     "links": "links",
     "associates": "associates",
     "linkedCrimes": "Linked crimes"
+  },
+  "pages": {
+    "custody": "Inmate Registry",
+    "custodyLoading": "Loading custodial records…",
+    "caseFiles": "Case Files",
+    "caseFilesSub": "Browse the Data Store",
+    "access": "Access & Audit",
+    "incidents": "Incidents",
+    "incidentsSub": "Latest FIRs & case status",
+    "home": "Home",
+    "homeSub": "Crime statistics & trends",
+    "directory": "Directory",
+    "personnel": "Personnel"
+  },
+  "charts": {
+    "caseStatus": "Case status",
+    "caseStatusSub": "Distribution of FIR outcomes",
+    "crimeCategory": "Crime by category",
+    "crimeCategorySub": "FIR classifications by major head",
+    "topDistricts": "Top districts",
+    "topDistrictsSub": "FIRs registered per district — shading intensity follows crime volume",
+    "refresh": "Refresh"
   }
 }

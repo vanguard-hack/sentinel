@@ -7,6 +7,7 @@ import TopBar from '../components/TopBar';
 import DateRangeCalendar from '../components/DateRangeCalendar';
 import { ROLE_LABELS, ASSIGNABLE_ROLES } from '../utils/access';
 import { logAudit } from '../utils/audit';
+import { useTranslation } from 'react-i18next';
 
 // CSV file glyph — a document with a "CSV" label band, matching the familiar
 // file-type icon rather than a generic text page.
@@ -392,10 +393,11 @@ function AuditTab() {
 }
 
 export default function AccessAudit() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState('roles');
   return (
     <div className="cf-page">
-      <TopBar title="Access & Audit" />
+      <TopBar title={t('pages.access')} />
       <div className="pp-body">
         <div className="aa-head">
           <div className="aa-title">

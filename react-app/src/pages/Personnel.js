@@ -8,6 +8,7 @@ import {
 import { loadPersonnel, SORTS, STATUSES } from '../utils/personnel';
 import TopBar from '../components/TopBar';
 import RankInsignia from '../components/RankInsignia';
+import { useTranslation } from 'react-i18next';
 
 const PER_PAGE_OPTIONS = [25, 50, 100];
 
@@ -66,6 +67,7 @@ function OfficerAvatar({ officer, size = 34 }) {
 }
 
 export default function Personnel() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [data, setData] = useState(null); // { officers, districtOptions, rankOptions }
@@ -143,7 +145,7 @@ export default function Personnel() {
 
   return (
     <div className="cf-page">
-      <TopBar title="Directory" parent="Personnel" parentTo="/personnel" />
+      <TopBar title={t('pages.directory')} parent={t('pages.personnel')} parentTo="/personnel" />
 
       <div className="pp-body">
         {/* Toolbar */}

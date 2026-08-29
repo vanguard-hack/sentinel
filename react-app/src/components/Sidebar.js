@@ -17,25 +17,25 @@ import LanguageSwitcher from './LanguageSwitcher';
 
 // Every feature lives here. `soon` items are shown disabled.
 const NAV = [
-  { to: '/reports', Icon: Home, key: 'reports', label: 'Home' },
+  { to: '/reports', Icon: Home, key: 'reports' },
   { to: '/incidents', Icon: AlertTriangle, key: 'incidents' },
   { to: '/crime-map', Icon: Map, key: 'crimeMap' },
   { to: '/ai-analytics', Icon: Brain, key: 'aiAnalytics' },
   { to: '/case-files', Icon: Database, key: 'caseFiles' },
-  { to: '/investigation-diary', Icon: NotebookPen, key: 'investigationDiary', label: 'Investigation Diary' },
-  { to: '/report-studio', Icon: ScrollText, key: 'reportStudio', label: 'Report Studio' },
-  { to: '/records', Icon: Images, key: 'records', label: 'Records' },
-  { to: '/custody', Icon: Building2, key: 'custody', label: 'Inmate Registry' },
+  { to: '/investigation-diary', Icon: NotebookPen, key: 'investigationDiary' },
+  { to: '/report-studio', Icon: ScrollText, key: 'reportStudio' },
+  { to: '/records', Icon: Images, key: 'records' },
+  { to: '/custody', Icon: Building2, key: 'custody' },
   { to: '/assistant', Icon: MessageSquare, key: 'assistant' },
   {
     to: '/personnel', Icon: Users, key: 'personnel',
     children: [
-      { to: '/personnel', key: 'personnel', label: 'Directory', exact: true },
-      { to: '/personnel/roster', key: 'dutyRoster', label: 'Duty Roster' },
-      { to: '/personnel/org-chart', key: 'orgChart', label: 'Org Chart' },
+      { to: '/personnel', key: 'personnel', labelKey: 'directory', exact: true },
+      { to: '/personnel/roster', key: 'dutyRoster' },
+      { to: '/personnel/org-chart', key: 'orgChart' },
     ],
   },
-  { to: '/access', Icon: ShieldCheck, key: 'access', label: 'Access & Audit' },
+  { to: '/access', Icon: ShieldCheck, key: 'access' },
 ];
 
 export default function Sidebar() {
@@ -80,7 +80,7 @@ export default function Sidebar() {
     );
 
   const labelFor = (item) =>
-    item.label || t(`modules.${item.key}.label`, item.key);
+    item.label || t(`modules.${item.labelKey || item.key}.label`, item.key);
 
   const go = (item) => {
     if (item.soon || !item.to) return;
@@ -138,7 +138,7 @@ export default function Sidebar() {
                           className={`sb-subitem ${childActive ? 'active' : ''}`}
                           onClick={() => go(c)}
                         >
-                          {c.label}
+                          {labelFor(c)}
                         </button>
                       );
                     })}

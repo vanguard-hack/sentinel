@@ -10,6 +10,7 @@ import {
   fetchColumns, fetchPage, fetchCount, fetchAllRows,
 } from '../utils/datastore';
 import TopBar from '../components/TopBar';
+import { useTranslation } from 'react-i18next';
 
 const OP_PLACEHOLDER = {
   contains: 'contains…', '=': 'equals…', '!=': 'not equals…',
@@ -43,6 +44,7 @@ function orderColumns(cols) {
 }
 
 export default function CaseFiles() {
+  const { t } = useTranslation();
   const [activeTable, setActiveTable] = useState(ALL_TABLES[0].name);
   const [columns, setColumns] = useState([]);
   const [sampleRow, setSampleRow] = useState({});
@@ -210,7 +212,7 @@ export default function CaseFiles() {
 
   return (
     <div className="cf-page">
-      <TopBar title="Case Files" subtitle="Browse the Data Store" />
+      <TopBar title={t('pages.caseFiles')} subtitle={t('pages.caseFilesSub')} />
 
       <div className="cf-body">
         {/* ── Main ── */}

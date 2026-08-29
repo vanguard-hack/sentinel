@@ -13,6 +13,7 @@ import Sankey from '../components/Sankey';
 import GeoHeatMap from '../components/GeoHeatMap';
 import TopBar from '../components/TopBar';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 
 function Kpi({ Icon, label, value, sub, trend }) {
   return (
@@ -46,6 +47,7 @@ function Card({ id, title, subtitle, wide, two, children }) {
 }
 
 export default function Reports() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const firstName =
     user?.first_name || user?.email_id?.split('@')[0] || 'Officer';
@@ -175,7 +177,7 @@ export default function Reports() {
 
   return (
     <div className="rp-page">
-      <TopBar title="Home" subtitle="Crime statistics & trends" />
+      <TopBar title={t('pages.home')} subtitle={t('pages.homeSub')} />
 
       <main className="rp-main">
         {/* Welcome hero + time filter cluster */}
@@ -268,7 +270,7 @@ export default function Reports() {
               {pdfBusy ? <span className="btn-spinner" /> : <FileDown size={15} />}
               <span>{pdfBusy ? 'Exporting' : pdfError ? 'Retry PDF' : 'Export'}</span>
             </button>
-            <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
+            <button className="cf-icon-btn" onClick={load} title={t('charts.refresh')} disabled={loading}>
               <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
             </button>
           </div>
@@ -408,15 +410,15 @@ export default function Reports() {
 
             {/* Charts */}
             <div className="rp-grid">
-              <Card id="chart-case-status" title="Case status" subtitle="Distribution of FIR outcomes">
+              <Card id="chart-case-status" title={t('charts.caseStatus')} subtitle={t('charts.caseStatusSub')}>
                 <Donut data={data.byStatus} />
               </Card>
 
-              <Card id="chart-crime-category" title="Crime by category" subtitle="FIR classifications by major head" two>
+              <Card id="chart-crime-category" title={t('charts.crimeCategory')} subtitle={t('charts.crimeCategorySub')} two>
                 <HBarList data={data.byCategory} />
               </Card>
 
-              <Card id="chart-top-districts" title="Top districts" subtitle="FIRs registered per district — shading intensity follows crime volume" two>
+              <Card id="chart-top-districts" title={t('charts.topDistricts')} subtitle={t('charts.topDistrictsSub')} two>
                 <div className="rp-geo-controls">
                   <span>Show top</span>
                   <select className="cf-select pp-perpage" value={topK} onChange={(e) => setTopK(e.target.value)}>

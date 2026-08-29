@@ -44,7 +44,7 @@
       "desc": "पैटर्न पहचान और पूर्वानुमानित अपराध मॉडलिंग"
     },
     "reports": {
-      "label": "रिपोर्ट",
+      "label": "मुख्य पृष्ठ",
       "desc": "सांख्यिकीय सारांश और शिफ्ट प्रदर्शन डेटा"
     },
     "personnel": {
@@ -66,6 +66,30 @@
     "assistant": {
       "label": "सहायक",
       "desc": "प्रश्नों और केस सहायता के लिए चैट सहायक"
+    },
+    "investigationDiary": {
+      "label": "अन्वेषण डायरी"
+    },
+    "reportStudio": {
+      "label": "रिपोर्ट स्टूडियो"
+    },
+    "records": {
+      "label": "अभिलेख"
+    },
+    "custody": {
+      "label": "बंदी रजिस्टर"
+    },
+    "access": {
+      "label": "पहुँच एवं अंकेक्षण"
+    },
+    "dutyRoster": {
+      "label": "ड्यूटी रोस्टर"
+    },
+    "orgChart": {
+      "label": "संगठन चार्ट"
+    },
+    "directory": {
+      "label": "निर्देशिका"
     }
   },
   "common": {
@@ -167,5 +191,27 @@
     "links": "संबंध",
     "associates": "सहयोगी",
     "linkedCrimes": "संबंधित अपराध"
+  },
+  "pages": {
+    "custody": "बंदी रजिस्टर",
+    "custodyLoading": "अभिरक्षा अभिलेख लोड हो रहे हैं…",
+    "caseFiles": "केस फ़ाइलें",
+    "caseFilesSub": "डेटा स्टोर देखें",
+    "access": "पहुँच एवं अंकेक्षण",
+    "incidents": "घटनाएँ",
+    "incidentsSub": "नवीनतम FIR और प्रकरण स्थिति",
+    "home": "मुख्य पृष्ठ",
+    "homeSub": "अपराध आँकड़े और प्रवृत्तियाँ",
+    "directory": "निर्देशिका",
+    "personnel": "कार्मिक"
+  },
+  "charts": {
+    "caseStatus": "प्रकरण स्थिति",
+    "caseStatusSub": "FIR परिणामों का वितरण",
+    "crimeCategory": "श्रेणी अनुसार अपराध",
+    "crimeCategorySub": "मुख्य शीर्ष अनुसार FIR वर्गीकरण",
+    "topDistricts": "प्रमुख ज़िले",
+    "topDistrictsSub": "प्रति ज़िला दर्ज FIR — छाया की गहराई अपराध संख्या दर्शाती है",
+    "refresh": "ताज़ा करें"
   }
 }

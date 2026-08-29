@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { fetchIncidents } from '../utils/incidents';
 import TopBar from '../components/TopBar';
+import { useTranslation } from 'react-i18next';
 
 const STATUS_TONE = {
   'Under Investigation': 'amber', 'Charge Sheeted': 'blue', 'Pending Trial': 'blue',
@@ -128,6 +129,7 @@ function IncidentRow({ inc, open, onToggle }) {
 }
 
 export default function Incidents() {
+  const { t } = useTranslation();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -160,7 +162,7 @@ export default function Incidents() {
 
   return (
     <div className="rp-page">
-      <TopBar title="Incidents" subtitle="Latest FIRs & case status">
+      <TopBar title={t('pages.incidents')} subtitle={t('pages.incidentsSub')}>
         <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
           <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
         </button>
