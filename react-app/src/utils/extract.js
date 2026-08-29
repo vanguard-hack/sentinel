@@ -50,6 +50,34 @@ export const KIND_LABEL = {
   image: 'Scan', pdf: 'PDF',
 };
 
+// ── Clipboard ───────────────────────────────────────────────────────────────
+
+// Normalise whatever a paste put on the clipboard into a list of Files.
+//
+// Two shapes turn up. A file copied in Finder or Explorer arrives in `files`
+// with its real name. A screenshot, or an image copied out of another app,
+// arrives as an item with no usable name — those are given a timestamped one,
+// because a station's records filling with a dozen documents all called
+// "image.png" helps nobody.
+export function filesFromClipboard(clipboardData, now = new Date()) {
+  if (!clipboardData) return [];
+  const out = [...(clipboardData.files || [])];
+  if (out.length) return out;
+  const stamp = now.toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  let n = 0;
+  for (const item of clipboardData.items || []) {
+    if (item.kind !== 'file') continue;
+    const blob = item.getAsFile && item.getAsFile();
+    if (!blob) continue;
+    const named = blob.name && blob.name !== 'image.png';
+    if (named) { out.push(blob); continue; }
+    const ext = (String(blob.type).split('/')[1] || 'png').replace('jpeg', 'jpg');
+    n += 1;
+    out.push(new File([blob], `pasted-${stamp}${n > 1 ? `-${n}` : ''}.${ext}`, { type: blob.type }));
+  }
+  return out;
+}
+
 // ── Spreadsheets ────────────────────────────────────────────────────────────
 // SheetJS is already a dependency (the Access & Audit export uses it) and
 // reads xlsx/xls/csv/ods alike. Each sheet becomes a real table, so a seizure

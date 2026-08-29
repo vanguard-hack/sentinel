@@ -1,4 +1,4 @@
-import { detectKind, isPageKind, KIND_LABEL } from '../utils/extract';
+import { detectKind, isPageKind, KIND_LABEL, filesFromClipboard } from '../utils/extract';
 
 const f = (name, type = '') => ({ name, type, size: 100 });
 
@@ -57,5 +57,61 @@ describe('records file-type detection', () => {
     // files, so extension has to be authoritative.
     expect(detectKind(f('report.docx', ''))).toBe('word');
     expect(detectKind(f('data.xlsx', 'application/octet-stream'))).toBe('sheet');
+  });
+});
+
+describe('pasting files into Records', () => {
+  const AT = new Date('2026-08-29T14:30:05Z');
+  const item = (blob) => ({ kind: 'file', getAsFile: () => blob });
+
+  it('takes a file copied from Finder or Explorer with its real name', () => {
+    const copied = new File(['x'], 'seizure list.xlsx');
+    const out = filesFromClipboard({ files: [copied], items: [] });
+    expect(out).toHaveLength(1);
+    expect(out[0].name).toBe('seizure list.xlsx');
+  });
+
+  it('gives a pasted screenshot a timestamped name, not "image.png"', () => {
+    const shot = new File([''], 'image.png', { type: 'image/png' });
+    const out = filesFromClipboard({ files: [], items: [item(shot)] }, AT);
+    expect(out).toHaveLength(1);
+    expect(out[0].name).toBe('pasted-2026-08-29-14-30-05.png');
+  });
+
+  it('keeps two screenshots pasted at once distinct', () => {
+    const shot = () => new File([''], 'image.png', { type: 'image/png' });
+    const out = filesFromClipboard({ files: [], items: [item(shot()), item(shot())] }, AT);
+    expect(out.map((f) => f.name)).toEqual([
+      'pasted-2026-08-29-14-30-05.png',
+      'pasted-2026-08-29-14-30-05-2.png',
+    ]);
+  });
+
+  it('normalises the jpeg MIME subtype to a .jpg extension', () => {
+    const shot = new File([''], 'image.png', { type: 'image/jpeg' });
+    expect(filesFromClipboard({ files: [], items: [item(shot)] }, AT)[0].name)
+      .toBe('pasted-2026-08-29-14-30-05.jpg');
+  });
+
+  it('respects a real name on an item rather than renaming it', () => {
+    const named = new File([''], 'fir-page-2.png', { type: 'image/png' });
+    expect(filesFromClipboard({ files: [], items: [item(named)] }, AT)[0].name)
+      .toBe('fir-page-2.png');
+  });
+
+  it('ignores pasted text, so the search box keeps working', () => {
+    expect(filesFromClipboard({ files: [], items: [{ kind: 'string' }] })).toEqual([]);
+    expect(filesFromClipboard({ files: [], items: [] })).toEqual([]);
+  });
+
+  it('survives a clipboard with nothing on it', () => {
+    expect(filesFromClipboard(null)).toEqual([]);
+    expect(filesFromClipboard({})).toEqual([]);
+  });
+
+  it('does not double-count when a file appears in both files and items', () => {
+    const copied = new File(['x'], 'report.docx');
+    const out = filesFromClipboard({ files: [copied], items: [item(copied)] });
+    expect(out).toHaveLength(1);
   });
 });

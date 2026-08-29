@@ -6877,7 +6877,8 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 }
 
 /* ── Records: one capture area, and the staged-page tray ───────────────── */
-.dg-drop { cursor: default; align-items: center; gap: 16px; flex-wrap: wrap; }
+/* The panel itself opens the file picker, so it must look clickable. */
+.dg-drop { cursor: pointer; align-items: center; gap: 16px; flex-wrap: wrap; }
 .dg-drop-icon { flex: 0 0 auto; }
 .dg-drop-copy { flex: 1 1 240px; min-width: 0; }
 .dg-drop-actions { display: flex; gap: 8px; flex: 0 0 auto; }
@@ -13573,7 +13574,8 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 }
 
 /* ── Records: one capture area, and the staged-page tray ───────────────── */
-.dg-drop { cursor: default; align-items: center; gap: 16px; flex-wrap: wrap; }
+/* The panel itself opens the file picker, so it must look clickable. */
+.dg-drop { cursor: pointer; align-items: center; gap: 16px; flex-wrap: wrap; }
 .dg-drop-icon { flex: 0 0 auto; }
 .dg-drop-copy { flex: 1 1 240px; min-width: 0; }
 .dg-drop-actions { display: flex; gap: 8px; flex: 0 0 auto; }

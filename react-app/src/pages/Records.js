@@ -10,7 +10,7 @@ import {
   listRecords, deleteRecord, uploadScan, newBatchId, recordsToCsv, searchRecords,
   pdfToImages, isPdf, ingestExtracted,
 } from '../utils/digitise';
-import { extractText, detectKind, isPageKind, KIND_LABEL } from '../utils/extract';
+import { extractText, detectKind, isPageKind, KIND_LABEL, filesFromClipboard } from '../utils/extract';
 import { transcribeAudio } from '../utils/assistant';
 import { logAudit } from '../utils/audit';
 import { useTranslation } from 'react-i18next';
@@ -208,6 +208,26 @@ export default function Records() {
     if (e.dataTransfer?.files?.length) stage(e.dataTransfer.files);
   };
 
+  // Paste a file straight onto the page — copy it in Finder or Explorer, or
+  // take a screenshot, then Ctrl/Cmd+V anywhere on Records.
+  //
+  // Two clipboard shapes have to be handled. A file copied from the desktop
+  // arrives in `files` with its real name. A screenshot or an image copied
+  // from another app arrives as an `item` with no name at all — those get a
+  // timestamped one, because a station's records filling up with a dozen
+  // documents all called "image.png" helps nobody.
+  useEffect(() => {
+    const onPaste = (e) => {
+      const picked = filesFromClipboard(e.clipboardData);
+      // Nothing pasted but text — leave it alone so the search box still works.
+      if (!picked.length) return;
+      e.preventDefault();
+      stage(picked);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [stage]);
+
   const remove = async (r) => {
     const ok = await confirm({
       title: t('records.deleteTitle', { title: r.title }),
@@ -267,6 +287,16 @@ export default function Records() {
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
+          // The whole panel opens the picker, not just the button in it: a
+          // large area that says "drop files here" reads as clickable, and
+          // finding out it isn't is a small, avoidable annoyance.
+          //
+          // No role="button" or tabIndex, deliberately. The panel already
+          // contains two real buttons, so making it one too would nest
+          // interactive elements and add a duplicate tab stop for a shortcut
+          // that is pure mouse convenience — keyboard users reach both actions
+          // through the buttons themselves.
+          onClick={() => fileRef.current?.click()}
         >
           <Layers size={22} strokeWidth={1.7} className="dg-drop-icon" />
           <div className="dg-drop-copy">
@@ -274,10 +304,21 @@ export default function Records() {
             <span>{t('records.dropHint')}</span>
           </div>
           <div className="dg-drop-actions">
-            <button type="button" className="aa-btn" onClick={() => cameraRef.current?.click()}>
+            {/* Both buttons sit inside the clickable panel, so they must stop
+                the click bubbling — otherwise the camera button would also
+                open the file picker behind it. */}
+            <button
+              type="button"
+              className="aa-btn"
+              onClick={(e) => { e.stopPropagation(); cameraRef.current?.click(); }}
+            >
               <Camera size={15} /> {t('records.takePhoto')}
             </button>
-            <button type="button" className="aa-btn primary" onClick={() => fileRef.current?.click()}>
+            <button
+              type="button"
+              className="aa-btn primary"
+              onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}
+            >
               <Upload size={15} /> {t('records.chooseFiles')}
             </button>
           </div>
