@@ -4,13 +4,17 @@ import {
   Plus, MessageSquare, Trash2,
   Paperclip, Mic, ArrowUp, X, Shield, FileText, PanelLeft,
   Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, MoreVertical,
-  Star, Pencil, FileDown, CheckSquare,
+  Star, Pencil, FileDown, CheckSquare, AlertTriangle,
 } from 'lucide-react';
 import {
   loadSessions, saveSessions, makeTitle, newSession, generateReply, uid,
   transcribeAudio, loadSessionsRemote, saveSessionRemote, saveSessionBeacon, deleteSessionRemote,
 } from '../utils/assistant';
-import { preParseImage, canPreParse, digestLabel } from '../utils/vision';
+import { preParseImage, canPreParse } from '../utils/vision';
+import {
+  contextKind, unusableReason, readForContext, contextLabel, contextDetail,
+  attachState, contextSummary,
+} from '../utils/attachments';
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
 import Avatar from '../components/Avatar';
@@ -387,6 +391,7 @@ export default function Assistant() {
     // Grab the in-flight parses before the composer is cleared — the state
     // reset below would otherwise drop the promises we still need.
     const pendingVision = attachments.filter((a) => a.parsing).map((a) => a.parsing);
+    const pendingDocs = attachments.filter((a) => a.readingPromise).map((a) => a.readingPromise);
     setInput('');
     setAttachments([]);
     histRef.current = { idx: null, draft: '' };
@@ -402,7 +407,15 @@ export default function Assistant() {
             .map((r) => (r.status === 'fulfilled' ? r.value : null))
             .filter(Boolean)
         : [];
-      const reply = await generateReply(history, digests);
+      // Documents read in the browser travel as text. allSettled for the same
+      // reason as the images: one file that would not parse must never cost
+      // the officer their question.
+      const docs = pendingDocs.length
+        ? (await Promise.allSettled(pendingDocs))
+            .map((r) => (r.status === 'fulfilled' ? r.value : null))
+            .filter((d) => d && d.ok)
+        : [];
+      const reply = await generateReply(history, digests, docs);
       const botMsg = {
         id: uid(),
         role: 'assistant',
@@ -531,16 +544,36 @@ export default function Assistant() {
       .filter((f) => !f.type.startsWith('audio/'))
       .map((f) => {
         const id = uid();
-        // Start reading the image NOW rather than at send. The officer is
-        // about to spend several seconds typing their question; that is where
-        // the vision budget is spent, so sending stays instant. The promise
-        // (not the bytes) rides on the attachment, so nothing large is held
-        // in state and a send that arrives early simply awaits it.
-        const parsing = canPreParse(f) ? preParseImage(f) : null;
-        if (parsing) {
-          parsing.then((digest) =>
+        const kind = contextKind(f);
+        // Start reading NOW rather than at send. The officer is about to spend
+        // several seconds typing their question; that is where the reading
+        // budget is spent, so sending stays instant. The promise (not the
+        // bytes) rides on the attachment, so nothing large is held in state
+        // and a send that arrives early simply awaits it.
+        //
+        // An image goes to the vision pre-parser; a document is read for its
+        // text here in the browser. Either way the chip reports what happened,
+        // because an attachment the assistant never saw must not look the same
+        // as one it did.
+        let parsing = null;
+        let reading = null;
+        if (kind === 'image') {
+          parsing = canPreParse(f) ? preParseImage(f) : null;
+          if (parsing) {
+            parsing.then((digest) =>
+              setAttachments((prev) =>
+                prev.map((a) => (a.id === id ? { ...a, digest, parsed: true } : a))
+              )
+            );
+          }
+        } else if (kind === 'document') {
+          reading = readForContext(f, {
+            onProgress: (detail) =>
+              setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, detail } : a))),
+          });
+          reading.then((context) =>
             setAttachments((prev) =>
-              prev.map((a) => (a.id === id ? { ...a, digest, parsed: true } : a))
+              prev.map((a) => (a.id === id ? { ...a, context, reading: false, detail: '' } : a))
             )
           );
         }
@@ -549,9 +582,13 @@ export default function Assistant() {
           name: f.name,
           size: f.size,
           type: f.type,
+          kind,
           url: f.type.startsWith('image/') ? URL.createObjectURL(f) : null,
           parsing,
-          parsed: !parsing,
+          parsed: kind === 'image' ? !parsing : true,
+          reading: !!reading,
+          readingPromise: reading,
+          reason: kind === 'unusable' ? unusableReason(f) : '',
         };
       });
     setAttachments((prev) => [...prev, ...picked]);
@@ -560,6 +597,8 @@ export default function Assistant() {
 
   const removeAttachment = (id) =>
     setAttachments((prev) => prev.filter((a) => a.id !== id));
+
+  const summary = contextSummary(attachments);
 
   const copyMessage = (m) => {
     if (!navigator.clipboard) return;
@@ -879,24 +918,35 @@ export default function Assistant() {
               {attachments.length > 0 && (
                 <div className="as-attach-row">
                   {attachments.map((a) => (
-                    <span className="as-attach-chip" key={a.id}>
+                    <span
+                      className={`as-attach-chip ${attachState(a)}`}
+                      key={a.id}
+                      title={`${a.name}\n${contextDetail(a)}`}
+                    >
                       {a.url ? (
                         <img src={a.url} alt="" className="as-attach-thumb" />
                       ) : (
                         <FileText size={13} />
                       )}
                       <span className="as-attach-name">{a.name}</span>
-                      {a.parsing && (
-                        <span className="as-attach-tag">
-                          {a.parsed ? digestLabel(a.digest) || 'unreadable' : 'reading…'}
-                        </span>
-                      )}
+                      {/* Every attachment says what it is doing — not only the
+                          ones that worked. A file the assistant will not see
+                          must not look like one it will. */}
+                      <span className="as-attach-tag">{contextLabel(a)}</span>
                       <button onClick={() => removeAttachment(a.id)} title="Remove">
                         <X size={12} />
                       </button>
                     </span>
                   ))}
                 </div>
+              )}
+              {summary && (
+                <p className={`as-attach-summary ${summary.tone}`}>
+                  {summary.tone === 'ready' || summary.tone === 'partial'
+                    ? <Paperclip size={11} />
+                    : <AlertTriangle size={11} />}
+                  {summary.text}
+                </p>
               )}
               <div className="as-composer-main">
                 <button

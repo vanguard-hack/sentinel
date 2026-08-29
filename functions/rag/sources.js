@@ -185,6 +185,32 @@ function fromDigitised(hits) {
   }));
 }
 
+// ── Lane 2b: files attached to the question ─────────────────────────────────
+
+const ATTACH_NOTE = {
+  pdf: 'PDF, text read directly',
+  sheet: 'Spreadsheet, read directly',
+  word: 'Document, read directly',
+  slides: 'Presentation, read directly',
+  text: 'Text file, read directly',
+};
+
+// A file the officer attached to this message. It is not in Records and has no
+// id to open — it lives on their machine and only its text was sent — so the
+// citation carries the passage instead, which is the whole of what the
+// assistant saw.
+function fromAttachments(docs) {
+  return (Array.isArray(docs) ? docs : []).map((d) => ({
+    source_type: TYPES.RAG_DOCUMENT,
+    display_name: str(d && d.name, 160) || 'Attached file',
+    location: ATTACH_NOTE[d && d.kind] || 'Attached file',
+    mime_type: mimeFor(d && d.name),
+    collection: 'Attached to this message',
+    note: str(d && d.note, 80) || null,
+    passages: d && d.text ? [{ location: null, excerpt: str(d.text, 1200), score: null }] : [],
+  }));
+}
+
 // ── Lane 3: the Data Store (text2zcql) ──────────────────────────────────────
 
 // The evaluated WHERE clause, which is what "why these rows" actually means.
@@ -458,6 +484,7 @@ module.exports = {
   fromRagNodes,
   knowledgeBaseFallback,
   fromDigitised,
+  fromAttachments,
   fromZcql,
   fromVision,
   fromWeb,

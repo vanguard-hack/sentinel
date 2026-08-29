@@ -288,7 +288,7 @@ export async function transcribeAudio(input, language = 'en') {
 // { text, components } — components are AG-UI-style typed specs (bar-chart,
 // pie-chart, table, cards) rendered by AguiRenderer. Falls back to an
 // explanatory message if the backend isn't reachable/configured yet.
-export async function generateReply(history, vision = []) {
+export async function generateReply(history, vision = [], attachments = []) {
   const lastUser = [...history].reverse().find((m) => m.role === 'user');
   const query = (lastUser?.content || '').trim();
   if (!query) return { text: 'Ask me a question to get started.', components: [] };
@@ -325,6 +325,16 @@ export async function generateReply(history, vision = []) {
         page_context: capturePageContext(),
         // Digests of any images attached to this message, parsed on attach.
         vision,
+        // Text pulled from any documents attached to this message, read in the
+        // browser on attach. Only the text travels — the file never leaves the
+        // officer's machine.
+        attachments: attachments.map((a) => ({
+          name: a.name,
+          kind: a.kind,
+          text: a.text,
+          tables: a.tables,
+          note: a.note,
+        })),
       }),
     });
     const data = await res.json().catch(() => ({}));

@@ -14302,3 +14302,39 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   color: var(--text-4);
   line-height: 1.4;
 }
+
+/* ── Composer attachments: what the assistant will actually receive ──────── */
+/* Appended at the end deliberately: the .as-attach-* block appears twice
+   earlier in this stylesheet, and rules that must win over both belong after
+   both. */
+
+/* Three states, three colours. The point of the tag is that an officer can
+   tell at a glance whether the assistant is going to see this file — a chip
+   that looks the same either way is how you come to trust an answer that
+   never read the attachment. */
+.as-attach-chip.ready { border-color: rgba(5, 150, 105, 0.35); }
+.as-attach-chip.ready .as-attach-tag { background: rgba(5, 150, 105, 0.14); color: var(--green); }
+.as-attach-chip.reading .as-attach-tag { background: var(--bg-3); color: var(--text-4); }
+.as-attach-chip.skipped { border-color: rgba(217, 119, 6, 0.35); }
+.as-attach-chip.skipped .as-attach-name { color: var(--text-3); }
+.as-attach-chip.skipped .as-attach-tag { background: rgba(217, 119, 6, 0.14); color: var(--gold-dark); }
+
+/* The tag is now on every chip, so it has to survive a long filename rather
+   than being pushed out of the pill. */
+.as-attach-chip { max-width: 300px; }
+.as-attach-tag { white-space: nowrap; }
+
+/* One line for the whole tray, read in the second before sending. */
+.as-attach-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 8px 8px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-4);
+}
+.as-attach-summary svg { flex: 0 0 auto; }
+.as-attach-summary.ready { color: var(--green); }
+.as-attach-summary.partial, .as-attach-summary.skipped { color: var(--gold-dark); }

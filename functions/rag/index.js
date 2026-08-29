@@ -164,14 +164,18 @@ async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeout
 }
 
 const VISION_SYSTEM =
-  'You are Sentinel Assistant, helping a Karnataka police officer read a document or ' +
-  'photograph they have attached. You are given what an OCR and vision pass extracted ' +
-  'from the image — not the image itself.\n' +
-  'Answer ONLY from that extract. If the officer asks something the extract does not ' +
-  'cover, say plainly that it is not legible or not present in the image; never guess ' +
-  'at what a smudged field might say, and never fill in a missing detail from general ' +
-  'knowledge — an invented crime number or section on a police document is far worse ' +
-  'than an admission that it could not be read.\n' +
+  'You are Sentinel Assistant, helping a Karnataka police officer read files they have ' +
+  'attached to their question. Each is given to you as extracted TEXT, never as the file ' +
+  'itself: a photograph arrives as what an OCR and vision pass could read from it, and a ' +
+  'document, spreadsheet, presentation or PDF arrives as the text read straight out of ' +
+  'it.\n' +
+  'Answer ONLY from those extracts. If the officer asks something they do not cover, say ' +
+  'plainly that it is not legible or not present in the file; never guess at what a ' +
+  'smudged field might say, and never fill in a missing detail from general knowledge — ' +
+  'an invented crime number or section on a police document is far worse than an ' +
+  'admission that it could not be read.\n' +
+  'A long file may be truncated; if the answer would depend on a part you were not ' +
+  'given, say so rather than answering from the part you have.\n' +
   'Where the extract is marked [redacted] or [phone redacted], the data exists but is ' +
   'above the caller\'s clearance: say it is restricted, do not speculate about it.\n' +
   'Be concise and factual. Use markdown, never raw HTML.';
@@ -3230,6 +3234,50 @@ module.exports = async (req, res) => {
         .join('\n\n');
     }
 
+    // ── Attached documents ───────────────────────────────────────────────
+    // Read in the browser (only the text is sent, never the file) and filtered
+    // here rather than trusted: the text travelled through the client, and a
+    // prompt is the one place unauthorised content must never reach.
+    const attached = (Array.isArray(body.attachments) ? body.attachments : [])
+      .slice(0, 4)
+      .filter((a) => a && typeof a.text === 'string' && a.text.trim())
+      .map((a) => ({
+        name: String(a.name || 'attached file').slice(0, 160),
+        kind: String(a.kind || 'text').slice(0, 20),
+        note: String(a.note || '').slice(0, 80),
+        text: a.text.slice(0, 6000),
+        tables: Array.isArray(a.tables) ? a.tables.slice(0, 2) : [],
+      }));
+    let docContext = '';
+    if (attached.length) {
+      const clearance = await resolveCaller();
+      docContext = attached
+        .map((a) => {
+          const f = redaction.filterText(a.text, clearance);
+          a.text = f.text;
+          if (f.redactions.length) {
+            redactionLog = redactionLog.concat(
+              f.redactions.map((r) => ({ ...r, stage: 'pre-retrieval', source: 'attachment' }))
+            );
+          }
+          const head = `Attached file: ${a.name} (${a.kind}${a.note ? `, ${a.note}` : ''})`;
+          const tables = (a.tables || [])
+            .map((t) => {
+              const cols = (t.columns || []).join(' | ');
+              const rows = (t.rows || []).slice(0, 20).map((r) => (r || []).join(' | ')).join('\n');
+              return `Table ${t.title || ''}\n${cols}\n${rows}`.trim();
+            })
+            .join('\n\n');
+          return [head, a.text, tables].filter(Boolean).join('\n');
+        })
+        .join('\n\n');
+    }
+
+    // One context for everything hanging off this message, so a question about
+    // "this file" reads the same whether the officer attached a photograph or
+    // a spreadsheet.
+    const attachedContext = [visionContext, docContext].filter(Boolean).join('\n\n');
+
     const slash = parseSlash(rawQuery);
     if (slash) {
       slashName = slash.name;
@@ -3373,14 +3421,14 @@ module.exports = async (req, res) => {
     // record or aggregate signal ("does this FIR match anything on file?") —
     // that genuinely needs the data store, so the digest is carried down as
     // extra context and normal routing runs instead.
-    if (visionContext) {
+    if (attachedContext) {
       const alsoNeedsRecords = deterministicRoute(query);
       if (!alsoNeedsRecords) {
         const seen = await callGroq(
           [
             { role: 'system', content: VISION_SYSTEM },
             ...history,
-            { role: 'user', content: `${visionContext}\n\nQuestion: ${query || 'What does this document say?'}` },
+            { role: 'user', content: `${attachedContext}\n\nQuestion: ${query || 'What does this document say?'}` },
           ],
           { maxTokens: 700, temperature: 0.2, timeoutMs: 20_000 }
         );
@@ -3388,9 +3436,9 @@ module.exports = async (req, res) => {
           const v = extractAgui(seen);
           return await respondWith(v.text || seen.trim(), {
             components: v.components,
-            source: 'vision',
-            route: { route: 'VISION', confidence: 1, decided_by: 'attachment' },
-          }, [attribution.fromVision(digests)]);
+            source: attached.length ? 'attachment' : 'vision',
+            route: { route: 'ATTACHMENT', confidence: 1, decided_by: 'attachment' },
+          }, [attribution.fromVision(digests), attribution.fromAttachments(attached)]);
         }
         // Groq unavailable — fall through so the officer still gets an answer.
       }
@@ -3597,7 +3645,7 @@ module.exports = async (req, res) => {
                 {
                   role: 'user',
                   content:
-                    (visionContext ? visionContext + '\n\n' : '') +
+                    (attachedContext ? attachedContext + '\n\n' : '') +
                     `Question: ${query}\n\nRows (${flat.length}` +
                     `${flat.length === 200 ? ', truncated' : ''}):\n` +
                     JSON.stringify(flat.slice(0, isList ? 20 : 60)),
@@ -3639,6 +3687,10 @@ module.exports = async (req, res) => {
               // already through the pre-retrieval clearance filter above.
               attribution.fromZcql({ query: q, tables: zcql.tablesInQuery(q), rows: flat }),
               ragCited,
+              // An attached file that fed this answer is cited too: the
+              // officer should not have to remember what they hung off the
+              // question to know what it was answered from.
+              attribution.fromAttachments(attached),
             ]);
           }
           // rows still null → fall through to RAG below
