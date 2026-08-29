@@ -149,8 +149,9 @@ export default function InvestigationDiary() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('All');
   const [showNew, setShowNew] = useState(false);
-  // Cards per page, in multiples of six so the grid always fills evenly.
-  const [perPage, setPerPage] = useState(6);
+  // Cards per page, in multiples of nine — three full rows on the usual
+  // three-column grid, so the last row is never ragged.
+  const [perPage, setPerPage] = useState(9);
   const [page, setPage] = useState(0);
 
   const load = useCallback(() => {
@@ -260,7 +261,7 @@ export default function InvestigationDiary() {
                 value={perPage}
                 onChange={(e) => setPerPage(Number(e.target.value))}
               >
-                {[6, 12, 18, 24, 30].map((n) => <option key={n} value={n}>{n}</option>)}
+                {[9, 18, 27, 36, 45].map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </label>
           </div>
