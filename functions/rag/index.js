@@ -2,6 +2,7 @@
 
 const catalystSDK = require('zcatalyst-sdk-node');
 const zcql = require('./zcql');
+const redaction = require('./redaction');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -158,6 +159,70 @@ async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeout
     }
   }
   return null;
+}
+
+// ── Intent routing ──────────────────────────────────────────────────────────
+// Two changes over a bare one-word classifier.
+//
+// First, a DETERMINISTIC OVERRIDE. A query carrying an unmistakable structural
+// signal — an FIR/crime number, an explicit statistics ask — is routed without
+// consulting the model at all: cheaper, instant, and not susceptible to a
+// classifier having an off day on the most common queries in the product.
+//
+// Second, CONFIDENCE. The model is asked for a route AND how sure it is, so a
+// genuinely ambiguous query can be handled as ambiguous instead of being
+// forced into a coin-flip. Two distinct outcomes come out of that:
+//   • BOTH  — a mixed-intent query ("what's the procedure for FIR 4029?")
+//     needs SOP knowledge and record data. Fan out to RAG and ZCQL in
+//     parallel and merge, rather than answering half the question well.
+//   • low confidence — genuinely unclear; prefer the broader source over
+//     guessing between two narrow ones.
+// A mixed-intent query and an unclear one are different cases and are kept
+// distinct, per the review.
+const CRIME_NO_RE = /\b(?:fir|crime|case)\s*(?:no\.?|number|#)?\s*[:#]?\s*(\d{1,5}\s*\/\s*\d{4})\b/i;
+const BARE_CRIME_NO_RE = /\b\d{1,5}\/\d{4}\b/;
+const STATS_RE = /\b(how many|count|total|number of|top \d+|statistics|stats|trend|per district|by district|breakdown)\b/i;
+const SOP_RE = /\b(procedure|process|how (?:do|should) (?:i|we)|what is the rule|guidelines?|sop|section \d+|under (?:ipc|bns|crpc|bnss))\b/i;
+
+// Returns a route decision without a model call, or null to fall through.
+function deterministicRoute(query) {
+  const q = String(query || '');
+  const hasRecord = CRIME_NO_RE.test(q) || BARE_CRIME_NO_RE.test(q);
+  const hasSop = SOP_RE.test(q);
+
+  // Both signals present is the textbook mixed-intent case.
+  if (hasRecord && hasSop) {
+    return { route: 'BOTH', confidence: 0.95, why: 'record-id + procedure language' };
+  }
+  if (hasRecord) return { route: 'ZCQL', confidence: 0.9, why: 'record identifier' };
+  if (STATS_RE.test(q) && !hasSop) return { route: 'ZCQL', confidence: 0.85, why: 'aggregate language' };
+  return null;
+}
+
+// Threshold deliberately conservative: below this, prefer the broader source
+// over a confident-looking wrong route. Tune from the logged decisions.
+const ROUTE_CONFIDENCE_FLOOR = 0.55;
+
+function parseRouteReply(raw) {
+  if (!raw) return null;
+  const txt = String(raw);
+  // Accept {"route":"ZCQL","confidence":0.8} or a bare word, so a model that
+  // ignores the JSON instruction still produces a usable decision.
+  try {
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (m) {
+      const o = JSON.parse(m[0]);
+      const route = String(o.route || '').toUpperCase();
+      if (['CHAT', 'GUIDE', 'ZCQL', 'RAG', 'BOTH'].includes(route)) {
+        const c = Number(o.confidence);
+        return { route, confidence: Number.isFinite(c) ? Math.max(0, Math.min(1, c)) : 0.6 };
+      }
+    }
+  } catch { /* fall through to word matching */ }
+  const word = /\b(BOTH|CHAT|GUIDE|ZCQL|RAG)\b/i.exec(txt);
+  // A bare word carries no self-reported confidence; assume just above the
+  // floor so it is used, but treated as weaker than a scored answer.
+  return word ? { route: word[1].toUpperCase(), confidence: 0.6 } : null;
 }
 
 // ── Slash commands ──────────────────────────────────────────────────────────
@@ -2683,11 +2748,94 @@ module.exports = async (req, res) => {
     const lid = detectLang(rawQuery, preferredLang);
     const responseLang = lid.lang;
 
+    let routeDecision = null; // route + confidence, carried into the audit record
+    let fanoutRag = null; // in-flight RAG call when the route is BOTH
+    let redactionLog = []; // what the clearance filter removed, for the audit record
+    let ragSources = []; // set when a BOTH fan-out contributed knowledge-base prose
+    let validatorChecks = []; // what the ZCQL validator verified or refused
+    let slashName = null; // set when the query was an explicit /command
+
+    // Who is asking, for the clearance filter. Resolved once and memoised:
+    // every redaction decision below depends on it.
+    //
+    // This deliberately does NOT reuse myRole()'s fail-open default. myRole
+    // falls back to 'investigator' so a cold start never locks anyone out of
+    // the UI — sensible for navigation, wrong for disclosure. Here an
+    // unidentified caller gets no clearance at all, so an identity lookup that
+    // fails redacts more rather than less.
+    let callerRole = null;
+    let callerUser = null;
+    let clearanceApp = null;
+    let clearanceBucket = null;
+    const resolveCaller = async () => {
+      if (clearanceApp) return callerRole;
+      clearanceApp = catalystSDK.initialize(req);
+      clearanceBucket = clearanceApp.stratus().bucket(CONV_BUCKET);
+      try {
+        const { role, caller } = await myRole(clearanceApp, clearanceBucket);
+        // A caller the platform could not identify stays at zero clearance.
+        callerUser = caller || null;
+        callerRole = caller ? role : null;
+      } catch {
+        callerRole = null;
+      }
+      return callerRole;
+    };
+
+    // Post-generation guardrail (tier 2). Tier 1 already kept unauthorised
+    // data out of the prompt; this catches an identifier the model restated or
+    // inferred rather than copied. Every answer leaving this handler goes
+    // through it.
+    const finalAnswer = async (text, lang) => {
+      const localised = await localiseAnswer(text, lang);
+      const g = redaction.guardAnswer(localised, await resolveCaller());
+      if (g.redactions.length) {
+        redactionLog = redactionLog.concat(
+          g.redactions.map((r) => ({ ...r, stage: 'post-generation' }))
+        );
+      }
+      await recordDecision();
+      return g.answer;
+    };
+
+    // Immutable decision record. Every assistant answer leaves one audit event
+    // describing HOW it was reached — the route and the confidence behind it,
+    // what the caller was looking at, what the ZCQL validator allowed or
+    // refused, and what the clearance filter removed. Written once per
+    // request; a reviewer can reconstruct the decision without the answer.
+    let decisionRecorded = false;
+    async function recordDecision() {
+      if (decisionRecorded) return;
+      decisionRecorded = true;
+      try {
+        await resolveCaller();
+        const pc = body.page_context && typeof body.page_context === 'object' ? body.page_context : null;
+        const parts = [
+          routeDecision
+            ? `route=${routeDecision.route} conf=${routeDecision.confidence.toFixed(2)} by=${routeDecision.decided_by}`
+            : 'route=none',
+          slashName ? `command=/${slashName}` : null,
+          `lang=${lid.lang}`,
+          `clearance=${callerRole || 'none'}`,
+          pc && pc.current_module ? `page=${pc.current_module}` : null,
+          validatorChecks.length ? `validator=${validatorChecks.join('|')}` : null,
+          redactionLog.length ? `redacted=${redaction.describe(redactionLog)}` : 'redacted=none',
+        ].filter(Boolean);
+        await storeAuditEvents(req, clearanceApp, clearanceBucket, [{
+          action: 'assistant-query',
+          feature: 'Assistant',
+          path: (pc && pc.current_module) || '/assistant',
+          detail: parts.join(' '),
+        }], callerUser);
+      } catch {
+        // Auditing must never take an answer away from the officer.
+      }
+    }
+
     // ── Slash commands ───────────────────────────────────────────────────
     // Resolved before anything else: a command is an explicit instruction, so
     // it should never be re-interpreted by the router.
     const slash = parseSlash(rawQuery);
-    let slashName = null;
     if (slash) {
       slashName = slash.name;
       const slashApp = catalystSDK.initialize(req);
@@ -2696,7 +2844,7 @@ module.exports = async (req, res) => {
       const allowed = SLASH_ROLES[slash.name];
       if (allowed && (!slashCaller || !allowed.includes(slashRole))) {
         return json(res, 200, {
-          answer: await localiseAnswer(
+          answer: await finalAnswer(
             `The /${slash.name} command isn't available for your role.`, responseLang),
           components: [], source: 'command',
           detected_lang: lid.lang, response_lang: responseLang,
@@ -2714,7 +2862,7 @@ module.exports = async (req, res) => {
       if (slash.name === 'help') {
         const lines = SLASH_HELP.map(([c, d]) => `- \`${c}\` — ${d}`).join('\n');
         return json(res, 200, {
-          answer: await localiseAnswer(`**Available commands**\n\n${lines}`, responseLang),
+          answer: await finalAnswer(`**Available commands**\n\n${lines}`, responseLang),
           components: [], source: 'command',
           detected_lang: lid.lang, response_lang: responseLang,
         });
@@ -2724,7 +2872,7 @@ module.exports = async (req, res) => {
       // answer; inventing an ownership record would be far worse than none.
       if (slash.name === 'vehicle') {
         return json(res, 200, {
-          answer: await localiseAnswer(
+          answer: await finalAnswer(
             `Sentinel has no vehicle registry connected, so \`/vehicle\` cannot look up ownership for **${slash.arg}**.\n\n` +
             'The case records do hold vehicle details inside FIR brief facts where an officer recorded them — ' +
             `try asking "which FIRs mention ${slash.arg}" to search that text instead.`, responseLang),
@@ -2744,7 +2892,7 @@ module.exports = async (req, res) => {
             'Sentinel holds no structured missing-person registry — this searches digitised paper records, ' +
             'so a case only appears here once its file has been scanned into Records.';
         return json(res, 200, {
-          answer: await localiseAnswer(answer, responseLang),
+          answer: await finalAnswer(answer, responseLang),
           components: [], source: 'command',
           detected_lang: lid.lang, response_lang: responseLang,
         });
@@ -2841,9 +2989,14 @@ module.exports = async (req, res) => {
     if (process.env.GROQ_API_KEY) {
       // CHAT must be judged on the user's ORIGINAL wording — expansion can
       // rewrite a bare "thanks!" into a restated data question.
-      const routed = await callGroq(
+      // A structurally unmistakable query is routed without a model call.
+      const forced = deterministicRoute(query);
+      const scored = forced || parseRouteReply(await callGroq(
         [
-          { role: 'system', content: zcql.ROUTER_PROMPT },
+          { role: 'system', content: zcql.ROUTER_PROMPT +
+            '\n\nReply ONLY as JSON: {"route":"CHAT|GUIDE|ZCQL|RAG|BOTH","confidence":0.0-1.0}. ' +
+            'Use BOTH when the question needs written procedure AND specific record data. ' +
+            'Set confidence below 0.5 when the intent is genuinely unclear.' },
           {
             role: 'user',
             content:
@@ -2852,8 +3005,20 @@ module.exports = async (req, res) => {
                 : `Original message: ${query}\n(With context resolved: ${searchQuery})`,
           },
         ],
-        { maxTokens: 4, temperature: 0, timeoutMs: 5_000, model: GROQ_MODEL_FAST }
-      );
+        { maxTokens: 40, temperature: 0, timeoutMs: 5_000, model: GROQ_MODEL_FAST }
+      ));
+      // An unclear route falls back to RAG: the knowledge base is the broadest
+      // source, so a wrong guess there degrades to a weaker answer rather than
+      // to a confidently wrong one from a narrow source.
+      const lowConfidence = !!scored && scored.confidence < ROUTE_CONFIDENCE_FLOOR;
+      const route = !scored ? null : lowConfidence ? 'RAG' : scored.route;
+      routeDecision = {
+        route: route || 'RAG',
+        confidence: scored ? scored.confidence : 0,
+        decided_by: forced ? 'override' : scored ? 'classifier' : 'default',
+        why: forced ? forced.why : lowConfidence ? 'below confidence floor' : undefined,
+      };
+      const routed = route; // existing branches below match on this
       if (routed && /chat/i.test(routed)) {
         const chat = await callGroq(
           [{ role: 'system', content: CHAT_SYSTEM }, ...history, { role: 'user', content: query }],
@@ -2861,7 +3026,7 @@ module.exports = async (req, res) => {
         );
         if (chat && chat.trim()) {
           return json(res, 200, {
-            answer: await localiseAnswer(chat.trim(), responseLang),
+            answer: await finalAnswer(chat.trim(), responseLang),
             components: [],
             source: 'chat',
             detected_lang: lid.lang,
@@ -2879,7 +3044,7 @@ module.exports = async (req, res) => {
         if (guide && guide.trim()) {
           const g = extractAgui(guide);
           return json(res, 200, {
-            answer: await localiseAnswer(g.text || guide.trim(), responseLang),
+            answer: await finalAnswer(g.text || guide.trim(), responseLang),
             components: g.components,
             source: 'guide',
             detected_lang: lid.lang,
@@ -2889,7 +3054,14 @@ module.exports = async (req, res) => {
         }
         // Groq unavailable mid-request — fall through to the RAG path below.
       }
-      if (routed && /zcql/i.test(routed)) {
+      // Mixed intent: the procedure half and the record half are independent
+      // lookups, so RAG starts NOW and runs while ZCQL is still generating and
+      // executing its query. Merged at the end; a fan-out that ran the two
+      // sequentially would double the latency for no benefit.
+      if (routed === 'BOTH') {
+        fanoutRag = callRag(searchQuery, documents, 20_000).catch(() => null);
+      }
+      if (routed && /zcql|both/i.test(routed)) {
         try {
           const app = catalystSDK.initialize(req);
           let q = null;
@@ -2909,8 +3081,41 @@ module.exports = async (req, res) => {
               { maxTokens: 350, temperature: 0, timeoutMs: 10_000, model: GROQ_MODEL_FAST }
             );
             const s = zcql.parsePlan(gen);
-            if (!s.ok) { lastErr = s.error; q = gen && String(gen).slice(0, 400); continue; }
+            if (s.checks) validatorChecks = validatorChecks.concat(s.checks);
+            if (!s.ok) {
+              validatorChecks.push(`rejected:${s.error}`);
+              lastErr = s.error; q = gen && String(gen).slice(0, 400); continue;
+            }
             if (s.unanswerable) {
+              // On a BOTH fan-out the record half coming up empty must not
+              // sink the whole answer — the procedure half was a separate
+              // question and is already in flight. Take it and stop treating
+              // this as a data query.
+              if (fanoutRag) {
+                const rr = await fanoutRag;
+                const sop = rr && rr.ok ? extractAgui(pickAnswer(rr.data)) : null;
+                if (sop && sop.text && !isNegative(sop.text)) {
+                  return json(res, 200, {
+                    answer: await finalAnswer(sop.text.trim(), responseLang),
+                    components: sop.components,
+                    source: 'rag',
+                    detected_lang: lid.lang,
+                    response_lang: responseLang,
+                    sources: ['Knowledge base'],
+                    route: routeDecision,
+                    expandedQuery: searchQuery === query ? undefined : searchQuery,
+                  });
+                }
+                // The knowledge base had nothing either (it currently holds no
+                // procedural documents). Abandon the data path entirely rather
+                // than answering a procedure question with "the database does
+                // not store workflow" — that is a true statement and a useless
+                // answer. Falling through reaches the general fallback, which
+                // can at least state the statutory procedure.
+                rows = null;
+                zcqlDebug = { attempted: true, abandoned: 'both-fanout: no record half' };
+                break;
+              }
               // The database genuinely can't answer this — say so honestly
               // rather than running an unrelated query or guessing.
               // The Data Store can't answer — but the scanned paper records
@@ -2918,31 +3123,21 @@ module.exports = async (req, res) => {
               const fromScans = await answerFromDigitised(req, query);
               if (fromScans) {
                 return json(res, 200, {
-                  answer: await localiseAnswer(fromScans.text, responseLang),
+                  answer: await finalAnswer(fromScans.text, responseLang),
                   components: [],
                   source: 'digitised-records',
               detected_lang: lid.lang,
               response_lang: responseLang,
-                detected_lang: lid.lang,
-                response_lang: responseLang,
-                  detected_lang: lid.lang,
-                  response_lang: responseLang,
-            detected_lang: lid.lang,
-            response_lang: responseLang,
                   sources: fromScans.sources,
                   expandedQuery: searchQuery === query ? undefined : searchQuery,
                 });
               }
               return json(res, 200, {
-                answer: await localiseAnswer(s.unanswerable, responseLang),
+                answer: await finalAnswer(s.unanswerable, responseLang),
                 components: [],
                 source: 'zcql',
               detected_lang: lid.lang,
               response_lang: responseLang,
-                detected_lang: lid.lang,
-                response_lang: responseLang,
-            detected_lang: lid.lang,
-            response_lang: responseLang,
                 sources: ['Data Store'],
                 expandedQuery: searchQuery === query ? undefined : searchQuery,
               });
@@ -2964,6 +3159,17 @@ module.exports = async (req, res) => {
             }
             if (topN) flat = flat.slice(0, topN);
             flat = zcql.enrichRows(flat).slice(0, 200);
+            // Pre-retrieval clearance filter. This runs BEFORE the rows are
+            // rendered into components or serialised into the prose prompt, so
+            // a caller without clearance never has the data in their context
+            // and the model is never shown what it must not repeat.
+            {
+              const filtered = redaction.filterRows(flat, await resolveCaller());
+              flat = filtered.rows;
+              redactionLog = redactionLog.concat(
+                filtered.redactions.map((r) => ({ ...r, stage: 'pre-retrieval', source: 'zcql' }))
+              );
+            }
             const components = zcql.rowsToComponents(flat);
             // When the result is a multi-row list, the table carries the data;
             // the prose must be a SHORT summary and never re-list the rows.
@@ -3004,19 +3210,29 @@ module.exports = async (req, res) => {
               components
             );
             if (!answerText) answerText = `Found ${flat.length} matching record(s) — see the table below.`;
+            // Merge the procedure half of a mixed-intent question. The records
+            // lead (they are what was asked about specifically) and the SOP
+            // follows as context, each clearly attributed to its source.
+            if (fanoutRag) {
+              const rr = await fanoutRag;
+              const sop = rr && rr.ok ? extractAgui(pickAnswer(rr.data)) : null;
+              if (sop && sop.text && !isNegative(sop.text)) {
+                answerText += `\n\n**Procedure**\n\n${sop.text.trim()}`;
+                ragSources = ['Knowledge base'];
+              }
+            }
             // A negative prose ("no matching records", "does not answer...")
             // with a rendered data table is a contradiction — the rows didn't
             // answer the question, so don't show them.
             const showComponents = flat.length > 0 && !isNegative(answerText);
             return json(res, 200, {
-              answer: await localiseAnswer(answerText, responseLang),
+              answer: await finalAnswer(answerText, responseLang),
               components: showComponents ? components : [],
               source: 'zcql',
               detected_lang: lid.lang,
               response_lang: responseLang,
-            detected_lang: lid.lang,
-            response_lang: responseLang,
-              sources: ['Data Store: ' + zcql.tablesInQuery(q).join(', ')],
+              sources: ['Data Store: ' + zcql.tablesInQuery(q).join(', ')].concat(ragSources),
+              route: routeDecision,
               zcql: q,
               expandedQuery: searchQuery === query ? undefined : searchQuery,
             });
@@ -3037,7 +3253,9 @@ module.exports = async (req, res) => {
     // safety net whenever both text2zcql and RAG come up short.
     let first;
     try {
-      first = await callRag(searchQuery, documents, 30_000);
+      // If the route was BOTH and the ZCQL half fell through, the fan-out
+      // call is already in flight — reuse it rather than paying for it twice.
+      first = (fanoutRag && (await fanoutRag)) || (await callRag(searchQuery, documents, 30_000));
     } catch (e) {
       first = { ok: false, status: 502, data: { error: (e && e.message) || String(e) } };
     }
@@ -3142,7 +3360,7 @@ module.exports = async (req, res) => {
 
     // One place where the reply becomes the officer's language, so it can
     // never depend on which pipeline answered.
-    if (responseLang !== 'en') answer = await localiseAnswer(answer, responseLang);
+    if (responseLang !== 'en') answer = await finalAnswer(answer, responseLang);
 
     // Audit trail keeps the query as the officer typed it AND the English it
     // was normalised to, so a later reviewer can see what was actually searched.

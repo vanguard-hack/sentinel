@@ -4,6 +4,7 @@
 // real model (e.g. Claude) when you're ready.
 
 import { currentLang } from '../i18n';
+import { capturePageContext } from './pageContext';
 
 const STORAGE_KEY = 'sentinel-chat-sessions';
 
@@ -284,7 +285,15 @@ export async function generateReply(history) {
     const res = await fetch('/server/rag/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, history: shortTerm, summary, preferred_lang: currentLang() }),
+      body: JSON.stringify({
+        query,
+        history: shortTerm,
+        summary,
+        preferred_lang: currentLang(),
+        // What the officer is looking at, so follow-ups like "summarise this"
+        // resolve without them restating the record.
+        page_context: capturePageContext(),
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {

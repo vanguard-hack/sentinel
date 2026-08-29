@@ -166,8 +166,141 @@ function buildUserPrompt(question, prevQuery, prevError) {
   return p;
 }
 
-// ── plan parsing & validation ────────────────────────────────────────────────
-const FORBIDDEN = /\b(insert|update|delete|drop|alter|create|truncate|grant|join)\b/i;
+// ── ZCQL validator ───────────────────────────────────────────────────────────
+// An explicit stage between generation and execution, not an instruction in
+// the generation prompt — prompt-level rules are exactly what an injection
+// attack targets, so the check has to sit outside the model's reach.
+//
+// It fails CLOSED: a query that cannot be proven safe is rejected with a
+// reason, never silently rewritten into something that looks safe. Auto-
+// correcting an adversarial query just hands the attacker a second attempt.
+const FORBIDDEN = /\b(insert|update|delete|drop|alter|create|truncate|grant|join|union|exec|execute|pragma|attach)\b/i;
+
+// Hard ceiling on rows a single generated query may return. Prevents a
+// table-wide scan being dressed up as a legitimate SELECT.
+const MAX_ROWS = 300;
+
+// Comments are stripped before any keyword check: `SELECT 1 /* */ , x FROM a`
+// and `-- ` sequences are the classic way to smuggle syntax past a regex.
+function stripComments(q) {
+  let out = '';
+  let inStr = false;
+  for (let i = 0; i < q.length; i++) {
+    const c = q[i];
+    const next = q[i + 1];
+    if (inStr) {
+      out += c;
+      if (c === "'") inStr = q[i + 1] === "'" ? (out += q[++i], true) : false;
+      continue;
+    }
+    if (c === "'") { inStr = true; out += c; continue; }
+    if (c === '-' && next === '-') { while (i < q.length && q[i] !== '\n') i++; out += ' '; continue; }
+    if (c === '/' && next === '*') {
+      i += 2;
+      while (i < q.length && !(q[i] === '*' && q[i + 1] === '/')) i++;
+      i++; out += ' '; continue;
+    }
+    out += c;
+  }
+  return out;
+}
+
+// Blank out string literals so a WHERE value containing the word "join" or a
+// semicolon is judged as data, not as syntax.
+function maskLiterals(q) {
+  let out = '';
+  let inStr = false;
+  for (let i = 0; i < q.length; i++) {
+    const c = q[i];
+    if (inStr) {
+      if (c === "'") {
+        if (q[i + 1] === "'") { out += '  '; i++; continue; }
+        inStr = false; out += "'";
+      } else out += ' ';
+      continue;
+    }
+    if (c === "'") { inStr = true; out += "'"; continue; }
+    out += c;
+  }
+  return { masked: out, unterminated: inStr };
+}
+
+// The FROM clause runs to the next clause keyword. A comma inside it is a
+// cross join in disguise — the JOIN keyword check alone does not catch
+// `FROM CaseMaster, Accused`, which is how a second table gets smuggled in.
+const CLAUSE_END = /\b(where|group\s+by|order\s+by|having|limit)\b/i;
+
+function fromClause(masked) {
+  const m = /\bfrom\b/i.exec(masked);
+  if (!m) return null;
+  const rest = masked.slice(m.index + m[0].length);
+  const end = CLAUSE_END.exec(rest);
+  return (end ? rest.slice(0, end.index) : rest).trim();
+}
+
+// Returns { ok, query, error, checks } — `checks` is recorded in the audit
+// trail so a reviewer can see what the validator decided and why.
+function validateZcql(raw, opts = {}) {
+  const maxRows = Number.isInteger(opts.maxRows) && opts.maxRows > 0 ? opts.maxRows : MAX_ROWS;
+  const checks = [];
+  const fail = (error) => ({ ok: false, error, checks: checks.concat(`FAIL:${error}`) });
+
+  if (!raw || !String(raw).trim()) return fail('empty query');
+  let q = stripComments(String(raw)).replace(/;+\s*$/, '').replace(/\s+/g, ' ').trim();
+  checks.push('comments-stripped');
+
+  const { masked, unterminated } = maskLiterals(q);
+  if (unterminated) return fail('unterminated string literal');
+  checks.push('literals-masked');
+
+  if (!/^select\b/i.test(masked)) return fail('must start with SELECT');
+  checks.push('select-only');
+
+  const bad = FORBIDDEN.exec(masked);
+  if (bad) return fail(`forbidden keyword "${bad[1]}"`);
+  checks.push('no-write-or-join-keyword');
+
+  if (masked.includes(';')) return fail('single statement only');
+  checks.push('single-statement');
+
+  const from = fromClause(masked);
+  if (!from) return fail('no FROM clause');
+  if (from.includes(',')) return fail('multiple tables in FROM (comma join)');
+  const tables = tablesInQuery(masked);
+  if (tables.length !== 1) return fail('exactly one table per query');
+  checks.push(`single-table:${tables[0]}`);
+
+  // Subqueries would let a second table in through the back door.
+  if (/\(\s*select\b/i.test(masked)) return fail('subqueries are not permitted');
+  checks.push('no-subquery');
+
+  // An unbounded scan with no WHERE and no aggregate returns the table. Every
+  // such query must be capped; an existing LIMIT is honoured but clamped.
+  const hasWhere = /\bwhere\b/i.test(masked);
+  const isAggregate = /\b(count|sum|avg|min|max)\s*\(/i.test(masked);
+  const limitMatch = /\blimit\s+(\d+)\s*(?:,\s*(\d+))?\s*$/i.exec(masked);
+
+  if (limitMatch) {
+    const offset = limitMatch[2] !== undefined ? Number(limitMatch[1]) : 0;
+    const count = limitMatch[2] !== undefined ? Number(limitMatch[2]) : Number(limitMatch[1]);
+    if (count > maxRows) {
+      q = q.slice(0, limitMatch.index).trim() + ` LIMIT ${offset}, ${maxRows}`;
+      checks.push(`limit-clamped:${maxRows}`);
+    } else {
+      checks.push(`limit-ok:${count}`);
+    }
+  } else if (isAggregate) {
+    // An aggregate collapses to a handful of rows; no cap needed.
+    checks.push('aggregate-no-limit-needed');
+  } else if (!hasWhere) {
+    return fail('unfiltered query must have a LIMIT');
+  } else {
+    q = `${q} LIMIT 0, ${maxRows}`;
+    checks.push(`limit-added:${maxRows}`);
+  }
+
+  return { ok: true, query: q, table: tables[0], checks };
+}
 
 function parsePlan(raw) {
   if (!raw) return { ok: false, error: 'empty generation' };
@@ -185,14 +318,19 @@ function parsePlan(raw) {
   if (plan.zcql === null && plan.reason) {
     return { ok: true, unanswerable: String(plan.reason).slice(0, 400) };
   }
-  let q = String(plan.zcql || '').replace(/;+\s*$/, '').replace(/\s+/g, ' ').trim();
-  if (!/^select\b/i.test(q)) return { ok: false, error: 'query must start with SELECT' };
-  if (FORBIDDEN.test(q)) return { ok: false, error: 'forbidden keyword (single-table SELECT only, no JOIN)' };
-  if (q.includes(';')) return { ok: false, error: 'single statement only' };
-  const tables = tablesInQuery(q);
-  if (tables.length !== 1) return { ok: false, error: 'exactly one table per query' };
+  // Generation and validation are separate stages: whatever the model emits,
+  // it only reaches execution if the validator passes it.
+  const v = validateZcql(plan.zcql);
+  if (!v.ok) return { ok: false, error: v.error, checks: v.checks };
   const topN = Number.isInteger(plan.topN) && plan.topN > 0 ? plan.topN : null;
-  return { ok: true, query: q, rollup: plan.rollup === 'district' ? 'district' : null, topN };
+  return {
+    ok: true,
+    query: v.query,
+    table: v.table,
+    checks: v.checks,
+    rollup: plan.rollup === 'district' ? 'district' : null,
+    topN,
+  };
 }
 
 function tablesInQuery(q) {
@@ -340,4 +478,6 @@ module.exports = {
   rollupToDistricts,
   rowsToComponents,
   tablesInQuery,
+  validateZcql,
+  MAX_ROWS,
 };
