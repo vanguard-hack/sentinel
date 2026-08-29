@@ -10,6 +10,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { REPORT_TYPES, reportTypeById } from '../data/reportTemplates';
 import { listReports, getReport, deleteReport, downloadReportPdf } from '../utils/reportStudio';
 import { logAudit } from '../utils/audit';
+import { useTranslation } from 'react-i18next';
 
 const TYPE_ICONS = {
   fir: FileText, 'case-diary': NotebookPen, arrest: UserX, 'charge-sheet': Gavel,
@@ -22,6 +23,7 @@ const fmtDate = (ts) =>
   ts ? new Date(ts).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 
 export default function ReportStudio() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const confirm = useConfirm();
   const [reports, setReports] = useState(null);
@@ -48,9 +50,9 @@ export default function ReportStudio() {
 
   const remove = async (r) => {
     const ok = await confirm({
-      title: `Delete “${r.title}”?`,
-      body: 'It disappears from this list. The filed copy is retained in the archive, so it can still be recovered.',
-      confirmLabel: 'Delete report',
+      title: t('reportStudio.deleteTitle', { title: r.title }),
+      body: t('reportStudio.deleteBody'),
+      confirmLabel: t('reportStudio.deleteConfirm'),
       tone: 'danger',
     });
     if (!ok) return;
@@ -71,67 +73,67 @@ export default function ReportStudio() {
 
   return (
     <div className="cf-page">
-      <TopBar title="Report Studio" subtitle="Draft, edit & file statutory police reports" />
+      <TopBar title={t('reportStudio.title')} subtitle={t('reportStudio.subtitle')} />
       <div className="pp-body">
         <div className="aa-head">
           <div className="aa-title">
             <ScrollText size={20} strokeWidth={1.9} />
             <div>
-              <h1>Report Studio</h1>
-              <p>Pick a report type to start from its prescribed template — CCTNS IIF forms, BNSS registers and departmental review formats. Drafts autosave to the archive.</p>
+              <h1>{t('reportStudio.title')}</h1>
+<p>{t('reportStudio.intro')}</p>
             </div>
           </div>
         </div>
 
-        <h2 className="rb-section-title">Start a new report</h2>
+        <h2 className="rb-section-title">{t('reportStudio.startNew')}</h2>
         <div className="rb-type-grid">
-          {REPORT_TYPES.map((t) => {
-            const Icon = TYPE_ICONS[t.id] || FileText;
+          {REPORT_TYPES.map((rt) => {
+            const Icon = TYPE_ICONS[rt.id] || FileText;
             return (
               <button
-                key={t.id}
+                key={rt.id}
                 type="button"
                 className="rb-type-card"
-                onClick={() => navigate(`/report-studio/new?type=${t.id}`)}
+                onClick={() => navigate(`/report-studio/new?type=${rt.id}`)}
               >
-                <span className="rb-type-icon" style={{ color: t.accent, background: `color-mix(in srgb, ${t.accent} 12%, transparent)` }}>
+                <span className="rb-type-icon" style={{ color: rt.accent, background: `color-mix(in srgb, ${rt.accent} 12%, transparent)` }}>
                   <Icon size={19} strokeWidth={1.8} />
                 </span>
-                <span className="rb-type-name">{t.name}</span>
+                <span className="rb-type-name">{rt.name}</span>
                 <span className="rb-type-meta">
-                  <span className="rb-chip">{t.form}</span>
-                  <span className="rb-chip dim">{t.law}</span>
+                  <span className="rb-chip">{rt.form}</span>
+                  <span className="rb-chip dim">{rt.law}</span>
                 </span>
-                <span className="rb-type-blurb">{t.blurb}</span>
-                <span className="rb-type-by">Prepared by: {t.preparedBy}</span>
+                <span className="rb-type-blurb">{rt.blurb}</span>
+                <span className="rb-type-by">{t('reportStudio.preparedBy')}: {rt.preparedBy}</span>
               </button>
             );
           })}
         </div>
 
         <h2 className="rb-section-title">
-          Saved reports {reports ? <span className="rb-count">({filtered.length})</span> : null}
+          {t('reportStudio.saved')} {reports ? <span className="rb-count">({filtered.length})</span> : null}
         </h2>
         <div className="aa-toolbar rb-filters">
           <div className="cf-search">
             <Search size={15} className="cf-search-icon" />
             <input
               className="cf-search-input"
-              placeholder="Search by title, reference, type or officer…"
+              placeholder={t('reportStudio.searchPlaceholder')}
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
           <select className="aa-select rb-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-            <option value="all">All types</option>
-            {REPORT_TYPES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            <option value="all">{t('common.allTypes')}</option>
+            {REPORT_TYPES.map((rt) => <option key={rt.id} value={rt.id}>{rt.name}</option>)}
           </select>
         </div>
 
         {error && <div className="aa-error"><AlertTriangle size={16} /> {error}</div>}
-        {!reports && <div className="aa-loading">Loading saved reports…</div>}
+        {!reports && <div className="aa-loading">{t('common.loading')}</div>}
         {reports && !filtered.length && (
-          <div className="rb-empty">No saved reports yet — pick a template above to draft the first one.</div>
+          <div className="rb-empty">{t('reportStudio.empty')}</div>
         )}
 
         <div className="rb-saved-list">
@@ -157,8 +159,8 @@ export default function ReportStudio() {
                   </div>
                 </div>
                 <div className="rb-saved-actions" onClick={(e) => e.stopPropagation()}>
-                  <button type="button" className="cf-icon-btn" title="Download PDF" disabled={busyId === r.id} onClick={() => download(r)}><FileDown size={15} /></button>
-                  <button type="button" className="cf-icon-btn danger" title="Delete" disabled={busyId === r.id} onClick={() => remove(r)}><Trash2 size={15} /></button>
+                  <button type="button" className="cf-icon-btn" title={t('reportStudio.downloadPdf')} disabled={busyId === r.id} onClick={() => download(r)}><FileDown size={15} /></button>
+                  <button type="button" className="cf-icon-btn danger" title={t('common.delete')} disabled={busyId === r.id} onClick={() => remove(r)}><Trash2 size={15} /></button>
                 </div>
               </div>
             );

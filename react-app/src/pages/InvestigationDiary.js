@@ -9,6 +9,7 @@ import {
   statusColor, STATUS_OPTIONS,
 } from '../utils/investigation';
 import { loadPersonnel } from '../utils/personnel';
+import { useTranslation } from 'react-i18next';
 
 function NewInvestigationModal({ onClose, onCreated }) {
   const [q, setQ] = useState('');
@@ -143,6 +144,7 @@ function NewInvestigationModal({ onClose, onCreated }) {
 }
 
 export default function InvestigationDiary() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [cases, setCases] = useState(null);
   const [error, setError] = useState(null);
@@ -179,7 +181,7 @@ export default function InvestigationDiary() {
 
   return (
     <div className="cf-page">
-      <TopBar title="Investigation Diary" />
+      <TopBar title={t('diary.title')} />
       <div className="pp-body">
         <div className="aa-head">
           <div className="aa-title">
@@ -190,7 +192,7 @@ export default function InvestigationDiary() {
             </div>
           </div>
           <button type="button" className="aa-btn primary" onClick={() => setShowNew(true)}>
-            <Plus size={15} /> New investigation
+            <Plus size={15} /> {t('diary.newInvestigation')}
           </button>
         </div>
 
@@ -214,7 +216,7 @@ export default function InvestigationDiary() {
         {!cases && !error && <div className="aa-loading">Loading investigations…</div>}
         {cases && !shown.length && (
           <div className="aa-loading">
-            {cases.length ? 'No investigations match your filters.' : 'No investigations opened yet — start one above.'}
+{cases.length ? t('diary.noMatch') : t('diary.empty')}
           </div>
         )}
 
@@ -227,14 +229,14 @@ export default function InvestigationDiary() {
                     <span className="inv-card-crime">{c.crimeNo || `Case ${c.caseMasterId}`}</span>
                     <span className={`aa-chip inv-status-${statusColor(c.status)}`}>{c.status}</span>
                   </div>
-                  <div className="inv-card-type">{c.caseType || 'Uncategorised'}{c.sections ? ` · ${c.sections}` : ''}</div>
+                  <div className="inv-card-type">{c.caseType || t('diary.uncategorised')}{c.sections ? ` · ${c.sections}` : ''}</div>
                   <div className="inv-card-meta">
-                    <span>{c.ioRank ? `${c.ioRank} ` : ''}{c.ioName || 'Unassigned IO'}</span>
+                    <span>{c.ioRank ? `${c.ioRank} ` : ''}{c.ioName || t('diary.unassigned')}</span>
                     <span>{c.station}{c.district ? `, ${c.district}` : ''}</span>
                   </div>
                   <div className="inv-card-foot">
-                    <span>{c.diaryCount} diary {c.diaryCount === 1 ? 'entry' : 'entries'}</span>
-                    <span>Last updated: {c.lastDiaryDate || 'none yet'}</span>
+                    <span>{t('diary.diaryEntries', { count: c.diaryCount })}</span>
+                    <span>{t('diary.lastUpdated')}: {c.lastDiaryDate || t('diary.none')}</span>
                   </div>
                 </button>
               );
@@ -246,16 +248,16 @@ export default function InvestigationDiary() {
           <div className="inv-pager">
             <div className="cl-pager-nav" role="group" aria-label="Investigation pages">
               <button type="button" disabled={cur === 0}
-                onClick={() => setPage(cur - 1)} aria-label="Previous page">
+                onClick={() => setPage(cur - 1)} aria-label={t('common.prevPage')}>
                 <ChevronLeft size={15} />
               </button>
               <button type="button" disabled={cur >= pages - 1}
-                onClick={() => setPage(cur + 1)} aria-label="Next page">
+                onClick={() => setPage(cur + 1)} aria-label={t('common.nextPage')}>
                 <ChevronRight size={15} />
               </button>
             </div>
             <label className="inv-perpage">
-              <span>Per page</span>
+              <span>{t('common.perPage')}</span>
               <select
                 className="aa-select"
                 value={perPage}

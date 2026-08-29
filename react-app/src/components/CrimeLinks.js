@@ -6,6 +6,7 @@ import {
 import { fetchCrimeNetwork, buildOverview } from '../utils/crimelinks';
 import NetworkOverview from './NetworkOverview';
 import RingList from './RingList';
+import { useTranslation } from 'react-i18next';
 
 // Analyst label for a person within a ring, from centrality + clustering.
 function role(p, net) {
@@ -77,6 +78,7 @@ function RankCard({ title, subtitle, people, renderMeta, renderNums }) {
 }
 
 export default function CrimeLinks() {
+  const { t } = useTranslation();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -163,8 +165,8 @@ export default function CrimeLinks() {
       <section className="rp-card rp-card-wide">
         <div className="rp-card-head cl-head">
           <div>
-            <h2><Share2 size={16} /> Crime links & criminal networks</h2>
-            <span className="rp-card-sub">Offenders linked when named in the same FIR — the same person is tracked across FIRs</span>
+            <h2><Share2 size={16} /> {t('crimeLinks.title')}</h2>
+            <span className="rp-card-sub">{t('crimeLinks.subtitle')}</span>
           </div>
           <button className="cf-icon-btn" onClick={load} title="Rebuild network"><RefreshCw size={15} /></button>
         </div>
@@ -183,7 +185,7 @@ export default function CrimeLinks() {
       {/* Network explorer */}
       <section className="rp-card rp-card-wide">
         <div className="rp-card-head">
-          <h2>Network explorer</h2>
+          <h2>{t('crimeLinks.explorer')}</h2>
           <span className="rp-card-sub">{data.networks.length} rings · The whole network is shown — pick one to inspect its members and linked crimes</span>
         </div>
         <div className="rp-card-body">
@@ -201,7 +203,7 @@ export default function CrimeLinks() {
                 <>
                   <div className="cl-ring-title">
                     <strong>
-                      {net ? `Ring #${net.rank} · ${net.leader.name}` : 'All rings · linkage map'}
+                      {net ? `Ring #${net.rank} · ${net.leader.name}` : t('crimeLinks.linkageMap')}
                     </strong>
                     <span>
                       {net
@@ -209,8 +211,8 @@ export default function CrimeLinks() {
                         : `Showing the ${overview.shown} largest of ${overview.total} rings · ${overview.clusters} connected group${overview.clusters === 1 ? '' : 's'} · Hover or click a ring to trace its links`}
                     </span>
                     <span className="cl-edge-key">
-                      Each circle is a ring, sized by members
-                      <i className="cl-edge-thick" /> Linked rings share a district or crime type
+{t('crimeLinks.eachCircle')}
+                      <i className="cl-edge-thick" /> {t('crimeLinks.linkedRings')}
                     </span>
                   </div>
                   <NetworkOverview
@@ -249,7 +251,7 @@ export default function CrimeLinks() {
               </div>
 
               <div className="cl-detail">
-                <h3>Linked crimes ({ringCrimes.length})</h3>
+                <h3>{t('crimeLinks.linkedCrimes')} ({ringCrimes.length})</h3>
                 <div className="cl-scroll">
                   <table className="cl-table">
                     <thead><tr><th>Crime No</th><th>Date</th><th>Type</th><th>Station</th><th>Status</th></tr></thead>
@@ -275,15 +277,15 @@ export default function CrimeLinks() {
       {/* Key players + repeat offenders — two separate cards, side by side */}
       <div className="rp-card-wide cl-players-grid">
         <RankCard
-          title="Most connected offenders"
-          subtitle="Highest degree centrality — likely coordinators"
+          title={t('crimeLinks.mostConnected')}
+          subtitle={t('crimeLinks.mostConnectedSub')}
           people={data.keyPlayers}
           renderMeta={(p) => <><MapPin size={11} /> {p.district}</>}
           renderNums={(p) => `${p.degree} links · ${p.caseCount} crimes`}
         />
         <RankCard
-          title="Repeat offenders"
-          subtitle="Named in the most FIRs"
+          title={t('crimeLinks.repeat')}
+          subtitle={t('crimeLinks.repeatSub')}
           people={data.repeatOffenders}
           renderMeta={(p) => p.topType}
           renderNums={(p) => `${p.caseCount} crimes · ${p.degree} associates`}

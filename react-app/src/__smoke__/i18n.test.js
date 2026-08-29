@@ -72,3 +72,30 @@ test('switching language sets the script attribute for font selection', async ()
   expect(document.documentElement.getAttribute('data-script')).toBe('latin');
   expect(document.documentElement.getAttribute('dir')).toBe('ltr');
 });
+
+test('Hindi and Kannada cover every English key, with no English left behind', () => {
+  const flatten = (o, prefix = '') => Object.entries(o).reduce((acc, [k, v]) => {
+    const key = prefix ? `${prefix}.${k}` : k;
+    return v && typeof v === 'object' ? { ...acc, ...flatten(v, key) } : { ...acc, [key]: v };
+  }, {});
+
+  const en = flatten(i18n.getResourceBundle('en', 'translation'));
+  const hi = flatten(i18n.getResourceBundle('hi', 'translation'));
+  const kn = flatten(i18n.getResourceBundle('kn', 'translation'));
+
+  const missingHi = Object.keys(en).filter((k) => !(k in hi));
+  const missingKn = Object.keys(en).filter((k) => !(k in kn));
+  expect(missingHi).toEqual([]);
+  expect(missingKn).toEqual([]);
+
+  // A value identical to English usually means an untranslated string was
+  // copied across. Identifiers and format names legitimately stay Latin, so
+  // only flag entries with real prose.
+  const suspicious = (dict) => Object.keys(en).filter((k) => {
+    const a = String(en[k] || '');
+    const b = String(dict[k] || '');
+    return a === b && /\s/.test(a) && a.length > 12;
+  });
+  expect(suspicious(hi)).toEqual([]);
+  expect(suspicious(kn)).toEqual([]);
+});

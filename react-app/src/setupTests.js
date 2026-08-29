@@ -1,3 +1,7 @@
+// Initialise i18n for every test: components render through t(), so without
+// this they would assert against raw translation keys rather than text.
+import './i18n';
+
 // Loaded automatically by react-scripts before each test file.
 //
 // ProseMirror (Tiptap) measures the document to place selections and decorations,

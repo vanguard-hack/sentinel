@@ -11,12 +11,14 @@ import {
   pdfToImages, isPdf,
 } from '../utils/digitise';
 import { logAudit } from '../utils/audit';
+import { useTranslation } from 'react-i18next';
 
 const fmt = (ts) => (ts
   ? new Date(ts).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
   : '—');
 
 export default function Records() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const confirm = useConfirm();
   const [records, setRecords] = useState(null);
@@ -160,9 +162,9 @@ export default function Records() {
 
   const remove = async (r) => {
     const ok = await confirm({
-      title: `Delete “${r.title}”?`,
-      body: 'The scan and its extracted text are permanently removed.',
-      confirmLabel: 'Delete record',
+      title: t('records.deleteTitle', { title: r.title }),
+      body: t('records.deleteBody'),
+      confirmLabel: t('records.deleteConfirm'),
       tone: 'danger',
     });
     if (!ok) return;
@@ -187,17 +189,15 @@ export default function Records() {
 
   return (
     <div className="cf-page">
-      <TopBar title="Records" subtitle="Digitise paper files into searchable records" />
+      <TopBar title={t('records.title')} subtitle={t('records.subtitle')} />
       <div className="pp-body">
         <div className="aa-head">
           <div className="aa-title">
             <Images size={20} strokeWidth={1.9} />
             <div>
-              <h1>Records</h1>
+              <h1>{t('records.title')}</h1>
               <p>
-                Photograph or upload paper documents — the text is read automatically, key particulars
-                and tables are pulled out, and everything becomes searchable. The assistant can answer
-                questions from these records too.
+{t('records.intro')}
               </p>
             </div>
           </div>
@@ -222,15 +222,15 @@ export default function Records() {
         >
           <Layers size={22} strokeWidth={1.7} className="dg-drop-icon" />
           <div className="dg-drop-copy">
-            <strong>Drop scans here</strong>
-            <span>JPG, PNG, WebP, HEIC or PDF · Several pages at once is fine · Up to 8 MB each</span>
+            <strong>{t('records.dropTitle')}</strong>
+            <span>{t('records.dropHint')}</span>
           </div>
           <div className="dg-drop-actions">
             <button type="button" className="aa-btn" onClick={() => cameraRef.current?.click()}>
-              <Camera size={15} /> Take photo
+              <Camera size={15} /> {t('records.takePhoto')}
             </button>
             <button type="button" className="aa-btn primary" onClick={() => fileRef.current?.click()}>
-              <Upload size={15} /> Choose files
+              <Upload size={15} /> {t('records.chooseFiles')}
             </button>
           </div>
         </div>
@@ -243,7 +243,7 @@ export default function Records() {
               <span>
                 <Files size={15} /> {tray.length} page{tray.length === 1 ? '' : 's'} ready
               </span>
-              <button type="button" className="cf-icon-btn" title="Discard these pages" onClick={clearTray}>
+              <button type="button" className="cf-icon-btn" title={t('records.discardPages')} onClick={clearTray}>
                 <X size={14} />
               </button>
             </div>
@@ -259,16 +259,16 @@ export default function Records() {
               ))}
               <button type="button" className="dg-thumb dg-thumb-add" onClick={() => fileRef.current?.click()}>
                 <FilePlus2 size={18} />
-                <span>Add page</span>
+                <span>{t('records.addPage')}</span>
               </button>
             </div>
             <div className="dg-tray-actions">
               <button type="button" className="aa-btn primary" onClick={() => saveTray(true)}>
-                Save as one document ({tray.length} page{tray.length === 1 ? '' : 's'})
+{t('records.saveOne')} ({t('records.pagesReady', { count: tray.length })})
               </button>
               {tray.length > 1 && (
                 <button type="button" className="aa-btn" onClick={() => saveTray(false)}>
-                  Save as separate documents
+{t('records.saveSeparate')}
                 </button>
               )}
             </div>
@@ -318,7 +318,7 @@ export default function Records() {
         )}
 
         <h2 className="rb-section-title">
-          Digitised records {records ? <span className="rb-count">({filtered.length})</span> : null}
+          {t('records.digitised')} {records ? <span className="rb-count">({filtered.length})</span> : null}
           {searching && <span className="rb-count"> · searching document text…</span>}
         </h2>
         <div className="aa-toolbar rb-filters">
@@ -326,26 +326,25 @@ export default function Records() {
             <Search size={15} className="cf-search-icon" />
             <input
               className="cf-search-input"
-              placeholder="Search titles, document text, crime numbers…"
+              placeholder={t('records.searchPlaceholder')}
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
           <select className="aa-select rb-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-            <option value="all">All document types</option>
+            <option value="all">{t('records.allDocTypes')}</option>
             {docTypes.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
           <button type="button" className="aa-btn" disabled={!filtered.length} onClick={exportCsv}>
-            <FileDown size={15} /> Export CSV
+            <FileDown size={15} /> {t('records.exportCsv')}
           </button>
         </div>
 
-        {!records && <div className="aa-loading">Loading records…</div>}
+        {!records && <div className="aa-loading">{t('common.loading')}</div>}
         {records && !filtered.length && (
           <div className="rb-empty">
             {records.length
-              ? 'No record matches that search.'
-              : 'Nothing digitised yet — photograph or upload a document above to get started.'}
+? t('records.noMatch') : t('records.empty')}
           </div>
         )}
 
@@ -361,7 +360,7 @@ export default function Records() {
             >
               <div className="dg-card-head">
                 <span className="dg-card-type">{r.docType}</span>
-                {r.status === 'ocr-failed' && <span className="dg-card-warn">Text not read</span>}
+                {r.status === 'ocr-failed' && <span className="dg-card-warn">{t('records.textNotRead')}</span>}
               </div>
               <div className="dg-card-title">{r.title}</div>
               {excerptFor(r.id)
@@ -378,7 +377,7 @@ export default function Records() {
                 <button
                   type="button"
                   className="cf-icon-btn danger"
-                  title="Delete"
+                  title={t('common.delete')}
                   onClick={(e) => { e.stopPropagation(); remove(r); }}
                 >
                   <Trash2 size={14} />
