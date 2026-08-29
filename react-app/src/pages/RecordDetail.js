@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowLeft, Check, Copy, FileDown, FileText, Pencil, RotateCcw,
+  AlertTriangle, Check, Copy, FileDown, FileText, Pencil, RotateCcw,
   Save, Table as TableIcon,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
@@ -10,7 +10,6 @@ import { provenanceOf, isMedia, isPaper, sizeOf } from '../utils/provenance';
 
 export default function RecordDetail() {
   const { recordId } = useParams();
-  const navigate = useNavigate();
   const [rec, setRec] = useState(null);
   const [imgUrls, setImgUrls] = useState([]);
   const [media, setMedia] = useState(null);   // { url, mime } for a recording
@@ -107,18 +106,7 @@ export default function RecordDetail() {
     return (
       <div className="cf-page">
         <TopBar title="Record" parent="Records" parentTo="/records" />
-        <div className="pp-body">
-          <button
-            type="button"
-            className="dg-back"
-            onClick={() => navigate('/records')}
-            title="Back to records"
-            aria-label="Back to records"
-          >
-            <ArrowLeft size={16} />
-          </button>
-          <div className="aa-error"><AlertTriangle size={16} /> {error}</div>
-        </div>
+        <div className="pp-body"><div className="aa-error"><AlertTriangle size={16} /> {error}</div></div>
       </div>
     );
   }
@@ -136,16 +124,6 @@ export default function RecordDetail() {
       <TopBar title={rec.title} parent="Records" parentTo="/records" />
       <div className="pp-body">
         {error && <div className="aa-error"><AlertTriangle size={16} /> {error}</div>}
-
-        <button
-          type="button"
-          className="dg-back"
-          onClick={() => navigate('/records')}
-          title="Back to records"
-          aria-label="Back to records"
-        >
-          <ArrowLeft size={16} />
-        </button>
 
         <div className="dg-detail-head">
           <input
