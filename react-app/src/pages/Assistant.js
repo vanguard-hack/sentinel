@@ -10,6 +10,7 @@ import {
   loadSessions, saveSessions, makeTitle, newSession, generateReply, uid,
   transcribeAudio, loadSessionsRemote, saveSessionRemote, saveSessionBeacon, deleteSessionRemote,
 } from '../utils/assistant';
+import { preParseImage, canPreParse, digestLabel } from '../utils/vision';
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
 import Avatar from '../components/Avatar';
@@ -359,6 +360,9 @@ export default function Assistant() {
       );
     });
     setActiveId(sessionId);
+    // Grab the in-flight parses before the composer is cleared — the state
+    // reset below would otherwise drop the promises we still need.
+    const pendingVision = attachments.filter((a) => a.parsing).map((a) => a.parsing);
     setInput('');
     setAttachments([]);
     histRef.current = { idx: null, draft: '' };
@@ -366,7 +370,15 @@ export default function Assistant() {
 
     try {
       const history = [...(sessions.find((s) => s.id === sessionId)?.messages || []), userMsg];
-      const reply = await generateReply(history);
+      // Usually already resolved (parsing started on attach). A send that beats
+      // the parse waits here instead of racing it; allSettled so one unreadable
+      // image never blocks the question.
+      const digests = pendingVision.length
+        ? (await Promise.allSettled(pendingVision))
+            .map((r) => (r.status === 'fulfilled' ? r.value : null))
+            .filter(Boolean)
+        : [];
+      const reply = await generateReply(history, digests);
       const botMsg = {
         id: uid(),
         role: 'assistant',
@@ -493,13 +505,31 @@ export default function Assistant() {
     files.filter((f) => f.type.startsWith('audio/')).forEach((f) => runTranscription(f));
     const picked = files
       .filter((f) => !f.type.startsWith('audio/'))
-      .map((f) => ({
-        id: uid(),
-        name: f.name,
-        size: f.size,
-        type: f.type,
-        url: f.type.startsWith('image/') ? URL.createObjectURL(f) : null,
-      }));
+      .map((f) => {
+        const id = uid();
+        // Start reading the image NOW rather than at send. The officer is
+        // about to spend several seconds typing their question; that is where
+        // the vision budget is spent, so sending stays instant. The promise
+        // (not the bytes) rides on the attachment, so nothing large is held
+        // in state and a send that arrives early simply awaits it.
+        const parsing = canPreParse(f) ? preParseImage(f) : null;
+        if (parsing) {
+          parsing.then((digest) =>
+            setAttachments((prev) =>
+              prev.map((a) => (a.id === id ? { ...a, digest, parsed: true } : a))
+            )
+          );
+        }
+        return {
+          id,
+          name: f.name,
+          size: f.size,
+          type: f.type,
+          url: f.type.startsWith('image/') ? URL.createObjectURL(f) : null,
+          parsing,
+          parsed: !parsing,
+        };
+      });
     setAttachments((prev) => [...prev, ...picked]);
     e.target.value = '';
   };
@@ -829,6 +859,11 @@ export default function Assistant() {
                         <FileText size={13} />
                       )}
                       <span className="as-attach-name">{a.name}</span>
+                      {a.parsing && (
+                        <span className="as-attach-tag">
+                          {a.parsed ? digestLabel(a.digest) || 'unreadable' : 'reading…'}
+                        </span>
+                      )}
                       <button onClick={() => removeAttachment(a.id)} title="Remove">
                         <X size={12} />
                       </button>

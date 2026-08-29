@@ -3,6 +3,7 @@
 const catalystSDK = require('zcatalyst-sdk-node');
 const zcql = require('./zcql');
 const redaction = require('./redaction');
+const vision = require('./vision');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -160,6 +161,19 @@ async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeout
   }
   return null;
 }
+
+const VISION_SYSTEM =
+  'You are Sentinel Assistant, helping a Karnataka police officer read a document or ' +
+  'photograph they have attached. You are given what an OCR and vision pass extracted ' +
+  'from the image — not the image itself.\n' +
+  'Answer ONLY from that extract. If the officer asks something the extract does not ' +
+  'cover, say plainly that it is not legible or not present in the image; never guess ' +
+  'at what a smudged field might say, and never fill in a missing detail from general ' +
+  'knowledge — an invented crime number or section on a police document is far worse ' +
+  'than an admission that it could not be read.\n' +
+  'Where the extract is marked [redacted] or [phone redacted], the data exists but is ' +
+  'above the caller\'s clearance: say it is restricted, do not speculate about it.\n' +
+  'Be concise and factual. Use markdown, never raw HTML.';
 
 // ── Intent routing ──────────────────────────────────────────────────────────
 // Two changes over a bare one-word classifier.
@@ -2689,6 +2703,50 @@ async function handleOcr(req, res) {
   return json(res, 200, { text, key });
 }
 
+// Fast Vision Pre-Parser endpoint. The client calls this the moment a file is
+// attached, so the parse overlaps with the officer still typing their question
+// and costs no perceptible time when they hit send.
+async function handleVisionParse(req, res) {
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const caller = await requestUser(app);
+  // Vision runs against evidence, so it needs a real signed-in caller. Unlike
+  // the navigation guards this does not fail open.
+  if (!caller) return json(res, 403, { error: 'Sign-in required' });
+
+  const filename = (urlParam(req, 'filename') || 'image.jpg').slice(0, 120);
+  const mimeParam = urlParam(req, 'mime');
+  const mime = /^image\/(jpeg|png)$/.test(mimeParam) ? mimeParam : 'image/jpeg';
+
+  const hex = (await readBody(req)).trim();
+  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) return json(res, 400, { error: 'invalid encoding' });
+  const buf = Buffer.from(hex, 'hex');
+  if (!buf.length) return json(res, 400, { error: 'empty file' });
+  if (buf.length > 8 * 1024 * 1024) return json(res, 413, { error: 'image too large (8MB max)' });
+
+  const digest = await vision.preParse(app.zia(), buf, mime, filename);
+
+  // The digest is returned to the browser, so it is redacted HERE as well as
+  // when it is later placed in a prompt. A caller without clearance must not
+  // receive identifiers off a scanned page just because they attached it.
+  const { role } = await myRole(app, bucket);
+  const clearance = caller ? role : null;
+  if (digest.text) {
+    const f = redaction.filterText(digest.text, clearance);
+    digest.text = f.text;
+    if (f.redactions.length) digest.redacted = redaction.describe(f.redactions);
+  }
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'vision-preparse', feature: 'Assistant', path: '/assistant',
+    detail: `${filename} type=${digest.doc_type || 'unclassified'}` +
+      `${digest.graphic ? ' flagged=' + digest.graphic : ''}` +
+      `${digest.redacted ? ' redacted=' + digest.redacted : ''}`,
+  }], caller);
+
+  return json(res, 200, { digest });
+}
+
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return json(res, 405, { error: 'Use POST' });
@@ -2736,6 +2794,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/investigation/media/upload')) return await handleMediaUpload(req, res);
     if (path.endsWith('/investigation/media/get')) return await handleMediaGet(req, res);
     if (path.endsWith('/investigation/ocr')) return await handleOcr(req, res);
+    if (path.endsWith('/vision/parse')) return await handleVisionParse(req, res);
 
     const body = JSON.parse((await readBody(req)) || '{}');
     const rawQuery = (body.query || '').trim();
@@ -2835,6 +2894,33 @@ module.exports = async (req, res) => {
     // ── Slash commands ───────────────────────────────────────────────────
     // Resolved before anything else: a command is an explicit instruction, so
     // it should never be re-interpreted by the router.
+    // ── Attached images ──────────────────────────────────────────────────
+    // Digests arrive already parsed (the client pre-parses on attach), so the
+    // assistant reasons over the page's text and contents as ordinary
+    // context. Re-filtered here rather than trusted: the digest travelled
+    // through the browser, and a prompt is the one place unauthorised text
+    // must never reach.
+    const digests = Array.isArray(body.vision) ? body.vision.slice(0, 4) : [];
+    let visionContext = '';
+    if (digests.length) {
+      const clearance = await resolveCaller();
+      visionContext = digests
+        .map((d) => {
+          const safe = { ...d };
+          if (safe.text) {
+            const f = redaction.filterText(safe.text, clearance);
+            safe.text = f.text;
+            if (f.redactions.length) {
+              redactionLog = redactionLog.concat(
+                f.redactions.map((r) => ({ ...r, stage: 'pre-retrieval', source: 'vision' }))
+              );
+            }
+          }
+          return vision.digestToPrompt(safe);
+        })
+        .join('\n\n');
+    }
+
     const slash = parseSlash(rawQuery);
     if (slash) {
       slashName = slash.name;
@@ -2977,6 +3063,39 @@ module.exports = async (req, res) => {
         )
       : null;
     const searchQuery = (expanded || '').trim() || query;
+
+    // ── Attached-image answers ───────────────────────────────────────────
+    // An attachment usually means "read this for me", so the digest answers
+    // the question directly. The exception is a query that ALSO carries a
+    // record or aggregate signal ("does this FIR match anything on file?") —
+    // that genuinely needs the data store, so the digest is carried down as
+    // extra context and normal routing runs instead.
+    if (visionContext) {
+      const alsoNeedsRecords = deterministicRoute(query);
+      if (!alsoNeedsRecords) {
+        const seen = await callGroq(
+          [
+            { role: 'system', content: VISION_SYSTEM },
+            ...history,
+            { role: 'user', content: `${visionContext}\n\nQuestion: ${query || 'What does this document say?'}` },
+          ],
+          { maxTokens: 700, temperature: 0.2, timeoutMs: 20_000 }
+        );
+        if (seen && seen.trim()) {
+          const v = extractAgui(seen);
+          return json(res, 200, {
+            answer: await finalAnswer(v.text || seen.trim(), responseLang),
+            components: v.components,
+            source: 'vision',
+            detected_lang: lid.lang,
+            response_lang: responseLang,
+            sources: digests.map((d) => `Attached image: ${d.filename}`),
+            route: { route: 'VISION', confidence: 1, decided_by: 'attachment' },
+          });
+        }
+        // Groq unavailable — fall through so the officer still gets an answer.
+      }
+    }
 
     // ── Router (Groq decides one word) — the assistant's decision point:
     //   CHAT  → casual chat, answered directly by Groq llama.
@@ -3195,6 +3314,7 @@ module.exports = async (req, res) => {
                 {
                   role: 'user',
                   content:
+                    (visionContext ? visionContext + '\n\n' : '') +
                     `Question: ${query}\n\nRows (${flat.length}` +
                     `${flat.length === 200 ? ', truncated' : ''}):\n` +
                     JSON.stringify(flat.slice(0, isList ? 20 : 60)),
