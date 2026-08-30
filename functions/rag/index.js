@@ -1096,9 +1096,13 @@ async function handleSupport(req, res) {
 
 async function handleConversations(req, res, action) {
   const body = JSON.parse((await readBody(req)) || '{}');
-  const email = String(body.email || '').trim().toLowerCase();
-  if (!email) return json(res, 400, { error: 'email is required' });
   const app = catalystSDK.initialize(req);
+  // The signed-in officer, NOT body.email. The client still sends its own
+  // address and this deliberately ignores it: a chat history is personal, and
+  // an address in a request body is chosen by whoever is making the request.
+  const caller = await requestUser(app);
+  const email = String((caller && caller.email_id) || '').trim().toLowerCase();
+  if (!email) return json(res, 401, { error: 'Sign in to use the assistant.' });
 
   // Data Store is authoritative. If the table isn't set up yet (or a Data
   // Store call fails), fall back to the legacy Stratus blob so history keeps
@@ -1222,8 +1226,12 @@ async function handleProfilePhoto(req, res) {
     const m = q.match(new RegExp(`(?:^|&)${k}=([^&]*)`));
     return m ? decodeURIComponent(m[1]) : '';
   };
-  const email = param('email').trim().toLowerCase();
-  if (!email) return json(res, 400, { error: 'email is required' });
+  // Session identity, not the ?email= the caller passed — a profile photo is
+  // written under whoever is signed in.
+  const photoApp = catalystSDK.initialize(req);
+  const photoUser = await requestUser(photoApp);
+  const email = String((photoUser && photoUser.email_id) || '').trim().toLowerCase();
+  if (!email) return json(res, 401, { error: 'Sign in to update your photo.' });
   // The image is uploaded HEX-ENCODED (only 0-9a-f) in the body. Raw image
   // bytes — as binary OR base64 — trip the gateway's resource-access policy
   // (its request scanner matches byte patterns); a hex string contains no
@@ -1249,10 +1257,13 @@ async function handleProfilePhoto(req, res) {
 
 async function handleProfile(req, res, action) {
   const body = JSON.parse((await readBody(req)) || '{}');
-  const email = String(body.email || '').trim().toLowerCase();
-  if (!email) return json(res, 400, { error: 'email is required' });
-
   const app = catalystSDK.initialize(req);
+  // Own profile only. body.email is ignored: it used to select whose profile
+  // was read and written, which let any caller fetch or overwrite a
+  // colleague's record by naming their address.
+  const caller = await requestUser(app);
+  const email = String((caller && caller.email_id) || '').trim().toLowerCase();
+  if (!email) return json(res, 401, { error: 'Sign in to view your profile.' });
   const bucket = app.stratus().bucket(CONV_BUCKET);
 
   if (action === 'get') {
@@ -1321,13 +1332,84 @@ async function loadLastActive(bucket) {
 // The caller's identity comes from the Catalyst session cookie forwarded with
 // every /server/ call — never from the request body — so admin-only endpoints
 // can't be reached by editing a JSON payload.
+// Memoised per Catalyst app instance — one instance is created per request, so
+// this is request-scoped. The session lookup is a network call, and the gate
+// below plus myRole() plus the audit writer all want the same answer.
+const userCache = new WeakMap();
 async function requestUser(app) {
+  if (userCache.has(app)) return userCache.get(app);
+  let u = null;
   try {
-    return await app.userManagement().getCurrentUser();
+    u = await app.userManagement().getCurrentUser();
   } catch {
+    u = null;
+  }
+  userCache.set(app, u);
+  return u;
+}
+
+// ── API gate ───────────────────────────────────────────────────────────────
+//
+// Every route on this function serves the signed-in officer's console. There
+// is no anonymous surface here — no public read API, no webhook, no payment
+// callback — so authentication belongs to the router rather than to each
+// handler's good intentions. Leaving it per-handler is what produced the two
+// problems this replaces:
+//
+//   1. Several endpoints had no check at all. /transcribe and /report-pdf call
+//      metered Zoho APIs, and the assistant route itself calls an LLM, so an
+//      unauthenticated caller could spend the project's quota at will.
+//   2. Worse, /conversations/* and /profile/* took the officer's identity from
+//      a field in the request body. Anyone who knew a colleague's address
+//      could read, overwrite or delete that officer's entire assistant
+//      history. Identity must come from the session, never from the payload.
+//
+// The session is Catalyst's own (Zoho OAuth, same cookie the app signs in
+// with); there is no second token to mint or rotate.
+async function requireSession(req, res) {
+  const app = catalystSDK.initialize(req);
+  const user = await requestUser(app);
+  const email = String((user && user.email_id) || '').trim().toLowerCase();
+  if (!email) {
+    json(res, 401, { error: 'Sign in to use Sentinel.' });
     return null;
   }
+  return { app, user, email };
 }
+
+// ── Rate limiting ──────────────────────────────────────────────────────────
+//
+// A token bucket per officer per minute. Deliberately modest in what it
+// claims: a serverless function is many short-lived containers, so this bounds
+// what any ONE container will spend rather than enforcing a global ceiling.
+// It is a cost and abuse brake on the metered routes — transcription, vision,
+// PDF rendering, the LLM lanes — not a security boundary. The Catalyst API
+// Gateway's own limiter is the enforcement point that sees every request.
+const RATE_GENERAL = Number(process.env.RATE_LIMIT_PER_MIN) || 120;
+const RATE_METERED = Number(process.env.RATE_LIMIT_METERED_PER_MIN) || 20;
+const RATE_WINDOW_MS = 60_000;
+const rateBuckets = new Map();
+
+function rateLimited(key, max) {
+  const now = Date.now();
+  // Bounded: a container that has seen many officers must not hold every
+  // bucket for the life of the process.
+  if (rateBuckets.size > 5000) {
+    for (const [k, b] of rateBuckets) if (now - b.start > RATE_WINDOW_MS) rateBuckets.delete(k);
+  }
+  const b = rateBuckets.get(key);
+  if (!b || now - b.start > RATE_WINDOW_MS) {
+    rateBuckets.set(key, { start: now, n: 1 });
+    return 0;
+  }
+  b.n += 1;
+  if (b.n > max) return Math.ceil((RATE_WINDOW_MS - (now - b.start)) / 1000);
+  return 0;
+}
+
+// Routes that cost money per call: Zoho transcription and OCR, SmartBrowz PDF
+// rendering, and every lane that reaches an LLM.
+const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|digitise\/(upload|ingest))$/;
 const isAdminUser = (u) => /admin/i.test(u?.role_details?.role_name || '');
 
 async function handleAccess(req, res, action) {
@@ -1336,8 +1418,11 @@ async function handleAccess(req, res, action) {
   const bucket = app.stratus().bucket(CONV_BUCKET);
 
   if (action === 'me') {
-    const email = String(body.email || '').trim().toLowerCase();
-    if (!email) return json(res, 400, { error: 'email is required' });
+    // Your own role, from the session. Reading it by address let anyone
+    // enumerate who holds which clearance.
+    const me = await requestUser(app);
+    const email = String((me && me.email_id) || '').trim().toLowerCase();
+    if (!email) return json(res, 401, { error: 'Sign in to continue.' });
     const roles = await loadRolesBlob(bucket);
     const rec = roles.users[email] || {};
     return json(res, 200, {
@@ -3148,6 +3233,20 @@ module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return json(res, 405, { error: 'Use POST' });
     const path = req.url ? req.url.split('?')[0].replace(/\/+$/, '') : '';
+
+    // One gate, ahead of every route. See requireSession above for why this is
+    // the router's job and not each handler's.
+    const session = await requireSession(req, res);
+    if (!session) return undefined;
+    const wait = rateLimited(
+      `${session.email}:${METERED_ROUTES.test(path) ? 'metered' : 'general'}`,
+      METERED_ROUTES.test(path) ? RATE_METERED : RATE_GENERAL
+    );
+    if (wait) {
+      res.setHeader('Retry-After', String(wait));
+      return json(res, 429, { error: `Too many requests — try again in ${wait}s.` });
+    }
+
     if (path.endsWith('/transcribe')) return await handleTranscribe(req, res);
     if (path.endsWith('/report-pdf')) return await handleReportPdf(req, res);
     if (path.endsWith('/support')) return await handleSupport(req, res);

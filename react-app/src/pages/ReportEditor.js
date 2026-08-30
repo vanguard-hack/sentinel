@@ -351,11 +351,6 @@ export default function ReportEditor() {
     }
   };
 
-  const fitWidth = () => {
-    const w = canvasRef.current?.clientWidth || PAGE_W;
-    setZoom(Math.max(50, Math.min(150, Math.floor(((w - 48) / PAGE_W) * 100))));
-  };
-
   const extras = useMemo(() => (type ? extraSheetDefs(type) : []), [type]);
 
   if (error && !report) {
@@ -423,9 +418,8 @@ export default function ReportEditor() {
               .rb-page-tools hangs off each sheet. */}
           <div className="rb-zoom-rail" style={{ '--rb-page-w': `${PAGE_W}px`, '--rb-scale': zoom / 100 }}>
           <div className="rb-zoom-side">
-            <button type="button" className="cf-icon-btn" title="Zoom in" onClick={() => setZoom((z) => Math.min(150, z + 10))}><ZoomIn size={15} /></button>
-            <button type="button" className="rb-zoom-pct" title="Fit width" onClick={fitWidth}>{zoom}%</button>
-            <button type="button" className="cf-icon-btn" title="Zoom out" onClick={() => setZoom((z) => Math.max(50, z - 10))}><ZoomOut size={15} /></button>
+            <button type="button" className="cf-icon-btn" title="Zoom in" onClick={() => setZoom((z) => Math.min(150, z + 10))}><ZoomIn size={14} /></button>
+            <button type="button" className="cf-icon-btn" title="Zoom out" onClick={() => setZoom((z) => Math.max(50, z - 10))}><ZoomOut size={14} /></button>
           </div>
           </div>
           <div className="rb-zoom-stage" style={{ zoom: zoom / 100 }}>

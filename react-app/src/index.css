@@ -3531,10 +3531,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
    changes width. */
 .topbar-clock {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 1px;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 7px;
   /* The leading edge of the right-hand group: this is the auto margin that
      used to sit on .topbar-global, so clock, language switcher and search
      travel together instead of the clock stranding beside the crumbs. */
@@ -3544,7 +3544,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   white-space: nowrap;
   flex-shrink: 0;
 }
-.topbar-clock-date { font-size: 10.5px; color: var(--text-3); }
+.topbar-clock-date { font-size: 12px; color: var(--text-3); }
 .topbar-clock-time {
   font-size: 12.5px;
   font-weight: 650;
@@ -3556,7 +3556,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
    what pushes the right-hand group over. */
 @media (max-width: 900px) {
   .topbar-clock-date { display: none; }
-  .topbar-clock { padding-right: 6px; }
+  .topbar-clock { padding-right: 6px; gap: 0; }
 }
 
 .topbar {
@@ -6740,10 +6740,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .rb-zoom-rail { position: sticky; top: 10px; height: 0; z-index: 15; }
 .rb-zoom-side {
   position: absolute;
-  /* Below the move/delete buttons of the first page, in the same column —
-     one rail beside the page rather than two controls at opposite ends. The
-     offset scales because those buttons live inside the zoomed stage and this
-     rail does not, so at 120% they grew past a fixed 112px and collided. */
+  /* Continues the move/delete column rather than floating beside it — same
+     square buttons, same gap, no container of its own. The offset scales
+     because those buttons live inside the zoomed stage and this rail does
+     not, so a fixed one collided with them at 120%. */
   top: calc(116px * var(--rb-scale, 1));
   /* Half a scaled page-width right of centre, plus the same 12px gutter the
      page tools use. --rb-page-w and --rb-scale come from the editor, because
@@ -6752,19 +6752,9 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   right: auto;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   align-items: center;
-  padding: 5px;
-  background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  box-shadow: var(--shadow-card);
 }
-.rb-zoom-side .rb-zoom-pct {
-  min-width: 0; width: 38px; padding: 4px 0;
-  font-size: 10.5px; text-align: center; border: 0; background: none;
-}
-.rb-zoom-side .rb-zoom-pct:hover { background: var(--hover-overlay); border-radius: 7px; }
 /* Narrow: the page fills the canvas and there is no gutter to sit in, so the
    rail drops to a horizontal strip above the pages. */
 @media (max-width: 1100px) {
