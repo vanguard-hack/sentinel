@@ -9,6 +9,7 @@ import {
 import {
   loadSessions, saveSessions, makeTitle, newSession, generateReply, uid,
   transcribeAudio, loadSessionsRemote, saveSessionRemote, saveSessionBeacon, deleteSessionRemote,
+  consolidateMemory,
 } from '../utils/assistant';
 import { preParseImage, canPreParse } from '../utils/vision';
 import {
@@ -209,10 +210,13 @@ export default function Assistant() {
       dirtyRef.current.forEach((s) => {
         if (saveSessionBeacon(s, email)) dirtyRef.current.delete(s.id);
       });
+      // The tab going away is the clearest "this conversation is over" signal
+      // there is — the moment to fold it into long-term memory.
+      if (activeId) consolidateMemory(activeId);
     };
     document.addEventListener('visibilitychange', onHide);
     return () => document.removeEventListener('visibilitychange', onHide);
-  }, [email]);
+  }, [email, activeId]);
 
   // Autoscroll the thread on new messages / typing.
   useEffect(() => {
@@ -233,12 +237,14 @@ export default function Assistant() {
   // stacking multiple empty "New chat" conversations.
   const onBlankNewChat = !activeId || messages.length === 0;
   const startNewChat = useCallback(() => {
+    // Leaving a conversation ends it: consolidate before the id is dropped.
+    if (activeId) consolidateMemory(activeId);
     setActiveId(null);
     setInput('');
     setAttachments([]);
     histRef.current = { idx: null, draft: '' };
     textareaRef.current?.focus();
-  }, []);
+  }, [activeId]);
 
   const selectSession = (id) => {
     setActiveId(id);
@@ -415,7 +421,7 @@ export default function Assistant() {
             .map((r) => (r.status === 'fulfilled' ? r.value : null))
             .filter((d) => d && d.ok)
         : [];
-      const reply = await generateReply(history, digests, docs);
+      const reply = await generateReply(history, digests, docs, sessionId);
       const botMsg = {
         id: uid(),
         role: 'assistant',

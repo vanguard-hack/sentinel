@@ -100,7 +100,7 @@ export default function ChatWidget() {
     setInput('');
     setSending(true);
     try {
-      const reply = await generateReply(history);
+      const reply = await generateReply(history, [], [], id);
       const botMsg = {
         id: uid(),
         role: 'assistant',

@@ -185,6 +185,27 @@ export function saveSessionBeacon(session, email) {
   );
 }
 
+// Tell the backend a conversation has ended, so it can fold the session into
+// the officer's long-term memory. Fire-and-forget: memory is an improvement to
+// the next conversation, never something this one should wait on.
+export function consolidateMemory(sessionId) {
+  if (!sessionId) return false;
+  const body = JSON.stringify({ session_id: sessionId });
+  if (navigator.sendBeacon) {
+    return navigator.sendBeacon(
+      '/server/rag/memory/consolidate',
+      new Blob([body], { type: 'application/json' })
+    );
+  }
+  fetch('/server/rag/memory/consolidate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    keepalive: true,
+  }).catch(() => {});
+  return true;
+}
+
 export async function deleteSessionRemote(id, email) {
   if (!email || !id) return;
   try {
@@ -288,7 +309,7 @@ export async function transcribeAudio(input, language = 'en') {
 // { text, components } — components are AG-UI-style typed specs (bar-chart,
 // pie-chart, table, cards) rendered by AguiRenderer. Falls back to an
 // explanatory message if the backend isn't reachable/configured yet.
-export async function generateReply(history, vision = [], attachments = []) {
+export async function generateReply(history, vision = [], attachments = [], sessionId = '') {
   const lastUser = [...history].reverse().find((m) => m.role === 'user');
   const query = (lastUser?.content || '').trim();
   if (!query) return { text: 'Ask me a question to get started.', components: [] };
@@ -317,6 +338,10 @@ export async function generateReply(history, vision = [], attachments = []) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query,
+        // The conversation this turn belongs to. The backend keys its own
+        // memory on it, so continuity no longer depends on the browser
+        // remembering to send its history.
+        session_id: sessionId,
         history: shortTerm,
         summary,
         preferred_lang: currentLang(),

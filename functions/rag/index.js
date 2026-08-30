@@ -5,6 +5,7 @@ const zcql = require('./zcql');
 const redaction = require('./redaction');
 const vision = require('./vision');
 const attribution = require('./sources');
+const memory = require('./memory');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -28,6 +29,13 @@ const path = require('path');
  *   RAG_ACCOUNTS_HOST   default https://accounts.zoho.in
  *   RAG_API_URL         default the project's rag/answer endpoint
  *   RAG_ORG             default 60073599957
+ *
+ * Officer memory (see memory.js) needs a Cache segment and three NoSQL tables
+ * created in the console; without them the assistant behaves exactly as it did
+ * before memory existed. Optional overrides:
+ *   MEMORY_IDLE_MINUTES   idle window that ends a session, default 45
+ *   MEMORY_KB_URL         QuickML endpoint that creates a KB document
+ *   MEMORY_KB_DELETE      QuickML KB delete endpoint, {id} substituted
  */
 
 const ACCOUNTS_HOST = process.env.RAG_ACCOUNTS_HOST || 'https://accounts.zoho.in';
@@ -2988,6 +2996,154 @@ async function handleVisionParse(req, res) {
   return json(res, 200, { digest });
 }
 
+// ── Officer memory ─────────────────────────────────────────────────────────
+//
+// Sentinel has no badge-number field, so the signed-in account is the identity
+// every memory row is partitioned by — the same key the audit trail already
+// uses. Partitioning by it is what makes memory per-officer: one officer's
+// memory is not merely filtered out of another's queries, it is in a different
+// partition and never read.
+const memoryBadge = (caller) => String((caller && caller.email_id) || '').toLowerCase() || null;
+
+// The QuickML knowledge-base document endpoint, for pushing a consolidated
+// summary into semantic memory. Left unset by default: until it is configured,
+// consolidation still writes structured facts and summaries to NoSQL, and
+// recall ranks those instead — so memory works without it, and gains
+// meaning-based search when it is set.
+//   MEMORY_KB_URL     POST endpoint that creates a knowledge-base document
+//   MEMORY_KB_DELETE  DELETE endpoint template, {id} substituted
+const MEMORY_KB_URL = process.env.MEMORY_KB_URL || '';
+const MEMORY_KB_DELETE = process.env.MEMORY_KB_DELETE || '';
+
+async function summarizeForMemory(systemPrompt, transcript) {
+  return callGroq(
+    [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: transcript },
+    ],
+    // Fast model on purpose: consolidation runs off the answer path and should
+    // never compete with officers' questions for the big model's day cap.
+    { maxTokens: 500, temperature: 0.2, timeoutMs: 15_000, model: GROQ_MODEL_FAST }
+  );
+}
+
+async function pushMemoryToKb({ badgeId, sessionId, summary, transcript }) {
+  if (!MEMORY_KB_URL) return null;
+  const token = await getAccessToken();
+  const r = await fetch(MEMORY_KB_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'CATALYST-ORG': ORG,
+      Authorization: `Zoho-oauthtoken ${token}`,
+    },
+    body: JSON.stringify({
+      name: `officer-memory/${badgeId}/${sessionId}`,
+      content: `Conversation with ${badgeId} on ${new Date().toISOString().slice(0, 10)}.\n\n${summary}\n\n${transcript.slice(0, 20_000)}`,
+    }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`kb push failed: ${r.status}`);
+  return d.document_id || d.id || (d.data && (d.data.document_id || d.data.id)) || null;
+}
+
+async function dropMemoryKb(documentId) {
+  if (!MEMORY_KB_DELETE) return false;
+  const token = await getAccessToken();
+  const r = await fetch(MEMORY_KB_DELETE.replace('{id}', encodeURIComponent(documentId)), {
+    method: 'DELETE',
+    headers: { 'CATALYST-ORG': ORG, Authorization: `Zoho-oauthtoken ${token}` },
+    signal: AbortSignal.timeout(15_000),
+  });
+  return r.ok;
+}
+
+async function runConsolidation(req, app, bucket, sessionId, badgeId, caller) {
+  const result = await memory.consolidate(app, {
+    sessionId,
+    badgeId,
+    summarize: summarizeForMemory,
+    pushKb: MEMORY_KB_URL ? pushMemoryToKb : undefined,
+  });
+  if (!result) return null;
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'memory-consolidate',
+    feature: 'Assistant',
+    path: '/assistant',
+    detail: `session=${sessionId} type=long-term facts=${result.facts} kb=${result.kb_document_id || 'none'}`,
+  }], caller);
+  return result;
+}
+
+async function handleMemory(req, res, action) {
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  const self = memoryBadge(caller);
+  // Memory is personal data about a named officer. An unidentified caller has
+  // no memory to read and none to delete.
+  if (!self) return json(res, 401, { error: 'Sign in to manage your assistant memory.' });
+  const body = JSON.parse((await readBody(req)) || '{}');
+
+  // An admin may act on another officer's memory (a sealed case, an expunged
+  // record); everyone else acts only on their own, whatever they ask for.
+  const target = role === 'admin' && body.badge_id
+    ? String(body.badge_id).toLowerCase().slice(0, 120)
+    : self;
+
+  if (action === 'get') {
+    const facts = await memory.readFacts(app, target, { limit: 200 });
+    const sessions = memory.sessionsOf(facts);
+    return json(res, 200, {
+      badge_id: target,
+      idle_window_minutes: memory.IDLE_MINUTES,
+      sessions: sessions.length,
+      kb_documents: await memory.kbDocuments(app, target),
+      facts: facts
+        .filter((f) => !String(f.memory_key).startsWith('session#'))
+        .map((f) => ({
+          memory_key: f.memory_key,
+          kind: f.kind,
+          value: f.value,
+          updated_at: Number(f.updated_at) || null,
+          expires_at: Number(f.expires_at) || null,
+        })),
+    });
+  }
+
+  if (action === 'consolidate') {
+    const sessionId = String(body.session_id || '').trim().slice(0, 80);
+    if (!sessionId) return json(res, 400, { error: 'session_id is required' });
+    const result = await runConsolidation(req, app, bucket, sessionId, target, caller);
+    return json(res, 200, { ok: true, consolidated: !!result, ...(result || {}) });
+  }
+
+  if (action === 'forget') {
+    const match = body.match ? String(body.match).slice(0, 120) : '';
+    const removed = await memory.forget(app, target, {
+      match: match || undefined,
+      dropKb: MEMORY_KB_DELETE ? dropMemoryKb : undefined,
+    });
+    // Deletion is the one memory operation a reviewer is most likely to be
+    // asked about later, so it is recorded even though the memory is gone.
+    await storeAuditEvents(req, app, bucket, [{
+      action: 'memory-delete',
+      feature: 'Assistant',
+      path: '/assistant',
+      detail:
+        `badge=${target}${target !== self ? ' (by admin)' : ''} ` +
+        `scope=${match || 'all'} facts=${removed.facts} turns=${removed.turns} kb=${removed.kb_documents}`,
+    }], caller);
+    // A KB document that could not be deleted is stated plainly rather than
+    // reported as a clean wipe — "your memory was cleared" has to be true.
+    const kbPending = (await memory.kbDocuments(app, target)).length;
+    return json(res, 200, { ok: true, ...removed, kb_documents_remaining: kbPending });
+  }
+
+  return json(res, 404, { error: 'unknown memory action' });
+}
+
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return json(res, 405, { error: 'Use POST' });
@@ -3040,6 +3196,9 @@ module.exports = async (req, res) => {
     if (path.endsWith('/investigation/media/get')) return await handleMediaGet(req, res);
     if (path.endsWith('/investigation/ocr')) return await handleOcr(req, res);
     if (path.endsWith('/vision/parse')) return await handleVisionParse(req, res);
+    if (path.endsWith('/memory/get')) return await handleMemory(req, res, 'get');
+    if (path.endsWith('/memory/consolidate')) return await handleMemory(req, res, 'consolidate');
+    if (path.endsWith('/memory/forget')) return await handleMemory(req, res, 'forget');
 
     const body = JSON.parse((await readBody(req)) || '{}');
     const rawQuery = (body.query || '').trim();
@@ -3062,6 +3221,14 @@ module.exports = async (req, res) => {
     let validatorChecks = []; // what the ZCQL validator verified or refused
     let slashName = null; // set when the query was an explicit /command
     let digitisedPromise = null; // in-flight search of the station's own uploads
+
+    // Officer memory. Assembled before the router runs and written back on the
+    // way out, so every lane — RAG, ZCQL, chat, attachments — inherits the same
+    // conversation context without having to know memory exists.
+    const sessionId = typeof body.session_id === 'string' ? body.session_id.trim().slice(0, 80) : '';
+    let memBuffer = null; // the live cache buffer for this session
+    let memFacts = []; // long-term structured facts for this officer
+    let memRecall = null; // semantic recall, only when the question asked for it
 
     // Who is asking, for the clearance filter. Resolved once and memoised:
     // every redaction decision below depends on it.
@@ -3102,6 +3269,11 @@ module.exports = async (req, res) => {
           g.redactions.map((r) => ({ ...r, stage: 'post-generation' }))
         );
       }
+      // Memory records the answer the officer actually received — after the
+      // tier-2 guard, never the unguarded draft. Ahead of the decision record
+      // so the memory write rides in the same audit batch as the answer,
+      // rather than doubling the per-turn write to the audit trail.
+      await rememberTurn(g.answer);
       await recordDecision();
       return g.answer;
     };
@@ -3111,6 +3283,7 @@ module.exports = async (req, res) => {
     // what the caller was looking at, what the ZCQL validator allowed or
     // refused, and what the clearance filter removed. Written once per
     // request; a reviewer can reconstruct the decision without the answer.
+    const memoryAudit = []; // memory writes, batched into the decision record
     let decisionRecorded = false;
     async function recordDecision() {
       if (decisionRecorded) return;
@@ -3137,7 +3310,7 @@ module.exports = async (req, res) => {
           detail: parts.join(' '),
           // The detail column is capped; the array itself is stored whole.
           sources: attribution.forAudit(citedSources),
-        }], callerUser);
+        }, ...memoryAudit], callerUser);
       } catch {
         // Auditing must never take an answer away from the officer.
       }
@@ -3189,7 +3362,7 @@ module.exports = async (req, res) => {
       // finalAnswer runs the tier-2 guard and writes the decision record, so
       // the citations have to be settled before it is called.
       const answer = await finalAnswer(text, responseLang);
-      return json(res, 200, {
+      const sent = json(res, 200, {
         response_id: responseId,
         badge_id: badgeId(),
         answer,
@@ -3202,6 +3375,68 @@ module.exports = async (req, res) => {
           latency_ms: Date.now() - startedAt,
         },
       });
+      // Deliberately after the answer is on the wire: consolidation costs a
+      // model call, and no officer should wait on the assistant tidying its
+      // own memory. If the container is frozen before it finishes, nothing is
+      // lost — the session pointer's cursor makes the work resumable, so the
+      // next threshold crossing or the session-end call picks up where this
+      // left off.
+      consolidateLater();
+      return sent;
+    };
+
+    // ── Memory write-back ────────────────────────────────────────────────
+    // On the single exit, so no lane can answer without the exchange being
+    // remembered. Entirely best-effort: losing a memory write must never cost
+    // the officer their answer.
+    let bufferedTurns = 0;
+    const rememberTurn = async (answerText) => {
+      if (!sessionId || !clearanceApp) return;
+      const turns = [
+        { role: 'user', text: rawQuery, ts: startedAt },
+        { role: 'assistant', text: answerText, ts: Date.now() },
+      ];
+      try {
+        const buffered = ((memBuffer && memBuffer.turns) || []).concat(turns);
+        bufferedTurns = buffered.length;
+        await memory.writeBuffer(clearanceApp, sessionId, badgeId(), {
+          turns: buffered,
+          scratchpad: {
+            last_route: routeDecision ? routeDecision.route : null,
+            last_response_id: responseId,
+          },
+        });
+        const badge = badgeId();
+        if (!badge) return; // an unidentified caller gets no durable memory
+        await memory.appendTurns(clearanceApp, sessionId, badge, turns);
+        if (!(memBuffer && memBuffer.resumed)) {
+          await memory.noteSession(clearanceApp, badge, sessionId, { started_at: startedAt });
+        }
+        // A memory write is a write about the officer, so it is auditable in
+        // its own right — a distinct event, batched into the same trail write
+        // as the answer it accompanied.
+        memoryAudit.push({
+          action: 'memory-write',
+          feature: 'Assistant',
+          path: '/assistant',
+          detail:
+            `session=${sessionId} badge=${badge} type=short-term+session-log ` +
+            `turns=${turns.length} buffered=${buffered.length}` +
+            (memRecall ? ` recall=${memRecall.origin}` : ''),
+        });
+      } catch (e) {
+        console.error('memory write failed (non-fatal):', e && e.message);
+      }
+    };
+
+    // Fold the working buffer into durable facts once it has grown past the
+    // window. Idempotent and cursor-based, so running it twice is harmless.
+    const consolidateLater = () => {
+      const badge = badgeId();
+      if (!sessionId || !badge || !clearanceApp) return;
+      if (bufferedTurns < memory.CONSOLIDATE_AFTER_TURNS) return;
+      runConsolidation(req, clearanceApp, clearanceBucket, sessionId, badge, callerUser)
+        .catch((e) => console.error('consolidation failed (non-fatal):', e && e.message));
     };
 
     // ── Slash commands ───────────────────────────────────────────────────
@@ -3343,14 +3578,20 @@ module.exports = async (req, res) => {
     // Conversation memory from the client: `history` is the short-term window
     // (recent turns, verbatim); `summary` is the long-term digest of older
     // turns. Both feed Groq (expansion + fallback), never the RAG query itself.
-    const history = (Array.isArray(body.history) ? body.history : [])
+    //
+    // The client's copy is the fallback, not the source of truth — the server
+    // buffer below replaces it whenever the session is still live, so the
+    // assistant's memory does not depend on what a browser chose to send.
+    const clientHistory = (Array.isArray(body.history) ? body.history : [])
       .filter(
         (m) =>
           m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
       )
       .slice(-8)
       .map((m) => ({ role: m.role, content: m.content.slice(0, 1500) }));
+    let history = clientHistory;
     const summary = typeof body.summary === 'string' ? body.summary.slice(0, 2000) : '';
+    let longTermContext = '';
 
     // Per Catalyst docs: when no documents are passed, RAG searches ALL active
     // knowledge-base documents. So we only scope the search when explicitly
@@ -3389,6 +3630,59 @@ module.exports = async (req, res) => {
       d.output ||
       '';
 
+    // ── Assembled memory context ─────────────────────────────────────────
+    // Read before the router runs, so short-term buffer, long-term facts and
+    // (only when the question asks for it) semantic recall reach every lane
+    // below identically. Memory is per-officer: an unidentified caller and a
+    // request with no session id both get nothing rather than someone else's.
+    if (sessionId) {
+      await resolveCaller();
+      const badge = badgeId();
+      try {
+        memBuffer = await memory.readBuffer(clearanceApp, sessionId, badge);
+        if (badge) {
+          memFacts = await memory.readFacts(clearanceApp, badge);
+          // Recall is a tool, not a step: reaching for past conversations on
+          // every turn would spend a retrieval call to answer "how many FIRs
+          // in Hubballi", which has nothing to do with what was said before.
+          if (memory.wantsRecall(query)) {
+            memRecall = await memory.recall(clearanceApp, badge, query, {
+              facts: memFacts,
+              // Scoped to this officer's own KB documents. An unscoped search
+              // would read every officer's memory, which is the single thing
+              // this feature must never do.
+              ragSearch: async (q, docs) => pickAnswer((await callRag(q, docs, 12_000)).data || {}),
+            });
+          }
+        }
+      } catch (e) {
+        console.error('memory read failed (non-fatal):', e && e.message);
+      }
+      const assembled = memory.assemble({ buffer: memBuffer, facts: memFacts, recalled: memRecall });
+      // A live buffer is more trustworthy than the client's copy; an expired
+      // one is not resurrected behind the officer's back.
+      if (assembled.history.length) history = assembled.history;
+      // What the officer is remembered for rides along as a system turn at the
+      // head of the history, which is what every Groq lane already spreads —
+      // so chat, guide, the attachment reader and the final fallback all see
+      // it without any of them knowing memory exists.
+      if (assembled.longTerm) {
+        // Recalled memory is prose the officer once saw, not prose they are
+        // cleared to see now — roles change, cases get sealed. It goes through
+        // the same pre-retrieval filter as every other retrieved text.
+        const f = redaction.filterText(assembled.longTerm, await resolveCaller());
+        longTermContext = f.text;
+        if (f.redactions.length) {
+          redactionLog = redactionLog.concat(
+            f.redactions.map((r) => ({ ...r, stage: 'pre-retrieval', source: 'memory' }))
+          );
+        }
+        if (longTermContext) {
+          history = [{ role: 'system', content: longTermContext }].concat(history);
+        }
+      }
+    }
+
     // Expand the question into a self-contained one for better retrieval,
     // using conversation context to resolve pronouns and references
     // (best-effort — the raw query is used if Groq is absent or slow).
@@ -3397,10 +3691,12 @@ module.exports = async (req, res) => {
     // resolve — the raw question is always more faithful than a rewrite (small
     // models invent filters/years, which poisons ZCQL generation downstream).
     const contextBits = [];
+    if (longTermContext) contextBits.push(longTermContext);
     if (summary) contextBits.push('Earlier conversation topics: ' + summary);
-    if (history.length) {
+    const spokenTurns = history.filter((m) => m.role !== 'system');
+    if (spokenTurns.length) {
       contextBits.push(
-        'Recent conversation:\n' + history.map((m) => `${m.role}: ${m.content}`).join('\n')
+        'Recent conversation:\n' + spokenTurns.map((m) => `${m.role}: ${m.content}`).join('\n')
       );
     }
     const expanded = contextBits.length
