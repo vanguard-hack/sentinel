@@ -184,6 +184,11 @@ jobs:
           CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
           CATALYST_PROJECT_ID: ${{ steps.ctx.outputs.project_id }}
           CATALYST_ORG: ${{ steps.ctx.outputs.org_id }}
+          # Without a local config store the CLI defaults to the US data centre
+          # and sends the refresh token to the wrong accounts host, which comes
+          # back as a bare "Authentication failure". This project lives on the
+          # India DC — see the .catalystserverless.in hostname.
+          CATALYST_ACTIVE_DC: in
         # The CLI has printed a fatal error and still exited 0 — "Org and
         # Project Id cannot be empty" came out of a green step, which is how a
         # deploy silently shipped nothing. Its output is inspected rather than
