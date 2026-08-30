@@ -3362,11 +3362,25 @@ module.exports = async (req, res) => {
       // finalAnswer runs the tier-2 guard and writes the decision record, so
       // the citations have to be settled before it is called.
       const answer = await finalAnswer(text, responseLang);
+
+      // An answer that says nothing has nothing to attribute. "The records
+      // don't hold this" is not a finding drawn from the Data Store, and
+      // showing it under a source chip reads as though something WAS found —
+      // the officer sees provenance for a claim that was never made. Checked
+      // on the pre-localisation text: the detector is written against English.
+      //
+      // The audit record keeps its full attribution deliberately. What the
+      // assistant consulted before giving up is exactly what a reviewer needs
+      // months later; it is the officer's view that should be empty, not the
+      // trail.
+      const groundless = isNegative(text);
+      const shownSources = groundless ? [] : citedSources;
+
       const sent = json(res, 200, {
         response_id: responseId,
         badge_id: badgeId(),
         answer,
-        sources: citedSources,
+        sources: shownSources,
         detected_lang: lid.lang,
         response_lang: responseLang,
         ...payload,
@@ -3875,18 +3889,16 @@ module.exports = async (req, res) => {
                   expandedQuery: searchQuery === query ? undefined : searchQuery,
                 }, [attribution.fromDigitised(fromScans.hits)]);
               }
-              // Cited even though nothing was found: where we looked is part
-              // of the answer when the answer is "the records don't hold this".
+              // No citation. This used to name the Data Store on the reasoning
+              // that "where we looked is part of the answer" — but a source
+              // chip beside "the records don't hold this" invites the officer
+              // to open it expecting a record, and there is none. Where we
+              // looked still goes to the audit trail.
               return await respondWith(s.unanswerable, {
                 components: [],
                 source: 'zcql',
                 expandedQuery: searchQuery === query ? undefined : searchQuery,
-              }, [[{
-                source_type: attribution.TYPES.DATABASE_RECORD,
-                display_name: 'Data Store',
-                scope: 'Catalyst DataStore (ZCQL Read-Only)',
-                identifier: 'No matching records',
-              }]]);
+              });
             }
             q = s.query;
             rollup = s.rollup;

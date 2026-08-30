@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ScrollText, Search, AlertTriangle, FileText, NotebookPen, UserX, Gavel,
   HeartPulse, UserSearch, PackageSearch, ClipboardList, ShieldAlert,
-  TrendingUp, BarChart3, Scale, Trash2, FileDown, Link2,
+  TrendingUp, BarChart3, Scale, Trash2, FileDown, Link2, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -31,6 +31,11 @@ export default function ReportStudio() {
   const [q, setQ] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [busyId, setBusyId] = useState(null);
+  // The saved list is a browsing surface, not an archive dump — a station with
+  // a few hundred reports should not scroll past all of them to reach the
+  // filters underneath.
+  const PER_PAGE = 8;
+  const [page, setPage] = useState(0);
 
   const refresh = useCallback(() => {
     listReports().then(setReports).catch((e) => { setError(e.message); setReports([]); });
@@ -47,6 +52,13 @@ export default function ReportStudio() {
       return `${r.title} ${r.refNo || ''} ${type ? type.name : ''} ${r.createdByName || ''}`.toLowerCase().includes(needle);
     });
   }, [reports, q, typeFilter]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  // Clamped rather than reset: deleting the last report on page 3 should land
+  // on page 2, not throw the officer back to the top of the list.
+  const cur = Math.min(page, pageCount - 1);
+  const pageReports = filtered.slice(cur * PER_PAGE, cur * PER_PAGE + PER_PAGE);
+  useEffect(() => { setPage(0); }, [q, typeFilter]);
 
   const remove = async (r) => {
     const ok = await confirm({
@@ -137,7 +149,7 @@ export default function ReportStudio() {
         )}
 
         <div className="rb-saved-list">
-          {filtered.map((r) => {
+          {pageReports.map((r) => {
             const type = reportTypeById(r.typeId);
             const Icon = TYPE_ICONS[r.typeId] || FileText;
             return (
@@ -166,6 +178,24 @@ export default function ReportStudio() {
             );
           })}
         </div>
+
+        {filtered.length > PER_PAGE && (
+          <div className="inv-pager rb-pager">
+            <div className="cl-pager-nav" role="group" aria-label="Saved report pages">
+              <button type="button" disabled={cur === 0}
+                onClick={() => setPage(cur - 1)} aria-label={t('common.prevPage')}>
+                <ChevronLeft size={15} />
+              </button>
+              <button type="button" disabled={cur >= pageCount - 1}
+                onClick={() => setPage(cur + 1)} aria-label={t('common.nextPage')}>
+                <ChevronRight size={15} />
+              </button>
+            </div>
+            <span className="rb-pager-count">
+              {cur * PER_PAGE + 1}–{Math.min(filtered.length, (cur + 1) * PER_PAGE)} of {filtered.length}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

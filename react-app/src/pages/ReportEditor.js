@@ -416,7 +416,12 @@ export default function ReportEditor() {
         {error && <div className="aa-error rb-editor-error"><AlertTriangle size={16} /> {error}</div>}
 
         <div className="rb-canvas" ref={canvasRef}>
-          <div className="rb-zoom-rail">
+          {/* The zoom control belongs in the same column as the per-page
+              tools, not stranded against the far edge of the canvas. The page
+              is centred and the stage is scaled with CSS `zoom`, so the column
+              sits half a scaled page-width right of centre — the same place
+              .rb-page-tools hangs off each sheet. */}
+          <div className="rb-zoom-rail" style={{ '--rb-page-w': `${PAGE_W}px`, '--rb-scale': zoom / 100 }}>
           <div className="rb-zoom-side">
             <button type="button" className="cf-icon-btn" title="Zoom in" onClick={() => setZoom((z) => Math.min(150, z + 10))}><ZoomIn size={15} /></button>
             <button type="button" className="rb-zoom-pct" title="Fit width" onClick={fitWidth}>{zoom}%</button>

@@ -6724,6 +6724,12 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .rb-link-list span { font-size: 11px; color: var(--text-3); }
 .rb-link-empty { padding: 22px 18px; text-align: center; font-size: 12px; color: var(--text-3); }
 
+/* Saved-report pagination. Reuses the diary's pager row, minus the page-size
+   picker — the saved list has a fixed page of 8. */
+.rb-pager { margin-top: 16px; }
+.rb-pager-count { grid-column: 3; justify-self: end; font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+@media (max-width: 620px) { .rb-pager-count { grid-column: 1; justify-self: center; } }
+
 /* ── Report Studio: side zoom control & narrative sizing ───────────────── */
 /* The min-height belongs to the bordered editor itself; putting it on the
    wrapper left a tall empty gap under short entries. */
@@ -6734,8 +6740,16 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .rb-zoom-rail { position: sticky; top: 10px; height: 0; z-index: 15; }
 .rb-zoom-side {
   position: absolute;
-  top: 0;
-  right: 14px;
+  /* Below the move/delete buttons of the first page, in the same column —
+     one rail beside the page rather than two controls at opposite ends. The
+     offset scales because those buttons live inside the zoomed stage and this
+     rail does not, so at 120% they grew past a fixed 112px and collided. */
+  top: calc(116px * var(--rb-scale, 1));
+  /* Half a scaled page-width right of centre, plus the same 12px gutter the
+     page tools use. --rb-page-w and --rb-scale come from the editor, because
+     the stage is scaled with CSS `zoom` and this rail is not. */
+  left: calc(50% + (var(--rb-page-w, 794px) * var(--rb-scale, 1)) / 2 + 12px);
+  right: auto;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -6751,9 +6765,11 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   font-size: 10.5px; text-align: center; border: 0; background: none;
 }
 .rb-zoom-side .rb-zoom-pct:hover { background: var(--hover-overlay); border-radius: 7px; }
-@media (max-width: 1000px) {
+/* Narrow: the page fills the canvas and there is no gutter to sit in, so the
+   rail drops to a horizontal strip above the pages. */
+@media (max-width: 1100px) {
   .rb-zoom-rail { height: auto; display: flex; justify-content: center; margin-bottom: 10px; }
-  .rb-zoom-side { position: static; flex-direction: row; }
+  .rb-zoom-side { position: static; flex-direction: row; top: auto; left: auto; }
 }
 
 /* ── Records digitisation ──────────────────────────────────────────────── */
@@ -7123,7 +7139,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 
 /* The language control takes over the right-alignment so it sits just left of
    the search box, which stays furthest right. */
-.lang-seg { margin-left: auto; }
+/* No auto margin here. The clock immediately to its left carries the one that
+   pushes the whole right-hand group over; a second auto margin split the free
+   space between them and stranded the clock in the middle of the bar. */
+.lang-seg { margin-left: 0; }
 .lang-seg + .topbar-global { margin-left: 10px; }
 
 /* ── Assistant slash commands ──────────────────────────────────────────── */
