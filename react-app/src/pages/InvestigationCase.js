@@ -21,6 +21,16 @@ import { exportInvestigationDiaryPdf, exportReportPdf } from '../utils/reportPdf
 import i18n from '../i18n';
 
 const fmtDate = (ts) => (ts ? new Date(ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+// ISO calendar dates (YYYY-MM-DD) rather than timestamps — parsed as local
+// midnight so the day never slips, and printed in the same en-IN form as every
+// other date in Sentinel. These two fields used to render raw ISO, so the same
+// date read differently here than in the list this page is opened from.
+const fmtDay = (iso) =>
+  iso
+    ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric',
+      })
+    : '';
 const fmtDateTime = (ts) => (ts ? new Date(ts).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 
 // A collapsible "add entry" form. `fields` describe simple inputs; the parent
@@ -239,8 +249,8 @@ function OverviewTab({ rec }) {
         <div><span>Police station</span><b>{rec.station || '—'}</b></div>
         <div><span>District</span><b>{rec.district || '—'}</b></div>
         <div><span>Investigating Officer</span><b>{rec.ioRank ? `${rec.ioRank} ` : ''}{rec.ioName || 'Unassigned'}</b></div>
-        <div><span>Date of registration</span><b>{rec.registeredDate || '—'}</b></div>
-        <div><span>Last diary entry</span><b>{rec.lastDiaryDate || 'None yet'}</b></div>
+        <div><span>Date of registration</span><b>{fmtDay(rec.registeredDate) || '—'}</b></div>
+        <div><span>Last diary entry</span><b>{fmtDay(rec.lastDiaryDate) || 'None yet'}</b></div>
       </div>
     </div>
   );

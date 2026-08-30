@@ -11,6 +11,15 @@ import {
 import { loadPersonnel } from '../utils/personnel';
 import { useTranslation } from 'react-i18next';
 
+// Sentinel prints dates as en-IN everywhere else — including the case page this
+// card links to. Parsed as local midnight, not UTC, so the day never slips.
+const fmtDay = (iso) =>
+  iso
+    ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric',
+      })
+    : '';
+
 function NewInvestigationModal({ onClose, onCreated }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState(null);
@@ -153,7 +162,7 @@ export default function InvestigationDiary() {
   const [showNew, setShowNew] = useState(false);
   // Cards per page, in multiples of nine — three full rows on the usual
   // three-column grid, so the last row is never ragged.
-  const [perPage, setPerPage] = useState(9);
+  const [perPage, setPerPage] = useState(12);
   const [page, setPage] = useState(0);
 
   const load = useCallback(() => {
@@ -236,7 +245,7 @@ export default function InvestigationDiary() {
                   </div>
                   <div className="inv-card-foot">
                     <span>{t('diary.diaryEntries', { count: c.diaryCount })}</span>
-                    <span>{t('diary.lastUpdated')}: {c.lastDiaryDate || t('diary.none')}</span>
+                    <span>{t('diary.lastUpdated')}: {fmtDay(c.lastDiaryDate) || t('diary.none')}</span>
                   </div>
                 </button>
               );
@@ -263,7 +272,7 @@ export default function InvestigationDiary() {
                 value={perPage}
                 onChange={(e) => setPerPage(Number(e.target.value))}
               >
-                {[9, 18, 27, 36, 45].map((n) => <option key={n} value={n}>{n}</option>)}
+                {[12, 24, 36, 48].map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </label>
           </div>

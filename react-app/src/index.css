@@ -4998,8 +4998,14 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .inv-list-search { max-width: 320px; }
 .inv-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  /* Four columns at most, never five. Page size is a multiple of 12, so a
+     capped count means every row on the page is a full row — at 4, 3, 2 or 1
+     columns there is no ragged remainder. The floor is expressed against the
+     grid's own width rather than the viewport's because the sidebar collapses
+     to a rail, which a viewport media query cannot see. */
+  grid-template-columns: repeat(auto-fill, minmax(max(300px, calc((100% - 42px) / 4)), 1fr));
   gap: 14px;
+  align-content: start;
 }
 .inv-card {
   text-align: left;
@@ -5012,12 +5018,36 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   border-radius: 14px;
   cursor: pointer;
   transition: border-color 0.12s, transform 0.12s;
+  /* A crime number is one unbreakable 18-digit token, and a grid item's
+     default min-width is its content — so without this the card refused to
+     shrink into its track and its contents spilled past the border, which is
+     how the status chip ended up outside the card. min-width lets it shrink;
+     overflow is the backstop that makes escaping the border impossible. */
+  min-width: 0;
+  overflow: hidden;
 }
 .inv-card:hover { border-color: var(--border-bright); transform: translateY(-1px); }
-.inv-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.inv-card-crime { font-size: 14.5px; font-weight: 700; color: var(--text-0); }
-.inv-card-type { font-size: 12.5px; color: var(--text-3); }
-.inv-card-meta { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--text-2); }
+.inv-card-top {
+  /* Number and status on their own lines, always.
+     At four columns a card is ~304px, and an 18-digit crime number beside
+     "Under Investigation" needs more than that — so on a shared line the chip
+     was squeezed below its own text width and the label spilled out of its
+     pill and past the card border. Wrapping only when it doesn't fit hides
+     that, but it makes the header jump between one and two lines depending on
+     how long a status happens to be, so every card gets the same two-line
+     header instead. Neither a crime number nor a case status can be
+     truncated, and now neither has to be. */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.inv-card-crime { font-size: 14.5px; font-weight: 700; color: var(--text-0); min-width: 0; overflow-wrap: anywhere; }
+/* Never shrink the status; keep it on the right, where it has always sat. */
+.inv-card-top .aa-chip { flex: 0 0 auto; align-self: flex-end; max-width: 100%; }
+.inv-card-type { font-size: 12.5px; color: var(--text-3); overflow-wrap: anywhere; }
+.inv-card-meta { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--text-2); min-width: 0; }
+.inv-card-meta span { overflow-wrap: anywhere; }
 .inv-card-foot {
   display: flex;
   align-items: center;
@@ -6898,28 +6928,36 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .cl-pager-nav button:focus-visible { outline: 2px solid var(--blue-400); outline-offset: -2px; }
 
 
-/* Investigation diary pagination: arrows centred, page-size picker beside them */
+/* Investigation diary pagination: arrows centred, page-size picker beside them.
+   Three tracks rather than an absolutely-positioned picker — absolute took the
+   picker out of flow, so it neither reserved its own space nor stopped
+   overlapping the arrows as the row narrowed. `margin-top: auto` inside the
+   flex-column page body is what settles the whole row on the bottom of the
+   page instead of leaving it floating under the last row of cards. */
 .inv-pager {
-  position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: center;
   gap: 12px;
-  margin: 18px 0 8px;
+  margin: 18px 0 12px;
+  margin-top: auto;
+  padding-top: 6px;
 }
+.inv-pager .cl-pager-nav { grid-column: 2; justify-self: center; }
 .inv-perpage {
-  position: absolute;
-  right: 0;
+  grid-column: 3;
+  justify-self: end;
   display: inline-flex;
   align-items: center;
   gap: 7px;
   font-size: 11.5px;
   color: var(--text-3);
+  white-space: nowrap;
 }
 .inv-perpage .aa-select { height: 30px; padding: 0 26px 0 10px; border-radius: 8px; font-size: 11.5px; }
 @media (max-width: 620px) {
-  .inv-pager { flex-direction: column; }
-  .inv-perpage { position: static; }
+  .inv-pager { grid-template-columns: 1fr; justify-items: center; gap: 10px; }
+  .inv-pager .cl-pager-nav, .inv-perpage { grid-column: 1; justify-self: center; }
 }
 
 /* ── Records: one capture area, and the staged-page tray ───────────────── */
