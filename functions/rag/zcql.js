@@ -32,7 +32,7 @@ for (const [uid, u] of Object.entries(MASTERS.units)) {
 // ── router ──────────────────────────────────────────────────────────────────
 const ROUTER_PROMPT =
   'You are a router for a police crime-analytics assistant. Decide how a ' +
-  'message should be answered and reply with EXACTLY one word: CHAT, GUIDE, ZCQL or RAG.\n\n' +
+  'message should be answered and reply with EXACTLY one word: CHAT, GUIDE, ZCQL, RAG or TOOLS.\n\n' +
   'Answer CHAT when the ORIGINAL message is casual conversation rather than a ' +
   'lookup: greetings, thanks, goodbyes, small talk, jokes, feelings, or ' +
   'questions about the assistant itself ("who are you", "what can you do"). ' +
@@ -74,7 +74,21 @@ const ROUTER_PROMPT =
   '"What is a cognizable ' +
   'offence?" → RAG. "What does Section 379 IPC say?" → RAG. ' +
   '"Hey, how are you?" → CHAT. "thanks, that helped!" → CHAT. ' +
-  '"good morning" → CHAT. "what all can you do?" → CHAT.';
+  '"good morning" → CHAT. "what all can you do?" → CHAT.\n\n' +
+  'Answer TOOLS when ONE question needs MORE THAN ONE lookup to answer — most ' +
+  'often because the second lookup depends on what the first one returns. The ' +
+  'database cannot join tables, so any question spanning two of them needs this. ' +
+  'Signals: a question that asks about records AND the people in them; a question ' +
+  'that asks about records AND what the law or procedure says about them; a ' +
+  'question that names one thing and asks for something related to it. ' +
+  'Examples: "which FIRs were filed in Belagavi last month and who is accused in ' +
+  'them?" → TOOLS (the cases, then the accused in those cases). ' +
+  '"who is the officer on FIR 144011004202300002 and what else are they working ' +
+  'on?" → TOOLS. "how many drug cases in Mysuru, and what does the NDPS Act say ' +
+  'about them?" → TOOLS (records, then procedure). ' +
+  '"compare arrests in Hubballi and Belagavi" → TOOLS. ' +
+  'A question answerable by ONE query stays ZCQL — do not send simple counts, ' +
+  'top-N rankings or single lookups here.';
 
 // ── schema + rules for the generator ────────────────────────────────────────
 const districtLines = Object.entries(DISTRICT_IDS)

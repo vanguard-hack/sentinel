@@ -110,6 +110,35 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   check('the true count is still reported so the model is not misled',
     capped.row_count > capped.rows.length && /matched/.test(capped.note || ''));
 
+  // ── The loop's contract with index.js ───────────────────────────────────
+  const src = require('fs').readFileSync(__dirname + '/index.js', 'utf8');
+  const loop = src.slice(src.indexOf('async function runToolLoop'), src.indexOf('const VISION_SYSTEM'));
+
+  check('the loop is bounded by an iteration cap',
+    /for \(let i = 0; i < TOOL_MAX_ITERATIONS/.test(loop));
+  check('and by a wall-clock budget, because a waiting officer is not the model\'s concern',
+    /Date\.now\(\) - started > TOOL_BUDGET_MS/.test(loop));
+  check('tools are withdrawn on the last turn, which forces an answer',
+    /i === TOOL_MAX_ITERATIONS - 1 \|\| outOfTime[\s\S]{0,60}\?\s*\{\}/.test(loop));
+  check('parallel tool results go back in ONE user message',
+    /Promise\.all\([\s\S]{0,900}?messages\.push\(\{ role: 'user', content: results \}\)/.test(loop));
+  check('internal bookkeeping is stripped before results reach the model',
+    /const \{ _redactions, _hits, \.\.\.clean \}/.test(loop));
+  check('a tool error is marked as one so the model knows to fix it',
+    /is_error: true/.test(loop));
+  check('the loop never throws — it returns null and the old lanes take over',
+    /catch \(e\)[\s\S]{0,160}?return null;/.test(loop));
+  check('it stays dormant without a key',
+    /if \(!process\.env\.ANTHROPIC_API_KEY\) return null;/.test(loop));
+
+  const route = src.slice(src.indexOf("if (routed === 'TOOLS')"), src.indexOf("if (routed && /chat/i.test(routed))"));
+  check('a failed loop falls through to the lanes that were already there',
+    /if \(looped\) \{/.test(route) && !/return await respondWith\([\s\S]{0,40}null/.test(route));
+  check('every Data Store result the loop read becomes a citation',
+    /for \(const set of looped\.rowSets\)/.test(route));
+  check('which tools ran is recorded for the audit trail',
+    /validatorChecks\.push\(`tools:/.test(route));
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

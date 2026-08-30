@@ -6,6 +6,7 @@ const redaction = require('./redaction');
 const vision = require('./vision');
 const attribution = require('./sources');
 const memory = require('./memory');
+const assistantTools = require('./tools');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -289,6 +290,140 @@ async function callLLM(messages, opts = {}) {
   return null;
 }
 
+// ── Tool loop ──────────────────────────────────────────────────────────────
+//
+// For questions that need more than one lookup. The router sends them here;
+// everything else keeps the single-lane path it has always had, so this adds a
+// capability without changing the behaviour of any question that already works.
+//
+// The loop is bounded twice over — a hard iteration cap and a wall-clock
+// budget — because the model decides how many tools to call and an officer
+// waiting on an answer does not. Hitting either bound is not an error: the
+// model is asked to answer from what it has, which is nearly always enough.
+const TOOL_MAX_ITERATIONS = Number(process.env.TOOL_MAX_ITERATIONS) || 6;
+const TOOL_BUDGET_MS = Number(process.env.TOOL_BUDGET_MS) || 45_000;
+
+const TOOL_SYSTEM =
+  'You are Sentinel Assistant, working for a Karnataka police officer. Answer ' +
+  'the question by calling the tools available to you, then say what you found.\n\n' +
+  'The Data Store cannot join tables. When a question spans two of them, query ' +
+  'one, read the ids out of the result, and query the other with those ids in an ' +
+  'IN clause. Do not treat that as a failure — it is how this database works.\n\n' +
+  'Call tools in parallel when they do not depend on each other. Look up a ' +
+  'reference id rather than guessing it. If a tool returns an error, read it and ' +
+  'fix the call rather than repeating it.\n\n' +
+  'Answer only from what the tools returned. If they returned nothing useful, ' +
+  'say so plainly — never fill the gap from general knowledge, and never state a ' +
+  'number the records did not give you. Some results note that rows were ' +
+  'withheld for clearance; do not speculate about what they contained.';
+
+/**
+ * Runs the tool loop on Claude. Returns null when it cannot run at all — no
+ * key, or the model produced nothing — so the caller can fall through to the
+ * lanes that were already there.
+ */
+async function runToolLoop({ query, history, app, role, req, bucket }) {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  const started = Date.now();
+  const used = [];       // what ran, for the audit trail
+  const rowSets = [];    // Data Store rows, for citations
+  const scanHits = [];   // digitised records, for citations
+  let usedKnowledgeBase = false;
+
+  const deps = {
+    app,
+    role,
+    ragSearch: async (q) => {
+      usedKnowledgeBase = true;
+      const token = await getAccessToken();
+      const r = await fetch(RAG_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'CATALYST-ORG': ORG,
+          Authorization: `Zoho-oauthtoken ${token}`,
+        },
+        body: JSON.stringify({ query: q }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const d = await r.json().catch(() => ({}));
+      return r.ok ? (d.response || d.answer || d.result || '') : '';
+    },
+    digitisedSearch: async (q) => {
+      const hits = await searchDigitised(bucket, q, 6);
+      scanHits.push(...hits);
+      return hits;
+    },
+  };
+
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = anthropicClient || (anthropicClient = new (Anthropic.default || Anthropic)());
+    const messages = [
+      ...history.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user', content: query },
+    ];
+    // A conversation may not open on an assistant turn.
+    while (messages.length && messages[0].role === 'assistant') messages.shift();
+
+    for (let i = 0; i < TOOL_MAX_ITERATIONS; i++) {
+      const outOfTime = Date.now() - started > TOOL_BUDGET_MS;
+      const res = await client.messages.create(
+        {
+          model: CLAUDE_MODEL,
+          max_tokens: 4096,
+          system: TOOL_SYSTEM,
+          output_config: { effort: 'low' },
+          // On the last permitted turn the tools are withdrawn, which is what
+          // forces an answer instead of another call the loop cannot service.
+          ...(i === TOOL_MAX_ITERATIONS - 1 || outOfTime
+            ? {}
+            : { tools: assistantTools.DEFINITIONS }),
+          messages,
+        },
+        { timeout: 30_000 }
+      );
+
+      const calls = (res.content || []).filter((b) => b.type === 'tool_use');
+      if (!calls.length || res.stop_reason !== 'tool_use') {
+        const text = (res.content || [])
+          .filter((b) => b.type === 'text')
+          .map((b) => b.text)
+          .join('')
+          .trim();
+        if (!text) return null;
+        return { text, used, rowSets, scanHits, usedKnowledgeBase, iterations: i + 1 };
+      }
+
+      messages.push({ role: 'assistant', content: res.content });
+      // Parallel calls come back in one turn and their results must go back in
+      // ONE user message — splitting them teaches the model to stop batching.
+      const results = await Promise.all(
+        calls.map(async (c) => {
+          const out = await assistantTools.run(c.name, c.input, deps);
+          used.push(`${c.name}${out && out.error ? ':error' : ''}`);
+          if (c.name === 'query_records' && out && Array.isArray(out.rows) && out.rows.length) {
+            rowSets.push({ rows: out.rows, query: (c.input && c.input.zcql) || '' });
+          }
+          // Internal bookkeeping never goes back to the model.
+          const { _redactions, _hits, ...clean } = out || {};
+          return {
+            type: 'tool_result',
+            tool_use_id: c.id,
+            content: JSON.stringify(clean).slice(0, 12_000),
+            ...(out && out.error ? { is_error: true } : {}),
+          };
+        })
+      );
+      messages.push({ role: 'user', content: results });
+    }
+    return null;
+  } catch (e) {
+    console.warn('tool loop failed (non-fatal):', (e && e.message) || e);
+    return null;
+  }
+}
+
 const VISION_SYSTEM =
   'You are Sentinel Assistant, helping a Karnataka police officer read files they have ' +
   'attached to their question. Each is given to you as extracted TEXT, never as the file ' +
@@ -358,13 +493,13 @@ function parseRouteReply(raw) {
     if (m) {
       const o = JSON.parse(m[0]);
       const route = String(o.route || '').toUpperCase();
-      if (['CHAT', 'GUIDE', 'ZCQL', 'RAG', 'BOTH'].includes(route)) {
+      if (['CHAT', 'GUIDE', 'ZCQL', 'RAG', 'BOTH', 'TOOLS'].includes(route)) {
         const c = Number(o.confidence);
         return { route, confidence: Number.isFinite(c) ? Math.max(0, Math.min(1, c)) : 0.6 };
       }
     }
   } catch { /* fall through to word matching */ }
-  const word = /\b(BOTH|CHAT|GUIDE|ZCQL|RAG)\b/i.exec(txt);
+  const word = /\b(BOTH|TOOLS|CHAT|GUIDE|ZCQL|RAG)\b/i.exec(txt);
   // A bare word carries no self-reported confidence; assume just above the
   // floor so it is used, but treated as weaker than a scored answer.
   return word ? { route: word[1].toUpperCase(), confidence: 0.6 } : null;
@@ -4073,6 +4208,44 @@ module.exports = async (req, res) => {
         why: forced ? forced.why : lowConfidence ? 'below confidence floor' : undefined,
       };
       const routed = route; // existing branches below match on this
+
+      // Multi-lookup questions. Deliberately placed first among the lanes and
+      // deliberately allowed to fall through: if the loop cannot run — no key,
+      // no answer, budget spent — the question drops into the single-lane path
+      // it would have taken before this route existed, so the worst case is
+      // the behaviour we already had.
+      if (routed === 'TOOLS') {
+        await resolveCaller();
+        const looped = await runToolLoop({
+          query: searchQuery,
+          history,
+          app: clearanceApp,
+          role: callerRole,
+          req,
+          bucket: clearanceBucket,
+        });
+        if (looped) {
+          validatorChecks.push(`tools:${looped.used.join(',')}|iterations=${looped.iterations}`);
+          const cites = [];
+          for (const set of looped.rowSets) {
+            cites.push(attribution.fromZcql({
+              query: set.query,
+              tables: zcql.tablesInQuery(set.query),
+              rows: set.rows,
+            }));
+          }
+          if (looped.scanHits.length) cites.push(attribution.fromDigitised(looped.scanHits));
+          if (looped.usedKnowledgeBase) cites.push(attribution.knowledgeBaseFallback());
+          const v = extractAgui(looped.text);
+          return await respondWith(v.text || looped.text, {
+            components: v.components,
+            source: 'tools',
+            route: routeDecision,
+            expandedQuery: searchQuery === query ? undefined : searchQuery,
+          }, cites);
+        }
+      }
+
       if (routed && /chat/i.test(routed)) {
         const chat = await callLLM(
           [{ role: 'system', content: CHAT_SYSTEM }, ...history, { role: 'user', content: query }],
