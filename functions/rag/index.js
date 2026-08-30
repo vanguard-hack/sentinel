@@ -3381,6 +3381,30 @@ module.exports = async (req, res) => {
     if (req.method !== 'POST') return json(res, 405, { error: 'Use POST' });
     const path = req.url ? req.url.split('?')[0].replace(/\/+$/, '') : '';
 
+    // Health check — the ONE route ahead of the session gate.
+    //
+    // It exists so a deploy can be verified. Deploying this function with an
+    // env_variables map overwrites what is set in the Catalyst console, and a
+    // deploy that silently cleared GROQ_API_KEY would leave an assistant that
+    // starts, returns 200, and has quietly lost every model lane. CI asserts
+    // against this after each deploy.
+    //
+    // It reports whether configuration is PRESENT, never any value, and no
+    // identity, record or user data passes through it. That an LLM provider is
+    // configured is of no use to an attacker; a deploy that quietly disarmed
+    // the assistant is of considerable use to us.
+    if (path.endsWith('/health')) {
+      return json(res, 200, {
+        ok: true,
+        providers: {
+          groq: !!process.env.GROQ_API_KEY,
+          claude: !!process.env.ANTHROPIC_API_KEY,
+          order: PROVIDER_ORDER,
+        },
+        rag: !!(process.env.RAG_REFRESH_TOKEN || process.env.RAG_ACCESS_TOKEN),
+      });
+    }
+
     // Cheapest check first: a blocked source is turned away before it costs a
     // session lookup, and before it reaches any handler.
     const ip = clientIp(req);

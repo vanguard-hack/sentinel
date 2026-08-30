@@ -126,6 +126,30 @@ jobs:
         working-directory: functions/rag
         run: npm ci --omit=dev --no-audit --no-fund
 
+      # catalyst-config.json is gitignored (it can hold secrets), but the CLI
+      # refuses to deploy a function without one — it carries the stack, the
+      # advancedio type and the entry point. So CI builds it from the tracked
+      # template.
+      #
+      # env_variables is stripped deliberately, and this is the important part:
+      # deploying with an env_variables map OVERWRITES what is set in the
+      # Catalyst console. Every secret this function needs — the Zoho OAuth
+      # credentials, GROQ_API_KEY, ANTHROPIC_API_KEY, SMTP — lives only in the
+      # console. Shipping the template's placeholder values would replace real
+      # keys with the string "<groq-api-key>" and break the assistant on the
+      # next push. Omitting the key entirely leaves the console values alone,
+      # which is exactly what the local config does.
+      - name: Generate the function deployment config
+        working-directory: functions/rag
+        run: |
+          node -e '
+            const fs = require("fs");
+            const t = JSON.parse(fs.readFileSync("catalyst-config.template.json", "utf8"));
+            delete t.deployment.env_variables;
+            fs.writeFileSync("catalyst-config.json", JSON.stringify(t, null, 2));
+            console.log(JSON.stringify(t));
+          '
+
       - name: Install the Catalyst CLI
         run: npm install -g zcatalyst-cli
 
@@ -153,6 +177,24 @@ jobs:
           done
           echo "::error::Live bundle is $live but $EXPECTED was deployed — the deploy did not land."
           exit 1
+
+      # Deploying with an env_variables map overwrites the Catalyst console's
+      # values. The config generated above omits the key so the console wins,
+      # but "the deploy did not clear the secrets" is an assumption worth
+      # testing rather than trusting: an assistant whose GROQ_API_KEY was wiped
+      # still starts and still answers 200, having silently lost every model
+      # lane. The health route reports which providers are configured (never a
+      # value), so the failure is caught here rather than by an officer.
+      - name: Verify the function still has its provider keys
+        env:
+          HEALTH: https://sentinel-60073599957.development.catalystserverless.in/server/rag/health
+        run: |
+          body=$(curl -fsS -X POST "$HEALTH" -H 'Content-Type: application/json' -d '{}')
+          echo "$body"
+          echo "$body" | grep -q '"groq":true' \
+            || (echo "::error::GROQ_API_KEY is missing after deploy — the console env vars were cleared." && exit 1)
+          echo "$body" | grep -q '"rag":true' \
+            || echo "::warning::RAG credentials are not set — knowledge-base answers will fail."
 
       - name: Verify the API rejects anonymous callers
         env:

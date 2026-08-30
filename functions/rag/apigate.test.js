@@ -21,8 +21,40 @@ check('a request with no session is refused, not served',
 
 // Count the routes so the gate cannot silently stop covering new ones.
 const routeCount = (src.match(/path\.endsWith\('/g) || []).length;
-check(`all ${routeCount} routes are dispatched after the gate`,
-  src.slice(0, gateAt).indexOf("path.endsWith('") === -1);
+check(`all ${routeCount - 1} data routes are dispatched after the gate`,
+  (src.slice(0, gateAt).match(/path\.endsWith\('/g) || []).length === 1);
+
+// ── Health check: the one route ahead of the gate ─────────────────────────
+// It has to leak nothing. Booleans about whether config is present, never a
+// value, and no identity, record or user data.
+const healthBlock = src.slice(src.indexOf("if (path.endsWith('/health'))"), src.indexOf('// Cheapest check first'));
+// Assert on what the route actually emits, not on how the source reads: the
+// payload is rebuilt here with recognisable fake secrets, and none of them may
+// survive into the JSON. A bare `process.env.SOMETHING` in the response object
+// would publish the key itself.
+const FAKES = {
+  GROQ_API_KEY: 'gsk_LEAKCANARY_groq',
+  ANTHROPIC_API_KEY: 'sk-ant-LEAKCANARY',
+  RAG_REFRESH_TOKEN: '1000.LEAKCANARY.rag',
+};
+const payloadStart = healthBlock.indexOf('{', healthBlock.indexOf('json(res, 200,'));
+const payloadSrc = healthBlock.slice(payloadStart, healthBlock.indexOf('});', payloadStart) + 1);
+// eslint-disable-next-line no-new-func
+const emitted = new Function('process', 'PROVIDER_ORDER', `return (${payloadSrc});`)(
+  { env: FAKES }, ['groq', 'claude']
+);
+const asJson = JSON.stringify(emitted);
+check('the health route reports which providers are configured',
+  emitted.providers.groq === true && emitted.providers.claude === true && emitted.rag === true);
+check('no secret value survives into the health payload',
+  !/LEAKCANARY/.test(asJson));
+check('the health payload carries no free-text field a value could hide in',
+  Object.values(emitted.providers).every((v) => typeof v === 'boolean' || Array.isArray(v)));
+check('the health route returns no identity or record data',
+  !/requestUser|email|badge|datastore|stratus/i.test(healthBlock));
+check('health is the only route ahead of the session gate',
+  src.indexOf("path.endsWith('/health')") < gateAt
+  && src.slice(0, gateAt).match(/path\.endsWith\('/g).length === 1);
 
 // ── Identity comes from the session, never the payload ────────────────────
 // The regression this guards: /conversations/* and /profile/* selected whose
