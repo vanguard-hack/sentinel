@@ -162,7 +162,11 @@ export default function InvestigationDiary() {
   const [showNew, setShowNew] = useState(false);
   // Cards per page, in multiples of nine — three full rows on the usual
   // three-column grid, so the last row is never ragged.
-  const [perPage, setPerPage] = useState(12);
+  // 'auto' means "however many fill the page" — measured below. A number is an
+  // explicit override from the picker.
+  const [perPage, setPerPage] = useState('auto');
+  const gridRef = useRef(null);
+  const [autoFit, setAutoFit] = useState(12);
   const [page, setPage] = useState(0);
 
   const load = useCallback(() => {
@@ -183,13 +187,45 @@ export default function InvestigationDiary() {
 
   // Filtering can shrink the list under the current page — clamp rather than
   // stranding the officer on an empty page.
-  const pages = Math.max(1, Math.ceil(shown.length / perPage));
+  const size = perPage === 'auto' ? autoFit : perPage;
+  const pages = Math.max(1, Math.ceil(shown.length / size));
   const cur = Math.min(page, pages - 1);
-  const pageCases = shown.slice(cur * perPage, cur * perPage + perPage);
+  const pageCases = shown.slice(cur * size, cur * size + size);
   useEffect(() => { setPage(0); }, [q, status, perPage]);
 
+  // How many cards fill the page, measured rather than assumed. The column
+  // count comes from the resolved grid template and the row count from the
+  // height the grid was actually handed, so it follows the viewport, the
+  // sidebar collapsing to a rail, and the browser zoom without a table of
+  // breakpoints to keep in sync. Rows are `1fr`, so the cards then divide that
+  // height exactly and the page has no dead band at the bottom.
+  const MIN_ROW = 168;
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const measure = () => {
+      const cs = window.getComputedStyle(el);
+      const cols = cs.gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+      const gap = parseFloat(cs.rowGap) || 14;
+      // Only meaningful while the grid is the one stretching to fill the page.
+      // On an explicit page size its height follows its content, so measuring
+      // it would feed the card count back into itself.
+      if (!el.classList.contains('fill')) return;
+      const rows = Math.max(1, Math.floor((el.clientHeight + gap) / (MIN_ROW + gap)));
+      const fit = cols * rows;
+      // Guarded: the grid's own size does not depend on how many cards are in
+      // it, but an unguarded setState here would still be a re-render per
+      // observation.
+      setAutoFit((prev) => (prev === fit ? prev : fit));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
-    <div className="cf-page">
+    <div className="cf-page inv-page">
       <TopBar title={t('diary.title')} />
       <div className="pp-body">
         <div className="aa-head">
@@ -230,7 +266,7 @@ export default function InvestigationDiary() {
         )}
 
         {shown.length > 0 && (
-          <div className="inv-grid">
+          <div className={`inv-grid ${perPage === 'auto' ? 'fill' : ''}`} ref={gridRef}>
             {pageCases.map((c) => {
               return (
                 <button key={c.caseMasterId} className="inv-card" onClick={() => navigate(`/investigation-diary/${c.caseMasterId}`)}>
@@ -253,7 +289,7 @@ export default function InvestigationDiary() {
           </div>
         )}
 
-        {shown.length > perPage && (
+        {shown.length > 0 && (
           <div className="inv-pager">
             <div className="cl-pager-nav" role="group" aria-label="Investigation pages">
               <button type="button" disabled={cur === 0}
@@ -270,8 +306,9 @@ export default function InvestigationDiary() {
               <select
                 className="aa-select"
                 value={perPage}
-                onChange={(e) => setPerPage(Number(e.target.value))}
+                onChange={(e) => setPerPage(e.target.value === 'auto' ? 'auto' : Number(e.target.value))}
               >
+                <option value="auto">Auto ({autoFit})</option>
                 {[12, 24, 36, 48].map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </label>

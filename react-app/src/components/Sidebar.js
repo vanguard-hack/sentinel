@@ -101,8 +101,18 @@ export default function Sidebar() {
       />
       <aside className={`app-sidebar ${collapsed ? 'rail' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
         <div className="sb-brand">
-          <div className="sb-brand-mark"><Shield size={20} strokeWidth={2} /></div>
-          <span className="sb-brand-name">SENTINEL</span>
+          {/* The wordmark is the way home — the one thing every user reaches
+              for when they want to start over. */}
+          <button
+            type="button"
+            className="sb-brand-home"
+            onClick={() => navigate('/reports')}
+            title="Home"
+            aria-label="Go to Home"
+          >
+            <span className="sb-brand-mark"><Shield size={20} strokeWidth={2} /></span>
+            <span className="sb-brand-name">SENTINEL</span>
+          </button>
           <button
             className="sb-collapse"
             onClick={toggleCollapsed}

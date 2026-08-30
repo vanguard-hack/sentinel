@@ -10,7 +10,7 @@ import { SOCIO, TOPO_NAME } from '../data/socioeconomic';
 // together — and the correlation readout underneath says so in plain words.
 
 const INDICATORS = [
-  { key: 'unemployment_rate', label: 'Unemployment rate', unit: '%', hint: 'share of workforce without jobs' },
+  { key: 'unemployment_rate', label: 'Unemployment rate', unit: '%' },
   { key: 'literacy_rate', label: 'Literacy rate', unit: '%', hint: 'share of population that can read and write' },
   { key: 'urbanization_pct', label: 'Urbanization', unit: '%', hint: 'share living in urban areas' },
   { key: 'pop_density', label: 'Population density', unit: '/km²', hint: 'people per square kilometre' },
@@ -139,7 +139,7 @@ export default function SocioCrimeMap({ crimeByDistrict }) {
             <option key={i.key} value={i.key}>{i.label}</option>
           ))}
         </select>
-        <span className="scm-hint">{meta.hint}</span>
+        {meta.hint && <span className="scm-hint">{meta.hint}</span>}
       </div>
 
       <div className="scm-body">

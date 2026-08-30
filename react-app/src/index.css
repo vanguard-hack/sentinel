@@ -1648,14 +1648,22 @@ a:hover { color: var(--blue-500); }
   display: flex;
   flex-direction: column;
 }
-.rp-card .rp-card-body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
-.rp-card-head { margin-bottom: 10px; }
-.rp-card-head h2 { font-size: 15px; font-weight: 640; color: var(--text-0); }
-.rp-card-sub { font-size: 12px; color: var(--text-3); }
+/* Nothing a card holds may leave it — a bar, a label, a heading, a long
+   station name. min-width:0 is what lets the body shrink into the card at all
+   (a flex/grid child defaults to its content width), and the wrapping rules
+   turn an unbreakable string into a wrapped one rather than an overflowing
+   one. Deliberately NOT `overflow: hidden` on the card itself: chart tooltips
+   are positioned absolutely inside it, and clipping would cut them off. */
+.rp-card .rp-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.rp-card .rp-card-body > * { max-width: 100%; }
+.rp-card-head { margin-bottom: 10px; min-width: 0; }
+.rp-card-head h2 { font-size: 15px; font-weight: 640; color: var(--text-0); overflow-wrap: anywhere; }
+.rp-card-sub { font-size: 12px; color: var(--text-3); overflow-wrap: anywhere; }
 .rp-empty { color: var(--text-3); font-size: 13px; padding: 30px 0; text-align: center; }
 
 /* ── Horizontal bars ── */
-.rp-bars { display: flex; flex-direction: column; gap: 9px; }
+.rp-bars { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.rp-bar-fill { max-width: 100%; }
 .rp-bar-row {
   display: grid;
   grid-template-columns: 130px 1fr 62px;
@@ -3311,6 +3319,25 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   padding: 0 16px;
   flex-shrink: 0;
 }
+/* The wordmark is a button now, so it carries the brand row's own layout —
+   otherwise the mark and the name stack instead of sitting side by side. */
+.sb-brand-home {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.sb-brand-home:hover .sb-brand-name { color: var(--blue-500); }
+.sb-brand-home:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 3px; }
+/* In the rail both children are hidden, so the button would be an invisible
+   click target sitting over the expand chevron. */
+.app-sidebar.rail .sb-brand-home { display: none; }
+
 .sb-brand-mark {
   display: flex;
   align-items: center;
@@ -3499,6 +3526,39 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   display: flex;
   flex-direction: column;
 }
+/* Live date/time, left of the language switcher. Tabular figures so the
+   seconds tick over without the row shifting a pixel each time a digit
+   changes width. */
+.topbar-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+  /* The leading edge of the right-hand group: this is the auto margin that
+     used to sit on .topbar-global, so clock, language switcher and search
+     travel together instead of the clock stranding beside the crumbs. */
+  margin-left: auto;
+  padding-right: 10px;
+  line-height: 1.15;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.topbar-clock-date { font-size: 10.5px; color: var(--text-3); }
+.topbar-clock-time {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+.topbar-clock-tz { font-size: 9.5px; font-weight: 600; color: var(--text-4); }
+/* Narrow: the date goes, the time stays. Not hidden outright — the clock is
+   what pushes the right-hand group over. */
+@media (max-width: 900px) {
+  .topbar-clock-date { display: none; }
+  .topbar-clock { padding-right: 6px; }
+}
+
 .topbar {
   height: 52px;
   flex-shrink: 0;
@@ -3551,8 +3611,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 }
 .crumb-active { color: var(--blue-500); font-weight: 600; }
 .topbar-search { flex: 1; max-width: 460px; margin: 0 auto 0 8px; }
-.topbar-global { margin-left: auto; }
-.topbar-search + .topbar-global { margin-left: 12px; }
+.topbar-global { margin-left: 12px; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 
 /* ── Global search: top-bar trigger ── */
@@ -3730,6 +3789,9 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   .app-sidebar.rail .sb-brand-mark,
   .app-sidebar.rail .sb-account-id,
   .app-sidebar.rail .sb-account-caret { display: revert; }
+  /* `revert` would give the button back the UA default of inline-block, so
+     the brand row is restored explicitly. */
+  .app-sidebar.rail .sb-brand-home { display: flex; }
   .app-sidebar.rail .sb-item { justify-content: flex-start; }
   .app-sidebar.mobile-open { transform: translateX(0); }
   .sb-collapse { display: none; }
@@ -3742,6 +3804,13 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .app-main .db-page,
 .app-main .rp-page,
 .app-main .cf-page { min-height: auto; }
+/* ...but a page that lays its own content out against the full height has to
+   actually receive it. Without this the page box is only as tall as its
+   content, so `margin-top: auto` inside it has no free space to consume and
+   the pagination sat wherever the cards happened to end. `1 0 auto` grows into
+   the spare height without ever shrinking a page that is taller than the
+   viewport. */
+.app-main .cf-page.inv-page { flex: 1 0 auto; }
 
 /* ── Personnel directory ───────────────────────────────────────────────── */
 .pp-body {
@@ -4534,8 +4603,8 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 }
 
 /* Funnel */
-.rp-funnel { display: flex; flex-direction: column; gap: 7px; padding: 4px 0; }
-.rp-funnel-row { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.rp-funnel { display: flex; flex-direction: column; gap: 7px; padding: 4px 0; min-width: 0; }
+.rp-funnel-row { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; max-width: 100%; }
 .rp-funnel-bar {
   height: 26px;
   border-radius: 6px;
@@ -4543,10 +4612,16 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   align-items: center;
   justify-content: center;
   min-width: 46px;
+  /* The width is a percentage the chart computes, so the geometry guarantee
+     belongs here rather than in whichever component happens to pass it: a bar
+     can never be wider than the card it sits in, and a long value inside a
+     narrow bar is clipped by the bar instead of running out of it. */
+  max-width: 100%;
+  overflow: hidden;
   transition: width 0.3s;
 }
 .rp-funnel-val { color: #fff; font-size: 12px; font-weight: 650; text-shadow: 0 1px 2px rgba(0,0,0,0.25); }
-.rp-funnel-label { font-size: 11.5px; color: var(--text-3); }
+.rp-funnel-label { font-size: 11.5px; color: var(--text-3); max-width: 100%; text-align: center; overflow-wrap: anywhere; }
 
 /* Scatter */
 .rp-scatter { width: 100%; height: auto; }
@@ -4998,15 +5073,27 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .inv-list-search { max-width: 320px; }
 .inv-grid {
   display: grid;
-  /* Four columns at most, never five. Page size is a multiple of 12, so a
-     capped count means every row on the page is a full row — at 4, 3, 2 or 1
-     columns there is no ragged remainder. The floor is expressed against the
-     grid's own width rather than the viewport's because the sidebar collapses
-     to a rail, which a viewport media query cannot see. */
-  grid-template-columns: repeat(auto-fill, minmax(max(300px, calc((100% - 42px) / 4)), 1fr));
+  /* Three columns at most. A card has to be wide enough to hold an 18-digit
+     crime number and "Under Investigation" side by side — that needs ~300px of
+     content box, so the floor is 330px and the cap is three. Expressed against
+     the grid's own width rather than the viewport's, because the sidebar
+     collapses to a rail that a viewport media query cannot see. */
+  grid-template-columns: repeat(auto-fill, minmax(max(330px, calc((100% - 28px) / 3)), 1fr));
   gap: 14px;
-  align-content: start;
 }
+/* Auto page size only. The grid takes exactly the space left between the
+   toolbar and the pager and its rows divide that height evenly; because the
+   page size is computed from the same measurement, the result fills the page
+   in both directions — full rows across, no dead band down the bottom,
+   nothing to scroll. An explicit page size means the officer asked for a
+   specific number of cards, so there the rows keep their natural height and
+   the page scrolls rather than crushing 16 rows into one screen. */
+.inv-grid.fill {
+  flex: 1;
+  min-height: 0;
+  grid-auto-rows: 1fr;
+}
+.inv-grid:not(.fill) { align-content: start; }
 .inv-card {
   text-align: left;
   display: flex;
@@ -5028,23 +5115,20 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 }
 .inv-card:hover { border-color: var(--border-bright); transform: translateY(-1px); }
 .inv-card-top {
-  /* Number and status on their own lines, always.
-     At four columns a card is ~304px, and an 18-digit crime number beside
-     "Under Investigation" needs more than that — so on a shared line the chip
-     was squeezed below its own text width and the label spilled out of its
-     pill and past the card border. Wrapping only when it doesn't fit hides
-     that, but it makes the header jump between one and two lines depending on
-     how long a status happens to be, so every card gets the same two-line
-     header instead. Neither a crime number nor a case status can be
-     truncated, and now neither has to be. */
+  /* Number and status on one line, side by side. That only works because the
+     grid above guarantees a card wide enough for both — the chip escaping the
+     card came from squeezing them into ~304px, not from the layout itself. */
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 .inv-card-crime { font-size: 14.5px; font-weight: 700; color: var(--text-0); min-width: 0; overflow-wrap: anywhere; }
-/* Never shrink the status; keep it on the right, where it has always sat. */
-.inv-card-top .aa-chip { flex: 0 0 auto; align-self: flex-end; max-width: 100%; }
+/* Never shrink the status. A flex item's default shrink is what squeezed the
+   chip below its own nowrap label, which is how the text ended up outside the
+   pill and outside the card. */
+.inv-card-top .aa-chip { flex: 0 0 auto; max-width: 100%; }
 .inv-card-type { font-size: 12.5px; color: var(--text-3); overflow-wrap: anywhere; }
 .inv-card-meta { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--text-2); min-width: 0; }
 .inv-card-meta span { overflow-wrap: anywhere; }
@@ -5053,7 +5137,9 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 4px;
+  /* Cards stretch to divide the page height, so the footer sits on the bottom
+     edge of whatever height its row was given rather than floating mid-card. */
+  margin-top: auto;
   padding-top: 10px;
   border-top: 1px solid var(--border);
   font-size: 11.5px;

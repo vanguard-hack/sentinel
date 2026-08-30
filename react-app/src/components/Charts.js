@@ -556,6 +556,13 @@ export function HeatGrid({ rows, cols, values }) {
 export function Funnel({ data }) {
   if (!data?.length) return <div className="rp-empty">No data</div>;
   const first = Math.max(1, data[0].value);
+  // Bars are drawn against the LARGEST stage, not the first one. A case
+  // funnel is not monotonic — more cases can be chargesheeted this period
+  // than were opened in it — so sizing on the first stage gave a 110% bar
+  // that drew straight out through the side of the card. The percentage
+  // beside each bar still reads against the first stage, because that ratio
+  // is the thing a funnel is for; only the geometry is normalised.
+  const widest = Math.max(1, ...data.map((d) => d.value));
   return (
     <div className="rp-funnel">
       {data.map((d, i) => (
@@ -563,7 +570,7 @@ export function Funnel({ data }) {
           <div
             className="rp-funnel-bar"
             style={{
-              width: `${Math.max(12, (d.value / first) * 100)}%`,
+              width: `${Math.min(100, Math.max(12, (d.value / widest) * 100))}%`,
               background: `var(--rp-cat-${i % 6})`,
             }}
           >
@@ -731,7 +738,7 @@ export function Pyramid({ data, colors = PYRAMID_RAMP }) {
           <div
             className="rp-funnel-bar"
             style={{
-              width: `${Math.max(10, (d.value / max) * 100)}%`,
+              width: `${Math.min(100, Math.max(10, (d.value / max) * 100))}%`,
               background: colors[i % colors.length],
             }}
           >
@@ -765,7 +772,7 @@ export function HBarList({ data, format = (v) => v.toLocaleString(), suffix = ''
           >
             <div className="rp-bar-label" title={d.label}>{d.label}</div>
             <div className="rp-bar-track">
-              <div className="rp-bar-fill" style={{ width: `${Math.max(2, (d.value / max) * 100)}%` }} />
+              <div className="rp-bar-fill" style={{ width: `${Math.min(100, Math.max(2, (d.value / max) * 100))}%` }} />
             </div>
             <div className="rp-bar-val">
               <span className="rp-bar-count">{format(d.value)}{suffix}</span>
