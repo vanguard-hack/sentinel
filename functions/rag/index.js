@@ -36,6 +36,23 @@ const path = require('path');
  *   MEMORY_IDLE_MINUTES   idle window that ends a session, default 45
  *   MEMORY_KB_URL         QuickML endpoint that creates a KB document
  *   MEMORY_KB_DELETE      QuickML KB delete endpoint, {id} substituted
+ *
+ * LLM providers. Every model call goes through callLLM, which tries providers
+ * in order and takes the first usable answer, so one provider being down
+ * degrades an answer rather than removing it:
+ *   GROQ_API_KEY          provider 1 (fast, cheap) — already in use
+ *   ANTHROPIC_API_KEY     provider 2 (Claude) — dormant until set
+ *   CLAUDE_MODEL          default claude-opus-5
+ *   CLAUDE_MODEL_FAST     default = CLAUDE_MODEL; set claude-haiku-4-5 to cut
+ *                         the cost of routing/expansion calls
+ *   LLM_PROVIDER_ORDER    default "groq,claude"; use "claude,groq" to put
+ *                         answer quality ahead of latency and cost
+ *
+ * Access control:
+ *   BLOCKED_IPS           comma-separated exact addresses and/or prefixes
+ *                         (a trailing "." or ":" makes an entry a prefix)
+ *   RATE_LIMIT_PER_MIN            default 120 per officer
+ *   RATE_LIMIT_METERED_PER_MIN    default 20, for routes that cost per call
  */
 
 const ACCOUNTS_HOST = process.env.RAG_ACCOUNTS_HOST || 'https://accounts.zoho.in';
@@ -167,6 +184,107 @@ async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeout
     } catch {
       return null; // timeout / network — callers treat null as "skip"
     }
+  }
+  return null;
+}
+
+// ── Claude (Anthropic) ─────────────────────────────────────────────────────
+//
+// The second provider. Groq is fast and cheap and answers first; Claude is
+// what the assistant falls back to when Groq is down, rate-limited, or has
+// retired a model out from under us — which has happened here before. Two
+// providers means an outage at one degrades the answer rather than removing
+// it.
+//
+// Dormant until ANTHROPIC_API_KEY is set: with no key this returns null and
+// the chain behaves exactly as it did with Groq alone.
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-opus-5';
+// The cheap lane (routing, expansion, one-word classification). Defaults to
+// the same model; set CLAUDE_MODEL_FAST=claude-haiku-4-5 to cut the cost of
+// the high-volume calls.
+const CLAUDE_MODEL_FAST = process.env.CLAUDE_MODEL_FAST || CLAUDE_MODEL;
+let anthropicClient = null;
+
+// Anthropic takes the system prompt as a top-level parameter, not as a turn in
+// the messages array, and the array has to begin with a user turn. Our callers
+// build OpenAI-shaped conversations — a system message first, sometimes a
+// memory system turn mid-history — so they are translated rather than passed
+// through.
+function toAnthropic(messages) {
+  const system = [];
+  const turns = [];
+  for (const m of messages) {
+    if (!m || !m.content) continue;
+    if (m.role === 'system') { system.push(String(m.content)); continue; }
+    turns.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content) });
+  }
+  // A conversation may not open on an assistant turn.
+  while (turns.length && turns[0].role === 'assistant') turns.shift();
+  return { system: system.join('\n\n'), turns };
+}
+
+async function callClaude(messages, { maxTokens = 1024, timeoutMs = 12_000, tier = 'main' } = {}) {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  const { system, turns } = toAnthropic(messages);
+  if (!turns.length) return null;
+  try {
+    if (!anthropicClient) {
+      const Anthropic = require('@anthropic-ai/sdk');
+      anthropicClient = new (Anthropic.default || Anthropic)();
+    }
+    const res = await anthropicClient.messages.create(
+      {
+        model: tier === 'fast' ? CLAUDE_MODEL_FAST : CLAUDE_MODEL,
+        // Thinking is on by default and its tokens come out of this budget, so
+        // a caller asking for 40 tokens of routing output would otherwise be
+        // truncated before any content — the same trap the gpt-oss branch
+        // above documents. Effort is held low rather than thinking disabled:
+        // disabling it on Opus 5 can put a tool call into the visible text.
+        max_tokens: Math.max(1024, maxTokens + 768),
+        output_config: { effort: 'low' },
+        ...(system ? { system } : {}),
+        messages: turns,
+      },
+      { timeout: timeoutMs }
+    );
+    const text = (res.content || [])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('')
+      .trim();
+    return text || null;
+  } catch (e) {
+    // Typed, most specific first — a bad key is worth a loud log, a rate limit
+    // is not. Either way the caller gets null and carries on.
+    const Anthropic = require('@anthropic-ai/sdk');
+    const A = Anthropic.default || Anthropic;
+    if (e instanceof A.AuthenticationError) console.error('claude: key rejected');
+    else if (e instanceof A.RateLimitError) console.warn('claude: rate limited');
+    else if (e instanceof A.APIError) console.warn('claude: api error', e.status);
+    return null;
+  }
+}
+
+// ── Provider chain ─────────────────────────────────────────────────────────
+//
+// Every LLM call in this function goes through here. Providers are tried in
+// order and the first usable answer wins; a provider that is unconfigured,
+// down, rate-limited or slow returns null and the next one is asked.
+//
+// Order is configurable because which provider should lead is an operational
+// decision, not a code one: LLM_PROVIDER_ORDER=claude,groq puts answer quality
+// first, the default puts latency and cost first.
+const PROVIDERS = { groq: callGroq, claude: callClaude };
+const PROVIDER_ORDER = (process.env.LLM_PROVIDER_ORDER || 'groq,claude')
+  .split(',').map((p) => p.trim().toLowerCase()).filter((p) => PROVIDERS[p]);
+
+async function callLLM(messages, opts = {}) {
+  // The model option is Groq's own; translate it into a provider-neutral tier
+  // so a fallback provider knows whether this was a cheap call or a big one.
+  const tier = opts.model === GROQ_MODEL_FAST ? 'fast' : 'main';
+  for (const name of PROVIDER_ORDER) {
+    const out = await PROVIDERS[name](messages, { ...opts, tier });
+    if (out !== null && String(out).trim()) return out;
   }
   return null;
 }
@@ -376,7 +494,7 @@ function detectLang(text, preferred) {
 // identifiers that must survive verbatim (crime numbers, sections, plates).
 async function normaliseToEnglish(query, lang) {
   if (lang === 'en') return query;
-  const out = await callGroq(
+  const out = await callLLM(
     [
       {
         role: 'system',
@@ -399,7 +517,7 @@ async function normaliseToEnglish(query, lang) {
 // produced it.
 async function localiseAnswer(text, lang) {
   if (lang === 'en' || !text || !text.trim()) return text;
-  const out = await callGroq(
+  const out = await callLLM(
     [
       {
         role: 'system',
@@ -887,7 +1005,7 @@ const sortConvos = (a, b) =>
 const stripRowid = ({ _rowid, ...c }) => c;
 
 async function generateTitle(firstUserMsg) {
-  const t = await callGroq(
+  const t = await callLLM(
     [
       {
         role: 'system',
@@ -1375,6 +1493,34 @@ async function requireSession(req, res) {
     return null;
   }
   return { app, user, email };
+}
+
+// ── IP blocklist ───────────────────────────────────────────────────────────
+//
+// A denylist, deliberately not an allowlist. Officers reach this from stations
+// across Karnataka and from mobile networks, so an allowlist would lock out
+// legitimate users while stopping nobody who already holds a session. The
+// denylist is the half that earns its place: an abusive or compromised source
+// can be cut off immediately by editing one environment variable, with no
+// redeploy and no code change.
+//
+// BLOCKED_IPS is a comma-separated list of exact addresses and/or prefixes:
+//   BLOCKED_IPS=203.0.113.7,198.51.100.,2001:db8:
+// A trailing dot or colon makes an entry a prefix, which is how a whole /24 or
+// an address block is expressed without pulling in CIDR arithmetic.
+const blockedIps = () =>
+  (process.env.BLOCKED_IPS || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+
+function ipBlocked(ip) {
+  if (!ip) return false;
+  const addr = String(ip).toLowerCase();
+  return blockedIps().some((rule) => {
+    const r = rule.toLowerCase();
+    return r.endsWith('.') || r.endsWith(':') ? addr.startsWith(r) : addr === r;
+  });
 }
 
 // ── Rate limiting ──────────────────────────────────────────────────────────
@@ -2067,7 +2213,7 @@ async function handleInvestigationSummary(req, res) {
   const srcText = sources.slice(0, 120)
     .map((s, i) => `[${i + 1}] ${s.label} (${new Date(s.date).toISOString().slice(0, 10)}): ${String(s.text).slice(0, 500)}`)
     .join('\n');
-  const prose = await callGroq(
+  const prose = await callLLM(
     [
       {
         role: 'system',
@@ -2152,7 +2298,7 @@ const DIG_EXTRACT_SYSTEM =
 async function digStructure(text) {
   const empty = { docType: '', title: '', summary: '', fields: {}, tables: [] };
   if (!text || text.trim().length < 12) return empty;
-  const raw = await callGroq(
+  const raw = await callLLM(
     [
       { role: 'system', content: DIG_EXTRACT_SYSTEM },
       { role: 'user', content: text.slice(0, 12000) },
@@ -2673,7 +2819,7 @@ async function answerFromDigitised(req, query, role) {
         `[${i + 1}] ${h.title} (${h.docType}, ${KIND_NOTE[h.sourceKind] || 'document'}, ` +
         `file ${h.filename}):\n${h.excerpt}`)
       .join('\n\n');
-    const answer = await callGroq(
+    const answer = await callLLM(
       [
         {
           role: 'system',
@@ -2876,14 +3022,15 @@ async function handleReportAi(req, res) {
     },
     { role: 'user', content: `Report: ${reportName}\nSection: ${label}\n\nDraft:\n${text}` },
   ];
-  // Belt-and-braces: callGroq already downgrades on day caps / retired models,
-  // but a transient timeout or per-minute 429 can still surface as null — so
-  // fall back to the fast model explicitly, then once more after a cool-off.
-  let prose = await callGroq(messages, { maxTokens: 900, temperature: 0.2, timeoutMs: 15_000 });
-  if (!prose) prose = await callGroq(messages, { maxTokens: 900, temperature: 0.2, timeoutMs: 12_000, model: GROQ_MODEL_FAST });
+  // Belt-and-braces: the provider chain already downgrades on day caps and
+  // retired models and moves on to the next provider, but a transient timeout
+  // or per-minute 429 can still surface as null — so retry on the cheap tier
+  // explicitly, then once more after a cool-off.
+  let prose = await callLLM(messages, { maxTokens: 900, temperature: 0.2, timeoutMs: 15_000 });
+  if (!prose) prose = await callLLM(messages, { maxTokens: 900, temperature: 0.2, timeoutMs: 12_000, model: GROQ_MODEL_FAST });
   if (!prose) {
     await new Promise((s) => setTimeout(s, 2_000));
-    prose = await callGroq(messages, { maxTokens: 900, temperature: 0.2, timeoutMs: 12_000, model: GROQ_MODEL_FAST });
+    prose = await callLLM(messages, { maxTokens: 900, temperature: 0.2, timeoutMs: 12_000, model: GROQ_MODEL_FAST });
   }
   if (!prose) return json(res, 503, { error: 'AI assist is unavailable right now — try again shortly' });
   await storeAuditEvents(req, app, bucket, [{
@@ -3101,7 +3248,7 @@ const MEMORY_KB_URL = process.env.MEMORY_KB_URL || '';
 const MEMORY_KB_DELETE = process.env.MEMORY_KB_DELETE || '';
 
 async function summarizeForMemory(systemPrompt, transcript) {
-  return callGroq(
+  return callLLM(
     [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: transcript },
@@ -3233,6 +3380,14 @@ module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return json(res, 405, { error: 'Use POST' });
     const path = req.url ? req.url.split('?')[0].replace(/\/+$/, '') : '';
+
+    // Cheapest check first: a blocked source is turned away before it costs a
+    // session lookup, and before it reaches any handler.
+    const ip = clientIp(req);
+    if (ipBlocked(ip)) {
+      console.warn('blocked request from', ip);
+      return json(res, 403, { error: 'Access denied.' });
+    }
 
     // One gate, ahead of every route. See requireSession above for why this is
     // the router's job and not each handler's.
@@ -3813,7 +3968,7 @@ module.exports = async (req, res) => {
       );
     }
     const expanded = contextBits.length
-      ? await callGroq(
+      ? await callLLM(
           [
             { role: 'system', content: EXPAND_PROMPT },
             { role: 'user', content: contextBits.join('\n\n') + '\n\nQuestion: ' + query },
@@ -3833,7 +3988,7 @@ module.exports = async (req, res) => {
     if (attachedContext) {
       const alsoNeedsRecords = deterministicRoute(query);
       if (!alsoNeedsRecords) {
-        const seen = await callGroq(
+        const seen = await callLLM(
           [
             { role: 'system', content: VISION_SYSTEM },
             ...history,
@@ -3866,7 +4021,7 @@ module.exports = async (req, res) => {
       // rewrite a bare "thanks!" into a restated data question.
       // A structurally unmistakable query is routed without a model call.
       const forced = deterministicRoute(query);
-      const scored = forced || parseRouteReply(await callGroq(
+      const scored = forced || parseRouteReply(await callLLM(
         [
           { role: 'system', content: zcql.ROUTER_PROMPT +
             '\n\nReply ONLY as JSON: {"route":"CHAT|GUIDE|ZCQL|RAG|BOTH","confidence":0.0-1.0}. ' +
@@ -3895,7 +4050,7 @@ module.exports = async (req, res) => {
       };
       const routed = route; // existing branches below match on this
       if (routed && /chat/i.test(routed)) {
-        const chat = await callGroq(
+        const chat = await callLLM(
           [{ role: 'system', content: CHAT_SYSTEM }, ...history, { role: 'user', content: query }],
           { maxTokens: 220, temperature: 0.6, timeoutMs: 12_000 }
         );
@@ -3905,7 +4060,7 @@ module.exports = async (req, res) => {
         // Groq unavailable mid-request — fall through to the RAG path below.
       }
       if (routed && /guide/i.test(routed)) {
-        const guide = await callGroq(
+        const guide = await callLLM(
           [{ role: 'system', content: GUIDE_SYSTEM }, ...history, { role: 'user', content: query }],
           { maxTokens: 420, temperature: 0.3, timeoutMs: 12_000 }
         );
@@ -3934,7 +4089,7 @@ module.exports = async (req, res) => {
           let lastErr = null;
           let rows = null;
           for (let attempt = 0; attempt < 2 && !rows; attempt++) {
-            const gen = await callGroq(
+            const gen = await callLLM(
               [
                 { role: 'system', content: zcql.ZCQL_SYSTEM },
                 { role: 'user', content: zcql.buildUserPrompt(searchQuery, q, lastErr) },
@@ -4031,7 +4186,7 @@ module.exports = async (req, res) => {
             // When the result is a multi-row list, the table carries the data;
             // the prose must be a SHORT summary and never re-list the rows.
             const isList = flat.length > 3;
-            const prose = await callGroq(
+            const prose = await callLLM(
               [
                 {
                   role: 'system',
@@ -4171,7 +4326,7 @@ module.exports = async (req, res) => {
 
     // Fallback LLM: only when neither the knowledge base nor the scans answer.
     if (isNegative(text)) {
-      const fb = await callGroq(
+      const fb = await callLLM(
         [{ role: 'system', content: FALLBACK_SYSTEM }, ...history, { role: 'user', content: query }],
         { maxTokens: 900, temperature: 0.4, timeoutMs: 15_000 }
       );
@@ -4185,7 +4340,7 @@ module.exports = async (req, res) => {
     // Pass 2 (best-effort): transform the answer into agui components. Groq is
     // faster and follows the schema more reliably; RAG is the fallback path.
     if (!components.length && looksDataShaped(text)) {
-      const viaGroq = await callGroq(
+      const viaGroq = await callLLM(
         [{ role: 'user', content: AGUI_TRANSFORM + text }],
         { maxTokens: 1024, temperature: 0, timeoutMs: 10_000, model: GROQ_MODEL_FAST }
       );

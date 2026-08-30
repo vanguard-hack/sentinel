@@ -74,5 +74,55 @@ const METERED = new RegExp(src.match(/const METERED_ROUTES = (\/.*\/);/)[1].slic
 ['/conversations/list', '/access/me', '/investigation/list']
   .forEach((p) => check(`${p} is not metered`, !METERED.test(p)));
 
+// ── IP blocklist ──────────────────────────────────────────────────────────
+// A denylist, not an allowlist: officers connect from stations across the
+// state, so an allowlist would lock out legitimate users while stopping nobody
+// who already holds a session.
+// eslint-disable-next-line no-new-func
+const ipBlocked = new Function(`
+  ${src.slice(src.indexOf('const blockedIps = () =>'), src.indexOf('// ── Rate limiting'))}
+  return ipBlocked;`)();
+
+const withBlocked = (list, fn) => {
+  const prev = process.env.BLOCKED_IPS;
+  process.env.BLOCKED_IPS = list;
+  try { return fn(); } finally {
+    if (prev === undefined) delete process.env.BLOCKED_IPS; else process.env.BLOCKED_IPS = prev;
+  }
+};
+
+check('nothing is blocked when the list is empty',
+  withBlocked('', () => !ipBlocked('203.0.113.7')));
+check('an exact address is blocked',
+  withBlocked('203.0.113.7', () => ipBlocked('203.0.113.7')));
+check('a neighbouring address is not',
+  withBlocked('203.0.113.7', () => !ipBlocked('203.0.113.70')));
+check('a trailing dot blocks the whole range',
+  withBlocked('198.51.100.', () => ipBlocked('198.51.100.42')));
+check('a prefix does not leak into a similar range',
+  withBlocked('198.51.100.', () => !ipBlocked('198.51.1007')));
+check('an IPv6 prefix is matched case-insensitively',
+  withBlocked('2001:DB8:', () => ipBlocked('2001:db8::1')));
+check('an absent address is never blocked',
+  withBlocked('203.0.113.7', () => !ipBlocked('')));
+check('the blocklist is read per request, so a change needs no redeploy',
+  /process\.env\.BLOCKED_IPS/.test(src.slice(src.indexOf('const blockedIps'), src.indexOf('function ipBlocked'))));
+
+// ── Provider chain ────────────────────────────────────────────────────────
+// One outage must degrade an answer, not remove it.
+check('every LLM call goes through the chain, not a single provider',
+  (src.match(/\bcallLLM\(/g) || []).length > 15
+  && (src.match(/\bcallGroq\(/g) || []).length === 1);
+check('the chain tries the next provider when one returns nothing',
+  /for \(const name of PROVIDER_ORDER\)[\s\S]{0,220}?if \(out !== null/.test(src));
+check('Claude stays dormant without a key',
+  /async function callClaude[\s\S]{0,200}?if \(!process\.env\.ANTHROPIC_API_KEY\) return null;/.test(src));
+check('the system prompt is lifted out of the message array for Anthropic',
+  /if \(m\.role === 'system'\) \{ system\.push/.test(src));
+check('a conversation handed to Anthropic never opens on an assistant turn',
+  /while \(turns\.length && turns\[0\]\.role === 'assistant'\) turns\.shift\(\);/.test(src));
+check('thinking tokens are budgeted for, so a short call is not truncated',
+  /max_tokens: Math\.max\(1024, maxTokens \+ 768\)/.test(src));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
