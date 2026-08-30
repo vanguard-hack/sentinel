@@ -58,7 +58,10 @@ jobs:
       # ── Frontend ───────────────────────────────────────────────────────
       - name: Install web dependencies
         working-directory: react-app
-        run: npm ci --no-audit --no-fund
+        # --legacy-peer-deps because react-scripts 5 and zcatalyst-cli-plugin-react
+        # declare conflicting peers around typescript; npm 7+ refuses the tree
+        # without it. The lockfile already pins the resolution that works.
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
 
       - name: Lint changed source
         working-directory: react-app
