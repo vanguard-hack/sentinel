@@ -162,13 +162,39 @@ jobs:
       - name: Install the Catalyst CLI
         run: npm install -g zcatalyst-cli
 
+      # The CLI ignores .catalystrc entirely when CI=true — it takes the org and
+      # project from the environment or not at all. Both ids are already public
+      # (they are in the committed .catalystrc and in the app's own URL), so
+      # they are read from that file rather than duplicated into secrets.
+      - name: Resolve the Catalyst project
+        id: ctx
+        run: |
+          node -e '
+            const rc = JSON.parse(require("fs").readFileSync(".catalystrc", "utf8"));
+            const p = rc.projects.find((x) => x.idx === rc.actives.project);
+            const e = p.env.find((x) => x.idx === rc.actives.env);
+            const out = require("fs").createWriteStream(process.env.GITHUB_OUTPUT, { flags: "a" });
+            out.write(`project_id=${p.id}\n`);
+            out.write(`org_id=${e.id}\n`);
+            console.log(`Deploying to ${p.name} / ${e.name} (project ${p.id}, org ${e.id})`);
+          '
+
       - name: Deploy functions and client
         env:
-          # The CLI reads a refresh token from CATALYST_TOKEN. Project and
-          # environment come from the committed .catalystrc, so nothing else
-          # needs configuring here.
           CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
-        run: catalyst deploy --only functions,client
+          CATALYST_PROJECT_ID: ${{ steps.ctx.outputs.project_id }}
+          CATALYST_ORG: ${{ steps.ctx.outputs.org_id }}
+        # The CLI has printed a fatal error and still exited 0 — "Org and
+        # Project Id cannot be empty" came out of a green step, which is how a
+        # deploy silently shipped nothing. Its output is inspected rather than
+        # its exit code.
+        run: |
+          set -o pipefail
+          catalyst deploy --only functions,client 2>&1 | tee deploy.log
+          if grep -qE '✖|cannot be empty' deploy.log; then
+            echo "::error::The Catalyst CLI reported an error (see the log above) despite its exit code."
+            exit 1
+          fi
 
       # Catalyst deploys have silently no-opped before, reporting success while
       # shipping nothing. Success is therefore asserted against the live site,
@@ -178,11 +204,11 @@ jobs:
           EXPECTED: ${{ needs.verify.outputs.main_js }}
           APP_URL: https://sentinel-60073599957.development.catalystserverless.in/app/index.html
         run: |
-          for attempt in 1 2 3 4 5; do
+          for attempt in 1 2 3 4 5 6 7 8; do
             live=$(curl -fsSL "$APP_URL" | grep -o 'main\.[a-z0-9]*\.js' | head -1 || true)
             echo "attempt $attempt: live=$live expected=$EXPECTED"
             [ "$live" = "$EXPECTED" ] && echo "Deploy verified." && exit 0
-            sleep 15
+            sleep 20
           done
           echo "::error::Live bundle is $live but $EXPECTED was deployed — the deploy did not land."
           exit 1
