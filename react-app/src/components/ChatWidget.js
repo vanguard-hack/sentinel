@@ -157,8 +157,10 @@ export default function ChatWidget() {
     }
   };
 
-  if (location.pathname.startsWith('/assistant')) return null;
-
+  // The hook has to run before any early return: React identifies hooks by
+  // call order, so bailing out above it makes this component call a different
+  // number of hooks on the assistant route than everywhere else — which is a
+  // crash the moment the widget mounts and then navigates.
   const sourcesByMessage = useMemo(() => {
     const map = new Map();
     for (const m of messages) {
@@ -168,6 +170,11 @@ export default function ChatWidget() {
     }
     return map;
   }, [messages]);
+
+  // The full assistant page owns this route; the floating widget stays out of
+  // its way.
+  if (location.pathname.startsWith('/assistant')) return null;
+
   const openSource = citation
     ? (sourcesByMessage.get(citation.messageId) || []).find((c) => c.n === citation.n) || null
     : null;

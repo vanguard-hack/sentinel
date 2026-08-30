@@ -63,13 +63,19 @@ jobs:
         # without it. The lockfile already pins the resolution that works.
         run: npm ci --legacy-peer-deps --no-audit --no-fund
 
-      - name: Lint changed source
+      - name: Lint application source
         working-directory: react-app
-        # ChatWidget.js carries one long-standing rules-of-hooks error that
-        # predates this pipeline; failing the build on it would block every
-        # unrelated change, so warnings are surfaced without gating. Remove
-        # --exit-zero once that file is fixed.
-        run: npx eslint src --ext .js --exit-zero
+        # A real gate on application code — it is clean, so a new error stops
+        # the build. src/__smoke__ is excluded: its 47 findings are all
+        # testing-library style preferences (no-node-access, prefer-find-by)
+        # rather than correctness, and gating on them would block every
+        # unrelated change. Worth cleaning up separately.
+        run: npx eslint src --ext .js --ignore-pattern '__smoke__'
+
+      - name: Lint smoke tests (advisory)
+        working-directory: react-app
+        continue-on-error: true
+        run: npx eslint src/__smoke__ --ext .js
 
       - name: Build the web client
         working-directory: react-app
