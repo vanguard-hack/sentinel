@@ -8,11 +8,12 @@ Sentinel unifies crime analytics, an AI investigative assistant, a digital case 
 authoring and governance into a single platform — built natively on the **CCTNS / BNSS**
 framework and running end-to-end on **Zoho Catalyst**.
 
-[![Live app](https://img.shields.io/badge/Live%20app-Catalyst-2f6feb?style=flat-square)](https://sentinel-60073599957.development.catalystserverless.in/app/index.html)
-![React](https://img.shields.io/badge/React-19-61dafb?style=flat-square&logo=react&logoColor=white)
-![Node](https://img.shields.io/badge/Node-20-3c873a?style=flat-square&logo=node.js&logoColor=white)
-![Zoho Catalyst](https://img.shields.io/badge/Zoho-Catalyst-e42527?style=flat-square)
-![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088ff?style=flat-square&logo=githubactions&logoColor=white)
+[![Live app](https://img.shields.io/badge/Live%20app-Open-2f6feb?style=for-the-badge&logo=googlechrome&logoColor=white)](https://sentinel-60073599957.development.catalystserverless.in/app/index.html)
+![Zoho Catalyst](https://img.shields.io/badge/Zoho%20Catalyst-10%20services-e42527?style=for-the-badge)
+![React](https://img.shields.io/badge/React-19-61dafb?style=for-the-badge&logo=react&logoColor=white)
+![Node](https://img.shields.io/badge/Node-20-3c873a?style=for-the-badge&logo=node.js&logoColor=white)
+![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088ff?style=for-the-badge&logo=githubactions&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-358%20passing-0f9d58?style=for-the-badge)
 
 </div>
 
@@ -53,6 +54,7 @@ feature — including the **Access & Audit** console and role management — is 
 17. [Security & Compliance](#security--compliance)
 18. [Future Scope](#future-scope)
 19. [Team](#team)
+20. [Copyright & Licence](#copyright--licence)
 
 ---
 
@@ -95,13 +97,20 @@ function that holds every credential server-side and enforces role and audit che
 4. **Cut the clerical load on investigating officers.** Testimony captured by voice or by
    scanning a page; legacy paper records digitised and made searchable; statutory reports drafted
    from templates with AI narrative assistance.
-5. **Make every access accountable.** Enforce a rank-based access model end-to-end and record
+5. **Turn physical paper into a knowledge base the AI can answer from.** Through **Report Studio**
+   and **Records**, an officer uploads any physical material — a handwritten statement, a typed
+   FIR, a seizure memo, a scanned court order, even an interview recording. Zia OCR and
+   speech-to-text lift the text, an AI pass structures it into a searchable record, and it is
+   indexed into the RAG knowledge base. From that point the material is not just archived: the
+   assistant can cite it in an answer, and the officer can search across every page the station
+   has ever scanned.
+6. **Make every access accountable.** Enforce a rank-based access model end-to-end and record
    every view, edit, export, sign-in and denial — with user, role, IP, location and IST timestamp
    — in an exportable audit trail.
-6. **Keep AI advisory, cited and fair.** Every model output carries its sources, protected
+7. **Keep AI advisory, cited and fair.** Every model output carries its sources, protected
    attributes are excluded from risk models, and a human officer stays in the loop on every
    decision.
-7. **Prove it can run on managed Indian infrastructure.** The entire platform — hosting, data,
+8. **Prove it can run on managed Indian infrastructure.** The entire platform — hosting, data,
    storage, auth, OCR, speech, PDF and retrieval — runs on Zoho Catalyst's `zoho.in` data centre
    with no self-managed servers.
 
@@ -637,8 +646,9 @@ falls through the chain, so one provider being down degrades latency rather than
 
 ## Zoho Catalyst Services Used
 
-Sentinel is not "hosted on" Catalyst — it is *built out of* Catalyst. Eleven platform services
-are in the critical path, and there is no self-managed server anywhere in the system.
+Sentinel is not "hosted on" Catalyst — it is *built out of* Catalyst. Ten platform services
+are in the critical path — twelve capabilities in all, counting Zia's OCR, Speech-to-Text and
+Vision separately — and there is no self-managed server anywhere in the system.
 
 | Catalyst service | How Sentinel uses it |
 | --- | --- |
@@ -1045,7 +1055,7 @@ git clone https://github.com/vanguard-hack/sentinel.git
 cd sentinel
 
 catalyst login
-catalyst init          # choose "Associate project", pick YOUR project, keep client + functions
+catalyst init
 ```
 
 > The committed `.catalystrc` points at the authors' project. `catalyst init` overwrites it with
@@ -1056,11 +1066,7 @@ catalyst init          # choose "Associate project", pick YOUR project, keep cli
 ### 2. Install dependencies
 
 ```bash
-# Frontend — react-scripts 5 and the Catalyst react plugin declare conflicting
-# TypeScript peers; the lockfile already pins the resolution that works.
 cd react-app && npm install --legacy-peer-deps && cd ..
-
-# Backend function
 cd functions/rag && npm install && cd ../..
 ```
 
@@ -1122,10 +1128,6 @@ policy"*.
 ### 5. Load the FIR dataset
 
 ```bash
-# 1. In the console → Data Store, create all 26 tables from ksp/fir/import/SCHEMA.md.
-#    Catalyst does NOT auto-create tables and there is no CLI for schema creation.
-
-# 2. Stage the CSVs in Stratus and run the imports in dependency order.
 cd ksp/fir/import
 ./run_import.sh
 ```
@@ -1159,10 +1161,7 @@ empty, every write returns `false`, nothing errors.
 ## Running Locally
 
 ```bash
-# Frontend only — fast iteration on UI.
-cd react-app && npm start          # → http://localhost:3000
-
-# Functions + client together — needed for anything that calls the backend.
+cd react-app && npm start
 catalyst serve
 ```
 
@@ -1179,15 +1178,9 @@ Two things to know:
 ## Build & Deploy
 
 ```bash
-# 1. Build the frontend. Always `npm run build`, never `react-scripts build` directly —
-#    postbuild copies index.html → 404.html, which is the SPA fallback Catalyst serves
-#    for client routes. Without it, a hard refresh on /app/personnel shows Catalyst's 404.
 cd react-app && npm run build && cd ..
-
-# 2. Deploy client + functions
 catalyst deploy
 
-# Or selectively
 catalyst deploy --only client
 catalyst deploy --only functions
 ```
@@ -1204,13 +1197,10 @@ The Catalyst CLI has printed a fatal error and still exited `0`, and deploys hav
 success while shipping nothing. Check the live site, not the exit code:
 
 ```bash
-# Did the bundle change?
 curl -fsSL https://<host>/app/index.html | grep -o 'main\.[a-z0-9]*\.js'
 
-# Are the provider keys still configured? (reports presence, never values)
 curl -fsS -X POST https://<host>/server/rag/health -H 'Content-Type: application/json' -d '{}'
 
-# Is the session gate still up? Must be 401.
 curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<host>/server/rag/ \
   -H 'Content-Type: application/json' -d '{"query":"ping"}'
 ```
@@ -1227,15 +1217,11 @@ that cover platform behaviour assert against the *source* and against injected f
 a live Catalyst project.
 
 ```bash
-# ── Backend: 221 checks, 8 suites. Plain Node, zero test framework.
 cd functions/rag
 for t in *.test.js; do echo "── $t"; node "$t" || exit 1; done
 
-# ── Frontend: 137 tests, 20 suites (Jest + React Testing Library).
 cd react-app
 CI=true npx react-scripts test --watchAll=false
-
-# ── The lint gate CI enforces on application source.
 npx eslint src --ext .js --ignore-pattern '__smoke__'
 ```
 
@@ -1406,10 +1392,56 @@ CCTNS/BNSS infrastructure**, not a replacement for it. That framing shapes every
 
 ## Team
 
-**Built for the Karnataka State Police datathon by:**
+**Team Vanguard** — built for the Karnataka State Police datathon.
 
-| Name | Role |
-| --- | --- |
-| **Deepu John** | Team Leader |
-| **Riddhishwar Senthil** | Team Member |
+| Name | Role | GitHub |
+| --- | --- | --- |
+| **Deepu John** | Team Leader | [@vanguard-hack](https://github.com/vanguard-hack) |
+| **Riddhishwar Senthil** | Team Member | _<!-- TODO: add GitHub username -->_ |
+
+---
+
+## Copyright & Licence
+
+Copyright © 2026 Deepu John and Riddhishwar Senthil (Team Vanguard). All rights reserved.
+
+Released under the **MIT Licence**.
+
+```
+MIT License
+
+Copyright (c) 2026 Deepu John, Riddhishwar Senthil (Team Vanguard)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+**Third-party notices.** Sentinel builds on Zoho Catalyst, React, and the open-source
+libraries listed under [Tech Stack](#tech-stack); each remains under its own licence. The
+Karnataka State Police name, insignia and the CCTNS/BNSS forms are the property of their
+respective owners and are used here only to describe the problem domain of an academic
+prototype. The dataset is **synthetic** — see [The Dataset](#the-dataset).
+
+---
+
+<div align="center">
+
+**Sentinel** · Made with ❤️ by **Team Vanguard** for the Karnataka State Police Datathon 2026
+
+</div>
 

@@ -7,6 +7,7 @@ import {
   ScrollText, ExternalLink,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
+import RichText from '../components/RichText';
 import {
   getInvestigation, setInvestigationStatus, appendInvestigationItem, summarizeInvestigation,
   updateInvestigationItem, deleteInvestigationItem,
@@ -877,9 +878,11 @@ function FindingsTab({ rec, onAdd, onUpdate, onDelete }) {
 function SummaryTab({ caseMasterId, crimeNo }) {
   const [state, setState] = useState({ loading: false, summary: null, citations: [], error: null });
   const [downloading, setDownloading] = useState(false);
+  const [activeCite, setActiveCite] = useState(null);
   const summaryRef = useRef(null);
 
   const generate = async () => {
+    setActiveCite(null);
     setState({ loading: true, summary: null, citations: [], error: null });
     try {
       const d = await summarizeInvestigation(caseMasterId);
@@ -924,12 +927,26 @@ function SummaryTab({ caseMasterId, crimeNo }) {
       {state.summary && (
         <div className="inv-summary-card" ref={summaryRef}>
           <div className="inv-summary-flag">AI-drafted — advisory only, verify against source entries</div>
-          <p>{state.summary}</p>
+          {/* The model answers in markdown — headings, bold, bullet and numbered
+              lists. Rendering that into a bare <p> printed the raw syntax and ran
+              every paragraph together, which is why the brief looked broken. This
+              is the same formatter the assistant uses, so model prose reads
+              identically everywhere, and it makes the "[n]" markers clickable
+              back to the entry each claim came from. */}
+          <RichText
+            text={state.summary}
+            citationCount={state.citations.length}
+            onCitation={(n) => setActiveCite(n)}
+          />
           {state.citations.length > 0 && (
             <div className="inv-citations">
               <span>Sources</span>
               <ol>
-                {state.citations.map((c) => <li key={c.n}>[{c.n}] {c.label} — {fmtDate(c.date)}</li>)}
+                {state.citations.map((c) => (
+                  <li key={c.n} className={activeCite === c.n ? 'active' : undefined}>
+                    [{c.n}] {c.label} — {fmtDate(c.date)}
+                  </li>
+                ))}
               </ol>
             </div>
           )}
