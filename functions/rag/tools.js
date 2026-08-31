@@ -28,6 +28,7 @@
 const zcql = require('./zcql');
 const redaction = require('./redaction');
 const masters = require('./masters.json');
+const network = require('./network');
 
 // Per-result caps. Generous enough to answer, small enough that a loop of
 // tool calls cannot fill the context window with rows.
@@ -118,6 +119,40 @@ const DEFINITIONS = [
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'traverse_network',
+    description:
+      'Answer questions about who offends WITH whom. Two people are linked when they ' +
+      'appear as accused in the same case, and a person is followed across cases by ' +
+      'their global PersonID.\n\n' +
+      'Use this for anything relational — "who has X offended with", "are X and Y ' +
+      'connected", "who is in X\'s gang", "who are the most connected offenders". ' +
+      'query_records CANNOT answer these: it is single-table with no joins, so it ' +
+      'cannot follow a person from one case to another.\n\n' +
+      'Operations:\n' +
+      '  neighbours      — who is co-accused with this person (depth 1-3 hops)\n' +
+      '  path            — how two people are connected, and through which cases\n' +
+      '  ring            — the whole connected group this person belongs to\n' +
+      '  most_connected  — the offenders with the most distinct co-accused\n\n' +
+      'A name that matches several people comes back as a list to choose from, not a ' +
+      'guess. Results are investigative leads for an officer to verify — being linked ' +
+      'in this graph means sharing a case file, nothing more.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          enum: ['neighbours', 'path', 'ring', 'most_connected'],
+          description: 'Which question to ask of the network.',
+        },
+        person: { type: 'string', description: 'Name or PersonID. Required for all operations except most_connected.' },
+        other_person: { type: 'string', description: 'The second person, for operation "path".' },
+        depth: { type: 'integer', description: 'Hops to follow for "neighbours" (1-3, default 1).' },
+        limit: { type: 'integer', description: 'How many to return for "most_connected" (default 10, max 40).' },
+      },
+      required: ['operation'],
     },
   },
   {
@@ -244,6 +279,29 @@ async function run(name, input, deps) {
         if (!text) return { found: false, note: 'The knowledge base returned nothing for that.' };
         const f = redaction.filterText(String(text).slice(0, MAX_TEXT), role);
         return { found: true, text: f.text, _redactions: f.redactions || [] };
+      }
+
+      case 'traverse_network': {
+        const res = await network.run(app, input || {});
+        // Every shape this tool returns names people, so each list of people it
+        // produces is filtered before it can become prompt text. Doing it here,
+        // at dispatch, is what stops a new operation forgetting.
+        const withheld = [];
+        const scrub = (rows) => {
+          if (!Array.isArray(rows)) return rows;
+          const f = redaction.filterRows(rows, role);
+          if (f.redactions && f.redactions.length) withheld.push(...f.redactions);
+          return (f.rows || rows).slice(0, MAX_ROWS);
+        };
+        for (const key of ['people', 'members', 'path', 'ambiguous']) {
+          if (res[key]) res[key] = scrub(res[key]);
+        }
+        if (res.person) res.person = scrub([res.person])[0];
+        return {
+          ...res,
+          ...(withheld.length ? { withheld: redaction.describe(withheld) } : {}),
+          _redactions: withheld,
+        };
       }
 
       case 'search_scanned_records': {
