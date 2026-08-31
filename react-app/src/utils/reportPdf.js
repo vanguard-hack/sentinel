@@ -4,6 +4,7 @@
 // pixel-faithful copy of what the officer sees on screen.
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { parseBlocks } from './richFormat';
 
 // Export the report to PDF by capturing each card / section as its OWN image
 // and flowing them onto A4 pages. A block is never split across a page break —
@@ -217,6 +218,109 @@ export async function exportInvestigationDiaryPdf(rec) {
   const a = document.createElement('a');
   a.href = url;
   a.download = `case-diary-${(rec.crimeNo || rec.caseMasterId)}.pdf`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// ── AI case summary → PDF (server-rendered) ────────────────────────────────
+// This used to go through exportReportPdf(), the html2canvas path built for
+// dashboards. That was wrong for a text brief in two ways: it produced a
+// raster screenshot with unselectable, soft text, and — because that exporter
+// never splits a single block across pages — any brief longer than one A4 page
+// was SHRUNK to fit, which is what made the export come out unreadably small.
+// A summary is prose, so it takes the same SmartBrowz route as the full diary:
+// real text, real pagination, crisp at any length.
+
+// Inline markdown → HTML. Escaped FIRST, so nothing the model wrote can inject
+// markup into the document we hand the renderer.
+const mdInline = (t) =>
+  esc(t)
+    .replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[(\d+)\]/g, '<sup class="cite">[$1]</sup>');
+
+// Block-level markdown → HTML, reusing the parser the on-screen renderer uses
+// so the PDF and the screen can never drift apart.
+function mdToHtml(text) {
+  return parseBlocks(text)
+    .map((b) => {
+      if (b.type === 'h') return `<h3>${mdInline(b.text)}</h3>`;
+      if (b.type === 'quote') return `<blockquote>${mdInline(b.text)}</blockquote>`;
+      if (b.type === 'hr') return '<hr/>';
+      if (b.type === 'list') {
+        const tag = b.ordered ? 'ol' : 'ul';
+        return `<${tag}>${b.items.map((i) => `<li>${mdInline(i)}</li>`).join('')}</${tag}>`;
+      }
+      return `<p class="narr">${b.lines.map(mdInline).join('<br/>')}</p>`;
+    })
+    .join('');
+}
+
+export async function exportInvestigationSummaryPdf(summary, citations, meta = {}) {
+  if (!summary || !String(summary).trim()) throw new Error('nothing to export');
+  const cites = (citations || [])
+    .map((c) => `<li><b>[${esc(c.n)}]</b> ${esc(c.label)} <span class="muted">${pdfDate(c.date)}</span></li>`)
+    .join('') || '<li class="empty">No source entries cited.</li>';
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    * { box-sizing: border-box; }
+    @page { size: A4; margin: 18mm 15mm; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1a2230; font-size: 11px; line-height: 1.6; }
+    .doc-head { border-bottom: 2px solid #2545a6; padding-bottom: 10px; margin-bottom: 16px; }
+    .brand { font-size: 10px; letter-spacing: .12em; color: #2545a6; font-weight: 700; text-transform: uppercase; }
+    .doc-head h1 { font-size: 19px; margin: 6px 0 2px; }
+    .doc-head .sub { color: #5a6473; font-size: 11px; }
+    .doc-head .exp { color: #8a93a2; font-size: 9.5px; margin-top: 4px; }
+    .flag { background: #fff7e6; border: 1px solid #f0d9a8; color: #7a5c17; border-radius: 6px;
+            padding: 8px 11px; font-size: 10px; margin-bottom: 16px; }
+    h2 { font-size: 12.5px; color: #2545a6; border-bottom: 1px solid #d7dde8; padding-bottom: 4px;
+         margin: 20px 0 10px; page-break-after: avoid; }
+    h3 { font-size: 11.5px; margin: 14px 0 5px; page-break-after: avoid; }
+    .narr { margin: 0 0 9px; }
+    ul, ol { margin: 0 0 9px; padding-left: 20px; }
+    li { margin-bottom: 4px; }
+    blockquote { margin: 0 0 9px; padding-left: 10px; border-left: 3px solid #d7dde8; color: #5a6473; }
+    code { background: #f5f7fb; border-radius: 3px; padding: 1px 4px; font-size: 10px; }
+    hr { border: 0; border-top: 1px solid #e2e7ef; margin: 12px 0; }
+    .cite { color: #2545a6; font-weight: 700; font-size: 8.5px; }
+    .sources { list-style: none; padding: 0; font-size: 10px; }
+    .sources li { padding: 4px 0; border-bottom: 1px solid #eef1f6; }
+    .muted { color: #8a93a2; }
+    .empty { color: #8a93a2; font-style: italic; }
+    .foot { margin-top: 22px; border-top: 1px solid #d7dde8; padding-top: 8px; color: #8a93a2; font-size: 8.5px; }
+  </style></head><body>
+    <div class="doc-head">
+      <div class="brand">Sentinel · Karnataka State Police</div>
+      <h1>Investigation Summary — ${esc(meta.crimeNo || meta.caseMasterId || 'Case')}</h1>
+      <div class="sub">State-of-the-investigation brief, drafted from the case record</div>
+      <div class="exp">Generated ${esc(new Date().toLocaleString('en-IN'))}</div>
+    </div>
+    <div class="flag"><b>AI-drafted — advisory only.</b> Every statement below is drawn from this
+      case's own diary entries, statements, timeline and findings. Verify each cited entry before
+      relying on it.</div>
+    <h2>Summary</h2>
+    ${mdToHtml(summary)}
+    <h2>Source Entries</h2>
+    <ol class="sources">${cites}</ol>
+    <div class="foot">Sentinel Investigation Diary · Generated from the case record. Synthetic hackathon data — production use requires legal sign-off.</div>
+  </body></html>`;
+
+  const res = await fetch('/server/rag/report-pdf', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ html }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.pdf) throw new Error(data.error || `PDF export failed (HTTP ${res.status})`);
+  const bin = atob(data.pdf);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `investigation-summary-${(meta.crimeNo || meta.caseMasterId || 'case')}.pdf`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }

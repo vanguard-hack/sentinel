@@ -18,7 +18,7 @@ import {
 import { listReports } from '../utils/reportStudio';
 import { REPORT_TYPES } from '../data/reportTemplates';
 import { transcribeAudio } from '../utils/assistant';
-import { exportInvestigationDiaryPdf, exportReportPdf } from '../utils/reportPdf';
+import { exportInvestigationDiaryPdf, exportInvestigationSummaryPdf } from '../utils/reportPdf';
 import i18n from '../i18n';
 
 const fmtDate = (ts) => (ts ? new Date(ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
@@ -879,7 +879,6 @@ function SummaryTab({ caseMasterId, crimeNo }) {
   const [state, setState] = useState({ loading: false, summary: null, citations: [], error: null });
   const [downloading, setDownloading] = useState(false);
   const [activeCite, setActiveCite] = useState(null);
-  const summaryRef = useRef(null);
 
   const generate = async () => {
     setActiveCite(null);
@@ -893,11 +892,10 @@ function SummaryTab({ caseMasterId, crimeNo }) {
   };
 
   const download = async () => {
-    if (!summaryRef.current) return;
+    if (!state.summary) return;
     setDownloading(true);
     try {
-      const stamp = new Date().toISOString().slice(0, 10);
-      await exportReportPdf(summaryRef.current, `investigation-summary-${crimeNo || caseMasterId}-${stamp}.pdf`);
+      await exportInvestigationSummaryPdf(state.summary, state.citations, { crimeNo, caseMasterId });
     } catch (e) {
       setState((s) => ({ ...s, error: e.message }));
     } finally {
@@ -925,7 +923,7 @@ function SummaryTab({ caseMasterId, crimeNo }) {
       </div>
       {state.error && <div className="aa-error"><AlertTriangle size={16} /> {state.error}</div>}
       {state.summary && (
-        <div className="inv-summary-card" ref={summaryRef}>
+        <div className="inv-summary-card">
           <div className="inv-summary-flag">AI-drafted — advisory only, verify against source entries</div>
           {/* The model answers in markdown — headings, bold, bullet and numbered
               lists. Rendering that into a bare <p> printed the raw syntax and ran

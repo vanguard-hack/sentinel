@@ -6742,12 +6742,16 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
      square buttons, same gap, no container of its own. The offset scales
      because those buttons live inside the zoomed stage and this rail does
      not, so a fixed one collided with them at 120%. */
-  top: calc(116px * var(--rb-scale, 1));
-  /* Half a scaled page-width right of centre, plus the same 12px gutter the
-     page tools use. --rb-page-w and --rb-scale come from the editor, because
-     the stage is scaled with CSS `zoom` and this rail is not. */
-  left: calc(50% + (var(--rb-page-w, 794px) * var(--rb-scale, 1)) / 2 + 12px);
-  right: auto;
+  /* Continues the column: 6px sheet inset + three 34px buttons + two 4px gaps
+     = 116px, then one more 4px gap so the rhythm is unbroken. */
+  top: calc(120px * var(--rb-scale, 1));
+  /* Anchored by its RIGHT edge, because .rb-page-tools is (`right: -40px` off
+     the sheet). Matching left edges instead can't work: those buttons sit
+     inside the zoomed stage so their width is 34px * scale, while these are a
+     constant 34px. Right-anchoring keeps the two groups on one vertical line
+     at every zoom level. --rb-page-w and --rb-scale come from the editor. */
+  right: calc(50% - (var(--rb-page-w, 794px) * var(--rb-scale, 1)) / 2 - 40px * var(--rb-scale, 1));
+  left: auto;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -6757,7 +6761,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
    rail drops to a horizontal strip above the pages. */
 @media (max-width: 1100px) {
   .rb-zoom-rail { height: auto; display: flex; justify-content: center; margin-bottom: 10px; }
-  .rb-zoom-side { position: static; flex-direction: row; top: auto; left: auto; }
+  .rb-zoom-side { position: static; flex-direction: row; top: auto; left: auto; right: auto; }
 }
 
 /* ── Records digitisation ──────────────────────────────────────────────── */
