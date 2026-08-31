@@ -32,11 +32,28 @@ import { slashQuery, filterCommands, parseCommand, closestCommand } from '../uti
 import { useTranslation } from 'react-i18next';
 
 // Short, domain-relevant prompts shown on an empty conversation.
+//
+// A default chip is a promise: tap it and you get a real answer. So these are
+// chosen to fit what the ZCQL lane can actually do, and each was run five
+// times end-to-end (route -> generate -> validate -> execute) before earning
+// its place. All four are 5/5, on one table, with no join required.
+//
+// What rules a question OUT, learned from the set these replace:
+//   • A filter on a name that lives in another table. ZCQL is single-table, so
+//     "FIRs in Bengaluru City" cannot be expressed — CaseMaster holds
+//     PoliceStationID, not a district name. The model dropped the district
+//     silently and answered a different question. (Grouping BY station is
+//     fine: rollupToDistricts turns it into districts in code, which is why
+//     "which districts" works where "in <district>" does not.)
+//   • A field the schema does not have. There is no habitual-offender flag on
+//     Accused, so that question returned no query at all, every time.
+//   • A bare list of IDs. "Unsolved cases" ran, but answered with a column of
+//     CaseMasterID integers — true, and useless to an officer.
 const SUGGESTIONS = [
-  'Recent FIRs in Bengaluru City',
-  'Which districts have the most crime?',
-  'List known habitual offenders',
-  'Give me a list of unsolved cases',
+  'How many cases are still under investigation?',
+  'Which districts have the most cases?',
+  'Which crime types are most common?',
+  'How many arrests were made last year?',
 ];
 
 // Voice input records real audio via MediaRecorder and transcribes it with the
