@@ -74,5 +74,8 @@
     "transformIgnorePatterns": [
       "node_modules/(?!(@tiptap|prosemirror-[a-z-]+|rope-sequence|w3c-keyname|orderedmap|crelt|linkifyjs|d3-[a-z]+|internmap|topojson-client|delaunator|robust-predicates)/)"
     ]
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.5"
   }
 }

@@ -5,6 +5,7 @@ import {
   signIn as catalystSignIn,
   signOut as catalystSignOut,
 } from '../utils/catalyst';
+import { wipeOfflineData, pendingCount } from '../utils/offline';
 
 const AuthContext = createContext(null);
 
@@ -38,6 +39,24 @@ export function AuthProvider({ children }) {
         return;
       }
 
+      // Offline, the SDK cannot confirm anything and signing in is impossible —
+      // the Catalyst login page is itself a network request. Redirecting would
+      // replace a working offline app with a browser error page, so a session
+      // that was valid when the connection dropped is carried on the cached
+      // profile until the officer is back online.
+      //
+      // This is deliberately NOT a security decision: it grants no access to
+      // anything. Every read of personal data goes to the Data Store or the rag
+      // function, both of which are network-only and both of which re-check the
+      // session server-side. Offline, those simply fail — so what this keeps
+      // alive is the shell, the maps and the officer's own queued work.
+      if (!navigator.onLine) {
+        const cachedOffline = readCache();
+        if (cachedOffline) setUser(cachedOffline);
+        setLoading(false);
+        return;
+      }
+
       if (!sessionStorage.getItem(REDIRECT_GUARD)) {
         sessionStorage.setItem(REDIRECT_GUARD, '1');
         catalystSignIn();
@@ -63,10 +82,25 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('pageshow', onPageShow);
   }, []);
 
-  const signOut = useCallback(() => {
+  const signOut = useCallback(async () => {
+    // Queued work is the officer's own and has not reached the server yet, so
+    // signing out would destroy it. Warn before that happens rather than after.
+    let pending = 0;
+    try { pending = await pendingCount(); } catch { /* no queue */ }
+    if (pending > 0) {
+      const word = pending === 1 ? 'change' : 'changes';
+      const ok = window.confirm(
+        `${pending} offline ${word} ${pending === 1 ? 'has' : 'have'} not been synced yet and will be lost.\n\n` +
+        'Reconnect and let them sync before signing out, or continue to discard them.'
+      );
+      if (!ok) return;
+    }
     setSigningOut(true); // immediate feedback — the SDK call below then navigates away
     sessionStorage.removeItem(REDIRECT_GUARD);
     clearCache();
+    // A station terminal is shared. Nothing of this officer's may outlive their
+    // session: cached shell, reference data and any queued write all go.
+    await wipeOfflineData();
     catalystSignOut(); // SDK clears the session cookie and navigates to login itself
   }, []);
 

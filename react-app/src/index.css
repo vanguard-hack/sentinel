@@ -7748,3 +7748,39 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .as-attach-summary svg { flex: 0 0 auto; }
 .as-attach-summary.ready { color: var(--green); }
 .as-attach-summary.partial, .as-attach-summary.skipped { color: var(--gold-dark); }
+
+/* ── Offline / sync status bar ──────────────────────────────────────────────
+   Shown only when the connection is down or work is still unsynced. An officer
+   must never have to guess whether what they typed reached the server. */
+.off-bar { font-size: 12.5px; border-bottom: 1px solid var(--border); }
+.off-bar-offline { background: var(--bg-3, #eef1f6); color: var(--text-1); }
+.off-bar-pending { background: #fff7e6; color: #7a5c17; border-bottom-color: #f0d9a8; }
+:root[data-theme="dark"] .off-bar-pending,
+:root:not([data-theme="light"]) .off-bar-pending { background: #2c2415; color: #e8cf9a; border-bottom-color: #4a3c1e; }
+.off-bar-main { display: flex; align-items: center; gap: 8px; padding: 7px 16px; }
+.off-bar-main > span { flex: 1; min-width: 0; }
+.off-bar-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.off-bar-btn {
+  border: 1px solid currentColor; background: transparent; color: inherit; cursor: pointer;
+  border-radius: 5px; padding: 3px 9px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;
+}
+.off-bar-btn:hover:not(:disabled) { opacity: 0.75; }
+.off-bar-btn:disabled { opacity: 0.5; cursor: default; }
+.off-bar-btn.primary { background: currentColor; }
+.off-bar-btn.primary > * { color: var(--bg-0, #fff); }
+.off-bar-list { list-style: none; margin: 0; padding: 0 16px 8px; display: flex; flex-direction: column; gap: 4px; }
+.off-bar-list li { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.off-bar-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.off-bar-when { opacity: 0.75; font-size: 11px; white-space: nowrap; }
+.off-bar-discard { background: none; border: none; color: inherit; cursor: pointer; text-decoration: underline; font-size: 11px; padding: 0; }
+.off-bar .spin { animation: off-spin 1s linear infinite; }
+@keyframes off-spin { to { transform: rotate(360deg); } }
+/* A diary entry saved offline: it succeeded locally but has not reached the
+   server, so it reads as a notice rather than an error. */
+.inv-queued-notice {
+  display: flex; align-items: center; gap: 7px; margin-top: 8px; padding: 7px 11px;
+  border: 1px solid #f0d9a8; background: #fff7e6; color: #7a5c17;
+  border-radius: 6px; font-size: 12.5px;
+}
+:root[data-theme="dark"] .inv-queued-notice,
+:root:not([data-theme="light"]) .inv-queued-notice { background: #2c2415; color: #e8cf9a; border-color: #4a3c1e; }

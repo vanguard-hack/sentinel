@@ -4,7 +4,7 @@ import {
   NotebookPen, AlertTriangle, Plus, Sparkles, ListChecks, Users, Fingerprint,
   MessageSquareQuote, Clock, Link2, ChevronDown, ChevronLeft, ChevronRight,
   Mic, Upload, Paperclip, Play, FileText, Pencil, Trash2, FileDown,
-  ScrollText, ExternalLink,
+  ScrollText, ExternalLink, CloudOff,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import RichText from '../components/RichText';
@@ -42,16 +42,21 @@ function AddEntryForm({ label, fields, onSubmit, submitLabel = 'Add entry' }) {
   const [values, setValues] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // A save that was queued offline succeeded — it just has not reached the
+  // server. That is a notice, not an error, and must not be styled as one.
+  const [notice, setNotice] = useState(null);
 
   const set = (key, v) => setValues((s) => ({ ...s, [key]: v }));
 
   const submit = async () => {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
-      await onSubmit(values);
+      const res = await onSubmit(values);
       setValues({});
       setOpen(false);
+      if (res && res.notice) setNotice(res.notice);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -61,9 +66,12 @@ function AddEntryForm({ label, fields, onSubmit, submitLabel = 'Add entry' }) {
 
   if (!open) {
     return (
-      <button type="button" className="inv-add-btn" onClick={() => setOpen(true)}>
-        <Plus size={15} /> {label}
-      </button>
+      <>
+        <button type="button" className="inv-add-btn" onClick={() => { setNotice(null); setOpen(true); }}>
+          <Plus size={15} /> {label}
+        </button>
+        {notice && <div className="inv-queued-notice"><CloudOff size={14} /> {notice}</div>}
+      </>
     );
   }
 
@@ -965,8 +973,17 @@ export default function InvestigationCase() {
   useEffect(load, [load]);
 
   const onAdd = async (section, item) => {
-    const d = await appendInvestigationItem(caseMasterId, section, item);
+    const d = await appendInvestigationItem(caseMasterId, section, item, rec && rec.crimeNo
+      ? `${section === 'diaryEntries' ? 'Diary entry' : 'Entry'} — FIR ${rec.crimeNo}` : undefined);
+    // Offline the entry is held on this device, so there is no server record to
+    // show yet. Saying so is the whole point: an officer must never believe a
+    // Case Diary entry has been filed when it is still sitting in a browser.
+    // The status bar tracks it from here and syncs it on reconnect.
+    if (d && d.queued) {
+      return { notice: 'Saved on this device — no connection. It will sync automatically when you are back online.' };
+    }
     setRec(d.record);
+    return null;
   };
   const onUpdate = async (section, entryId, patch) => {
     setRec(await updateInvestigationItem(caseMasterId, section, entryId, patch));

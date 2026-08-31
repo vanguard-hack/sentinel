@@ -29,6 +29,7 @@ import LoadingScreen from './components/LoadingScreen';
 import ErrorBoundary from './components/ErrorBoundary';
 import RequireAccess from './components/RequireAccess';
 import AuditTracker from './components/AuditTracker';
+import OfflineBar from './components/OfflineBar';
 import ScrollToHash from './components/ScrollToHash';
 import { ConfirmProvider } from './components/ConfirmDialog';
 
@@ -52,6 +53,7 @@ function AppRoutes() {
             <ScrollToHash />
             <Sidebar />
             <div className="app-main">
+              <OfflineBar />
               <Routes>
                 <Route path="/dashboard" element={guarded('dashboard', <Dashboard />)} />
                 <Route path="/crime-map" element={guarded('crimeMap', <CrimeMap />)} />

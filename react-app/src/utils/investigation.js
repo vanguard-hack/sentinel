@@ -17,6 +17,12 @@
 // the real CaseMaster row via ZCQL so a diary can never drift from the FIR.
 
 import { getCatalyst } from './catalyst';
+import { queueWrite, reportOffline, reportOnline } from './offline';
+
+// Was this a lost connection rather than a refusal? A queued write must only
+// ever stand in for "the server never heard us" — never for a 4xx, which is the
+// server having heard and declined.
+const isNetworkFailure = (e) => e instanceof TypeError || !navigator.onLine;
 
 export const IIF_LABELS = {
   overview: 'IIF-1 · FIR + IIF-2 · Crime Details',
@@ -26,6 +32,17 @@ export const IIF_LABELS = {
   timeline: 'IIF-3 · Arrest / Court Surveillance',
   nextSteps: 'Suggested next steps',
   summary: 'AI investigation brief (advisory)',
+};
+
+// What each section is called in the offline "waiting to sync" list. The
+// officer sees their action, not a section key.
+const SECTION_LABELS = {
+  diaryEntries: 'Diary entry',
+  statements: 'Witness statement',
+  evidence: 'Evidence item',
+  persons: 'Person',
+  timeline: 'Timeline event',
+  findings: 'Finding',
 };
 
 export const STATUS_OPTIONS = ['Open', 'Under Investigation', 'Chargesheet Filed', 'Cold', 'Closed', 'Reopened'];
@@ -107,8 +124,31 @@ export const getInvestigation = (caseMasterId) => post('/server/rag/investigatio
 export const createInvestigation = (payload) => post('/server/rag/investigation/create', payload);
 export const setInvestigationStatus = (caseMasterId, status) =>
   post('/server/rag/investigation/status', { caseMasterId, status }).then((d) => d.record);
-export const appendInvestigationItem = (caseMasterId, section, item) =>
-  post('/server/rag/investigation/append', { caseMasterId, section, item });
+// Adding to a case is the one write worth doing offline: it is purely additive,
+// so two officers appending to the same case cannot conflict. Edits, deletes
+// and reordering all reference server state that may have moved underneath us,
+// so they still require a connection and say so.
+//
+// The queued entry carries the time it was WRITTEN. The server stamps when it
+// was received; a Case Diary must not claim an officer was at a scene at the
+// moment their phone happened to find signal.
+export const appendInvestigationItem = async (caseMasterId, section, item, label) => {
+  try {
+    const res = await post('/server/rag/investigation/append', { caseMasterId, section, item });
+    reportOnline();
+    return res;
+  } catch (e) {
+    if (!isNetworkFailure(e)) throw e;
+    reportOffline();
+    await queueWrite({
+      url: '/server/rag/investigation/append',
+      body: { caseMasterId, section, item },
+      label: label || `${SECTION_LABELS[section] || 'Entry'} — case ${caseMasterId}`,
+      caseMasterId,
+    });
+    return { queued: true };
+  }
+};
 export const updateInvestigationItem = (caseMasterId, section, entryId, patch) =>
   post('/server/rag/investigation/update', { caseMasterId, section, entryId, patch }).then((d) => d.record);
 export const deleteInvestigationItem = (caseMasterId, section, entryId) =>
