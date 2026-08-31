@@ -36,24 +36,23 @@ feature — including the **Access & Audit** console and role management — is 
 
 1. [Overview](#overview)
 2. [Objectives](#objectives)
-3. [Screenshots](#screenshots)
-4. [Key Features](#key-features)
-5. [Architecture](#architecture)
-6. [Tech Stack](#tech-stack)
-7. [Zoho Catalyst Services Used](#zoho-catalyst-services-used)
-8. [Project Structure](#project-structure)
-9. [The Dataset](#the-dataset)
-10. [REST API Reference](#rest-api-reference)
-11. [Prerequisites](#prerequisites)
-12. [Setup & Installation](#setup--installation)
-13. [Running Locally](#running-locally)
-14. [Build & Deploy](#build--deploy)
-15. [Testing](#testing)
-16. [Documentation](#documentation)
-17. [Roles & Access](#roles--access)
-18. [Security & Compliance](#security--compliance)
-19. [Future Scope](#future-scope)
-20. [Team](#team)
+3. [Key Features](#key-features)
+4. [Architecture](#architecture)
+5. [Tech Stack](#tech-stack)
+6. [Zoho Catalyst Services Used](#zoho-catalyst-services-used)
+7. [Project Structure](#project-structure)
+8. [The Dataset](#the-dataset)
+9. [REST API Reference](#rest-api-reference)
+10. [Prerequisites](#prerequisites)
+11. [Setup & Installation](#setup--installation)
+12. [Running Locally](#running-locally)
+13. [Build & Deploy](#build--deploy)
+14. [Testing](#testing)
+15. [Documentation](#documentation)
+16. [Roles & Access](#roles--access)
+17. [Security & Compliance](#security--compliance)
+18. [Future Scope](#future-scope)
+19. [Team](#team)
 
 ---
 
@@ -108,84 +107,6 @@ function that holds every credential server-side and enforces role and audit che
 
 ---
 
-## Screenshots
-
-> Image files live in `docs/screenshots/`. The filename each slot expects is listed in
-> [Screenshot file manifest](#screenshot-file-manifest) at the end of this section.
-
-### Home — analytics dashboard
-
-The landing screen: FIR volume trend, crime composition, case-lifecycle funnel, officer
-workload and an interactive Karnataka geo-heatmap, all filterable by district, date range and
-crime head.
-
-![Sentinel home dashboard](docs/screenshots/01-dashboard.png)
-
-### The main sections
-
-<table>
-<tr>
-<td width="50%"><img src="docs/screenshots/02-crime-map.png" alt="Crime Map"><br><b>Crime Map</b><br>State → district → station drill-down with hotspot clustering and one-tap officer call links.</td>
-<td width="50%"><img src="docs/screenshots/03-assistant.png" alt="AI Assistant"><br><b>AI Assistant</b><br>Plain-language questions answered from the live database or the legal knowledge base, with cited chart, table and map replies.</td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/screenshots/04-ai-analytics-forecasts.png" alt="Forecasts"><br><b>AI Analytics — Forecasts</b><br>Month-ahead crime projections with 95% confidence bands and district risk scoring.</td>
-<td width="50%"><img src="docs/screenshots/05-ai-analytics-case-linkage.png" alt="Case Linkage"><br><b>AI Analytics — Case Linkage</b><br>Behavioural case-linkage ranking that surfaces likely same-offender series across FIRs.</td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/screenshots/06-ai-analytics-financial-trails.png" alt="Financial Trails"><br><b>AI Analytics — Financial Trails</b><br>AML typology detection over transaction trails — layering, structuring, mule accounts.</td>
-<td width="50%"><img src="docs/screenshots/07-crime-links.png" alt="Crime Links"><br><b>AI Analytics — Crime Links</b><br>Co-offending network graph built from a global offender identity across all cases.</td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/screenshots/08-investigation-diary.png" alt="Investigation Diary"><br><b>Investigation Diary</b><br>Case overview: charges, persons, timeline, findings and an AI-drafted cited case summary.</td>
-<td width="50%"><img src="docs/screenshots/09-case-diary.png" alt="Case Diary S.172"><br><b>Case Diary (BNSS S.172)</b><br>Dated diary proceedings, S.161 statements and evidence with chain-of-custody.</td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/screenshots/10-report-studio.png" alt="Report Studio"><br><b>Report Studio</b><br>Paged A4 editor over 12 IIF-based statutory report templates, with AI narrative polish.</td>
-<td width="50%"><img src="docs/screenshots/11-records.png" alt="Records"><br><b>Records</b><br>Legacy paper and media digitised by OCR/transcription into structured, searchable records.</td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/screenshots/12-custody.png" alt="Inmate Registry"><br><b>Inmate Registry</b><br>Person-centric custodial registry for undertrials and convicts, with alerts and analytics.</td>
-<td width="50%"><img src="docs/screenshots/13-personnel.png" alt="Personnel"><br><b>Personnel</b><br>Officer directory, weekly duty roster and per-district organisation chart.</td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/screenshots/14-access-audit.png" alt="Access & Audit"><br><b>Access & Audit</b><br>Role assignment plus a tamper-evident, CSV/XLSX-exportable trail of every action.</td>
-<td width="50%"><img src="docs/screenshots/15-case-files.png" alt="Case Files"><br><b>Case Files</b><br>Direct browse and filter of the underlying 26-table FIR schema.</td>
-</tr>
-</table>
-
-### Screenshot file manifest
-
-Save each image into `docs/screenshots/` with **exactly** these names and the gallery above
-renders. Several already exist in the Google Drive submission folder under `KSP/Screenshots/` —
-download and rename them; the rest need capturing.
-
-| Filename | Screen to capture | Existing Drive file |
-| --- | --- | --- |
-| `01-dashboard.png` | Home — the analytics dashboard at `/reports` (trend, composition, funnel, workload, geo-heatmap) | one of the 26 Jul screenshots |
-| `02-crime-map.png` | `/crime-map` — ideally drilled into a district so station pins are visible | one of the 26 Jul screenshots |
-| `03-assistant.png` | `/assistant` — a question answered with a chart or table reply and visible citation chips | one of the 26 Jul screenshots |
-| `04-ai-analytics-forecasts.png` | `/ai-analytics?tab=forecasts` | `AI-Analytics-Forecasts.png` |
-| `05-ai-analytics-case-linkage.png` | `/ai-analytics?tab=linkage` | `AI-Analytics-Case-Linkage.png` |
-| `06-ai-analytics-financial-trails.png` | `/ai-analytics?tab=financial` | `AI-Analytics-Financial-Trails.png` |
-| `07-crime-links.png` | `/ai-analytics?tab=links` — the co-offending network graph | one of the 26 Jul screenshots |
-| `08-investigation-diary.png` | An open case at `/investigation-diary/:id`, Overview tab | `Investigation-Diary-Case-Overview.png` |
-| `09-case-diary.png` | The same case, Case Diary tab | `Investigation-Diary-Case-Diary-S172.png` |
-| `10-report-studio.png` | `/report-studio`, or an open report in the paged A4 editor | `Report-Studio.png` |
-| `11-records.png` | `/records` — the digitised records list | — |
-| `12-custody.png` | `/custody` — the inmate registry | — |
-| `13-personnel.png` | `/personnel` — the officer directory | one of the 26 Jul screenshots |
-| `14-access-audit.png` | `/access` — role assignment and the audit trail | one of the 26 Jul screenshots |
-| `15-case-files.png` | `/case-files` — the ZCQL table browser | one of the 26 Jul screenshots |
-
-**Capture notes.** Sign in as the **admin** evaluation account so no sidebar item is hidden.
-Capture the full window *including* the sidebar — the sidebar is what shows a reader the
-platform's scope. A viewport around **1600×1000** keeps charts readable, and aiming for under
-~400 KB per image keeps the repository small since the gallery renders them two-up. Anything
-missing simply renders as a broken image; no other section is affected.
-
----
-
 ## Key Features
 
 ### 🏠 Home Dashboard
@@ -196,12 +117,16 @@ Store. Shows FIR volume over time, crime composition by major head, a case-lifec
 interactive Karnataka geo-heatmap. Every panel responds to a shared filter bar — district,
 police station, date range, crime head — and exports to CSV/XLSX.
 
+![Home dashboard](docs/screenshots/01-dashboard.png)
+
 ### 🗺️ Crime Map
 
 A custom SVG + `d3-geo` map of India that drills **state → district → police station**. Districts
 are shaded by incident density; drilling into a district reveals station boundaries, beat-level
 hotspots and clustered incident pins. Each station card carries its jurisdiction officers with
 one-tap `tel:` call links, so a map lookup ends in a phone call rather than a second search.
+
+![Crime Map](docs/screenshots/02-crime-map.png)
 
 ### 🤖 AI Assistant
 
@@ -224,6 +149,8 @@ assistant can actually see the file), **slash commands**, ↑/↓ prompt history
 conversations, and replies rendered as charts, tables, maps and record cards. Every answer
 carries interactive **source citations** you can click through to the exact row or document.
 
+![AI Assistant](docs/screenshots/03-assistant.png)
+
 ### 📈 AI Analytics
 
 Five analytical surfaces under one page:
@@ -239,6 +166,14 @@ Five analytical surfaces under one page:
 All outputs are advisory, cited and guardrail-bound: protected attributes (religion, caste,
 gender) are excluded from every risk model.
 
+![AI Analytics — Forecasts](docs/screenshots/04-ai-analytics-forecasts.png)
+
+![AI Analytics — Case Linkage](docs/screenshots/05-ai-analytics-case-linkage.png)
+
+![AI Analytics — Financial Trails](docs/screenshots/06-ai-analytics-financial-trails.png)
+
+![AI Analytics — Crime Links](docs/screenshots/07-crime-links.png)
+
 ### 📓 Investigation Diary
 
 A digital **Case Diary under BNSS S.172**, mapped onto the CCTNS integrated forms **IIF1–IIF5**.
@@ -253,6 +188,10 @@ Rule-based logic flags cold cases and suggests next investigative steps; an AI *
 drafts a "state of the investigation" brief using *only* the case's own entries, with numbered
 citations back to each one. The whole case exports as a court-ready PDF.
 
+![Investigation Diary — case overview](docs/screenshots/08-investigation-diary.png)
+
+![Case Diary — BNSS S.172](docs/screenshots/09-case-diary.png)
+
 ### 📝 Report Studio
 
 Twelve statutory report templates derived from the CCTNS Integrated Investigation Forms — FIR
@@ -265,6 +204,8 @@ with continuation sheets, tables and rich fields. AI narrative polish rewrites a
 into formal report language with the original one click away under Undo. Drafts are stored in
 object storage with soft delete, and render to PDF server-side through SmartBrowz.
 
+![Report Studio](docs/screenshots/10-report-studio.png)
+
 ### 🗄️ Records (Digitisation)
 
 Legacy paper and media brought into the system. An officer uploads a scan, a photograph, a
@@ -274,6 +215,8 @@ structuring pass, and files the result as a searchable record linked to a case. 
 upload **directly** to object storage through a short-lived pre-signed PUT rather than through
 the function. The original file is always kept alongside the text it produced.
 
+![Records](docs/screenshots/11-records.png)
+
 ### 🔒 Inmate Registry (Custody & Corrections)
 
 A person-centric custodial view built over the FIR data: every distinct offender becomes a
@@ -281,6 +224,8 @@ custodial record aggregating their cases, charges, arrests and case statuses. Re
 and analytics views, plus a per-person detail page. Correctional facts the FIR schema does not
 carry — facility, bail history, sentence and remission, parole, reporting obligations — are
 deterministically synthesised per person so the registry is realistic and stable across reloads.
+
+![Inmate Registry](docs/screenshots/12-custody.png)
 
 ### 👮 Personnel
 
@@ -291,11 +236,15 @@ against `Rank`, `Unit` and `District` client-side; contact details and duty stat
 FIR schema at all, so they are derived deterministically from `EmployeeID` — the same officer
 gets the same email, phone and status on every device.
 
+![Personnel](docs/screenshots/13-personnel.png)
+
 ### 📁 Case Files
 
 Direct, paginated browse of the underlying 26-table FIR schema, grouped into Cases / People /
 Reference. Read straight from the Data Store in the browser via ZCQL — the raw evidence behind
 every dashboard on the platform.
+
+![Case Files](docs/screenshots/15-case-files.png)
 
 ### 🛡️ Access & Audit
 
@@ -310,6 +259,8 @@ approximate location and IST timestamp — stored as per-day objects and exporta
 Assistant answers additionally leave an immutable **decision record** describing *how* the
 answer was reached: the route taken and its confidence, what the ZCQL validator allowed or
 refused, what the clearance filter redacted, and which sources were cited.
+
+![Access & Audit](docs/screenshots/14-access-audit.png)
 
 ### 🌐 Cross-cutting
 
@@ -945,41 +896,6 @@ Live in the Catalyst **Data Store**; column types and lengths are in
 - **[`fix_datetimes.py`](ksp/fix_datetimes.py)** — normalises datetime columns to the exact format
   the Data Store's importer accepts.
 
-### Derived, not stored
-
-Some things the demo shows are deliberately *not* in the dataset, and the code says so:
-
-- **Financial transactions** — the FIR schema has none. `utils/financial.js` synthesises
-  plausible transaction trails deterministically (seeded PRNG) around accused named in economic,
-  cyber and property FIRs, purely to demonstrate the AML workflow. Real deployment needs STR/CTR
-  feeds from FIU-IND, bank and UPI records, and legal authorisation.
-- **Correctional facts** — facility, bail history, sentence and remission, parole and reporting
-  obligations are synthesised per person (mulberry32, seeded by `PersonID`) so the Inmate
-  Registry is realistic and stable across reloads.
-- **Officer contact details** — email, phone and duty status are derived from name and posting,
-  not stored.
-
-### Knowledge base corpus
-
-[`ksp/rag_docs/`](ksp/rag_docs/) holds the plain-text corpus uploaded to QuickML that the RAG
-lane answers legal and procedural questions from — station directories, modus-operandi
-descriptions, gang profiles, investigation-officer references, network edges and socio-economic
-indicators.
-
-### Legacy flat dataset
-
-The top level of [`ksp/`](ksp/) still carries the earlier **16-table flat dataset** (5,000 FIRs,
-2,500 accused, 5,640 victims, 559 beats, 144 police stations …) that the first version of the
-platform ran on. It is superseded by `ksp/fir/` but kept because the beat-level hotspot
-coordinates and socio-economic indicators are still referenced by the map layers.
-
-### Loading it
-
-Catalyst does **not** auto-create tables, and there is no CLI for schema creation. So the order
-is: create all 26 tables in the console from `SCHEMA.md`, stage the CSVs in Stratus, then run the
-non-interactive `ds:import` configs. [`run_import.sh`](ksp/fir/import/run_import.sh) does the last
-two steps in dependency order.
-
 ---
 
 ## REST API Reference
@@ -1003,94 +919,94 @@ POST /server/rag/<path>
 
 ### Assistant
 
-| Endpoint | Body | Does |
-| --- | --- | --- |
-| `POST /server/rag/` | `{ query, session_id?, preferred_lang?, page_context?, attachments? }` | **The main assistant endpoint.** Detects language, routes the question (TOOLS / ZCQL / RAG / BOTH / CHAT), runs the lane, applies the two-tier clearance filter, attaches citations, writes the audit decision record, and returns `{ answer, components, sources, response_id }`. |
-| `POST /server/rag/transcribe` | audio payload | Zia speech-to-text for voice input and uploaded recordings. |
-| `POST /server/rag/vision/parse` | image payload | Fast attachment pre-parser — runs Zia vision services in parallel on attach so the digest is ready before the officer hits send. |
-| `POST /server/rag/health` | `{}` | Reports **whether** each provider and the RAG credentials are configured — never a value. The one route ahead of the session gate; CI asserts against it after every deploy. |
+| Endpoint | Does |
+| --- | --- |
+| `POST /server/rag/` | **The main assistant endpoint.** Detects language, routes the question (TOOLS / ZCQL / RAG / BOTH / CHAT), runs the lane, applies the two-tier clearance filter, attaches citations, writes the audit decision record, and returns `{ answer, components, sources, response_id }`. |
+| `POST /server/rag/transcribe` | Zia speech-to-text for voice input and uploaded recordings. |
+| `POST /server/rag/vision/parse` | Fast attachment pre-parser — runs Zia vision services in parallel on attach so the digest is ready before the officer hits send. |
+| `POST /server/rag/health` | Reports **whether** each provider and the RAG credentials are configured — never a value. The one route ahead of the session gate; CI asserts against it after every deploy. |
 
 ### Assistant memory
 
-| Endpoint | Body | Does |
-| --- | --- | --- |
-| `POST /server/rag/memory/get` | `{ badge_id? }` | Returns the officer's long-term facts and recent turns. |
-| `POST /server/rag/memory/consolidate` | `{ session_id }` | Folds a session's turns into durable long-term facts. |
-| `POST /server/rag/memory/forget` | `{ match? }` | Deletes memory — scoped by `match`, or all. The deletion itself is audited even though the memory is gone, and any KB document that could not be deleted is reported rather than silently counted as wiped. |
+| Endpoint | Does |
+| --- | --- |
+| `POST /server/rag/memory/get` | Returns the officer's long-term facts and recent turns. |
+| `POST /server/rag/memory/consolidate` | Folds a session's turns into durable long-term facts. |
+| `POST /server/rag/memory/forget` | Deletes memory — scoped by `match`, or all. The deletion itself is audited even though the memory is gone, and any KB document that could not be deleted is reported rather than silently counted as wiped. |
 
 ### Conversations
 
-| Endpoint | Body | Does |
-| --- | --- | --- |
-| `POST /server/rag/conversations/list` | `{}` | The signed-in officer's saved chats. |
-| `POST /server/rag/conversations/save` | `{ id, title, messages }` | Upserts one chat as a single row in the `ChatConversations` Data Store table (one row per chat, so concurrent sessions cannot clobber each other), with a Stratus fallback. |
-| `POST /server/rag/conversations/delete` | `{ id }` | Deletes one chat. |
+| Endpoint | Does |
+| --- | --- |
+| `POST /server/rag/conversations/list` | The signed-in officer's saved chats. |
+| `POST /server/rag/conversations/save` | Upserts one chat as a single row in the `ChatConversations` Data Store table (one row per chat, so concurrent sessions cannot clobber each other), with a Stratus fallback. |
+| `POST /server/rag/conversations/delete` | Deletes one chat. |
 
 ### Investigation Diary
 
-| Endpoint | Body | Does |
-| --- | --- | --- |
-| `POST /server/rag/investigation/list` | `{ filters? }` | Cases with status, IO and cold-case flags. |
-| `POST /server/rag/investigation/get` | `{ caseMasterId }` | One case in full — diary entries, statements, evidence, persons, timeline, findings. |
-| `POST /server/rag/investigation/create` | `{ caseMasterId, … }` | Opens a case file. |
-| `POST /server/rag/investigation/append` | `{ caseMasterId, section, entry }` | Adds a diary entry, S.161 statement, evidence item, person or finding. |
-| `POST /server/rag/investigation/update` | `{ caseMasterId, section, id, patch }` | Edits an existing entry. |
-| `POST /server/rag/investigation/reorder` | `{ caseMasterId, section, order }` | Reorders entries within a section. |
-| `POST /server/rag/investigation/delete` | `{ caseMasterId, section, id }` | Removes an entry. |
-| `POST /server/rag/investigation/status` | `{ caseMasterId, status }` | Changes case status. |
-| `POST /server/rag/investigation/summarize` | `{ caseMasterId }` | Drafts a "state of the investigation" brief from **only** that case's own entries, with numbered citations back to each source entry. |
-| `POST /server/rag/investigation/ocr` | hex image body; `?caseMasterId&filename&mime` | Runs Zia OCR on a photographed page **and** keeps the source scan in Stratus, so extracted text is always traceable to the document it came from. |
-| `POST /server/rag/investigation/media/upload` | hex bytes; `?caseMasterId&mime&filename` | Stores evidence media. Bodies are hex-encoded because raw binary and base64 trip the gateway's resource-access scanner on cookie-authenticated calls. |
-| `POST /server/rag/investigation/media/get` | `{ key }` | Returns `{ data, mime }` for playback, so recordings are never served from a bare unauthenticated URL. |
+| Endpoint | Does |
+| --- | --- |
+| `POST /server/rag/investigation/list` | Cases with status, IO and cold-case flags. |
+| `POST /server/rag/investigation/get` | One case in full — diary entries, statements, evidence, persons, timeline, findings. |
+| `POST /server/rag/investigation/create` | Opens a case file. |
+| `POST /server/rag/investigation/append` | Adds a diary entry, S.161 statement, evidence item, person or finding. |
+| `POST /server/rag/investigation/update` | Edits an existing entry. |
+| `POST /server/rag/investigation/reorder` | Reorders entries within a section. |
+| `POST /server/rag/investigation/delete` | Removes an entry. |
+| `POST /server/rag/investigation/status` | Changes case status. |
+| `POST /server/rag/investigation/summarize` | Drafts a "state of the investigation" brief from **only** that case's own entries, with numbered citations back to each source entry. |
+| `POST /server/rag/investigation/ocr` | Runs Zia OCR on a photographed page **and** keeps the source scan in Stratus, so extracted text is always traceable to the document it came from. |
+| `POST /server/rag/investigation/media/upload` | Stores evidence media. Bodies are hex-encoded because raw binary and base64 trip the gateway's resource-access scanner on cookie-authenticated calls. |
+| `POST /server/rag/investigation/media/get` | Returns `{ data, mime }` for playback, so recordings are never served from a bare unauthenticated URL. |
 
 ### Records digitisation
 
-| Endpoint | Body | Does |
-| --- | --- | --- |
-| `POST /server/rag/digitise/upload` | hex bytes; `?filename&mime&batchId&caseMasterId` | Uploads a scan or photo and OCRs it. |
-| `POST /server/rag/digitise/ingest` | `{ text, sourceKind, … }` | Ingests text the browser already extracted from a spreadsheet, document, deck or transcript. Everything downstream is identical to a scan; `sourceKind` records honestly how the text was obtained. |
-| `POST /server/rag/digitise/source-url` | `{ id, ext }` | Hands back a **short-lived pre-signed PUT** so a large file goes straight to Stratus instead of being hex-encoded through the function. |
-| `POST /server/rag/digitise/source-done` | `{ id }` | Confirms a direct upload and kicks off processing. |
-| `POST /server/rag/digitise/source` | hex bytes; `?id&ext` | Attaches the original file to a record that was ingested as text — a transcript is not a substitute for the recording it came from. |
-| `POST /server/rag/digitise/list` | `{ filters? }` | Digitised records. |
-| `POST /server/rag/digitise/get` | `{ id }` | One record with its structured fields. |
-| `POST /server/rag/digitise/update` | `{ id, patch }` | Corrects extracted fields. |
-| `POST /server/rag/digitise/delete` | `{ id }` | Removes a record. |
-| `POST /server/rag/digitise/file` | `{ id }` | Returns the stored source artefact. |
-| `POST /server/rag/digitise/search` | `{ q }` | Full-text search across digitised records — also reachable by the assistant as a tool. |
+| Endpoint | Does |
+| --- | --- |
+| `POST /server/rag/digitise/upload` | Uploads a scan or photo and OCRs it. |
+| `POST /server/rag/digitise/ingest` | Ingests text the browser already extracted from a spreadsheet, document, deck or transcript. Everything downstream is identical to a scan; `sourceKind` records honestly how the text was obtained. |
+| `POST /server/rag/digitise/source-url` | Hands back a **short-lived pre-signed PUT** so a large file goes straight to Stratus instead of being hex-encoded through the function. |
+| `POST /server/rag/digitise/source-done` | Confirms a direct upload and kicks off processing. |
+| `POST /server/rag/digitise/source` | Attaches the original file to a record that was ingested as text — a transcript is not a substitute for the recording it came from. |
+| `POST /server/rag/digitise/list` | Digitised records. |
+| `POST /server/rag/digitise/get` | One record with its structured fields. |
+| `POST /server/rag/digitise/update` | Corrects extracted fields. |
+| `POST /server/rag/digitise/delete` | Removes a record. |
+| `POST /server/rag/digitise/file` | Returns the stored source artefact. |
+| `POST /server/rag/digitise/search` | Full-text search across digitised records — also reachable by the assistant as a tool. |
 
 ### Report Studio
 
-| Endpoint | Body | Does |
-| --- | --- | --- |
-| `POST /server/rag/reportdocs/list` | `{}` | Report drafts, excluding soft-deleted ones. |
-| `POST /server/rag/reportdocs/get` | `{ reportId }` | One draft. |
-| `POST /server/rag/reportdocs/save` | `{ reportId, doc }` | Saves a draft to Stratus. |
-| `POST /server/rag/reportdocs/delete` | `{ reportId }` | Soft-deletes a draft. |
-| `POST /server/rag/reportdocs/ai` | `{ text, section }` | Rewrites a drafted section into formal report language. Facts are preserved by instruction, the officer reviews before saving, and the original stays one click away under Undo. |
-| `POST /server/rag/report-pdf` | `{ html }` | The browser composes self-contained HTML; **SmartBrowz** renders it and the function returns `{ pdf: <base64> }`. |
+| Endpoint | Does |
+| --- | --- |
+| `POST /server/rag/reportdocs/list` | Report drafts, excluding soft-deleted ones. |
+| `POST /server/rag/reportdocs/get` | One draft. |
+| `POST /server/rag/reportdocs/save` | Saves a draft to Stratus. |
+| `POST /server/rag/reportdocs/delete` | Soft-deletes a draft. |
+| `POST /server/rag/reportdocs/ai` | Rewrites a drafted section into formal report language. Facts are preserved by instruction, the officer reviews before saving, and the original stays one click away under Undo. |
+| `POST /server/rag/report-pdf` | The browser composes self-contained HTML; **SmartBrowz** renders it and the function returns `{ pdf: <base64> }`. |
 
 ### Inmate registry
 
-| Endpoint | Body | Does |
-| --- | --- | --- |
-| `POST /server/rag/custody/list` | `{ filters? }` | Custodial records. |
-| `POST /server/rag/custody/save` | `{ personId, patch }` | Updates a custodial record. |
-| `POST /server/rag/custody/seed` | `{}` | Seeds the registry from the FIR data. |
+| Endpoint | Does |
+| --- | --- |
+| `POST /server/rag/custody/list` | Custodial records. |
+| `POST /server/rag/custody/save` | Updates a custodial record. |
+| `POST /server/rag/custody/seed` | Seeds the registry from the FIR data. |
 
 ### Access, audit and identity
 
-| Endpoint | Body | Does |
-| --- | --- | --- |
-| `POST /server/rag/access/me` | `{ email }` | The caller's app role. Fails **open** to the least-privileged field role so a cold function start never locks anyone out of the UI — note that disclosure decisions deliberately do *not* reuse this fallback. |
-| `POST /server/rag/access/users` | `{}` | All users and their roles. **Admin only.** |
-| `POST /server/rag/access/save` | `{ email, role }` | Assigns a role. **Admin only**; `admin` itself comes from the Catalyst project role and cannot be granted here. |
-| `POST /server/rag/access/record` | `{ action, feature, path, detail }` | Writes one audit event. Deliberately bland path — `/audit/log` matches ad-blocker privacy lists, which silently kill the fetch in the browser. |
-| `POST /server/rag/access/records` | `{ from, to, filters? }` | Reads the audit trail from per-day Stratus objects. **Admin only.** |
-| `POST /server/rag/profile/get` | `{}` | The signed-in officer's profile. |
-| `POST /server/rag/profile/save` | `{ patch }` | Updates it. |
-| `POST /server/rag/profile/photo` | raw image octet-stream | Photo upload as a **raw binary** body — the gateway's resource-access policy rejects arbitrary base64 blobs inside a scanned JSON request. |
-| `POST /server/rag/support` | `{ subject, message }` | Emails the administrator a Help Centre ticket and keeps a Stratus copy. |
+| Endpoint | Does |
+| --- | --- |
+| `POST /server/rag/access/me` | The caller's app role. Fails **open** to the least-privileged field role so a cold function start never locks anyone out of the UI — note that disclosure decisions deliberately do *not* reuse this fallback. |
+| `POST /server/rag/access/users` | All users and their roles. **Admin only.** |
+| `POST /server/rag/access/save` | Assigns a role. **Admin only**; `admin` itself comes from the Catalyst project role and cannot be granted here. |
+| `POST /server/rag/access/record` | Writes one audit event. Deliberately bland path — `/audit/log` matches ad-blocker privacy lists, which silently kill the fetch in the browser. |
+| `POST /server/rag/access/records` | Reads the audit trail from per-day Stratus objects. **Admin only.** |
+| `POST /server/rag/profile/get` | The signed-in officer's profile. |
+| `POST /server/rag/profile/save` | Updates it. |
+| `POST /server/rag/profile/photo` | Photo upload as a **raw binary** body — the gateway's resource-access policy rejects arbitrary base64 blobs inside a scanned JSON request. |
+| `POST /server/rag/support` | Emails the administrator a Help Centre ticket and keeps a Stratus copy. |
 
 ### Assistant tools
 
@@ -1350,14 +1266,6 @@ assert `build/404.html` exists. Only a green run on `main` proceeds to deploy, a
 then asserts three things against the **live** site: the bundle hash matches what CI built,
 `/health` still reports its provider keys, and an anonymous `POST` still returns `401`.
 
-### Gaps worth knowing about
-
-- There is **no end-to-end browser test**. The deploy-time live assertions are the closest thing.
-- Coverage is not measured or gated — the suites are behaviour-led, not line-count-led.
-- `src/__smoke__` carries ~47 ESLint findings, all testing-library style preferences
-  (`no-node-access`, `prefer-find-by`) rather than correctness. They are reported advisory-only
-  so they cannot block an unrelated change. Worth cleaning up separately.
-
 ---
 
 ## Documentation
@@ -1370,7 +1278,7 @@ no separate docs site, wiki or handbook to fall out of date.
 
 | Topic | Section |
 | --- | --- |
-| What the product does, screen by screen | [Key Features](#key-features) · [Screenshots](#screenshots) |
+| What the product does, screen by screen | [Key Features](#key-features) |
 | How it is put together | [Architecture](#architecture) (six diagrams) · [Tech Stack](#tech-stack) · [Zoho Catalyst Services Used](#zoho-catalyst-services-used) |
 | What every file and folder is for | [Project Structure](#project-structure) |
 | The data it runs on | [The Dataset](#the-dataset) |
@@ -1378,7 +1286,6 @@ no separate docs site, wiki or handbook to fall out of date.
 | Standing it up yourself | [Prerequisites](#prerequisites) → [Setup & Installation](#setup--installation) → [Running Locally](#running-locally) → [Build & Deploy](#build--deploy) |
 | What is tested, and what isn't | [Testing](#testing) |
 | Who can see what | [Roles & Access](#roles--access) · [Security & Compliance](#security--compliance) |
-| Which screenshot goes where | [Screenshot file manifest](#screenshot-file-manifest) |
 | Where the project goes next | [Future Scope](#future-scope) |
 
 ### Diagrams
