@@ -11,6 +11,7 @@
 // (perPage + 1) and trim it — robust even when COUNT is unavailable.
 
 import { getCatalyst } from './catalyst';
+import { isOnline, reportOffline, reportOnline } from './offline';
 
 // The Police FIR schema tables in the Data Store (see ksp/fir/import/SCHEMA.md),
 // grouped for the table switcher. `name` must match the table name exactly.
@@ -163,9 +164,33 @@ function buildWhere(column, search, sampleValue, op = 'contains') {
 // Run an arbitrary ZCQL query and return flattened row objects. Used by the
 // Reports page for GROUP BY / aggregate queries. `table` is the FROM table name
 // (needed to un-nest the table-keyed response rows).
+// Every screen that reads case data comes through here, so this is the one
+// place worth making a lost connection legible. Offline these queries cannot
+// succeed — the Data Store is deliberately never cached, because caching it
+// would put FIR records on the officer's disk — so the honest thing is to say
+// so in a sentence an officer can act on, rather than surface an SDK error.
+export const OFFLINE_MESSAGE =
+  'No connection — case records need the network. The crime map, station '
+  + 'directory and org chart still work offline, and anything you add to an '
+  + 'open case is saved on this device and synced when you are back online.';
+
 export async function runQuery(sql, table) {
-  const resp = await zcql().executeQuery(sql);
-  return flatten(resp, table);
+  if (!isOnline()) throw new Error(OFFLINE_MESSAGE);
+  try {
+    const resp = await zcql().executeQuery(sql);
+    reportOnline();
+    return flatten(resp, table);
+  } catch (e) {
+    // navigator.onLine only reports whether an interface is up: a station on a
+    // dead uplink claims to be online and every request still fails. A failed
+    // request is the more reliable signal, so it updates the shared state that
+    // drives the status bar.
+    if (e instanceof TypeError || !navigator.onLine) {
+      reportOffline();
+      throw new Error(OFFLINE_MESSAGE);
+    }
+    throw e;
+  }
 }
 
 // Fetch the column list for a table plus one sample row (used to infer the
