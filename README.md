@@ -1413,6 +1413,3 @@ CCTNS/BNSS infrastructure**, not a replacement for it. That framing shapes every
 | **Deepu John** | Team Leader |
 | **Riddhishwar Senthil** | Team Member |
 
-**Repository:** <https://github.com/vanguard-hack/sentinel>
-**Live app:** <https://sentinel-60073599957.development.catalystserverless.in/app/index.html>
-
