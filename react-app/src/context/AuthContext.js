@@ -47,6 +47,27 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let cancelled = false;
+
+    // Hard ceiling on the splash screen.
+    //
+    // Every hang so far has been a different cause — a redirect that could not
+    // complete, an SDK that never settled, a probe against a dead uplink — and
+    // each was fixed individually. This exists so the NEXT one, whatever it is,
+    // cannot strand an officer on "Verifying credentials…" with no way forward.
+    // It is a backstop, not a substitute for the branches below: if any of them
+    // resolves first, this never fires.
+    //
+    // It grants no access. Reaching the app with no session shows the shell and
+    // the cached maps; every read of case data re-checks the session on the
+    // server and fails without one.
+    const watchdog = setTimeout(() => {
+      if (cancelled) return;
+      const late = readCache();
+      if (late) setUser(late);
+      setLoading(false);
+    }, 9000);
+    const settle = () => { clearTimeout(watchdog); setLoading(false); };
+
     (async () => {
       initCatalyst();
       const currentUser = await getCurrentUser(); // time-boxed to 4 s, never hangs
@@ -57,7 +78,7 @@ export function AuthProvider({ children }) {
         sessionStorage.removeItem(REDIRECT_GUARD);
         writeCache(currentUser); // persist profile so a slow SDK never loses the name
         setUser(currentUser);
-        setLoading(false);
+        settle();
         return;
       }
 
@@ -76,7 +97,7 @@ export function AuthProvider({ children }) {
         if (cancelled) return;
         const cachedOffline = readCache();
         if (cachedOffline) setUser(cachedOffline);
-        setLoading(false);
+        settle();
         return;
       }
 
@@ -93,7 +114,7 @@ export function AuthProvider({ children }) {
           if (cancelled) return;
           const late = readCache();
           if (late) setUser(late);
-          setLoading(false);
+          settle();
         }, 6000);
         catalystSignIn();
         return;
@@ -103,9 +124,9 @@ export function AuthProvider({ children }) {
       // Fall back to the cached profile so the user's name is always visible.
       const cached = readCache();
       if (cached) setUser(cached);
-      setLoading(false);
+      settle();
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(watchdog); };
   }, []);
 
   // Defeat Chrome's back/forward cache (bfcache): when the page is restored from

@@ -19,7 +19,11 @@
  * default and cannot start persisting personal data by accident.
  */
 
-const VERSION = 'v1';
+// Bump this on any change to what is cached or how. activate deletes every
+// sentinel-* cache that is not the current version, so a browser carrying a
+// broken build is repaired by its next online visit rather than staying pinned
+// to it. v2: purges the v1 shell, which could hang on "Verifying credentials".
+const VERSION = 'v2';
 const SHELL = `sentinel-shell-${VERSION}`;
 const REFERENCE = `sentinel-reference-${VERSION}`;
 const OURS = [SHELL, REFERENCE];
