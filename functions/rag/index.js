@@ -303,12 +303,50 @@ async function callLLM(messages, opts = {}) {
 const TOOL_MAX_ITERATIONS = Number(process.env.TOOL_MAX_ITERATIONS) || 6;
 const TOOL_BUDGET_MS = Number(process.env.TOOL_BUDGET_MS) || 45_000;
 
+// The schema, restated for the tool loop.
+//
+// It is NOT zcql.js's ZCQL_SYSTEM. That prompt drives a single-shot generator
+// that must answer with a plan object, and pasting it in here made the model
+// reply {"zcql": null, "reason": "..."} as its ANSWER — it followed the other
+// protocol. Worse, without any schema at all the model simply invented tables:
+// it queried FIR, Cases and Victims, none of which exist, and then reported
+// zero to the officer. So the tables are named here, in the tool loop's own
+// terms, with the relationships spelled out as the two-step this database
+// actually requires.
+const TOOL_SCHEMA_NOTE =
+  'THE TABLES (query one at a time — this store has no JOINs):\n' +
+  '  CaseMaster(CaseMasterID, CrimeNo, CrimeRegisteredDate, PoliceStationID, ' +
+  'CaseCategoryID, GravityOffenceID, CrimeMajorHeadID, CrimeMinorHeadID, ' +
+  'CaseStatusID, CourtID, PolicePersonID, BriefFacts) — one row per case/FIR\n' +
+  '  Accused(AccusedMasterID, CaseMasterID, AccusedName, AgeYear, GenderID, PersonID)\n' +
+  '  Victim(VictimMasterID, CaseMasterID, VictimName, AgeYear, GenderID)\n' +
+  '  ComplainantDetails(ComplainantID, CaseMasterID, ComplainantName, AgeYear, GenderID)\n' +
+  '  ArrestSurrender(ArrestSurrenderID, CaseMasterID, AccusedMasterID, ' +
+  'ArrestSurrenderTypeID, ArrestSurrenderDate, ArrestSurrenderDistrictId)\n' +
+  '  ChargesheetDetails(CSID, CaseMasterID, csdate, cstype)\n' +
+  '  ActSectionAssociation(CaseMasterID, ActID, SectionID)\n' +
+  '  Masters: District, Unit, Employee, Rank, CrimeHead, CrimeSubHead, Court, ' +
+  'CaseStatusMaster, CaseCategory, GravityOffence — use lookup_reference for their ids.\n\n' +
+  'KEY IDS: CaseCategoryID 1=FIR. CaseStatusID 1=Under Investigation, ' +
+  '2=Charge Sheeted, 3=Pending Trial, 4=Convicted, 5=Acquitted, 6=Closed False, ' +
+  '7=Closed Undetected. CrimeMajorHeadID 1=Against Body, 2=Against Property, ' +
+  '3=Against Women, 4=Against Children, 5=Economic, 6=Cyber, 7=Narcotics, ' +
+  '8=Public Order, 9=Traffic, 10=Other. GravityOffenceID 1=Heinous.\n\n' +
+  'DISTRICTS: CaseMaster has NO district column. It has PoliceStationID, and ' +
+  'each station belongs to one district. To COUNT BY district, group by ' +
+  'PoliceStationID and pass rollup="district". To FILTER by one district, do ' +
+  'not give up — call join_records with base="CaseMaster" and ' +
+  'district="<name>", which resolves the stations for you.\n\n' +
+  'RELATING TWO TABLES: use join_records. It runs both queries and matches them ' +
+  'on CaseMasterID inside the function, so the ids never have to pass through ' +
+  'you. Do NOT try to do this by pasting a long IN list into query_records — the ' +
+  'list gets truncated and the answer comes out silently wrong.\n\n' +
+  'Data covers 2023-01-01 to 2026-06-30.\n\n';
+
 const TOOL_SYSTEM =
   'You are Sentinel Assistant, working for a Karnataka police officer. Answer ' +
   'the question by calling the tools available to you, then say what you found.\n\n' +
-  'The Data Store cannot join tables. When a question spans two of them, query ' +
-  'one, read the ids out of the result, and query the other with those ids in an ' +
-  'IN clause. Do not treat that as a failure — it is how this database works.\n\n' +
+  TOOL_SCHEMA_NOTE + +
   'Call tools in parallel when they do not depend on each other. Look up a ' +
   'reference id rather than guessing it. If a tool returns an error, read it and ' +
   'fix the call rather than repeating it.\n\n' +

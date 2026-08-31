@@ -26,3 +26,6 @@ catalyst-debug.log
 
 # one-time geocode resume cache (regenerate with ksp/geocode_stations.py)
 ksp/.geocode-cache.json
+
+# join.test.js scratch db
+ksp/.jointest.db

@@ -66,11 +66,18 @@ const DEFINITIONS = [
             'WHERE clause or is a bare aggregate.',
         },
         rollup: {
-          type: 'string',
-          enum: ['district'],
+          // 'null' is in the type union deliberately. Models emit "rollup": null
+          // for an optional field they do not want, and Groq validates tool
+          // arguments against this schema strictly: a bare 'string' type makes
+          // that whole request fail with a 400, losing the turn rather than the
+          // parameter. Accepting null costs nothing — only 'district' does
+          // anything downstream.
+          type: ['string', 'null'],
+          enum: ['district', null],
           description:
             'Set to "district" when grouping by PoliceStationID but the question ' +
-            'asks about districts — station counts are rolled up for you.',
+            'asks about districts — station counts are rolled up for you. Omit ' +
+            'it otherwise.',
         },
         purpose: {
           type: 'string',
@@ -119,6 +126,61 @@ const DEFINITIONS = [
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'join_records',
+    description:
+      'Relate two tables. Use this whenever a question spans a case AND something ' +
+      'attached to it — accused, victims, complainants, arrests, chargesheets, ' +
+      'sections — or filters cases by district.\n\n' +
+      'It runs both queries and matches them on CaseMasterID INSIDE the function, ' +
+      'so the ids never pass through you. That matters: doing this by hand with ' +
+      'query_records means pasting hundreds of ids into an IN clause, the list gets ' +
+      'truncated, and the count comes out silently wrong.\n\n' +
+      'Examples:\n' +
+      '  accused in cases still under investigation ->\n' +
+      '    base=CaseMaster, where="CaseMaster.CaseStatusID = 1", attach=Accused\n' +
+      '  victims of cases in Mysuru ->\n' +
+      '    base=CaseMaster, district="Mysuru", attach=Victim\n' +
+      '  FIRs registered in Bengaluru City ->\n' +
+      '    base=CaseMaster, district="Bengaluru City", where="CaseMaster.CaseCategoryID = 1"\n\n' +
+      'Set count_only when the question asks how many.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        base: {
+          type: 'string',
+          enum: ['CaseMaster'],
+          description: 'The table to start from. Always CaseMaster today.',
+        },
+        where: {
+          type: ['string', 'null'],
+          description:
+            'Optional filter on the base table, e.g. "CaseMaster.CaseStatusID = 1". '
+            + 'Same rules as query_records: one table, no joins, no subqueries.',
+        },
+        district: {
+          type: ['string', 'null'],
+          description:
+            'Optional district NAME to filter by. The stations in that district are '
+            + 'resolved for you — CaseMaster has no district column.',
+        },
+        attach: {
+          type: ['string', 'null'],
+          enum: ['Accused', 'Victim', 'ComplainantDetails', 'ArrestSurrender', 'ChargesheetDetails', 'ActSectionAssociation', null],
+          description: 'The related table to attach by CaseMasterID. Omit to return the cases themselves.',
+        },
+        attach_where: {
+          type: ['string', 'null'],
+          description: 'Optional filter on the attached table, e.g. "ArrestSurrender.ArrestSurrenderTypeID = 1".',
+        },
+        count_only: {
+          type: ['boolean', 'null'],
+          description: 'True when the question is "how many" — returns counts instead of rows.',
+        },
+      },
+      required: ['base'],
     },
   },
   {
@@ -212,6 +274,124 @@ function lookupReference({ kind, match }) {
  * failed" is a far better outcome than a silent empty answer, because the
  * model can then fix the query itself.
  */
+// ── Joining two tables ─────────────────────────────────────────────────────
+//
+// ZCQL has no JOINs, and the documented workaround — query one table, put the
+// ids into an IN clause on the other — cannot be left to the model. Measured on
+// real questions: asked for arrests in Crimes-Against-Women cases, the model
+// pulled 222 case ids, then wrote "IN (9,30)" because the list did not survive
+// its own output, and reported a confident count computed from two cases out of
+// 222. A silently wrong number on a police record is the worst failure mode
+// this assistant has.
+//
+// So the stitch happens here. The model states intent; the ids are read, paged
+// and matched inside the function, and never pass through the prompt.
+
+const JOINABLE = new Set(['Accused', 'Victim', 'ComplainantDetails', 'ArrestSurrender', 'ChargesheetDetails', 'ActSectionAssociation']);
+const PAGE = 300;   // the Data Store's per-query ceiling
+const MAX_IDS = 5000; // a bounded scan, not a table dump
+
+async function pageAll(app, sql, cap = MAX_IDS) {
+  const out = [];
+  for (let off = 0; off < cap; off += PAGE) {
+    // eslint-disable-next-line no-await-in-loop
+    const raw = await app.zcql().executeZCQLQuery(`${sql} LIMIT ${off}, ${PAGE}`);
+    const rows = zcql.flattenRows(raw || []);
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return out;
+}
+
+// A district name is not a column on CaseMaster; it reaches cases through
+// Unit.DistrictID -> PoliceStationID. masters.json already holds both maps, so
+// this resolves without touching the Data Store.
+function stationsInDistrict(name) {
+  const needle = String(name || '').trim().toLowerCase();
+  if (!needle) return null;
+  const districtId = Object.entries(masters.districts || {})
+    .find(([, dn]) => String(dn).toLowerCase() === needle
+      || String(dn).toLowerCase().includes(needle))?.[0];
+  if (!districtId) return { error: `No district named "${name}".` };
+  const stations = Object.entries(masters.units || {})
+    .filter(([, u]) => u && String(u.district) === String(districtId))
+    .map(([id]) => id);
+  return stations.length ? { districtId, stations } : { error: `No police stations listed for "${name}".` };
+}
+
+async function joinRecords(app, input, role) {
+  const { where, district, attach, attach_where: attachWhere, count_only: countOnly } = input || {};
+  if (attach && !JOINABLE.has(attach)) {
+    return { error: `Cannot attach "${attach}". Available: ${[...JOINABLE].join(', ')}.` };
+  }
+
+  // ── 1. the base rows ─────────────────────────────────────────────────────
+  const clauses = [];
+  if (where) {
+    // The same validator the direct path uses, on a synthetic statement, so a
+    // filter cannot smuggle in syntax the tool would otherwise never see.
+    const probe = zcql.validateZcql(`SELECT CaseMasterID FROM CaseMaster WHERE ${where}`);
+    if (!probe.ok) return { error: `Filter rejected: ${probe.error}`, hint: 'One table, no joins or subqueries.' };
+    clauses.push(`(${where})`);
+  }
+  if (district) {
+    const resolved = stationsInDistrict(district);
+    if (resolved.error) return { error: resolved.error };
+    clauses.push(`CaseMaster.PoliceStationID IN (${resolved.stations.join(',')})`);
+  }
+
+  let baseRows;
+  try {
+    baseRows = await pageAll(app,
+      `SELECT CaseMasterID, CrimeNo, CrimeRegisteredDate, PoliceStationID, CaseStatusID, CrimeMajorHeadID FROM CaseMaster`
+      + (clauses.length ? ` WHERE ${clauses.join(' AND ')}` : ''));
+  } catch (e) {
+    return { error: `Base query failed: ${(e && e.message) || e}` };
+  }
+  const ids = [...new Set(baseRows.map((r) => String(r.CaseMasterID)).filter(Boolean))];
+
+  if (!attach) {
+    const enriched = zcql.enrichRows(baseRows);
+    const filtered = redaction.filterRows(enriched, role);
+    return {
+      matched_cases: ids.length,
+      ...(countOnly ? {} : { rows: (filtered.rows || enriched).slice(0, MAX_ROWS) }),
+      ...(!countOnly && enriched.length > MAX_ROWS ? { note: `${enriched.length} cases matched, showing ${MAX_ROWS}.` } : {}),
+      _redactions: filtered.redactions || [],
+    };
+  }
+  if (!ids.length) return { matched_cases: 0, attached_count: 0, note: 'No cases matched the filter, so nothing to attach.' };
+
+  // ── 2. the attached rows ─────────────────────────────────────────────────
+  // Read the whole attached table under its own filter and match in memory.
+  // Chunking ids into IN clauses would mean one query per 200 ids; the tables
+  // here are small enough that one scan is both simpler and faster.
+  let attachRows;
+  try {
+    attachRows = await pageAll(app,
+      `SELECT * FROM ${attach}` + (attachWhere ? ` WHERE ${attachWhere}` : ''));
+  } catch (e) {
+    return { error: `Attached query failed: ${(e && e.message) || e}` };
+  }
+  const idSet = new Set(ids);
+  const hits = attachRows.filter((r) => idSet.has(String(r.CaseMasterID)));
+
+  const enriched = zcql.enrichRows(hits);
+  const filtered = redaction.filterRows(enriched, role);
+  const casesWithHit = new Set(hits.map((r) => String(r.CaseMasterID))).size;
+
+  return {
+    matched_cases: ids.length,
+    attached_table: attach,
+    attached_count: hits.length,
+    cases_with_a_match: casesWithHit,
+    ...(countOnly ? {} : { rows: (filtered.rows || enriched).slice(0, MAX_ROWS) }),
+    ...(!countOnly && hits.length > MAX_ROWS ? { note: `${hits.length} rows matched, showing ${MAX_ROWS}. The counts above are complete.` } : {}),
+    ...(filtered.redactions && filtered.redactions.length ? { withheld: redaction.describe(filtered.redactions) } : {}),
+    _redactions: filtered.redactions || [],
+  };
+}
+
 async function queryRecords(app, { zcql: statement, rollup }, role) {
   const verdict = zcql.validateZcql(String(statement || ''));
   if (!verdict.ok) {
@@ -281,6 +461,9 @@ async function run(name, input, deps) {
         return { found: true, text: f.text, _redactions: f.redactions || [] };
       }
 
+      case 'join_records':
+        return await joinRecords(app, input || {}, role);
+
       case 'traverse_network': {
         const res = await network.run(app, input || {});
         // Every shape this tool returns names people, so each list of people it
@@ -329,4 +512,6 @@ module.exports = {
   run,
   lookupReference,
   queryRecords,
+  joinRecords,
+  stationsInDistrict,
 };
