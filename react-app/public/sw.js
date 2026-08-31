@@ -42,6 +42,15 @@ const STATIC_EXTRA = [
 // cache.put — without this the map cannot render offline at all.
 const REFERENCE_HOSTS = ['map-data-development.zohostratus.in'];
 
+// The Crime Map is GATED on these four resolving, so caching them only on first
+// use meant the map worked offline solely for an officer who had happened to
+// open it while online. They are fetched at install instead, so the map is
+// available offline after any first visit to the app.
+const REFERENCE_BUCKET = 'https://map-data-development.zohostratus.in/';
+const REFERENCE_FILES = [
+  'policeHierarchy.js', 'crimeData2025.js', 'stateInfo.js', 'districtInfo.json',
+].map((f) => REFERENCE_BUCKET + f);
+
 // Personal-data surfaces. Listed for documentation and defence in depth; the
 // allowlist below already excludes them.
 const NEVER_CACHE = [/\/server\/rag\//, /api\.catalyst\./, /\/__catalyst\//, /accounts\.zoho\./];
@@ -68,12 +77,14 @@ async function precache() {
     /* offline at install — the runtime cache fills in as pages are used */
   }
   STATIC_EXTRA.forEach((f) => urls.add(BASE + f));
+  REFERENCE_FILES.forEach((u) => urls.add(u));
 
   // Individually, so one 404 cannot fail the whole install.
+  const reference = await caches.open(REFERENCE);
   await Promise.all(
     [...urls].map((u) =>
       fetch(u, { cache: 'no-cache' })
-        .then((r) => (r.ok ? cache.put(u, r) : null))
+        .then((r) => (r.ok ? (REFERENCE_FILES.includes(u) ? reference : cache).put(u, r) : null))
         .catch(() => null)
     )
   );
