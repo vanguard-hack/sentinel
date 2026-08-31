@@ -18,7 +18,7 @@ import {
 import { listReports } from '../utils/reportStudio';
 import { REPORT_TYPES } from '../data/reportTemplates';
 import { transcribeAudio } from '../utils/assistant';
-import { exportInvestigationDiaryPdf, exportInvestigationSummaryPdf } from '../utils/reportPdf';
+import { exportInvestigationDiaryPdf } from '../utils/reportPdf';
 import i18n from '../i18n';
 
 const fmtDate = (ts) => (ts ? new Date(ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
@@ -875,9 +875,8 @@ function FindingsTab({ rec, onAdd, onUpdate, onDelete }) {
   );
 }
 
-function SummaryTab({ caseMasterId, crimeNo }) {
+function SummaryTab({ caseMasterId }) {
   const [state, setState] = useState({ loading: false, summary: null, citations: [], error: null });
-  const [downloading, setDownloading] = useState(false);
   const [activeCite, setActiveCite] = useState(null);
 
   const generate = async () => {
@@ -888,18 +887,6 @@ function SummaryTab({ caseMasterId, crimeNo }) {
       setState({ loading: false, summary: d.summary, citations: d.citations || [], error: null });
     } catch (e) {
       setState({ loading: false, summary: null, citations: [], error: e.message });
-    }
-  };
-
-  const download = async () => {
-    if (!state.summary) return;
-    setDownloading(true);
-    try {
-      await exportInvestigationSummaryPdf(state.summary, state.citations, { crimeNo, caseMasterId });
-    } catch (e) {
-      setState((s) => ({ ...s, error: e.message }));
-    } finally {
-      setDownloading(false);
     }
   };
 
@@ -915,11 +902,6 @@ function SummaryTab({ caseMasterId, crimeNo }) {
         <button type="button" className="aa-btn primary" onClick={generate} disabled={state.loading}>
           <Sparkles size={15} /> {state.loading ? 'Drafting…' : 'Generate summary'}
         </button>
-        {state.summary && (
-          <button type="button" className="aa-btn" onClick={download} disabled={downloading}>
-            <FileDown size={14} /> {downloading ? 'Preparing…' : 'Download summary'}
-          </button>
-        )}
       </div>
       {state.error && <div className="aa-error"><AlertTriangle size={16} /> {state.error}</div>}
       {state.summary && (
@@ -1073,7 +1055,7 @@ export default function InvestigationCase() {
         {tab === 'timeline' && <TimelineTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab === 'findings' && <FindingsTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab === 'reports' && <ReportsTab caseMasterId={rec.caseMasterId} crimeNo={rec.crimeNo} />}
-        {tab === 'summary' && <SummaryTab caseMasterId={rec.caseMasterId} crimeNo={rec.crimeNo} />}
+        {tab === 'summary' && <SummaryTab caseMasterId={rec.caseMasterId} />}
       </div>
     </div>
   );

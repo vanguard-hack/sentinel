@@ -81,6 +81,17 @@ jobs:
         working-directory: react-app
         env:
           CI: false # CRA promotes warnings to errors under CI; the build is clean but noisy
+          # react-app/.env is gitignored, so these reach a local build but never
+          # reached CI — every deployed bundle baked in empty strings and the
+          # Crime Map's station panel showed "No image provider configured" for
+          # EVERY station, while working fine on the developer's machine.
+          #
+          # CRA inlines REACT_APP_* at build time, so a client-side key is public
+          # by construction; these are not secrets in the usual sense. Keep the
+          # Google key restricted by HTTP referrer in the Cloud console, and the
+          # Mapillary token scoped to reads.
+          REACT_APP_GOOGLE_MAPS_KEY: ${{ secrets.REACT_APP_GOOGLE_MAPS_KEY }}
+          REACT_APP_MAPILLARY_TOKEN: ${{ secrets.REACT_APP_MAPILLARY_TOKEN }}
         # `npm run build`, never `react-scripts build` directly: the postbuild
         # step copies index.html to 404.html, which is the SPA fallback Catalyst
         # serves for client routes. Without it a hard refresh on /app/personnel

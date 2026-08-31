@@ -159,7 +159,7 @@ function StationImage({ image, onOpen }) {
       />
     );
   }
-  return <div className="ps-img-none">{(image && image.note) || (err ? 'Image unavailable' : 'No street image nearby')}</div>;
+  return <div className="ps-img-none">{(image && image.note) || 'No street imagery available'}</div>;
 }
 
 export default function CrimeMap() {
@@ -272,9 +272,11 @@ export default function CrimeMap() {
           if (meta.status === 'OK') {
             return { url: `https://maps.googleapis.com/maps/api/streetview?size=640x400&location=${d.lat},${d.lng}&radius=150&fov=90&source=outdoor&key=${GOOGLE_KEY}` };
           }
-          if (meta.status !== 'ZERO_RESULTS') return { note: `Street View: ${meta.status}` };
+          // A provider fault is the operator's problem, not the officer's —
+          // they get one honest line either way, not an API status code.
+          if (meta.status !== 'ZERO_RESULTS') return { note: 'No street imagery available' };
           // ZERO_RESULTS → try Mapillary below
-        } catch { return { note: 'Street View request failed' }; }
+        } catch { return { note: 'No street imagery available' }; }
       }
       if (MAPILLARY_TOKEN) {
         try {
@@ -286,8 +288,7 @@ export default function CrimeMap() {
           if (j.data?.[0]?.thumb_1024_url) return { url: j.data[0].thumb_1024_url };
         } catch { /* fall through */ }
       }
-      if (!GOOGLE_KEY && !MAPILLARY_TOKEN) return { note: 'No image provider configured' };
-      return { note: 'No street image nearby' };
+      return { note: 'No street imagery available' };
     };
 
     // Click a station → populate the persistent left info panel. Address + image
@@ -299,12 +300,28 @@ export default function CrimeMap() {
       const same = (s) => s && s._k === k;
       setSelectedStation({ _k: k, name: p.name, code: p.code, dept: p.dept, kgis: p.kgis, lat, lng, image: marker._psImg, address: marker._psAddr });
 
+      // Addresses are baked into the station GeoJSON by ksp/geocode_stations.py,
+      // so the common path costs no network at all and the address is on screen
+      // the instant the panel opens.
+      //
+      // The live lookup below is only a fallback for a station the batch could
+      // not resolve. It must stay a fallback: Nominatim's public instance allows
+      // 1 request/second and forbids bulk use, so geocoding on every click would
+      // get the deployment's IP blocked once more than a handful of officers are
+      // using the map — and every address would then degrade to "—" for everyone.
+      // If that fallback ever starts carrying real traffic, re-run the script
+      // rather than letting it run hot.
       if (marker._psAddr === undefined) {
-        fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`)
-          .then((r) => r.json())
-          .then((j) => { marker._psAddr = j.display_name || '—'; })
-          .catch(() => { marker._psAddr = '—'; })
-          .finally(() => setSelectedStation((s) => (same(s) ? { ...s, address: marker._psAddr } : s)));
+        if (p.address) {
+          marker._psAddr = p.address;
+          setSelectedStation((s) => (same(s) ? { ...s, address: p.address } : s));
+        } else {
+          fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`)
+            .then((r) => r.json())
+            .then((j) => { marker._psAddr = j.display_name || '—'; })
+            .catch(() => { marker._psAddr = '—'; })
+            .finally(() => setSelectedStation((s) => (same(s) ? { ...s, address: marker._psAddr } : s)));
+        }
       }
       if (marker._psImg === undefined) {
         loadStationImage({ lat, lng }).then((res) => {
