@@ -14,6 +14,28 @@ const AuthContext = createContext(null);
 const REDIRECT_GUARD = 'sentinel_auth_redirected';
 const USER_CACHE_KEY  = 'sentinel_user';
 
+// navigator.onLine only reports whether a network INTERFACE exists — a machine
+// with Wi-Fi off but any VPN, virtual or ethernet adapter still says "online".
+// Trusting it meant an offline reload fell through to the sign-in redirect,
+// which cannot complete without a connection, leaving the app on its splash
+// screen forever. So reachability is measured, not assumed.
+//
+// The probe deliberately targets asset-manifest.json: the service worker does
+// not cache it, so this is a genuine round trip rather than a cache hit that
+// would report a dead connection as healthy.
+const canReachNetwork = async () => {
+  if (!navigator.onLine) return false; // definitely offline; skip the round trip
+  try {
+    await fetch(`${process.env.PUBLIC_URL}/asset-manifest.json?probe=${Date.now()}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3500),
+    });
+    return true;
+  } catch {
+    return false; // no route, DNS failure or timeout — treat as offline
+  }
+};
+
 const readCache  = () => { try { const s = localStorage.getItem(USER_CACHE_KEY); return s ? JSON.parse(s) : null; } catch { return null; } };
 const writeCache = (u)  => { try { localStorage.setItem(USER_CACHE_KEY, JSON.stringify(u)); } catch {} };
 const clearCache = ()   => { try { localStorage.removeItem(USER_CACHE_KEY); } catch {} };
@@ -50,15 +72,29 @@ export function AuthProvider({ children }) {
       // function, both of which are network-only and both of which re-check the
       // session server-side. Offline, those simply fail — so what this keeps
       // alive is the shell, the maps and the officer's own queued work.
-      if (!navigator.onLine) {
+      if (!(await canReachNetwork())) {
+        if (cancelled) return;
         const cachedOffline = readCache();
         if (cachedOffline) setUser(cachedOffline);
         setLoading(false);
         return;
       }
 
+      if (cancelled) return;
+
       if (!sessionStorage.getItem(REDIRECT_GUARD)) {
         sessionStorage.setItem(REDIRECT_GUARD, '1');
+        // The redirect navigates away, so the splash below is correct — until
+        // it isn't. If the connection dies between the probe and this call the
+        // navigation never happens, and without this the officer is left on
+        // "Verifying credentials…" with no way forward. Whatever happens, the
+        // app resolves.
+        setTimeout(() => {
+          if (cancelled) return;
+          const late = readCache();
+          if (late) setUser(late);
+          setLoading(false);
+        }, 6000);
         catalystSignIn();
         return;
       }
