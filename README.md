@@ -166,6 +166,8 @@ Five analytical surfaces under one page:
 All outputs are advisory, cited and guardrail-bound: protected attributes (religion, caste,
 gender) are excluded from every risk model.
 
+![AI Analytics — Temporal patterns](docs/screenshots/11-ai-analytics-patterns.png)
+
 ![AI Analytics — Forecasts](docs/screenshots/04-ai-analytics-forecasts.png)
 
 ![AI Analytics — Case Linkage](docs/screenshots/05-ai-analytics-case-linkage.png)
@@ -214,8 +216,6 @@ for images, Zia speech-to-text for audio, in-browser extraction for office forma
 structuring pass, and files the result as a searchable record linked to a case. Large recordings
 upload **directly** to object storage through a short-lived pre-signed PUT rather than through
 the function. The original file is always kept alongside the text it produced.
-
-![Records](docs/screenshots/11-records.png)
 
 ### 🔒 Inmate Registry (Custody & Corrections)
 
