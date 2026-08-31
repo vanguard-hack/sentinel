@@ -50,12 +50,10 @@ feature — including the **Access & Audit** console and role management — is 
 14. [Build & Deploy](#build--deploy)
 15. [Testing](#testing)
 16. [Documentation](#documentation)
-17. [Forking & Extending](#forking--extending)
-18. [Roles & Access](#roles--access)
-19. [Security & Compliance](#security--compliance)
-20. [Troubleshooting](#troubleshooting)
-21. [Future Scope](#future-scope)
-22. [Team & Disclaimer](#team--disclaimer)
+17. [Roles & Access](#roles--access)
+18. [Security & Compliance](#security--compliance)
+19. [Future Scope](#future-scope)
+20. [Team](#team)
 
 ---
 
@@ -1379,34 +1377,9 @@ no separate docs site, wiki or handbook to fall out of date.
 | Every endpoint | [REST API Reference](#rest-api-reference) |
 | Standing it up yourself | [Prerequisites](#prerequisites) → [Setup & Installation](#setup--installation) → [Running Locally](#running-locally) → [Build & Deploy](#build--deploy) |
 | What is tested, and what isn't | [Testing](#testing) |
-| Working on the codebase | [Forking & Extending](#forking--extending) |
+| Who can see what | [Roles & Access](#roles--access) · [Security & Compliance](#security--compliance) |
 | Which screenshot goes where | [Screenshot file manifest](#screenshot-file-manifest) |
-| When something breaks | [Troubleshooting](#troubleshooting) · [Gotchas that will cost you a day](#gotchas-that-will-cost-you-a-day) |
-
-### Reference files kept outside this README
-
-Three things are too long or too machine-oriented to inline, and stay as files:
-
-| File | What it covers |
-| --- | --- |
-| **[`ksp/fir/import/SCHEMA.md`](ksp/fir/import/SCHEMA.md)** | Every column, type and length across all 26 FIR tables. **Required** to recreate the Data Store — Catalyst cannot auto-create tables. |
-| **[`ksp/README.md`](ksp/README.md)** + **[`ksp/import/SCHEMA.md`](ksp/import/SCHEMA.md)** | The earlier flat dataset, its tables and row counts. |
-| **[`.github/workflows/ci.yml`](.github/workflows/ci.yml)** | Heavily commented. It is the best single explanation of the deployment failure modes, because each guard names the failure it exists to catch. |
-
-### In the code
-
-The most useful documentation in this project is not in Markdown. Nearly every non-obvious
-decision carries a comment explaining *the failure that motivated it* — which makes the source
-readable in a way a separate design document would not be. The densest and most worth reading:
-
-| File | What its comments explain |
-| --- | --- |
-| [`functions/rag/index.js`](functions/rag/index.js) | The router gate and why it belongs to the router rather than each handler; the fail-open/fail-closed split between navigation and disclosure; why the audit routes are named the way they are; why media bodies are hex-encoded. |
-| [`functions/rag/memory.js`](functions/rag/memory.js) | Why officer memory needs three stores; the exact console resources to create; the `cache.segment()` trap. |
-| [`functions/rag/tools.js`](functions/rag/tools.js) | How to write a tool description *for a model* — including stating what the tool cannot do. |
-| [`functions/rag/zcql.js`](functions/rag/zcql.js) + [`validator.test.js`](functions/rag/validator.test.js) | Why the ZCQL validator is adversarial and must fail closed — each test case is something an injected prompt might realistically emit. |
-| [`react-app/src/utils/access.js`](react-app/src/utils/access.js) | The feature→role registry and why `admin` comes from Catalyst rather than the app. |
-| [`react-app/src/utils/financial.js`](react-app/src/utils/financial.js), [`custody.js`](react-app/src/utils/custody.js) | Exactly which data is synthesised and what real deployment would require instead. |
+| Where the project goes next | [Future Scope](#future-scope) |
 
 ### Diagrams
 
@@ -1423,323 +1396,6 @@ readable in a way a separate design document would not be. The densest and most 
 The Mermaid diagrams are the source of truth: they live in version control and change with the
 code in the same commit. The Lucidchart documents are for slides and export — re-export them when
 the Mermaid changes.
-
----
-
-## Forking & Extending
-
-Everything below is for someone who has cloned this repository and wants to stand it up,
-understand how it is put together, and change it — whether to enhance the product or to reuse it
-as the base for something else.
-
-### Before you start
-
-**Know what you are forking.** Sentinel is a working prototype built for a hackathon submission,
-running on synthetic data. It is well-structured and tested, but it is not a production police
-system: it has never handled a real FIR, never been security-audited by a third party, and never
-been assessed for DPDP compliance. If your goal is a deployment against real citizen data, treat
-this as a starting architecture, not a finished product — and read
-[Security & Compliance](#security--compliance) and
-[Known limitations today](#known-limitations-today) first.
-
-**Know what it is coupled to.** Sentinel is deliberately built *out of* Zoho Catalyst rather than
-merely hosted on it — eleven platform services are in the critical path. Porting it off Catalyst
-is a real project, not a config change; see
-[Reusing this for something else](#reusing-this-for-something-else).
-
-### The 30-minute mental model
-
-If you read four files, read these:
-
-| File | Why |
-| --- | --- |
-| [`react-app/src/App.tsx`](react-app/src/App.tsx) | The whole route table. Every screen in the product is one line here, wrapped in a `guarded(...)` call. |
-| [`react-app/src/utils/access.js`](react-app/src/utils/access.js) | The single source of truth for who can see what. The sidebar, the router guard and the server all read this shape. |
-| [`functions/rag/index.js`](functions/rag/index.js) | The entire backend. The `module.exports` handler at the bottom is the router; everything above it is handlers and the assistant's lanes. |
-| [`react-app/src/utils/datastore.js`](react-app/src/utils/datastore.js) | How the browser talks to the Data Store directly, and the shape rows come back in. |
-
-**The one structural idea.** There are two paths to data, and knowing which one you are on
-answers most questions:
-
-- **Read path** — the browser runs ZCQL against the Data Store itself, using the signed-in user's
-  Catalyst session. No function involved. This is why dashboards are fast and why there is no
-  backend code behind the Crime Map.
-- **Write / AI path** — everything that writes, calls a model, touches media, renders a PDF or
-  reads the audit trail goes through the single `rag` function. That function is the only place
-  credentials exist and the only place role checks are authoritative.
-
-If you are adding a feature, decide which path it is on **first**. A read-only analytics view
-belongs in `utils/` querying ZCQL directly. Anything that persists, costs money per call, or must
-not be forgeable belongs behind the function.
-
-### The minimum viable clone
-
-The full install is in [Setup & Installation](#setup--installation). If you only want to see it
-run and don't need every feature, you can skip a lot — here is what each provisioned service
-actually buys you, in rough order of value per unit of setup effort:
-
-| Provision | Unlocks | Skippable? |
-| --- | --- | --- |
-| Web Hosting + Data Store + the 26 tables | Dashboard, Crime Map, Case Files, AI Analytics, Inmate Registry — most of the product | **No.** This is the floor. |
-| Stratus bucket | Investigation Diary, Report Studio, Records, audit trail, profiles | No, if you want anything that writes |
-| `GROQ_API_KEY` | The assistant's routing, chat and ZCQL lanes | No, if you want the assistant |
-| `ANTHROPIC_API_KEY` | The tool loop (the best assistant lane) | Yes — it falls back to the older lanes |
-| QuickML KB | Legal/procedural answers, semantic memory recall | Yes — the RAG lane degrades, doesn't fail |
-| Zia | Voice input, OCR, scan digitisation | Yes — those features simply don't work |
-| SmartBrowz | Server-side report PDFs | Yes — client-side jsPDF export still works |
-| Cache + NoSQL | Assistant memory across turns and sessions | Yes — behaves as it did before memory existed |
-
-Everything in the "Yes" rows degrades deliberately rather than erroring. That is a design
-property worth preserving if you extend it.
-
-### What you must provision by hand
-
-Four things **cannot be created from code** on Catalyst, and every fresh environment needs them
-done manually in the console. This is the single biggest friction point in replicating the
-project, so it is worth stating plainly:
-
-| Resource | Why it can't be scripted |
-| --- | --- |
-| **Data Store tables** | No auto-create on import, and no CLI for schema creation. All 26 must exist before `ds:import` runs. |
-| **Stratus bucket + permissions** | Bucket creation and the resource-access policy are console operations. |
-| **Cache segments** | Console-only. Note that `cache.segment(name)` does *not* resolve a segment by name — the SDK `parseInt`s the argument, so a name silently resolves to the **default** segment. The code looks the segment up by name via `getAllSegment()` first; keep that if you touch it. |
-| **NoSQL tables** | Console-only, including their partition/sort keys and TTL attribute. |
-
-If you are standing up more than one environment, budget an hour for this each time.
-
-### Running costs
-
-Rough shape, for a fork running on the free/entry tiers:
-
-- **Catalyst** — the free tier covers development comfortably at this data volume.
-- **LLM** — by far the dominant variable cost. Groq is cheap; Claude is not. The provider chain
-  exists partly for this reason: `LLM_PROVIDER_ORDER=groq,claude` puts the cheap, fast provider
-  first and only reaches Claude on failure or for the tool loop. Set
-  `CLAUDE_MODEL_FAST=claude-haiku-4-5` to cut the cost of the cheap calls that currently use the
-  main model.
-- **Zia and SmartBrowz** — per-call. This is why they sit behind `METERED_ROUTES` with a separate,
-  tighter rate limit.
-
-A phased cost model for an actual statewide deployment (pilot → regional → statewide) exists in
-the submission pack rather than in this repository.
-
-### Recipes — how to make common changes
-
-#### Add a new page / module
-
-Five files, always in this order:
-
-1. **`react-app/src/pages/YourPage.js`** — the screen itself.
-2. **[`react-app/src/utils/access.js`](react-app/src/utils/access.js)** — add an entry to
-   `FEATURES` with a `key`, `label`, `path` and the roles allowed. *Do this even for a page
-   everyone can see* — a path that matches no feature is open to every signed-in user, which is
-   fine by design but means the page will not appear in the audit trail's feature column with a
-   proper name.
-3. **[`react-app/src/App.tsx`](react-app/src/App.tsx)** — one `<Route>` wrapped in
-   `guarded('yourKey', <YourPage />)`.
-4. **[`react-app/src/components/Sidebar.js`](react-app/src/components/Sidebar.js)** — one entry in
-   the nav array (`to`, `Icon`, `key`). The sidebar hides what the router blocks automatically;
-   you don't write that logic.
-5. **[`react-app/src/utils/searchIndex.js`](react-app/src/utils/searchIndex.js)** — one or more
-   entries so global search can find it. Add deep-linkable sub-sections here too (this is how
-   `/ai-analytics?tab=financial` is reachable from search).
-
-Then add translations under `react-app/src/locales/{en,hi,kn}/translation.json`.
-
-#### Add a backend endpoint
-
-1. Write `async function handleThing(req, res, action)` in
-   [`functions/rag/index.js`](functions/rag/index.js).
-2. Register it in the router at the bottom:
-   `if (path.endsWith('/thing')) return await handleThing(req, res);`
-
-That's it — the gate is in the router, ahead of every route, so your endpoint is behind the IP
-blocklist, session check and rate limiter by default. **Do not add your own session check**, and
-do not register your route above the gate.
-
-Two things to get right:
-
-- **If it costs money per call** (a model, Zia, SmartBrowz), add its path to the `METERED_ROUTES`
-  regex so it gets the tighter rate limit.
-- **If it writes or discloses**, emit an audit event via `storeAuditEvents`.
-
-`apigate.test.js` counts the registered routes and will fail if the count drifts past what the
-gate covers — that is intentional. Update the expected count in the same commit, which forces you
-to have looked at where your route sits.
-
-#### Add an assistant tool
-
-[`functions/rag/tools.js`](functions/rag/tools.js) — two places:
-
-1. An entry in `DEFINITIONS` with `name`, `description` and `input_schema`. **Write the
-   description for the model, not for a human.** The existing ones state what the tool *cannot*
-   do, because the model will otherwise try it and get a validator rejection back —
-   `query_records` explicitly says joins are rejected and tells the model to use an `IN` clause
-   instead.
-2. A `case` in the `switch` inside `run()`.
-
-Every tool result **must** pass through the clearance filter before it reaches a prompt.
-`tools.test.js` asserts this; don't route around it.
-
-#### Add or change a Data Store table
-
-1. Create the table in the console (there is no other way).
-2. Update [`ksp/fir/import/SCHEMA.md`](ksp/fir/import/SCHEMA.md) so the next person can recreate it.
-3. Add a `ds:import` config under [`ksp/fir/import/configs/`](ksp/fir/import/configs/).
-4. If the assistant should be able to query it, add it to the ZCQL prompt context in
-   [`functions/rag/zcql.js`](functions/rag/zcql.js), and — if it's a master/lookup table — add a
-   snapshot to [`functions/rag/masters.json`](functions/rag/masters.json) so results can be
-   enriched with names in code rather than a second query.
-5. If it should appear in Case Files, add it to `TABLE_GROUPS` in
-   [`react-app/src/utils/datastore.js`](react-app/src/utils/datastore.js).
-
-Remember the constraint that shapes everything downstream: **ZCQL is single-table.** There are no
-joins. Relating two tables means querying the first, reading the ids, and querying the second with
-an `IN` clause. The client-side data layers in `utils/` all do this; follow the pattern in
-[`utils/incidents.js`](react-app/src/utils/incidents.js) or
-[`utils/personnel.js`](react-app/src/utils/personnel.js).
-
-#### Add a report template
-
-[`react-app/src/data/reportTemplates.js`](react-app/src/data/reportTemplates.js) — add an entry to
-`REPORT_TYPES`. Each template is a declarative page structure: `title`, `subtitle`, and a tree of
-fields with `id`s. The paged A4 editor renders it directly; you do not write a component. Match
-the existing IIF-derived templates for field naming so exports stay consistent.
-
-#### Add a language
-
-1. `react-app/src/locales/<code>/translation.json` — copy the `en` file and translate.
-2. Register the code in [`react-app/src/i18n.js`](react-app/src/i18n.js).
-3. Add it to `SUPPORTED_LANGS` in [`functions/rag/index.js`](functions/rag/index.js) so the
-   assistant will answer in it.
-
-Routing, ZCQL and RAG all work in English internally; the officer's language is carried through
-and applied to the answer at the very end. You do not need to translate any prompt.
-
-#### Swap or add an LLM provider
-
-The provider chain is in [`functions/rag/index.js`](functions/rag/index.js): `callGroq`,
-`callClaude`, and `callLLM` which walks `PROVIDER_ORDER`. To add a third, write a `callX` with the
-same signature and add it to the dispatch in `callLLM`. Keep the two-tier `main` / `fast` model
-split — a lot of calls in this codebase deliberately use the cheap model.
-
-Watch the reasoning-token trap: `gpt-oss` models spend reasoning tokens from `max_tokens`, so too
-low a budget returns an empty reply rather than an error. `callGroq` handles this per model
-family; a new provider needs the same care.
-
-#### Replace the synthetic dataset with real data
-
-This is the big one, and the schema was chosen to make it tractable. The 26 tables are
-CCTNS-aligned, so the work is a **field-mapping and sync-connector exercise**, not a
-re-architecture:
-
-1. Map your CCTNS/ICJS fields onto the tables in
-   [`ksp/fir/import/SCHEMA.md`](ksp/fir/import/SCHEMA.md).
-2. Build a sync connector into the Data Store (a scheduled Catalyst function is the natural home).
-3. Decide what `Accused.PersonID` maps to. **This matters more than anything else in the schema** —
-   it is a *global* offender identity, and the co-offending network, case linkage and the entire
-   custody registry are built on the assumption that the same person carries the same id across
-   every case. If your source data only has per-case accused ids, you need an entity-resolution
-   step first, and until you have one those three features will not work.
-4. Delete the synthesis paths that exist only because the demo data lacks them — the transaction
-   trails in [`utils/financial.js`](react-app/src/utils/financial.js) and the correctional facts
-   in [`utils/custody.js`](react-app/src/utils/custody.js). Both are clearly marked in their file
-   headers. **Do not ship them against real data**; they will fabricate records that look real.
-
-### Conventions this codebase follows
-
-Match these and your change will look like it belongs:
-
-- **Comments explain *why*, not *what*.** Nearly every non-obvious decision in this codebase has a
-  comment above it explaining the failure that motivated it. If you fix a bug that was hard to
-  find, leave the reason behind — that is the house style, and it is why the gotchas below are
-  documented at all.
-- **Fail open for navigation, fail closed for disclosure.** `myRole()` falls back to the
-  least-privileged field role so a cold function start never locks a user out of the UI. The
-  clearance filter deliberately does *not* reuse that fallback — an identity lookup that fails
-  there redacts *more*, not less. Keep that distinction.
-- **Degrade, don't error.** Every optional platform resource is treated as possibly absent. Follow
-  the pattern in [`memory.js`](functions/rag/memory.js): reads return empty, writes return
-  `false`, and the feature behaves as though it was never built.
-- **One exit path.** Every assistant answer leaves through a single function that applies
-  attribution, the clearance filter, tier-2 redaction and the audit record. Don't add a second
-  return path that skips it.
-- **Say what is true.** Where the product shows synthesised data, the code says so in the file
-  header and the UI says so to the officer. Attachment chips state plainly whether the assistant
-  can actually read the file. Keep this.
-- **Tests are behaviour-led.** They are named as sentences describing the rule being held
-  (`'a place name containing "before" is not a recall question'`). There is no coverage gate.
-
-### Gotchas that will cost you a day
-
-Every one of these was found the hard way. [Troubleshooting](#troubleshooting) has the full list;
-these are the ones most likely to bite someone *extending* the project:
-
-| | |
-| --- | --- |
-| **The Catalyst CLI can print a fatal error and exit `0`.** | A deploy has shipped nothing and reported success. Never trust the exit code — assert against the live site. CI greps the deploy log for `✖` and `cannot be empty` for exactly this reason. |
-| **Deploying with an `env_variables` map overwrites the console's secrets.** | Ship the template's placeholders and you replace real keys with the literal string `<groq-api-key>`. CI strips the key from the generated config so the console wins. |
-| **`cache.segment(name)` silently writes to the wrong segment.** | The SDK `parseInt`s the argument, so a name resolves to the default segment. Look the id up via `getAllSegment()` first. |
-| **Cache TTLs are in whole hours.** | The API cannot express "45 minutes". |
-| **`/audit/log` is blocked by ad blockers.** | The audit routes are deliberately named `/access/record` and `/access/records`. If you add an audit-adjacent route, avoid the obvious word — the fetch dies silently in the browser with no error you can catch. |
-| **Binary request bodies trip the gateway's resource-access scanner.** | On cookie-authenticated calls, raw binary and base64-in-JSON get 403'd. Media uploads hex-encode the body; the profile photo goes as a raw octet-stream. Neither is arbitrary — copy whichever pattern matches your case, and prefer a pre-signed Stratus PUT for anything large. |
-| **`react-scripts build` directly will break SPA routing.** | Use `npm run build`. The `postbuild` step copies `index.html` → `404.html`, which is the fallback Catalyst serves for client routes. |
-| **The CLI ignores `.catalystrc` when `CI=true`.** | Pass `CATALYST_PROJECT_ID`, `CATALYST_ORG` and `CATALYST_ACTIVE_DC=in` explicitly. Without the DC it defaults to the US and fails with a bare "Authentication failure". |
-| **`ds:import` prompts for a bucket unless you pass `--config`,** | and staged object keys must have **no leading slash**. |
-
-### Testing your change
-
-Commands are in [Testing](#testing). Two things specific to extending:
-
-- If you **add an endpoint**, `apigate.test.js` will fail on the route count until you update it.
-  That is the test doing its job — it exists so a new route cannot quietly land outside the
-  security gate.
-- If you **add a tool**, `tools.test.js` will check it declares a schema with required inputs and
-  that its results pass the clearance filter.
-
-Adding a test is cheap here: the backend suites are plain Node files with a local
-`check(name, cond)` helper and no dependencies. Copy the top of any existing suite.
-
-### Reusing this for something else
-
-The pieces most worth lifting, roughly in order of how transferable they are:
-
-| Piece | Transferability |
-| --- | --- |
-| **The router-gate pattern** ([`index.js`](functions/rag/index.js)) — one IP/session/rate gate ahead of every route, so a new endpoint is protected by default rather than by remembering | Very high. Framework-agnostic idea, ~40 lines. |
-| **The two-tier clearance filter** ([`redaction.js`](functions/rag/redaction.js)) — filter the prompt context, then guard the generated answer for anything the model inferred rather than copied | Very high. Applies to any RAG system with per-user data visibility. |
-| **The unified citation contract** ([`sources.js`](functions/rag/sources.js)) — one source shape for database rows, retrieved passages and uploaded documents, with a single exit that attaches them | High. |
-| **The ZCQL validator** ([`zcql.js`](functions/rag/zcql.js)) — adversarial, fail-closed validation of model-generated queries | High, if your store speaks SQL-ish. |
-| **The three-tier memory design** ([`memory.js`](functions/rag/memory.js)) — cache for the live buffer, durable KV for facts, vector KB for semantic recall | High, though the implementation is Catalyst-specific. |
-| **The dataset generators** ([`ksp/fir/`](ksp/fir/)) — synthetic FIR data with *planted, detectable structure* rather than noise | High for anyone needing realistic law-enforcement test data. |
-| **The React app** | Low. Tightly coupled to the CCTNS schema and the Catalyst Web SDK. |
-
-**Porting off Catalyst** is not a config change. You would need to replace: Web Hosting (any
-static host), Advanced I/O Functions (any Node runtime), Data Store + ZCQL (Postgres — and you'd
-*gain* joins, which would let you delete a lot of client-side stitching), Stratus (S3), Auth (any
-OIDC provider), Cache (Redis), NoSQL (DynamoDB), Zia (a vision/speech provider), SmartBrowz
-(Playwright or Puppeteer), and QuickML (any vector store). The browser-side ZCQL read path would
-have to become an API, since you cannot expose Postgres to a browser — that is the largest single
-change, and it would touch every file in `utils/`.
-
-### Licensing and attribution
-
-> ⚠️ **There is currently no `LICENSE` file in this repository.** Without one, default copyright
-> applies and others have no granted right to use, modify or redistribute the code. If you own
-> this repository and intend it to be open source, add a licence file — MIT or Apache-2.0 are the
-> usual choices for a project like this, with Apache-2.0 preferred if patent grants matter to you.
-> If you have forked it, resolve the licensing question with the authors before publishing
-> anything derived from it.
-
-Two further things to carry forward if you build on this:
-
-- **The dataset is synthetic and must stay labelled as such.** If you publish screenshots, demos
-  or figures derived from `ksp/`, say so. Data that looks like real FIR records and is not
-  labelled will eventually be mistaken for real FIR records.
-- **The AI guardrails are not decoration.** Protected attributes (religion, caste, gender) are
-  excluded from every risk model, outputs are advisory and cited, and a human stays in the loop.
-  If you extend the analytics, keep those properties — they are the difference between a
-  decision-support tool and something that should not exist.
 
 ---
 
@@ -1802,25 +1458,6 @@ which is the single source of truth.
 
 ---
 
-## Troubleshooting
-
-| Symptom | Cause & fix |
-| --- | --- |
-| **"request denied by resource access policy"** on save | The Stratus bucket lacks `PutObject` for authenticated users. Add it under Bucket Permissions. |
-| **Hard refresh shows a Catalyst 404** | `postbuild` did not run. Use `npm run build`, never `react-scripts build` — the SPA fallback is `build/404.html`. |
-| **Assistant returns 500** | Check `functions/rag/catalyst-config.json` and that the refresh token is still valid; `scripts/rotate-rag-token.sh` renews it. |
-| **Assistant answers but has no data / no knowledge base** | `POST /server/rag/health` — if `groq` or `rag` is `false`, a deploy carrying `env_variables` overwrote the console secrets. |
-| **Deploy reports success but nothing changed** | Compare the live `main.<hash>.js` against what you built. The CLI can exit `0` after a fatal error. |
-| **CLI: bare "Authentication failure"** | Wrong data centre. Set `CATALYST_ACTIVE_DC=in` — this project is on the India DC. |
-| **CLI: "Org and Project Id cannot be empty"** | The CLI ignores `.catalystrc` when `CI=true`; pass `CATALYST_PROJECT_ID` and `CATALYST_ORG` explicitly. |
-| **`ds:import` fails or hangs on a prompt** | Tables must be pre-created; CSVs must be staged in Stratus with **no leading slash** in the key; pass `--config` to keep it non-interactive. |
-| **OCR: "wrong request body or parameters"** | The function must stage the image to a temp file and hand Zia a file *stream*, not a raw buffer. |
-| **Audit calls silently fail in the browser** | An ad blocker matched the URL. The routes are deliberately named `/access/record` and `/access/records` rather than `/audit/log` for this reason. |
-| **`npm install` fails on peer deps** | Use `npm install --legacy-peer-deps` in `react-app/`. |
-| **Memory features do nothing** | The Cache segment and NoSQL tables are console-only and are probably absent. See step 7 of Setup. |
-
----
-
 ## Future Scope
 
 Sentinel is deliberately positioned as an **analytics and AI layer on top of existing
@@ -1858,24 +1495,9 @@ CCTNS/BNSS infrastructure**, not a replacement for it. That framing shapes every
 | **Explainability surface for court use** | Every AI output is already cited and audited. The next step is a defensible, exportable explanation of *why* a linkage or risk score was produced, suitable for disclosure to a court. |
 | **Open API for authorised agencies** | A governed, rate-limited, fully audited API so other authorised agencies can query aggregate intelligence without direct database access. |
 
-### Known limitations today
-
-Stated plainly, because they bound everything above:
-
-- The dataset is **synthetic**. Model accuracy figures (case linkage AUC ≈ 0.87, for instance) are
-  measured against planted series, not real crime.
-- The ZCQL lane is **single-table only** — no joins. Relating two tables means two queries, which
-  the tool loop handles but which costs latency on complex questions.
-- **Financial transactions and correctional records are synthesised**, not sourced. Both need real
-  authorised feeds before they mean anything operationally.
-- **Cache segments and NoSQL tables cannot be provisioned from code**, so memory setup is a manual
-  console step on any new environment.
-- The platform is **decision-support only**. Nothing in it should be, or currently is, capable of
-  taking an action against a person without an officer's judgement in between.
-
 ---
 
-## Team & Disclaimer
+## Team
 
 **Built for the Karnataka State Police datathon by:**
 
@@ -1887,9 +1509,3 @@ Stated plainly, because they bound everything above:
 **Repository:** <https://github.com/vanguard-hack/sentinel>
 **Live app:** <https://sentinel-60073599957.development.catalystserverless.in/app/index.html>
 
----
-
-> **Disclaimer.** Sentinel runs on a **synthetic** dataset for demonstration and evaluation. It is
-> a decision-support tool: every AI output is advisory, cited, and must be verified by an officer
-> before it is acted on. Production deployment against real citizen data requires legal sign-off —
-> DPDP Act compliance, evidence-handling review, and departmental approval.
