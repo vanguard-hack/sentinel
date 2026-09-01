@@ -36,16 +36,28 @@ const FAKES = {
   GROQ_API_KEY: 'gsk_LEAKCANARY_groq',
   ANTHROPIC_API_KEY: 'sk-ant-LEAKCANARY',
   RAG_REFRESH_TOKEN: '1000.LEAKCANARY.rag',
+  BHASHINI_USER_ID: 'ulca-LEAKCANARY-user',
+  BHASHINI_API_KEY: 'ulca-LEAKCANARY-key',
 };
 const payloadStart = healthBlock.indexOf('{', healthBlock.indexOf('json(res, 200,'));
 const payloadSrc = healthBlock.slice(payloadStart, healthBlock.indexOf('});', payloadStart) + 1);
 // eslint-disable-next-line no-new-func
-const emitted = new Function('process', 'PROVIDER_ORDER', `return (${payloadSrc});`)(
-  { env: FAKES }, ['groq', 'claude']
+// Every module the payload reads from has to be injected here, and that is a
+// feature: a new `something.secret()` in the health response fails this test
+// loudly rather than shipping. The stub returns a BOOLEAN, which is the whole
+// contract — reporting that a provider is configured is useful to us and
+// useless to an attacker; reporting the key would be the reverse.
+const emitted = new Function('process', 'PROVIDER_ORDER', 'bhashini', `return (${payloadSrc});`)(
+  { env: FAKES },
+  ['groq', 'claude'],
+  { available: () => !!(FAKES.BHASHINI_USER_ID && FAKES.BHASHINI_API_KEY) },
 );
 const asJson = JSON.stringify(emitted);
 check('the health route reports which providers are configured',
   emitted.providers.groq === true && emitted.providers.claude === true && emitted.rag === true);
+check('  including the optional language provider',
+  emitted.bhashini === true,
+  'a deploy that cleared the ULCA keys would otherwise downgrade Kannada silently');
 check('no secret value survives into the health payload',
   !/LEAKCANARY/.test(asJson));
 check('the health payload carries no free-text field a value could hide in',
