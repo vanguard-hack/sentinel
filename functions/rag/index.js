@@ -2361,9 +2361,8 @@ async function buildActionQueue(bucket, { email, name }) {
   // Settled cases carry no live obligation, so they are dropped before the
   // record fetch rather than after — the cap should be spent on cases that can
   // still produce an alert.
-  const live = index
-    .filter((c) => !['Chargesheet Filed', 'Closed'].includes(String(c.status)))
-    .slice(0, ACTION_QUEUE_CASE_CAP);
+  const openCases = index.filter((c) => !['Chargesheet Filed', 'Closed'].includes(String(c.status)));
+  const live = openCases.slice(0, ACTION_QUEUE_CASE_CAP);
 
   const records = await Promise.all(
     live.map(async (c) => {
@@ -2384,19 +2383,21 @@ async function buildActionQueue(bucket, { email, name }) {
   // anything — an investigator who can open the diary can already see these
   // cases, and silently hiding a custody clock because a name did not match
   // would be the worst possible failure of this feature.
+  // Both sides must be non-empty before they can match. Without that guard an
+  // officer whose email failed to resolve would compare '' against a record
+  // with no createdBy, match every one of them, and see the entire station's
+  // caseload under "Mine".
+  const mineByEmail = (r) => !!email && String(r.createdBy || '').toLowerCase() === email;
+  const mineByName = (r) => !!name && String(r.ioName || '').toLowerCase() === name.toLowerCase();
   const ownership = new Map(
-    records.filter(Boolean).map((r) => [
-      r.caseMasterId,
-      String(r.createdBy || '').toLowerCase() === email
-        || (!!name && String(r.ioName || '').toLowerCase() === name.toLowerCase()),
-    ]),
+    records.filter(Boolean).map((r) => [r.caseMasterId, mineByEmail(r) || mineByName(r)]),
   );
 
   return {
     obligations: queue.obligations.map((o) => ({ ...o, mine: ownership.get(o.caseMasterId) === true })),
     counts: queue.counts,
     scanned: records.filter(Boolean).length,
-    capped: index.filter((c) => !['Chargesheet Filed', 'Closed'].includes(String(c.status))).length > ACTION_QUEUE_CASE_CAP,
+    capped: openCases.length > ACTION_QUEUE_CASE_CAP,
     generatedAt: Date.now(),
   };
 }

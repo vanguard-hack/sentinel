@@ -112,15 +112,23 @@ export default function ActionQueue() {
       <TopBar title="Action Queue" subtitle="What breaks first, across every open case" />
 
       {/* ── Headline ────────────────────────────────────────────────────── */}
-      <div className={`aq-head ${counts.overdue ? 'overdue' : counts.critical ? 'critical' : 'calm'}`}>
+      {/* The verdict waits for data. Rendering it from an empty list means the
+          page announces "Nothing needs action today" for as long as the fetch
+          takes and then contradicts itself — an all-clear is the one message
+          that must never appear before it has been earned. */}
+      <div className={`aq-head ${!data ? 'calm' : counts.overdue ? 'overdue' : counts.critical ? 'critical' : 'calm'}`}>
         <div className="aq-head-main">
           <h2>
-            {open.length === 0
+            {!data
+              ? 'Checking every open case…'
+              : open.length === 0
               ? 'Nothing needs action today'
               : `${open.length} obligation${open.length === 1 ? '' : 's'} across ${counts.cases} case${counts.cases === 1 ? '' : 's'}`}
           </h2>
           <p>
-            {open.length === 0
+            {!data
+              ? 'Reading the case diaries for statutory deadlines and evidentiary gaps.'
+              : open.length === 0
               ? 'Every open case is within its statutory windows and has no outstanding evidentiary gap on file.'
               : [
                   counts.overdue ? `${counts.overdue} overdue` : null,
@@ -147,6 +155,7 @@ export default function ActionQueue() {
 
       {error && <div className="aq-error"><AlertTriangle size={15} /> {error}</div>}
       {!data && !error && <div className="aq-loading"><Loader2 size={18} className="aq-spin" /> Reading the case files…</div>}
+
 
       {data?.capped && (
         <p className="aq-note">
@@ -212,7 +221,12 @@ export default function ActionQueue() {
       )}
 
       {/* ── The queue ───────────────────────────────────────────────────── */}
-      <div className="aq-list" hidden={scope === 'command'}>
+      {/* Rendered conditionally rather than hidden with the `hidden` attribute:
+          `.aq-list` sets display:grid, and an author rule beats the UA
+          stylesheet's [hidden]{display:none}, so the attribute alone would
+          leave both this and the command panel on screen at once. */}
+      {scope !== 'command' && (
+      <div className="aq-list">
         {open.map((o) => {
           const k = keyOf(o);
           const sev = SEVERITY[o.severity] || SEVERITY.medium;
@@ -288,6 +302,7 @@ export default function ActionQueue() {
           );
         })}
       </div>
+      )}
 
       {open.length === 0 && data && scope !== 'command' && (
         <div className="aq-clear">
