@@ -8233,15 +8233,30 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 
    Wider than .rp-main's 1240px because these carry tables rather than prose:
    a seven-column queue squeezed into a reading measure wraps its own headings. */
+/* The page is a shell only. The TopBar is its first child and has to sit flush
+   against the top and both edges — it carries the breadcrumb, the clock and the
+   language switcher, and a bar floating inside a margin reads as a detached
+   panel rather than as chrome.
+
+   Padding therefore belongs to the BODY beneath it, never to the page. Putting
+   it here is what detached the bar: every page using this class renders
+   <TopBar/> as a direct child, so page padding is bar padding. The rest of the
+   app already follows this split (.cf-page / .cf-body, .pp-body). */
 .page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-0);
+}
+.page-body {
   flex: 1;
   width: 100%;
   max-width: 1440px;
   margin: 0 auto;
   padding: 24px 32px 48px;
 }
-@media (max-width: 900px) { .page { padding: 18px 18px 36px; } }
-@media (max-width: 560px) { .page { padding: 14px 12px 32px; } }
+@media (max-width: 900px) { .page-body { padding: 18px 18px 36px; } }
+@media (max-width: 560px) { .page-body { padding: 14px 12px 32px; } }
 
 /* ── Action queue ───────────────────────────────────────────────────────────
    Rebuilt as tiles plus a table. The old layout gave every obligation a tall

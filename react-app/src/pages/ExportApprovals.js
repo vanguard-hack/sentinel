@@ -103,152 +103,154 @@ export default function ExportApprovals() {
   return (
     <div className="page">
       <TopBar title="Export Approvals" subtitle="Documents held for a second signature" />
+      <div className="page-body">
 
-      <div className="xa-intro">
-        <ShieldCheck size={15} />
-        <p>
-          Sentinel screens every report on its way out. Most leave immediately; these tripped a rule
-          that departmental policy says a second officer should look at. You cannot approve your own
-          request — a different officer has to decide.
-        </p>
-      </div>
-
-      <div className="xa-tabs">
-        {TABS.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            type="button"
-            className={`xa-tab ${tab === key ? 'on' : ''}`}
-            onClick={() => setTab(key)}
-          >
-            <Icon size={13} /> {label}
-            {key === 'pending' && tab === 'pending' && list.length > 0 && (
-              <span className="xa-count">{list.length}</span>
-            )}
-          </button>
-        ))}
-        <button type="button" className="xa-refresh" onClick={() => load(tab)} title="Refresh">
-          <RefreshCw size={13} />
-        </button>
-      </div>
-
-      {error && <div className="xa-error"><ShieldAlert size={14} /> {error}</div>}
-
-      {items === null && <div className="xa-empty">Loading…</div>}
-
-      {items !== null && list.length === 0 && (
-        <div className="xa-empty">
-          <Inbox size={22} />
+        <div className="xa-intro">
+          <ShieldCheck size={15} />
           <p>
-            {tab === 'pending'
-              ? 'Nothing is waiting. Reports that clear the screen download without ever reaching this page.'
-              : 'Nothing here yet.'}
+            Sentinel screens every report on its way out. Most leave immediately; these tripped a rule
+            that departmental policy says a second officer should look at. You cannot approve your own
+            request — a different officer has to decide.
           </p>
         </div>
-      )}
 
-      <div className="xa-list">
-        {list.map((req) => (
-          <article key={req.id} className={`xa-card ${req.status}`}>
-            <header className="xa-card-head">
-              <span className="xa-kind"><FileLock2 size={12} /> {KIND_LABELS[req.kind] || req.kind}</span>
-              <h3>{req.title}</h3>
-              <p className="xa-who">
-                {req.requestedName || req.requestedBy}
-                <span className="xa-role">{req.requestedRole}</span>
-                <span className="xa-time">
-                  {req.status === 'pending'
-                    ? `waiting ${waitedFor(req.requestedAt)}`
-                    : `requested ${fmt(req.requestedAt)}`}
-                </span>
-              </p>
-            </header>
-
-            <p className="xa-open-review">
-              <Link to={`/export-review/${req.id}`}>
-                <FileSearch size={13} aria-hidden="true" />
-                {req.status === 'pending' ? 'Read the document and comment' : 'Open the review'}
-              </Link>
-              {(req.revisions || []).length > 1 && (
-                <span className="xa-revs">revision {req.revisions.length}</span>
+        <div className="xa-tabs">
+          {TABS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              type="button"
+              className={`xa-tab ${tab === key ? 'on' : ''}`}
+              onClick={() => setTab(key)}
+            >
+              <Icon size={13} /> {label}
+              {key === 'pending' && tab === 'pending' && list.length > 0 && (
+                <span className="xa-count">{list.length}</span>
               )}
+            </button>
+          ))}
+          <button type="button" className="xa-refresh" onClick={() => load(tab)} title="Refresh">
+            <RefreshCw size={13} />
+          </button>
+        </div>
+
+        {error && <div className="xa-error"><ShieldAlert size={14} /> {error}</div>}
+
+        {items === null && <div className="xa-empty">Loading…</div>}
+
+        {items !== null && list.length === 0 && (
+          <div className="xa-empty">
+            <Inbox size={22} />
+            <p>
+              {tab === 'pending'
+                ? 'Nothing is waiting. Reports that clear the screen download without ever reaching this page.'
+                : 'Nothing here yet.'}
             </p>
+          </div>
+        )}
 
-            <ul className="xa-reasons">
-              {(req.reasons || []).map((r, i) => (
-                <li key={`${r.category}-${i}`}>
-                  <b>{r.label}</b>
-                  <span className="xa-why">{r.why}</span>
-                  <code>{r.evidence}</code>
-                </li>
-              ))}
-            </ul>
+        <div className="xa-list">
+          {list.map((req) => (
+            <article key={req.id} className={`xa-card ${req.status}`}>
+              <header className="xa-card-head">
+                <span className="xa-kind"><FileLock2 size={12} /> {KIND_LABELS[req.kind] || req.kind}</span>
+                <h3>{req.title}</h3>
+                <p className="xa-who">
+                  {req.requestedName || req.requestedBy}
+                  <span className="xa-role">{req.requestedRole}</span>
+                  <span className="xa-time">
+                    {req.status === 'pending'
+                      ? `waiting ${waitedFor(req.requestedAt)}`
+                      : `requested ${fmt(req.requestedAt)}`}
+                  </span>
+                </p>
+              </header>
 
-            {req.status === 'pending' && rejecting === req.id && (
-              <div className="xa-reject">
-                <label htmlFor={`why-${req.id}`}>
-                  What does the officer need to change? They will see this.
-                </label>
-                <textarea
-                  id={`why-${req.id}`}
-                  rows={2}
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  placeholder="e.g. Redact the witness name in section 13, then export again."
-                />
+              <p className="xa-open-review">
+                <Link to={`/export-review/${req.id}`}>
+                  <FileSearch size={13} aria-hidden="true" />
+                  {req.status === 'pending' ? 'Read the document and comment' : 'Open the review'}
+                </Link>
+                {(req.revisions || []).length > 1 && (
+                  <span className="xa-revs">revision {req.revisions.length}</span>
+                )}
+              </p>
+
+              <ul className="xa-reasons">
+                {(req.reasons || []).map((r, i) => (
+                  <li key={`${r.category}-${i}`}>
+                    <b>{r.label}</b>
+                    <span className="xa-why">{r.why}</span>
+                    <code>{r.evidence}</code>
+                  </li>
+                ))}
+              </ul>
+
+              {req.status === 'pending' && rejecting === req.id && (
+                <div className="xa-reject">
+                  <label htmlFor={`why-${req.id}`}>
+                    What does the officer need to change? They will see this.
+                  </label>
+                  <textarea
+                    id={`why-${req.id}`}
+                    rows={2}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="e.g. Redact the witness name in section 13, then export again."
+                  />
+                  <div className="xa-actions">
+                    <button
+                      type="button"
+                      className="xa-btn ghost"
+                      onClick={() => { setRejecting(null); setReason(''); }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="xa-btn danger"
+                      disabled={!reason.trim() || busyId === req.id}
+                      onClick={() => decide(req, 'rejected', reason.trim())}
+                    >
+                      Send back
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {req.status === 'pending' && rejecting !== req.id && (
                 <div className="xa-actions">
                   <button
                     type="button"
                     className="xa-btn ghost"
-                    onClick={() => { setRejecting(null); setReason(''); }}
+                    onClick={() => { setRejecting(req.id); setReason(''); }}
                   >
-                    Cancel
+                    <XCircle size={13} /> Not approved
                   </button>
                   <button
                     type="button"
-                    className="xa-btn danger"
-                    disabled={!reason.trim() || busyId === req.id}
-                    onClick={() => decide(req, 'rejected', reason.trim())}
+                    className="xa-btn solid"
+                    disabled={busyId === req.id}
+                    onClick={() => decide(req, 'approved', '')}
                   >
-                    Send back
+                    <CheckCircle2 size={13} /> {busyId === req.id ? 'Recording…' : 'Approve export'}
                   </button>
                 </div>
-              </div>
-            )}
+              )}
 
-            {req.status === 'pending' && rejecting !== req.id && (
-              <div className="xa-actions">
-                <button
-                  type="button"
-                  className="xa-btn ghost"
-                  onClick={() => { setRejecting(req.id); setReason(''); }}
-                >
-                  <XCircle size={13} /> Not approved
-                </button>
-                <button
-                  type="button"
-                  className="xa-btn solid"
-                  disabled={busyId === req.id}
-                  onClick={() => decide(req, 'approved', '')}
-                >
-                  <CheckCircle2 size={13} /> {busyId === req.id ? 'Recording…' : 'Approve export'}
-                </button>
-              </div>
-            )}
-
-            {req.status !== 'pending' && (
-              <footer className="xa-decided">
-                {req.status === 'approved' ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
-                <span>
-                  {req.status === 'approved' ? 'Approved' : 'Not approved'} by{' '}
-                  {req.decidedName || req.decidedBy} · {fmt(req.decidedAt)}
-                  {req.consumedAt ? ' · downloaded' : req.status === 'approved' ? ' · not yet downloaded' : ''}
-                </span>
-                {req.note && <em>“{req.note}”</em>}
-              </footer>
-            )}
-          </article>
-        ))}
+              {req.status !== 'pending' && (
+                <footer className="xa-decided">
+                  {req.status === 'approved' ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                  <span>
+                    {req.status === 'approved' ? 'Approved' : 'Not approved'} by{' '}
+                    {req.decidedName || req.decidedBy} · {fmt(req.decidedAt)}
+                    {req.consumedAt ? ' · downloaded' : req.status === 'approved' ? ' · not yet downloaded' : ''}
+                  </span>
+                  {req.note && <em>“{req.note}”</em>}
+                </footer>
+              )}
+            </article>
+          ))}
+        </div>
       </div>
     </div>
   );

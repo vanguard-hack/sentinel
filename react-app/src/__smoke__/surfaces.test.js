@@ -74,3 +74,46 @@ test('the newly added pages are searchable by what an officer would type', () =>
   expect(find('self test').map((e) => e.to)).toContain('/assurance');
   expect(find('shared').map((e) => e.to)).toContain('/shared');
 });
+
+import fs from 'fs';
+import path from 'path';
+
+// ── The top bar stays attached to the top ─────────────────────────────────
+//
+// A regression I shipped: `.page` was given side and top padding so the tables
+// on those pages would stop running into the viewport edges. But every page
+// using that class renders <TopBar/> as its FIRST CHILD, so page padding is bar
+// padding — the bar lifted away from the top and both edges and read as a
+// detached floating panel rather than as chrome.
+//
+// The fix is the split the rest of the app already uses (.cf-page / .cf-body):
+// the shell has no padding, the body beneath the bar has all of it. These
+// assert that split rather than the specific pages, because the next page
+// added with this class will make the same mistake.
+
+test('the page shell carries no padding of its own', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'index.css'), 'utf8');
+  const shell = css.slice(css.indexOf('\n.page {'), css.indexOf('\n.page-body {'));
+  expect(shell).not.toMatch(/^\s*padding:/m);
+});
+
+test('the padding lives on the body beneath the bar', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'index.css'), 'utf8');
+  const body = css.slice(css.indexOf('\n.page-body {'));
+  expect(body.slice(0, 240)).toMatch(/padding:/);
+});
+
+test('every page using the shell puts its content in a page-body', () => {
+  const dir = path.join(__dirname, '..', 'pages');
+  const offenders = [];
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.js'))) {
+    const src = fs.readFileSync(path.join(dir, file), 'utf8');
+    if (!src.includes('className="page"')) continue;
+    if (!src.includes('className="page-body"')) offenders.push(`${file}: no page-body`);
+    // TopBar must sit OUTSIDE the padded body, or it is inset again.
+    const bar = src.indexOf('<TopBar');
+    const body = src.indexOf('className="page-body"');
+    if (bar === -1 || body === -1 || bar > body) offenders.push(`${file}: TopBar is not above page-body`);
+  }
+  expect(offenders).toEqual([]);
+});
