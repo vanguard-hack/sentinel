@@ -18,6 +18,9 @@
 //     hit rate.
 //
 // ZCQL has no joins, so tables are paged down and stitched client-side.
+
+import { assess, applyIsotonic, isotonicSupport } from './calibration';
+
 import { runQuery } from './datastore';
 
 const CAP = 300;
@@ -307,6 +310,120 @@ export function validate(data, { pairCap = 4000, hitSample = 120 } = {}) {
     hitRate: tried ? hits / tried : null,
     linkedPairs: linkedPairs.size,
     seriesCases: seriesCases.length,
+  };
+}
+
+/**
+ * Is the linkage score calibrated — does 0.8 mean anything like 80%?
+ *
+ * validate() answers whether the model RANKS well. This answers whether its
+ * numbers mean what they say, which is a different question and the one an
+ * officer is actually reading. See utils/calibration.js for why the two come
+ * apart.
+ *
+ * THE SAMPLING, WHICH IS THE ENTIRE DIFFICULTY
+ *
+ * Linked pairs are vanishingly rare among all pairs: with n cases there are
+ * n(n-1)/2 pairs and only a few thousand are true links. Scoring all of them
+ * is not possible in a browser, so we do what every case-control study does —
+ * take every positive and a manageable sample of negatives — and then WEIGHT
+ * each sampled pair by how many pairs of its class it stands for.
+ *
+ * Skip that weighting and the reliability curve comes out beautifully straight
+ * against a 50/50 sample that does not exist, and every probability is
+ * overstated by two orders of magnitude. The weights are what make this a
+ * statement about the case file rather than about the sample.
+ */
+export function calibrateLinkage(data, { pairCap = 4000, negativeSample = 8000 } = {}) {
+  const { cases, byId, linkedPairs } = data;
+  const n = cases.length;
+  if (!n || !linkedPairs || !linkedPairs.size) return null;
+
+  const totalPairs = (n * (n - 1)) / 2;
+  const linkedTotal = linkedPairs.size;
+  const unlinkedTotal = totalPairs - linkedTotal;
+  if (unlinkedTotal <= 0) return null;
+
+  // Positives: every linked pair, up to the cap.
+  const positives = [];
+  linkedPairs.forEach((key) => {
+    if (positives.length >= pairCap) return;
+    const [a, b] = key.split('|');
+    const ca = byId.get(a);
+    const cb = byId.get(b);
+    if (ca && cb) positives.push(scorePair(ca, cb).score);
+  });
+  if (!positives.length) return null;
+
+  // Negatives: a deterministic pseudo-random sample, so the figure an officer
+  // sees does not change between two loads of the same data. Same generator as
+  // validate() uses, for the same reason.
+  const negatives = [];
+  let seed = 48271;
+  const next = () => { seed = (seed * 16807) % 2147483647; return seed; };
+  let guard = 0;
+  while (negatives.length < negativeSample && guard++ < negativeSample * 20) {
+    const i = next() % n;
+    const j = next() % n;
+    if (i === j) continue;
+    const a = cases[i];
+    const b = cases[j];
+    const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
+    if (linkedPairs.has(key)) continue;
+    negatives.push(scorePair(a, b).score);
+  }
+  if (!negatives.length) return null;
+
+  // Each sampled pair stands for this many real pairs of its class.
+  const wPos = linkedTotal / positives.length;
+  const wNeg = unlinkedTotal / negatives.length;
+
+  const samples = [
+    ...positives.map((x) => ({ x, y: 1, w: wPos })),
+    ...negatives.map((x) => ({ x, y: 0, w: wNeg })),
+  ];
+
+  const result = assess(samples);
+  if (!result) return null;
+
+  const baseRate = linkedTotal / totalPairs;
+  return {
+    ...result,
+    baseRate,
+    linkedPairs: linkedTotal,
+    totalPairs,
+    positivesScored: positives.length,
+    negativesSampled: negatives.length,
+  };
+}
+
+/**
+ * Turn a raw similarity score into a calibrated probability, with the context
+ * that makes it readable.
+ *
+ * The absolute number will be low, and that is the honest answer rather than a
+ * disappointing one: among all pairs of cases, almost none are the same
+ * offender, so even a strong candidate is unlikely in absolute terms. Reporting
+ * the LIFT alongside it is what makes it useful — "thirty times more likely
+ * than an arbitrary pair, and still only twelve percent" tells an officer both
+ * that this is their best lead and that it is not proof.
+ */
+export function calibratedProbability(calibration, score) {
+  if (!calibration || !Number.isFinite(score)) return null;
+  const p = applyIsotonic(calibration.fit, score);
+  if (p == null) return null;
+  const base = calibration.baseRate || 0;
+  // Support is expressed as a share of all pairs the fit was built from, so
+  // "thin" means thin relative to this dataset rather than to an absolute count
+  // that would mean nothing to a reader.
+  const support = isotonicSupport(calibration.fit, score);
+  const totalWeight = (calibration.fit || []).reduce((a, b) => a + b.weight, 0);
+  return {
+    probability: p,
+    baseRate: base,
+    lift: base > 0 ? p / base : null,
+    support,
+    thin: totalWeight > 0 ? support / totalWeight < 0.01 : true,
   };
 }
 
