@@ -52,10 +52,26 @@ function AppRoutes() {
       <LayoutProvider>
         <ConfirmProvider>
           <div className="app-shell">
+            {/*
+              First tab stop on every page. Without it, reaching the content by
+              keyboard means tabbing through the whole sidebar on every single
+              route — the sort of thing that is invisible to anyone using a
+              mouse and exhausting for anyone who isn't.
+            */}
+            <a className="skip-link" href="#main-content">Skip to main content</a>
             <AuditTracker />
             <ScrollToHash />
             <Sidebar />
-            <div className="app-main">
+            {/*
+              tabIndex={-1} makes the target programmatically focusable, so the
+              skip link moves FOCUS and not just the scroll position. Left off,
+              the link scrolls the page and the next Tab press returns to the
+              sidebar, which defeats the point.
+
+              A div rather than <main>: several pages render their own <main>
+              landmark, and nesting them would be invalid.
+            */}
+            <div className="app-main" id="main-content" tabIndex={-1}>
               <OfflineBar />
               <Routes>
                 <Route path="/dashboard" element={guarded('dashboard', <Dashboard />)} />

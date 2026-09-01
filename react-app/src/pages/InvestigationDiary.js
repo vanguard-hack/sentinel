@@ -84,7 +84,7 @@ function NewInvestigationModal({ onClose, onCreated }) {
       <div className="inv-modal" onClick={(e) => e.stopPropagation()}>
         <div className="inv-modal-head">
           <h3>Open a new investigation</h3>
-          <button className="inv-modal-x" onClick={onClose}><X size={18} /></button>
+          <button className="inv-modal-x" onClick={onClose} aria-label="Close"><X size={18} /></button>
         </div>
 
         {!picked ? (

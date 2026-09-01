@@ -3295,6 +3295,33 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   background: var(--bg-0);
 }
 
+/* ── Skip to content ──────────────────────────────────────────────────────
+   Off-screen until focused rather than display:none — a hidden element is
+   removed from the tab order entirely, so the link would never be reachable
+   by the keyboard users it exists for. */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 1000;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--blue-500);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.skip-link:focus {
+  top: 8px;
+}
+/* The skip target takes focus programmatically; it is not a control, so the
+   ring it would otherwise draw around the whole page is suppressed. */
+.app-main:focus {
+  outline: none;
+}
+
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 .app-sidebar {
   width: 210px;

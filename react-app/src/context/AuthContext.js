@@ -146,6 +146,12 @@ export function AuthProvider({ children }) {
     try { pending = await pendingCount(); } catch { /* no queue */ }
     if (pending > 0) {
       const word = pending === 1 ? 'change' : 'changes';
+      // The native dialog, deliberately. AuthProvider wraps ConfirmProvider in
+      // App.tsx, so the app's own confirm hook does not exist at this point in
+      // the tree — and dropping the warning entirely would silently destroy an
+      // officer's unsynced work on sign-out. Inverting the provider order to
+      // fix the styling is not worth that risk.
+      // eslint-disable-next-line no-alert
       const ok = window.confirm(
         `${pending} offline ${word} ${pending === 1 ? 'has' : 'have'} not been synced yet and will be lost.\n\n` +
         'Reconnect and let them sync before signing out, or continue to discard them.'

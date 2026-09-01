@@ -8,5 +8,9 @@
     "@anthropic-ai/sdk": "^0.122.0",
     "nodemailer": "^9.0.3",
     "zcatalyst-sdk-node": "^3.4.0"
+  },
+  "scripts": {
+    "bench": "node bench/run.js",
+    "test": "for t in *.test.js; do echo \"-- $t\"; node \"$t\" || exit 1; done"
   }
 }

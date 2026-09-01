@@ -4,6 +4,7 @@ import {
   isOnline, onConnectionChange, onQueueChange, pendingCount, pendingWrites,
   flushQueue, discardWrite,
 } from '../utils/offline';
+import { useConfirm } from './ConfirmDialog';
 
 // Connection and sync state, shown only when it matters.
 //
@@ -18,6 +19,7 @@ export default function OfflineBar() {
   const [items, setItems] = useState([]);
   const [syncing, setSyncing] = useState(false);
   const [justSynced, setJustSynced] = useState(false);
+  const confirm = useConfirm();
 
   useEffect(() => {
     pendingCount().then(setCount).catch(() => {});
@@ -48,7 +50,13 @@ export default function OfflineBar() {
   };
 
   const discard = async (id) => {
-    if (!window.confirm('Discard this unsynced change? It has not reached the server and cannot be recovered.')) return;
+    const ok = await confirm({
+      title: 'Discard this unsynced change?',
+      body: 'It has not reached the server and cannot be recovered.',
+      confirmLabel: 'Discard change',
+      tone: 'danger',
+    });
+    if (!ok) return;
     await discardWrite(id);
   };
 

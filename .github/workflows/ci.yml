@@ -55,6 +55,15 @@ jobs:
           done
           exit $status
 
+      # The benchmark is a gate, not a report: it recomputes its ground truth
+      # from datastore_export/ on every run and exits non-zero if a clearance
+      # field leaks, an unsafe query is accepted, a fabricated case number gets
+      # through or an officer is wrongly refused. Its output is printed here so
+      # the numbers are visible in the build log rather than only on someone's
+      # laptop. bench.test.js (run above) separately proves the gates can fail.
+      - name: Benchmark — accuracy, leakage and abstention
+        run: node functions/rag/bench/run.js
+
       # ── Frontend ───────────────────────────────────────────────────────
       - name: Install web dependencies
         working-directory: react-app
@@ -71,6 +80,15 @@ jobs:
         # rather than correctness, and gating on them would block every
         # unrelated change. Worth cleaning up separately.
         run: npx eslint src --ext .js --ignore-pattern '__smoke__'
+
+      # Accessibility gate. Sentinel is a government tool, so an unlabelled
+      # control is a procurement problem as well as an exclusion; this is the
+      # part that regresses silently, because nobody who can see the screen
+      # notices a button a screen reader announces as just "button".
+      - name: Accessibility gate
+        run: |
+          node scripts/a11y-check.test.js
+          node scripts/a11y-check.js
 
       - name: Lint smoke tests (advisory)
         working-directory: react-app
