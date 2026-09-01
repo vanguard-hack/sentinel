@@ -413,13 +413,19 @@ async function runApi() {
         + 'held is a legal judgement this benchmark deliberately does not settle — it reports them so\n'
         + 'the decision is made deliberately rather than by omission.\n\n'
         + uncovered.map((u) => `- **${u.sub}** — ${u.n} FIRs, none held for review`).join('\n')
-      : '',
+      : null,
     '',
     failed.length || soft.length
       ? `## Failures\n\n${[...failed, ...soft].map((m) => `### ${m.label} — ${pct(m)}\n\n${m.failures.map((f) => `- ${f}`).join('\n')}`).join('\n\n')}`
       : '_All gates passed._',
     '',
-  ].filter((l) => l !== '').join('\n');
+  ]
+    // Only the optional coverage-gaps block collapses to an empty string; the
+    // deliberate blank lines around headings and tables must survive, or the
+    // markdown renders as one run-on paragraph with an unparsed table in it.
+    .filter((l) => l !== null && l !== undefined)
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
 
   // A fault run is a deliberate sabotage of one control to prove the gate
   // bites. Its numbers are fiction, so it must never touch the committed
