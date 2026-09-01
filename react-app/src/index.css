@@ -8885,3 +8885,17 @@ span.inv-status-dot {
   background: color-mix(in srgb, var(--bg-1) 78%, transparent);
   padding: 0 3px; border-radius: 3px;
 }
+
+/* Live dictation: the words still being revised, shown faintly so it is clear
+   they may change before they settle. */
+.as-dictating {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
+  padding: 2px 4px; font-size: 12px; color: var(--text-3);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.as-dictating em { font-style: italic; color: var(--text-2); }
+.as-dictating-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex: none;
+  background: var(--red); animation: as-pulse 1.1s ease-in-out infinite;
+}
+@keyframes as-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }

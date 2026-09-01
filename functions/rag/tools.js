@@ -56,7 +56,11 @@ const DEFINITIONS = [
       'To relate two tables, query the first, read the ids out of the result, and query ' +
       'the second with those ids in an IN clause — that is expected and normal, not a ' +
       'workaround.\n\n' +
-      'Call lookup_reference first if you need a district, rank or crime-head id.',
+      'FILTERING BY DISTRICT: CaseMaster has no district column and Unit cannot be ' +
+      'joined. Do NOT report this as a limitation — put the district NAME in the ' +
+      '`district` field and write the query with no station condition. That is the ' +
+      'supported way, and it works.\n\n' +
+      'Call lookup_reference first if you need a rank or crime-head id.',
     input_schema: {
       type: 'object',
       properties: {
@@ -66,6 +70,13 @@ const DEFINITIONS = [
             'A single SELECT statement. Qualify every column as Table.Column, count ' +
             'rows with COUNT(ROWID), and include a LIMIT unless the query has a ' +
             'WHERE clause or is a bare aggregate.',
+        },
+        district: {
+          type: 'string',
+          description:
+            'Restrict to one Karnataka district by NAME (e.g. "Udupi"). CaseMaster has no '
+            + 'district column, so write the query with no station condition and put the '
+            + 'district here — the station list is filled in for you. CaseMaster only.',
         },
         rollup: {
           // 'null' is in the type union deliberately. Models emit "rollup": null
@@ -638,7 +649,7 @@ async function joinRecords(app, input, role, access) {
   };
 }
 
-async function queryRecords(app, { zcql: statement, rollup }, role, access) {
+async function queryRecords(app, { zcql: statement, rollup, district }, role, access) {
   const verdict = zcql.validateZcql(String(statement || ''));
   if (!verdict.ok) {
     return {
@@ -650,9 +661,29 @@ async function queryRecords(app, { zcql: statement, rollup }, role, access) {
       checks: verdict.checks,
     };
   }
+  // "Crimes in Udupi" used to be unanswerable here: CaseMaster has no district
+  // column, so the model correctly reported that it would need a join and
+  // stopped — which reads to an officer as the system refusing an ordinary
+  // question. The district is now stated and expanded to its stations, the same
+  // way join_records already did it.
+  let query = verdict.query;
+  if (typeof district === 'string' && district.trim()) {
+    const resolved = zcql.stationsInDistrict(district);
+    if (!resolved || resolved.error) {
+      return { error: (resolved && resolved.error) || `No district named "${district}".` };
+    }
+    if (verdict.table !== 'CaseMaster') {
+      return {
+        error: `A district filter only applies to CaseMaster, not ${verdict.table}.`,
+        hint: 'For arrests filter on ArrestSurrender.ArrestSurrenderDistrictId instead.',
+      };
+    }
+    query = zcql.withStationFilter(verdict.query, verdict.table, resolved.stations);
+  }
+
   let raw;
   try {
-    raw = await app.zcql().executeZCQLQuery(verdict.query || statement);
+    raw = await app.zcql().executeZCQLQuery(query);
   } catch (e) {
     return { error: `Query failed: ${(e && e.message) || e}` };
   }

@@ -30,6 +30,66 @@ for (const [uid, u] of Object.entries(MASTERS.units)) {
   }
 }
 
+
+/**
+ * Which police stations sit in a district.
+ *
+ * CaseMaster has no district column — a case belongs to a station, and a
+ * station belongs to a district. The prompt told the model to filter on
+ * PoliceStationID and then never gave it the station ids, so "crimes in Udupi"
+ * was not a query the model could write however hard it tried. It said so, in
+ * the honest way that reads to an officer as the system refusing.
+ *
+ * So the model now states the DISTRICT and this expands it. Same division of
+ * labour as `rollup` and as join_records: the model states intent, the code
+ * does the arithmetic it has the data for.
+ */
+function stationsInDistrict(name) {
+  const needle = String(name || '').trim().toLowerCase();
+  if (!needle) return null;
+  const entries = Object.entries(MASTERS.districts || {});
+  const exact = entries.find(([, dn]) => String(dn).toLowerCase() === needle);
+  const loose = exact || entries.find(([, dn]) => String(dn).toLowerCase().includes(needle));
+  if (!loose) return { error: `No district named "${name}".` };
+  const [districtId, districtName] = loose;
+  const stations = Object.entries(MASTERS.units || {})
+    .filter(([, u]) => u && String(u.district) === String(districtId))
+    .map(([id]) => id);
+  return stations.length
+    ? { districtId, districtName, stations }
+    : { error: `No police stations are listed for "${districtName}".` };
+}
+
+/**
+ * Add a station filter to a validated single-table query.
+ *
+ * String surgery on SQL is where bugs live, so the clause is inserted at a
+ * position found in the LITERAL-MASKED copy — a case whose BriefFacts contains
+ * the word "order" must not be mistaken for an ORDER BY — and the model's own
+ * WHERE is wrapped in brackets rather than appended to, or an existing OR would
+ * silently swallow the district restriction.
+ */
+function withStationFilter(query, table, stations) {
+  if (!stations || !stations.length) return query;
+  const clause = `${table}.PoliceStationID IN (${stations.join(',')})`;
+  const { masked } = maskLiterals(query);
+
+  // The first tail keyword marks where the WHERE clause ends.
+  let cut = masked.length;
+  for (const kw of [/\bgroup\s+by\b/i, /\border\s+by\b/i, /\blimit\b/i]) {
+    const m = kw.exec(masked);
+    if (m && m.index < cut) cut = m.index;
+  }
+
+  const head = query.slice(0, cut).trimEnd();
+  const tail = query.slice(cut);
+  const whereAt = /\bwhere\b/i.exec(masked.slice(0, cut));
+  const next = whereAt
+    ? `${head.slice(0, whereAt.index)}WHERE (${head.slice(whereAt.index + 5).trim()}) AND ${clause}`
+    : `${head} WHERE ${clause}`;
+  return `${next}${tail ? ` ${tail.trim()}` : ''}`;
+}
+
 // ── router ──────────────────────────────────────────────────────────────────
 const ROUTER_PROMPT =
   'You are a router for a police crime-analytics assistant. Decide how a ' +
@@ -118,14 +178,17 @@ cstype: 'A'=Chargesheet, 'B'=False Case, 'C'=Undetected
 ActID / ActCode values: 'IPC','BNS','NDPS','ARMS','IT','POCSO','MV','EXCISE','DP','KPA'
 DistrictID by name (Karnataka): ${districtLines}
 ArrestSurrender district filter: use ArrestSurrenderDistrictId = <DistrictID>.
-CaseMaster has NO district column — for a district filter or district grouping
-use PoliceStationID (each station belongs to one district) and set the rollup
-field as described below.
+CaseMaster has NO district column. Do NOT try to join Unit — it will fail.
+To restrict to ONE district, put its name in the "district" field of your reply
+and write the query WITHOUT any station or district condition; the station list
+for that district is filled in for you. To break results down BY district,
+GROUP BY CaseMaster.PoliceStationID and set "rollup":"district".
 Data covers 2023-01-01 to 2026-06-30.`;
 
 const RULES = `RULES (follow ALL):
 1. Reply with ONLY a JSON object, no fences:
-   {"zcql": "<query>", "rollup": <"district" or null>, "topN": <number or null>}
+   {"zcql": "<query>", "rollup": <"district" or null>,
+    "district": <"district name" or null>, "topN": <number or null>}
 2. The query must be ONE SELECT over ONE table. JOINs are NOT supported and
    will fail. Never reference a second table anywhere in the query.
 3. Qualify every column as TableName.ColumnName.
@@ -338,12 +401,41 @@ function parsePlan(raw) {
   const v = validateZcql(plan.zcql);
   if (!v.ok) return { ok: false, error: v.error, checks: v.checks };
   const topN = Number.isInteger(plan.topN) && plan.topN > 0 ? plan.topN : null;
+
+  // A district filter is stated, not written. CaseMaster has no district
+  // column, so the model names the district and the station expansion happens
+  // here — after validation, so the injected clause cannot be a way to smuggle
+  // syntax past the validator.
+  let query = v.query;
+  let district = null;
+  if (typeof plan.district === 'string' && plan.district.trim()) {
+    const resolved = stationsInDistrict(plan.district);
+    if (resolved && resolved.error) return { ok: false, error: resolved.error, checks: v.checks };
+    if (resolved && resolved.stations.length) {
+      // Only CaseMaster carries PoliceStationID. Naming a district against any
+      // other table is a mistake to report, not to quietly ignore — an officer
+      // told "12 arrests in Udupi" when the filter never applied has been
+      // misinformed in the most convincing way available.
+      if (v.table !== 'CaseMaster') {
+        return {
+          ok: false,
+          error: `A district filter only applies to CaseMaster, not ${v.table}. `
+            + 'For arrests use ArrestSurrender.ArrestSurrenderDistrictId instead.',
+          checks: v.checks,
+        };
+      }
+      query = withStationFilter(v.query, v.table, resolved.stations);
+      district = { name: resolved.districtName, stations: resolved.stations.length };
+    }
+  }
+
   return {
     ok: true,
-    query: v.query,
+    query,
     table: v.table,
-    checks: v.checks,
+    checks: district ? v.checks.concat(`district-filter:${district.name}`) : v.checks,
     rollup: plan.rollup === 'district' ? 'district' : null,
+    district,
     topN,
   };
 }
@@ -494,5 +586,7 @@ module.exports = {
   rowsToComponents,
   tablesInQuery,
   validateZcql,
+  stationsInDistrict,
+  withStationFilter,
   MAX_ROWS,
 };

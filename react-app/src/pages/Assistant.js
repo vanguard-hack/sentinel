@@ -28,6 +28,9 @@ import ExportHoldNotice from '../components/ExportHoldNotice';
 import SlashMenu from '../components/SlashMenu';
 import SourceCitations, { SourceViewer } from '../components/SourceCitations';
 import { normaliseSources } from '../utils/sources';
+import {
+  dictationSupported, startDictation, composeDictated,
+} from '../utils/dictation';
 import { useAccess } from '../context/AccessContext';
 import { slashQuery, filterCommands, parseCommand, closestCommand } from '../utils/slashCommands';
 
@@ -180,6 +183,8 @@ export default function Assistant() {
   const [sending, setSending] = useState(false);
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  // The words still being revised, shown faintly so it is clear they may change.
+  const [interim, setInterim] = useState('');
   const [voiceError, setVoiceError] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   // The citation the officer opened: which message, and which footnote number
@@ -800,12 +805,46 @@ export default function Assistant() {
     }
   }, []);
 
+  // What the officer has typed, held while dictation appends to it — otherwise
+  // speaking after typing half a question would overwrite the half they typed.
+  const typedRef = useRef('');
+
   const toggleMic = async () => {
     if (!canRecord || transcribing) return;
     if (listening) {
-      recognitionRef.current?.stop(); // triggers onstop → transcription
+      recognitionRef.current?.stop(); // live: ends dictation; recorder: triggers transcription
       return;
     }
+
+    // Live dictation where the browser has it. The words appear as they are
+    // spoken, which is the difference between being able to correct yourself
+    // mid-sentence and finding out afterwards that it misheard you. Nothing is
+    // uploaded on this path, so it is also simply faster.
+    if (dictationSupported()) {
+      typedRef.current = input;
+      setVoiceError(null);
+      const handle = startDictation({
+        lang: i18n.resolvedLanguage,
+        onText: ({ final, interim }) => {
+          setInput(composeDictated(typedRef.current, final, interim));
+          setInterim(interim);
+        },
+        onError: (msg) => { setVoiceError(msg); setListening(false); setInterim(''); },
+        onEnd: (final) => {
+          setListening(false);
+          setInterim('');
+          setInput(composeDictated(typedRef.current, final, ''));
+          textareaRef.current?.focus();
+        },
+      });
+      if (handle) {
+        recognitionRef.current = handle;
+        setListening(true);
+        return;
+      }
+      // startDictation reported why; fall through to the recorder.
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const rec = new MediaRecorder(stream);
@@ -1142,9 +1181,24 @@ export default function Assistant() {
                   rows={1}
                   placeholder={t('slash.placeholder', 'Ask a question or type / for commands…')}
                   value={input}
-                  onChange={(e) => { setInput(e.target.value); histRef.current.idx = null; }}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    // Editing mid-dictation rebases what the spoken words are
+                    // appended to, so a correction typed while talking is not
+                    // wiped by the next interim update.
+                    if (listening) typedRef.current = e.target.value;
+                    histRef.current.idx = null;
+                  }}
                   onKeyDown={onKeyDown}
                 />
+                {listening && dictationSupported() && (
+                  <span className="as-dictating" aria-live="polite">
+                    <span className="as-dictating-dot" />
+                    {interim
+                      ? <em>{interim}</em>
+                      : t('assistant.listening', 'Listening…')}
+                  </span>
+                )}
                 {canRecord && (
                   <button
                     className={`as-comp-btn ${listening ? 'listening' : ''} ${transcribing ? 'transcribing' : ''}`}
@@ -1154,8 +1208,10 @@ export default function Assistant() {
                       transcribing
                         ? 'Transcribing…'
                         : listening
-                        ? 'Stop recording'
-                        : 'Record voice (Zia transcription — English/Hindi/Kannada)'
+                        ? 'Stop'
+                        : dictationSupported()
+                        ? 'Dictate — words appear as you speak (English/Hindi/Kannada)'
+                        : 'Record voice (transcribed when you stop — English/Hindi/Kannada)'
                     }
                   >
                     <Mic size={18} />

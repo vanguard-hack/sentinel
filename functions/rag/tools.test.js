@@ -2,6 +2,7 @@
 // on every result. Run: node functions/rag/tools.test.js
 
 const tools = require('./tools');
+const zcql = require('./zcql');
 const redaction = require('./redaction');
 
 let pass = 0, fail = 0;
@@ -328,4 +329,73 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   check('  using the edges as returned',
     /never connect two people the graph did not/.test(
       tools.DEFINITIONS.find((t) => t.name === 'traverse_network').description));
+}
+
+// ── Filtering by district ─────────────────────────────────────────────────
+//
+// "Show me the crimes in Udupi" came back as: "CaseMaster does not contain a
+// district column, and filtering by district requires joining with the Unit
+// table, which is not allowed in single-table queries."
+//
+// Every word of that was true, and it was still a failure. The prompt told the
+// model to filter on PoliceStationID and then never gave it the station ids, so
+// the query was not one the model could write however hard it tried — and an
+// honest explanation of an internal constraint reads to an officer as the
+// system refusing an ordinary question.
+{
+  const q = tools.DEFINITIONS.find((t) => t.name === 'query_records');
+  check('query_records offers a district field', !!q.input_schema.properties.district);
+  check('  and says the station list is filled in for you',
+    /station list is filled in for you/.test(q.input_schema.properties.district.description));
+  check('  and tells the model NOT to report the join limit as a refusal',
+    /Do NOT report this as a limitation/.test(q.description),
+    'the officer does not care why; they care whether it can be answered');
+
+  const udupi = zcql.stationsInDistrict('Udupi');
+  check('a district resolves to its stations', udupi.stations.length > 0);
+  check('  and carries the canonical name back', udupi.districtName === 'Udupi');
+  check('a partial name still resolves', !!zcql.stationsInDistrict('udup').stations);
+  check('an unknown district is an error, not an empty filter',
+    !!zcql.stationsInDistrict('Atlantis').error,
+    'an empty IN () would silently match nothing and read as "no crimes there"');
+  check('a blank district is refused', zcql.stationsInDistrict('') === null);
+
+  const plan = (o) => zcql.parsePlan(JSON.stringify(o));
+  const filtered = plan({ zcql: 'SELECT COUNT(ROWID) FROM CaseMaster', district: 'Udupi' });
+  check('the plan comes back with the filter applied',
+    /PoliceStationID IN \(/.test(filtered.query));
+  check('  and records that it did, for the audit trail',
+    filtered.checks.some((c) => /district-filter:Udupi/.test(c)));
+
+  const withOr = plan({
+    zcql: 'SELECT COUNT(ROWID) FROM CaseMaster WHERE CaseMaster.CaseStatusID = 1 OR CaseMaster.CaseStatusID = 2',
+    district: 'Udupi',
+  });
+  check('an existing OR is bracketed before the district is ANDed on',
+    /WHERE \(CaseMaster\.CaseStatusID = 1 OR CaseMaster\.CaseStatusID = 2\) AND/.test(withOr.query),
+    'appending to a bare OR would silently drop the district restriction');
+
+  const grouped = plan({
+    zcql: 'SELECT CaseMaster.CrimeMajorHeadID, COUNT(ROWID) FROM CaseMaster GROUP BY CaseMaster.CrimeMajorHeadID ORDER BY COUNT(ROWID) DESC',
+    district: 'Udupi',
+  });
+  check('the filter goes before GROUP BY, not after it',
+    grouped.query.indexOf('PoliceStationID IN') < grouped.query.indexOf('GROUP BY'));
+  check('  and the tail survives intact', /ORDER BY COUNT\(ROWID\) DESC/.test(grouped.query));
+
+  check('a district named against the wrong table is refused, not ignored',
+    /only applies to CaseMaster/.test(
+      plan({ zcql: 'SELECT COUNT(ROWID) FROM ArrestSurrender', district: 'Udupi' }).error || ''),
+    '"12 arrests in Udupi" with the filter silently dropped is the worst outcome available');
+  check('  and points at the column that does work',
+    /ArrestSurrenderDistrictId/.test(
+      plan({ zcql: 'SELECT COUNT(ROWID) FROM ArrestSurrender', district: 'Udupi' }).error || ''));
+
+  check('no district leaves the query untouched',
+    plan({ zcql: 'SELECT COUNT(ROWID) FROM CaseMaster' }).district === null);
+
+  // The filter is injected AFTER validation, so it can never be a way to get
+  // syntax past the validator — but the result still has to be a legal query.
+  check('the filtered query still validates',
+    zcql.validateZcql(filtered.query).ok, zcql.validateZcql(filtered.query).error);
 }
