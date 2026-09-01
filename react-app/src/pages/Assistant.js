@@ -183,8 +183,6 @@ export default function Assistant() {
   const [sending, setSending] = useState(false);
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
-  // The words still being revised, shown faintly so it is clear they may change.
-  const [interim, setInterim] = useState('');
   const [voiceError, setVoiceError] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   // The citation the officer opened: which message, and which footnote number
@@ -468,6 +466,21 @@ export default function Assistant() {
     const text = (typeof override === 'string' ? override : input).trim();
     if ((!text && attachments.length === 0) || sending) return;
 
+    // Sending is finishing. Leaving the microphone open after the question has
+    // gone means the next thing said lands in an empty composer behind the
+    // answer — and an officer who has pressed send has no reason to expect the
+    // machine is still listening to the room. Pressing the mic again remains
+    // the other way to stop; this is not a replacement for it.
+    if (listening) {
+      // On the recorder path, stop() fires onstop -> runTranscription, which
+      // would set the composer AFTER this message has gone — the officer would
+      // watch their sent question be replaced by what they were still saying.
+      // The flag tells that handler the recording was abandoned.
+      discardRecordingRef.current = true;
+      recognitionRef.current?.stop();
+      setListening(false);
+    }
+
     // Slash commands are validated here rather than at the backend, so a typo
     // or a missing argument is corrected in place instead of costing a round
     // trip and an error bubble.
@@ -614,7 +627,7 @@ export default function Assistant() {
     } finally {
       setSending(false);
     }
-  }, [input, attachments, sending, activeId, sessions, pushSession, appRole, startNewChat]);
+  }, [listening, input, attachments, sending, activeId, sessions, pushSession, appRole, startNewChat]);
 
   // Cycle previous/next questions with Up/Down (readline-style).
   const navigateHistory = (dir) => {
@@ -808,6 +821,9 @@ export default function Assistant() {
   // What the officer has typed, held while dictation appends to it — otherwise
   // speaking after typing half a question would overwrite the half they typed.
   const typedRef = useRef('');
+  // Set when a recording is ended by sending rather than by the mic button, so
+  // its transcript is dropped instead of landing in the next message.
+  const discardRecordingRef = useRef(false);
 
   const toggleMic = async () => {
     if (!canRecord || transcribing) return;
@@ -827,12 +843,10 @@ export default function Assistant() {
         lang: i18n.resolvedLanguage,
         onText: ({ final, interim }) => {
           setInput(composeDictated(typedRef.current, final, interim));
-          setInterim(interim);
         },
-        onError: (msg) => { setVoiceError(msg); setListening(false); setInterim(''); },
+        onError: (msg) => { setVoiceError(msg); setListening(false); },
         onEnd: (final) => {
           setListening(false);
-          setInterim('');
           setInput(composeDictated(typedRef.current, final, ''));
           textareaRef.current?.focus();
         },
@@ -853,10 +867,14 @@ export default function Assistant() {
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         setListening(false);
+        const abandoned = discardRecordingRef.current;
+        discardRecordingRef.current = false;
+        if (abandoned) return; // ended by sending; the question has already gone
         const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
         if (blob.size > 800) runTranscription(blob); // skip sub-second blips
       };
       recognitionRef.current = rec;
+      discardRecordingRef.current = false;
       setVoiceError(null);
       setListening(true);
       rec.start();
@@ -1191,12 +1209,18 @@ export default function Assistant() {
                   }}
                   onKeyDown={onKeyDown}
                 />
+                {/*
+                  The words themselves are NOT shown here. They are already in
+                  the composer — composeDictated appends the interim text as it
+                  arrives — so printing them beside the dot showed every phrase
+                  twice, once where it will be sent from and once where it will
+                  not. The indicator's job is to say the microphone is open,
+                  and nothing else.
+                */}
                 {listening && dictationSupported() && (
                   <span className="as-dictating" aria-live="polite">
                     <span className="as-dictating-dot" />
-                    {interim
-                      ? <em>{interim}</em>
-                      : t('assistant.listening', 'Listening…')}
+                    {t('assistant.listening', 'Listening…')}
                   </span>
                 )}
                 {canRecord && (
