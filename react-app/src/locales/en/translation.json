@@ -85,6 +85,9 @@
     "exportApprovals": {
       "label": "Export Approvals"
     },
+    "assurance": {
+      "label": "Assurance"
+    },
     "dutyRoster": {
       "label": "Duty Roster"
     },

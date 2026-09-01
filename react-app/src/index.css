@@ -8074,3 +8074,127 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   font-size: 11px; color: var(--text-3);
 }
 .xa-decided em { color: var(--text-2); font-style: italic; }
+
+/* ── Assurance console ──────────────────────────────────────────────────────
+   Green is earned, not decorative: the verdict banner reads from the actual
+   run, and a failed control turns the page red rather than hiding the row. */
+.asr-intro {
+  display: flex; align-items: flex-start; gap: 9px;
+  margin: 0 0 16px; padding: 12px 14px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 11px;
+  color: var(--text-3);
+}
+.asr-intro svg { flex: none; margin-top: 1px; color: var(--blue-500); }
+.asr-intro p { margin: 0; font-size: 11.5px; line-height: 1.65; }
+.asr-intro strong { color: var(--text-1); }
+
+.asr-verdict {
+  display: flex; align-items: center; gap: 13px;
+  margin-bottom: 14px; padding: 15px 17px; border-radius: 13px;
+  border: 1px solid var(--border); border-left: 4px solid var(--green);
+  background: var(--bg-1); box-shadow: var(--shadow-card);
+}
+.asr-verdict.bad { border-left-color: var(--red); }
+.asr-verdict-icon { flex: none; color: var(--green); display: grid; place-items: center; }
+.asr-verdict.bad .asr-verdict-icon { color: var(--red); }
+.asr-verdict h2 { margin: 0; font-size: 15px; font-weight: 800; color: var(--text-0); }
+.asr-verdict p { margin: 3px 0 0; font-size: 11.5px; color: var(--text-3); }
+.asr-rerun {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: auto;
+  padding: 7px 14px; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--border-bright); background: var(--bg-2);
+  color: var(--text-2); font-size: 11.5px; font-weight: 600;
+}
+.asr-rerun:hover:not(:disabled) { background: var(--bg-3); }
+.asr-rerun:disabled { opacity: .6; cursor: default; }
+.asr-spin { animation: xh-rot 1.1s linear infinite; }
+
+.asr-error, .asr-empty {
+  display: flex; align-items: center; gap: 8px; justify-content: center;
+  padding: 20px; border-radius: 11px; font-size: 11.5px;
+  background: var(--bg-1); border: 1px solid var(--border); color: var(--text-3);
+}
+.asr-error { color: var(--red); border-color: color-mix(in srgb, var(--red) 22%, transparent); }
+
+.asr-posture { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 11px; margin-bottom: 16px; }
+.asr-posture-card {
+  display: grid; gap: 6px; padding: 13px 15px; border-radius: 12px;
+  background: var(--bg-1); border: 1px solid var(--border);
+}
+.asr-posture-card.warn { border-color: color-mix(in srgb, var(--gold) 34%, transparent); }
+.asr-posture-label {
+  font-size: 10px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--text-4);
+}
+.asr-hash {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px;
+  color: var(--text-1); word-break: break-all; line-height: 1.5;
+  background: var(--bg-2); border-radius: 6px; padding: 6px 8px;
+}
+.asr-posture-figures { font-size: 12.5px; color: var(--text-2); }
+.asr-posture-figures b { color: var(--text-0); font-size: 15px; }
+.asr-posture-note { font-size: 10.5px; line-height: 1.55; color: var(--text-4); }
+
+.asr-list { display: grid; gap: 11px; }
+.asr-control {
+  border-radius: 13px; background: var(--bg-1);
+  border: 1px solid var(--border); border-left: 3px solid var(--green);
+  box-shadow: var(--shadow-card); overflow: hidden;
+}
+.asr-control.bad { border-left-color: var(--red); }
+.asr-control-head {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 14px 15px; border: 0; background: transparent; cursor: pointer; text-align: left;
+}
+.asr-control-head:hover { background: var(--bg-2); }
+.asr-control-icon {
+  display: grid; place-items: center; flex: none; width: 30px; height: 30px;
+  border-radius: 9px; color: var(--blue-500);
+  background: color-mix(in srgb, var(--blue-500) 12%, transparent);
+}
+.asr-control-title { flex: 1; min-width: 0; }
+.asr-control-title h3 { margin: 0; font-size: 13.5px; font-weight: 700; color: var(--text-0); }
+.asr-control-title p { margin: 3px 0 4px; font-size: 11px; line-height: 1.55; color: var(--text-3); }
+.asr-control-title code { font-size: 10px; color: var(--text-4); }
+.asr-badge {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+.asr-badge.bad { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
+.asr-chev { flex: none; color: var(--text-4); transition: transform .16s ease; }
+.asr-chev.open { transform: rotate(180deg); }
+
+.asr-control-error {
+  display: flex; align-items: flex-start; gap: 7px; margin: 0;
+  padding: 10px 15px 13px; font-size: 11px; color: var(--red);
+}
+
+.asr-checks { border-top: 1px solid var(--border); display: grid; }
+.asr-check {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 15px; border-bottom: 1px solid var(--border);
+}
+.asr-check:last-child { border-bottom: 0; }
+.asr-check.bad { background: color-mix(in srgb, var(--red) 5%, transparent); }
+.asr-check-mark { flex: none; margin-top: 1px; color: var(--green); }
+.asr-check.bad .asr-check-mark { color: var(--red); }
+.asr-check-body { min-width: 0; flex: 1; }
+.asr-check-body h4 { margin: 0 0 6px; font-size: 12px; font-weight: 700; color: var(--text-0); }
+.asr-check-body dl { margin: 0; display: grid; gap: 3px; }
+.asr-check-body dl > div { display: grid; grid-template-columns: 74px 1fr; gap: 8px; align-items: start; }
+.asr-check-body dt {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--text-4); padding-top: 1px;
+}
+.asr-check-body dd { margin: 0; font-size: 11px; line-height: 1.55; color: var(--text-2); }
+.asr-check-body dl > div.bad dd { color: var(--red); font-weight: 600; }
+
+.asr-foot {
+  margin: 16px 0 0; padding: 12px 14px; border-radius: 11px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  font-size: 11px; line-height: 1.65; color: var(--text-3);
+}
+@media (max-width: 620px) {
+  .asr-check-body dl > div { grid-template-columns: 1fr; gap: 1px; }
+}

@@ -85,6 +85,9 @@
     "exportApprovals": {
       "label": "निर्यात अनुमोदन"
     },
+    "assurance": {
+      "label": "आश्वासन"
+    },
     "dutyRoster": {
       "label": "ड्यूटी रोस्टर"
     },

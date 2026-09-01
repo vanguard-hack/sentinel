@@ -11,6 +11,7 @@ const integrity = require('./integrity');
 const grounding = require('./grounding');
 const exportscreen = require('./exportscreen');
 const exportholds = require('./exportholds');
+const assurance = require('./assurance');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -2308,6 +2309,60 @@ const publicHold = (h) => ({
   consumedAt: h.consumedAt,
 });
 
+// ── Assurance console ──────────────────────────────────────────────────────
+//
+// Runs the control self-test against THIS deployment and reports it alongside
+// live posture — the audit chain's head hash, the export queue's depth.
+//
+// The two halves answer different questions and both are needed. The self-test
+// proves the controls still behave correctly when attacked; the posture proves
+// they are attached to real, moving state rather than sitting inert beside it.
+// A control can pass every check and still be writing to a table nobody reads.
+async function handleAssurance(req, res) {
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canApproveExports(role)) {
+    return json(res, 403, { error: 'Supervisor or admin access required' });
+  }
+
+  // The self-test first, and never inside the try that guards live lookups:
+  // it depends on nothing external precisely so that it still reports when
+  // everything else is down. That is the moment its answer matters most.
+  const report = assurance.runSelfTest();
+
+  // Live posture is best-effort. A Stratus hiccup must degrade this section to
+  // "could not read" rather than take the whole console down — a blank
+  // assurance page reads as "no controls", the opposite of the truth.
+  const posture = { auditChain: null, exportQueue: null, errors: [] };
+  try {
+    const head = await loadJsonObject(bucket, SEAL_HEAD_KEY);
+    posture.auditChain = head
+      ? { headHash: head.sealHash, day: head.day, seq: head.seq ?? null }
+      : { headHash: null, day: null, note: 'No day has been sealed yet — the chain starts at the first closed day.' };
+  } catch (e) {
+    posture.errors.push(`audit chain: ${(e && e.message) || 'unreadable'}`);
+  }
+  try {
+    const pending = await exportholds.list(bucket, { status: 'pending', limit: 200 });
+    const decided = await exportholds.list(bucket, { status: 'all', limit: 200 });
+    posture.exportQueue = {
+      pending: pending.length,
+      approved: decided.filter((h) => h.status === 'approved').length,
+      rejected: decided.filter((h) => h.status === 'rejected').length,
+    };
+  } catch (e) {
+    posture.errors.push(`export queue: ${(e && e.message) || 'unreadable'}`);
+  }
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'run-selftest', feature: 'Assurance', path: '/assurance',
+    detail: `${report.summary.passed}/${report.summary.checks} checks passed`,
+  }], caller);
+
+  return json(res, 200, { report, posture, role });
+}
+
 // ── Investigation Diary (Case Diary under BNSS Section 172) ─────────────────
 // One JSON blob per case (Stratus, no new Data Store table) plus a light
 // index for the list page and a flattened person index for cross-case lead
@@ -3977,6 +4032,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/export/pending')) return await handleExport(req, res, 'pending');
     if (path.endsWith('/export/decide')) return await handleExport(req, res, 'decide');
     if (path.endsWith('/export/status')) return await handleExport(req, res, 'status');
+    if (path.endsWith('/assurance/selftest')) return await handleAssurance(req, res);
     if (path.endsWith('/investigation/list')) return await handleInvestigation(req, res, 'list');
     if (path.endsWith('/investigation/get')) return await handleInvestigation(req, res, 'get');
     if (path.endsWith('/investigation/create')) return await handleInvestigation(req, res, 'create');

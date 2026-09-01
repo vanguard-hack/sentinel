@@ -42,6 +42,10 @@ export const FEATURES = [
   // NOT admin-only like Access & Audit. Officers never see the queue; they see
   // their own request's status through the export dialog instead.
   { key: 'exportApprovals', label: 'Export Approvals', path: '/export-approvals', roles: ['admin', 'supervisor'] },
+  // Assurance is the oversight surface: it proves the controls are live in this
+  // deployment. Same audience as the export queue — the people who sign off on
+  // the system, not the people using it day to day.
+  { key: 'assurance', label: 'Assurance', path: '/assurance', roles: ['admin', 'supervisor'] },
   { key: 'dashboard', label: 'Dashboard', path: '/dashboard', roles: ALL },
 ];
 
