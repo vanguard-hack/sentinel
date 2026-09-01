@@ -8226,6 +8226,23 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   .asr-check-body dl > div { grid-template-columns: 1fr; gap: 1px; }
 }
 
+/* Shared shell for the pages added after the first release — Action Queue,
+   Export Approvals, Assurance. There was no `.page` rule at all, so all three
+   ran hard against both edges of the viewport; on a wide monitor the table
+   stretched the full width with nothing to breathe against.
+
+   Wider than .rp-main's 1240px because these carry tables rather than prose:
+   a seven-column queue squeezed into a reading measure wraps its own headings. */
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px 32px 48px;
+}
+@media (max-width: 900px) { .page { padding: 18px 18px 36px; } }
+@media (max-width: 560px) { .page { padding: 14px 12px 32px; } }
+
 /* ── Action queue ───────────────────────────────────────────────────────────
    Rebuilt as tiles plus a table. The old layout gave every obligation a tall
    card, which reads well for three and is unusable for forty — the supervisor
@@ -8747,3 +8764,36 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .dg-refs li > span { display: flex; flex-direction: column; min-width: 0; }
 .dg-refs em { font-style: normal; font-size: 11.5px; color: var(--text-3); }
 .dg-ref-kind { margin-left: auto; flex: none; font-size: 10.5px; color: var(--text-4); }
+
+/* ── Action queue: pagination ──────────────────────────────────────────────
+   Sixty-one obligations is a scroll nobody finishes, and the rows at the
+   bottom are the ones the sort has already decided matter least — but they
+   still have to be reachable, because "least urgent of sixty-one" is not
+   "unimportant". */
+.aq-pager {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px; border-top: 1px solid var(--border);
+  background: var(--bg-2);
+}
+.aq-pager-count { font-size: 12px; color: var(--text-3); margin-right: auto; }
+.aq-pager-count b { color: var(--text-1); font-weight: 600; }
+.aq-pager-size {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-3);
+}
+.aq-pager-size select {
+  padding: 4px 7px; font: inherit; font-size: 12px;
+  border: 1px solid var(--border-bright); border-radius: 7px;
+  background: var(--bg-1); color: var(--text-1); cursor: pointer;
+}
+.aq-pager-nav { display: inline-flex; align-items: center; gap: 6px; }
+.aq-page-btn {
+  display: inline-grid; place-items: center; min-width: 30px; height: 30px;
+  padding: 0 8px; border: 1px solid var(--border-bright); border-radius: 8px;
+  background: var(--bg-1); color: var(--text-2);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.aq-page-btn:hover:not(:disabled) { background: var(--bg-3); color: var(--text-0); }
+.aq-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.aq-page-btn.on { background: var(--blue-500); border-color: var(--blue-500); color: #fff; }
+.aq-page-gap { padding: 0 2px; color: var(--text-4); font-size: 12px; }

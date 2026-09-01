@@ -307,3 +307,101 @@ test('an unknown sort key falls back to severity rather than shuffling', () => {
   ], 'nonsense');
   expect(sorted.map((o) => o.title)).toEqual(['o', 'h']);
 });
+
+// ── Pagination ────────────────────────────────────────────────────────────
+//
+// Sixty-one obligations is a scroll nobody finishes. The interesting part is
+// not slicing an array — it is that every filter on this page can shrink the
+// list under the reader's feet, and a page index left pointing past the end
+// renders an empty table under a header claiming sixty-one rows.
+import { paginate, pageWindow, PAGE_SIZES } from '../utils/actionQueue';
+
+const list = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1 }));
+
+test('a page carries the rows it should', () => {
+  const v = paginate(list(61), 1, 15);
+  expect(v.rows).toHaveLength(15);
+  expect(v.rows[0].id).toBe(1);
+  expect(v.pages).toBe(5);
+  expect(v.total).toBe(61);
+});
+
+test('the last page carries the remainder, not a padded full page', () => {
+  const v = paginate(list(61), 5, 15);
+  expect(v.rows).toHaveLength(1);
+  expect(v.rows[0].id).toBe(61);
+});
+
+test('the count reads the way a person says it', () => {
+  const v = paginate(list(61), 2, 15);
+  expect([v.first, v.last]).toEqual([16, 30]);
+});
+
+test('an empty queue reports 0 of 0 rather than 1 to 0', () => {
+  const v = paginate([], 1, 15);
+  expect([v.first, v.last, v.total, v.pages]).toEqual([0, 0, 0, 1]);
+});
+
+test('a page past the end is clamped to the last one', () => {
+  // The case that matters: on page 4, switch to "Mine", three rows survive.
+  const v = paginate(list(3), 4, 15);
+  expect(v.page).toBe(1);
+  expect(v.rows).toHaveLength(3);
+});
+
+test('nonsense page numbers do not produce an empty table', () => {
+  [0, -3, NaN, null, undefined, 'two'].forEach((p) => {
+    const v = paginate(list(20), p, 15);
+    expect(v.page).toBe(1);
+    expect(v.rows.length).toBeGreaterThan(0);
+  });
+});
+
+test('a nonsense page size falls back rather than dividing by zero', () => {
+  [0, -10, NaN, null].forEach((n) => {
+    const v = paginate(list(20), 1, n);
+    expect(v.size).toBe(PAGE_SIZES[0]);
+    expect(v.rows).toHaveLength(15);
+  });
+});
+
+test('paginating never mutates the list it was given', () => {
+  const rows = list(5);
+  paginate(rows, 1, 2);
+  expect(rows).toHaveLength(5);
+});
+
+// ── The page buttons ──────────────────────────────────────────────────────
+
+test('a single page needs no window', () => {
+  expect(pageWindow(1, 1)).toEqual([1]);
+});
+
+test('every page is shown when they all fit', () => {
+  expect(pageWindow(2, 4)).toEqual([1, 2, 3, 4]);
+});
+
+test('the first, last and current pages are always reachable', () => {
+  const w = pageWindow(20, 40);
+  expect(w[0]).toBe(1);
+  expect(w[w.length - 1]).toBe(40);
+  expect(w).toContain(20);
+});
+
+test('a gap marks what was skipped, so the control keeps its width', () => {
+  expect(pageWindow(20, 40)).toEqual([1, 'gap', 19, 20, 21, 'gap', 40]);
+});
+
+test('no gap is drawn for a single skipped page — the number is shorter', () => {
+  expect(pageWindow(3, 5)).toEqual([1, 2, 3, 4, 5]);
+});
+
+test('the window does not run past either end', () => {
+  expect(pageWindow(1, 10)).toEqual([1, 2, 'gap', 10]);
+  expect(pageWindow(10, 10)).toEqual([1, 'gap', 9, 10]);
+});
+
+test('a page number is never repeated', () => {
+  const w = pageWindow(2, 6).filter((n) => n !== 'gap');
+  expect(new Set(w).size).toBe(w.length);
+});

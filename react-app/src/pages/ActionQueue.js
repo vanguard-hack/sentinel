@@ -34,9 +34,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  AlertTriangle, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronsUpDown,
-  ClipboardCheck, Clock, ExternalLink, Flame, Loader2, RefreshCw, RotateCcw,
-  Scale, ShieldAlert, Timer,
+  AlertTriangle, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronLeft,
+  ChevronRight, ChevronsUpDown, ClipboardCheck, Clock, ExternalLink, Flame,
+  Loader2, RefreshCw, RotateCcw, Scale, ShieldAlert, Timer,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { logAudit } from '../utils/audit';
@@ -44,6 +44,7 @@ import {
   fetchActionQueue, acknowledgeObligation, reopenObligation,
   SEVERITY, KIND_LABEL, countdown, citation, byOfficer, canCommand,
   initials, avatarTone, deadlineChip, sortObligations,
+  paginate, pageWindow, PAGE_SIZES,
 } from '../utils/actionQueue';
 
 const KIND_ICONS = {
@@ -85,6 +86,8 @@ export default function ActionQueue() {
   const [showDone, setShowDone] = useState(false);
   const [sort, setSort] = useState({ key: 'severity', dir: 'asc' });
   const [openRow, setOpenRow] = useState(null); // the obligation showing its prose
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -117,7 +120,17 @@ export default function ActionQueue() {
     };
   }, [data, scope]);
 
-  const rows = useMemo(() => sortObligations(open, sort.key, sort.dir), [open, sort]);
+  const sorted = useMemo(() => sortObligations(open, sort.key, sort.dir), [open, sort]);
+  // paginate() clamps the page itself, so a filter that shrinks the list under
+  // the reader — switching to "Mine", or dismissing the last row on page four —
+  // cannot leave an empty table under a header claiming sixty-one obligations.
+  const view = useMemo(() => paginate(sorted, page, pageSize), [sorted, page, pageSize]);
+  const rows = view.rows;
+
+  // Back to the top whenever the set changes underneath. Staying on page four
+  // of a list that just became three rows long is disorienting even when it
+  // renders correctly.
+  useEffect(() => { setPage(1); }, [scope, sort, pageSize]);
 
   const toggleSort = (key) => setSort((s0) =>
     (s0.key === key ? { key, dir: s0.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
@@ -425,6 +438,61 @@ export default function ActionQueue() {
               })}
             </tbody>
           </table>
+
+          {view.pages > 1 && (
+            <div className="aq-pager">
+              <span className="aq-pager-count">
+                Showing <b>{view.first}–{view.last}</b> of <b>{view.total}</b>
+              </span>
+
+              <label className="aq-pager-size">
+                Rows
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  aria-label="Rows per page"
+                >
+                  {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+
+              <div className="aq-pager-nav">
+                <button
+                  type="button" className="aq-page-btn"
+                  onClick={() => setPage(view.page - 1)}
+                  disabled={view.page <= 1}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft size={14} aria-hidden="true" />
+                </button>
+                {pageWindow(view.page, view.pages).map((n, i) => (
+                  n === 'gap'
+                    // eslint-disable-next-line react/no-array-index-key
+                    ? <span key={`gap-${i}`} className="aq-page-gap">…</span>
+                    : (
+                      <button
+                        key={n}
+                        type="button"
+                        className={`aq-page-btn${n === view.page ? ' on' : ''}`}
+                        onClick={() => setPage(n)}
+                        aria-label={`Page ${n}`}
+                        aria-current={n === view.page ? 'page' : undefined}
+                      >
+                        {n}
+                      </button>
+                    )
+                ))}
+                <button
+                  type="button" className="aq-page-btn"
+                  onClick={() => setPage(view.page + 1)}
+                  disabled={view.page >= view.pages}
+                  aria-label="Next page"
+                >
+                  <ChevronRight size={14} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

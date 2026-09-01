@@ -206,3 +206,60 @@ export function sortObligations(list, key = 'severity', dir = 'asc') {
     return ar - br;
   });
 }
+
+// ── Pagination ────────────────────────────────────────────────────────────
+
+export const PAGE_SIZES = [15, 30, 50];
+
+/**
+ * One page of a sorted queue.
+ *
+ * The page number is CLAMPED rather than trusted. Every filter on this screen
+ * can shrink the list under the reader's feet — switching from "All cases" to
+ * "Mine", or dismissing the last row on page four — and a page index left
+ * pointing past the end renders an empty table under a header that says there
+ * are sixty-one obligations. Clamping here means the component cannot show
+ * that, whatever order the state updates happen to land in.
+ */
+export function paginate(list, page = 1, size = PAGE_SIZES[0]) {
+  const rows = Array.isArray(list) ? list : [];
+  const perPage = Number.isFinite(size) && size > 0 ? Math.floor(size) : PAGE_SIZES[0];
+  const pages = Math.max(1, Math.ceil(rows.length / perPage));
+  const current = Math.min(Math.max(1, Math.floor(Number(page) || 1)), pages);
+  const from = (current - 1) * perPage;
+  const slice = rows.slice(from, from + perPage);
+  return {
+    rows: slice,
+    page: current,
+    pages,
+    size: perPage,
+    total: rows.length,
+    // 1-based and inclusive, because that is how the count reads to a person:
+    // "showing 16–30 of 61", not "offset 15, length 15".
+    first: rows.length ? from + 1 : 0,
+    last: from + slice.length,
+  };
+}
+
+/**
+ * Which page buttons to draw.
+ *
+ * Always the first and last page, always the current one and its neighbours,
+ * and a gap marker for whatever is skipped — so the control stays the same
+ * width at page 2 of 5 and page 40 of 300, instead of reflowing the toolbar
+ * every time someone pages through.
+ */
+export function pageWindow(page, pages, span = 1) {
+  if (pages <= 1) return [1];
+  const want = new Set([1, pages]);
+  for (let i = page - span; i <= page + span; i++) if (i >= 1 && i <= pages) want.add(i);
+  const sorted = [...want].sort((a, b) => a - b);
+  const out = [];
+  let prev = 0;
+  for (const n of sorted) {
+    if (prev && n - prev > 1) out.push('gap');
+    out.push(n);
+    prev = n;
+  }
+  return out;
+}
