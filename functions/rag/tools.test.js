@@ -133,8 +133,12 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /Date\.now\(\) - started > TOOL_BUDGET_MS/.test(loop));
   check('tools are withdrawn on the last turn, which forces an answer',
     /i === TOOL_MAX_ITERATIONS - 1 \|\| outOfTime[\s\S]{0,60}\?\s*\{\}/.test(loop));
+  // The window is a proximity check — the push must follow the gather rather
+  // than appear anywhere in the file — not a length budget. It was 900 and
+  // broke when a comment was added inside the gather, which is the test being
+  // brittle rather than the property being violated.
   check('parallel tool results go back in ONE user message',
-    /Promise\.all\([\s\S]{0,900}?messages\.push\(\{ role: 'user', content: results \}\)/.test(loop));
+    /Promise\.all\([\s\S]{0,1600}?messages\.push\(\{ role: 'user', content: results \}\)/.test(loop));
   // Asserts the PROPERTY, not the literal list: every underscore-prefixed key
   // this module emits must appear in the loop's strip. Pinning the exact
   // destructuring meant adding one internal field broke the test while a

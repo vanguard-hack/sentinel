@@ -387,6 +387,10 @@ export async function generateReply(history, vision = [], attachments = [], sess
       text, components, sources, source: data.source,
       grounding: data.grounding || null,
       protectedAccess: data.protected_access || null,
+      // A file that carries an instruction aimed at this assistant is itself a
+      // finding — somebody wrote that document expecting a system like this to
+      // read it. Surfaced to the officer, not just to the audit trail.
+      attachmentWarning: data.attachment_warning || null,
     };
   } catch (e) {
     return {

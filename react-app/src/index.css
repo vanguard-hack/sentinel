@@ -8399,3 +8399,16 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 }
 
 .inv-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ── Assistant: attachment guardrail notice ──────────────────────────────────
+   Amber, not red. The content was read and nothing in it was obeyed; this is
+   a finding about the document, not a failure of the answer. */
+.as-attach-warn {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin: 8px 0 0; padding: 9px 11px; border-radius: 9px;
+  background: color-mix(in srgb, var(--gold) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold) 28%, transparent);
+  font-size: 11px; line-height: 1.6; color: var(--text-2);
+}
+.as-attach-warn svg { flex: none; margin-top: 2px; color: var(--gold); }
+.as-attach-warn em { color: var(--text-3); font-style: normal; }

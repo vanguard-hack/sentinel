@@ -30,6 +30,7 @@ const redaction = require('./redaction');
 const masters = require('./masters.json');
 const network = require('./network');
 const legal = require('./legal');
+const guard = require('./guard');
 
 // Per-result caps. Generous enough to answer, small enough that a loop of
 // tool calls cannot fill the context window with rows.
@@ -663,7 +664,17 @@ async function run(name, input, deps) {
         const text = await ragSearch(String((input && input.query) || ''));
         if (!text) return { found: false, note: 'The knowledge base returned nothing for that.' };
         const f = redaction.filterText(String(text).slice(0, MAX_TEXT), role);
-        return { found: true, text: f.text, _redactions: f.redactions || [] };
+        // Knowledge-base passages are documents somebody else wrote. Fenced for
+        // the same reason attachments are: a passage that says "ignore your
+        // instructions" must read to the model as a sentence in a document, not
+        // as a turn in this conversation.
+        const w = guard.wrapUntrusted(f.text, 'a passage from the knowledge base');
+        return {
+          found: true,
+          text: w.text,
+          ...(w.suspicious ? { _threat: w.findings } : {}),
+          _redactions: f.redactions || [],
+        };
       }
 
       case 'lookup_law':
@@ -701,11 +712,22 @@ async function run(name, input, deps) {
         if (typeof digitisedSearch !== 'function') return { error: 'Scanned records unavailable.' };
         const hits = await digitisedSearch(String((input && input.query) || ''));
         if (!hits || !hits.length) return { found: false, note: 'No scanned record matched.' };
+        // Scanned paper is the highest-risk source in the system: the text came
+        // out of OCR on a document nobody here wrote, and a page can be
+        // prepared specifically to be scanned. Each excerpt is fenced
+        // individually so one hostile page cannot speak for the others.
+        const threats = [];
         const out = hits.slice(0, 6).map((h) => {
           const f = redaction.filterText(String(h.excerpt || '').slice(0, 800), role);
-          return { title: h.title, type: h.docType, excerpt: f.text };
+          const w = guard.wrapUntrusted(f.text, `an excerpt from the scanned record "${String(h.title || 'untitled').slice(0, 80)}"`);
+          if (w.suspicious) threats.push(...w.findings);
+          return { title: h.title, type: h.docType, excerpt: w.text };
         });
-        return { found: true, records: out, _hits: hits.slice(0, 6) };
+        return {
+          found: true, records: out,
+          ...(threats.length ? { _threat: threats } : {}),
+          _hits: hits.slice(0, 6),
+        };
       }
 
       case 'case_obligations': {

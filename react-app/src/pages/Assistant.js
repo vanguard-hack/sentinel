@@ -103,6 +103,24 @@ function ProtectedAccessPanel({ access, onRequest, busy }) {
   );
 }
 
+// The officer's copy of a guardrail finding. Deliberately framed as
+// intelligence about the document rather than as an error: the content WAS
+// read, fenced as data, and nothing in it was obeyed. What the officer learns
+// is that the file was written to manipulate a machine reader, which is worth
+// knowing about a document in an investigation.
+function AttachmentWarning({ warning }) {
+  if (!warning || !warning.notice) return null;
+  return (
+    <div className="as-attach-warn" role="status">
+      <ShieldAlert size={14} />
+      <span>
+        {warning.notice}
+        {warning.detail ? <em> Detected: {warning.detail}.</em> : null}
+      </span>
+    </div>
+  );
+}
+
 function GroundingWarning({ grounding }) {
   if (!grounding || !grounding.warning) return null;
   return (
@@ -549,6 +567,7 @@ export default function Assistant() {
         source: reply.source,
         grounding: reply.grounding,
         protectedAccess: reply.protectedAccess,
+        attachmentWarning: reply.attachmentWarning,
         ts: Date.now(),
       };
       const fullMessages = [...history, botMsg];
@@ -975,6 +994,7 @@ export default function Assistant() {
                         </div>
                       )}
                       {m.role === 'assistant' && <AguiRenderer components={m.components} />}
+                      {m.role === 'assistant' && <AttachmentWarning warning={m.attachmentWarning} />}
                       {m.role === 'assistant' && <GroundingWarning grounding={m.grounding} />}
                       {m.role === 'assistant' && (
                         <ProtectedAccessPanel

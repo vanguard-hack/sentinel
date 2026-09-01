@@ -9,6 +9,7 @@ const memory = require('./memory');
 const assistantTools = require('./tools');
 const integrity = require('./integrity');
 const grounding = require('./grounding');
+const guard = require('./guard');
 const exportscreen = require('./exportscreen');
 const exportholds = require('./exportholds');
 const assurance = require('./assurance');
@@ -383,6 +384,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
   const used = [];       // what ran, for the audit trail
   const rowSets = [];    // Data Store rows, for citations
   const scanHits = [];   // digitised records, for citations
+  const toolThreats = []; // injection markers found in retrieved content
   let usedKnowledgeBase = false;
 
   const deps = {
@@ -462,7 +464,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           .join('')
           .trim();
         if (!text) return null;
-        return { text, used, rowSets, scanHits, usedKnowledgeBase, protectedAccess, iterations: i + 1 };
+        return { text, used, rowSets, scanHits, usedKnowledgeBase, protectedAccess, toolThreats, iterations: i + 1 };
       }
 
       messages.push({ role: 'assistant', content: res.content });
@@ -473,11 +475,16 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           const out = await assistantTools.run(c.name, c.input, deps);
           used.push(`${c.name}${out && out.error ? ':error' : ''}`);
           if (out && out._protectedAccess) protectedAccess.push(out._protectedAccess);
+          // Injection markers found inside retrieved content. Collected for the
+          // audit trail and stripped below with the rest of the bookkeeping —
+          // the model is given the fenced text, never the fact that we
+          // suspected it, which would only invite it to argue the point.
+          if (out && out._threat) toolThreats.push(...out._threat);
           if (c.name === 'query_records' && out && Array.isArray(out.rows) && out.rows.length) {
             rowSets.push({ rows: out.rows, query: (c.input && c.input.zcql) || '' });
           }
           // Internal bookkeeping never goes back to the model.
-          const { _redactions, _hits, _protectedAccess, ...clean } = out || {};
+          const { _redactions, _hits, _protectedAccess, _threat, ...clean } = out || {};
           return {
             type: 'tool_result',
             tool_use_id: c.id,
@@ -4434,6 +4441,11 @@ module.exports = async (req, res) => {
     let routeDecision = null; // route + confidence, carried into the audit record
     let fanoutRag = null; // in-flight RAG call when the route is BOTH
     let redactionLog = []; // what the clearance filter removed, for the audit record
+    // Guardrail state for this turn, carried into the audit record. An attempt
+    // nobody can see afterwards is worse than one that half-works, so this is
+    // logged whether or not it changed the answer.
+    const inputScan = guard.scanInput(rawQuery);
+    let threatLog = inputScan.findings.map((f) => ({ ...f, stage: 'input' }));
     let citedSources = []; // unified attribution for this answer, carried into the audit record
     // Everything retrieved for this answer, in whatever shape the lane that
     // ran produced it. Fed at the RETRIEVAL points rather than passed to
@@ -4542,6 +4554,12 @@ module.exports = async (req, res) => {
           groundingResult && !groundingResult.grounded
             ? `grounding=FLAGGED:${groundingResult.unsupported.map((u) => u.value).join(',') || 'contradiction'}`
             : groundingResult ? 'grounding=ok' : null,
+          // Every guardrail hit this turn — an override attempt in the
+          // officer's message, injection markers inside an attached file or a
+          // scanned page, an answer withheld. Recorded whether or not it
+          // changed anything, because a pattern of attempts across sessions is
+          // the signal a single blocked turn cannot give.
+          threatLog.length ? `guardrail=${guard.summarise(threatLog)}` : null,
         ].filter(Boolean);
         const protectedEvents = protectedReaches.map((pa) => ({
           action: pa.granted ? 'protected-access-granted' : 'protected-access-refused',
@@ -4602,7 +4620,8 @@ module.exports = async (req, res) => {
     // came to skip finalAnswer entirely, taking the tier-2 guard and the
     // decision record with them. One exit makes that class of drift
     // impossible.
-    const respondWith = async (text, payload = {}, citations) => {
+    const respondWith = async (rawText, payload = {}, citations) => {
+      let text = rawText;
       const merged = attribution.merge(...(citations || []));
       const guarded = attribution.clearanceFilter(merged, await resolveCaller());
       if (guarded.removed.length) {
@@ -4631,6 +4650,24 @@ module.exports = async (req, res) => {
         console.error('grounding check failed (non-fatal):', e && e.message);
       }
       const groundingWarning = groundingResult ? grounding.warning(groundingResult) : null;
+
+      // Last line of defence, and deliberately the narrowest. It looks only for
+      // the assistant having plainly complied with an attack — reciting its
+      // instructions, announcing an unrestricted persona, claiming a clearance
+      // check was bypassed. It does NOT judge whether an answer is
+      // "appropriate": this is a police tool whose daily work is violence, and
+      // a vague safety filter over that content would refuse real casework
+      // every day. Grounding and clearance own those questions; this owns one.
+      const outputScan = guard.scanOutput(text, { systemPrompt: TOOL_SYSTEM });
+      if (outputScan.action === 'replace') {
+        threatLog = threatLog.concat(outputScan.findings.map((f) => ({ ...f, stage: 'output' })));
+        text = outputScan.message;
+        // Whatever it was about to say, it was not drawn from the records — so
+        // it gets no citations, and no grounding warning about an answer the
+        // officer will never see.
+        citedSources = [];
+        groundingResult = null;
+      }
 
       // Protected identity: say what was withheld and how to reach it, rather
       // than letting the officer read a case file with silent holes in it.
@@ -4676,6 +4713,22 @@ module.exports = async (req, res) => {
           : {}),
         detected_lang: lid.lang,
         response_lang: responseLang,
+        // Worth telling the officer, not just the audit trail. A file that
+        // contains an instruction aimed at an AI assistant is itself a finding:
+        // somebody prepared that document expecting it to be read by a system
+        // like this one. The content was still read — fenced, as data — so this
+        // is intelligence about the document, not an apology for refusing it.
+        ...(attachmentThreat
+          ? {
+            attachment_warning: {
+              notice:
+                'The attached file contains text written to look like an instruction to this '
+                + 'assistant. It was read as document content and nothing in it was obeyed — but '
+                + 'a document written that way is worth treating as suspect.',
+              detail: guard.summarise(attachmentThreat),
+            },
+          }
+          : {}),
         ...payload,
         metrics: {
           pipeline_route: pipelineRoute(payload.source, citedSources),
@@ -4691,6 +4744,24 @@ module.exports = async (req, res) => {
       consolidateLater();
       return sent;
     };
+
+    // ── Prompt-exfiltration refusal ──────────────────────────────────────
+    //
+    // The one input class with no innocent reading: asking for the assistant's
+    // own configuration rather than anything in the case records. Refused here,
+    // before any model or retrieval call, so it costs nothing and cannot be
+    // talked past downstream.
+    //
+    // Routed through respondWith rather than returned directly, so a refusal is
+    // audited, localised and cited exactly like any other answer. A refusal
+    // that leaves no trace is the one an attacker would most like to be able to
+    // make repeatedly.
+    if (inputScan.action === 'refuse') {
+      return await respondWith(inputScan.message, {
+        source: 'guardrail',
+        refused: 'prompt-exfiltration',
+      }, []);
+    }
 
     // ── Memory write-back ────────────────────────────────────────────────
     // On the single exit, so no lane can answer without the exchange being
@@ -4818,7 +4889,24 @@ module.exports = async (req, res) => {
     // One context for everything hanging off this message, so a question about
     // "this file" reads the same whether the officer attached a photograph or
     // a spreadsheet.
-    const attachedContext = [visionContext, docContext].filter(Boolean).join('\n\n');
+    // Everything hanging off this message came from a file, not from the
+    // officer, so it is fenced before it can reach the model: an attachment or
+    // a photographed page is precisely where an instruction aimed at the
+    // assistant would arrive, and text concatenated into a prompt otherwise
+    // carries no provenance at all. Flagged rather than refused — the officer
+    // asked about this document, and declining to read a file because it
+    // contains a suspicious sentence is its own denial of service.
+    const rawAttachedContext = [visionContext, docContext].filter(Boolean).join('\n\n');
+    let attachedContext = '';
+    let attachmentThreat = null;
+    if (rawAttachedContext) {
+      const w = guard.wrapUntrusted(rawAttachedContext, 'a file the officer attached to this message');
+      attachedContext = w.text;
+      if (w.suspicious) {
+        attachmentThreat = w.findings;
+        threatLog = threatLog.concat(w.findings.map((f) => ({ ...f, stage: 'attachment' })));
+      }
+    }
 
     const slash = parseSlash(rawQuery);
     if (slash) {
@@ -4881,6 +4969,14 @@ module.exports = async (req, res) => {
     const commandQuery = slash ? slashToQuery(slash.name, slash.arg) : null;
     const query = commandQuery
       || (responseLang === 'en' ? rawQuery : await normaliseToEnglish(rawQuery, responseLang));
+
+    // A message that reads like an instruction override is answered, not
+    // refused — an officer quoting a hostile document is doing their job, and
+    // blocking them stops real work while stopping no attacker, who would
+    // simply rephrase. What changes is that the model is told, before it reads
+    // the message, that its instructions do not change and that this is a
+    // question about data. Applied at the tool-loop call site below, where the
+    // context-resolved text that actually reaches the model is assembled.
 
     // Conversation memory from the client: `history` is the short-term window
     // (recent turns, verbatim); `summary` is the long-term digest of older
@@ -5102,7 +5198,12 @@ module.exports = async (req, res) => {
       if (routed === 'TOOLS') {
         await resolveCaller();
         const looped = await runToolLoop({
-          query: searchQuery,
+          // The framing notice rides with the question when the turn looked
+          // like an override attempt, so the model reads "this is a question
+          // about data" before it reads the message itself.
+          query: inputScan.action === 'frame'
+            ? `${guard.INPUT_FRAME_NOTICE}\n\n${searchQuery}`
+            : searchQuery,
           history,
           app: clearanceApp,
           role: callerRole,
@@ -5112,6 +5213,9 @@ module.exports = async (req, res) => {
         });
         if (looped) {
           validatorChecks.push(`tools:${looped.used.join(',')}|iterations=${looped.iterations}`);
+          if (looped.toolThreats && looped.toolThreats.length) {
+            threatLog = threatLog.concat(looped.toolThreats.map((f) => ({ ...f, stage: 'retrieved' })));
+          }
           protectedReaches.push(...(looped.protectedAccess || []));
           const cites = [];
           for (const set of looped.rowSets) {
