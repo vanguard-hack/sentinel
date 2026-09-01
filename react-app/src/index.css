@@ -8854,3 +8854,34 @@ span.inv-status-dot {
      white, without darkening the colour itself. */
   box-shadow: inset 0 0 0 1px rgb(0 0 0 / 12%);
 }
+
+/* ── Stacked bars ──────────────────────────────────────────────────────────
+   The total sits above each bar because that is what a stacked chart is read
+   for — the composition is the detail, the total is the headline. */
+.rp-stack { width: 100%; }
+.rp-stack-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; font-size: 11.5px; color: var(--text-2); }
+.rp-stack-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.rp-stack-legend i { width: 9px; height: 9px; border-radius: 2px; }
+.rp-stack-plot { display: flex; align-items: flex-end; gap: 14px; padding-top: 18px; }
+.rp-stack-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
+.rp-stack-total { font-size: 11px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; }
+.rp-stack-bar { width: 100%; max-width: 54px; display: flex; flex-direction: column; border-radius: 5px 5px 0 0; overflow: hidden; }
+.rp-stack-seg { transition: filter 0.12s; cursor: default; }
+.rp-stack-seg.on { filter: brightness(1.15); }
+.rp-stack-label { margin-top: 7px; font-size: 11px; color: var(--text-3); text-align: center; overflow-wrap: anywhere; }
+.rp-stack-read { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 12px; color: var(--text-2); }
+
+/* ── Sankey ────────────────────────────────────────────────────────────────
+   Labels are HTML rather than SVG text so they inherit the page's font stack —
+   a Kannada node name renders with the right fallback face instead of tofu. */
+.rp-sankey { position: relative; width: 100%; }
+.rp-sankey-flow { fill-opacity: 0.34; transition: fill-opacity 0.12s; }
+.rp-sankey-flow.on, .rp-sankey-flow:hover { fill-opacity: 0.62; }
+.rp-sankey-node { fill-opacity: 0.92; }
+.rp-sankey-labels { position: absolute; inset: 0; pointer-events: none; }
+.rp-sankey-label {
+  position: absolute; white-space: nowrap;
+  font-size: 11px; color: var(--text-2);
+  background: color-mix(in srgb, var(--bg-1) 78%, transparent);
+  padding: 0 3px; border-radius: 3px;
+}

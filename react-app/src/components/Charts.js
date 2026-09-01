@@ -784,3 +784,231 @@ export function HBarList({ data, format = (v) => v.toLocaleString(), suffix = ''
     </div>
   );
 }
+
+
+/**
+ * Stacked bars — one bar per category, split into named series.
+ *
+ * `data` is [{ label, parts: [{ name, value }] }]. Series colours come from the
+ * same --rp-cat ramp the line charts use, so a series keeps its colour when the
+ * assistant answers the same question two ways.
+ *
+ * The total sits above each bar because that is what a stacked chart is
+ * usually read for — the composition is the detail, the total is the headline.
+ */
+export function StackedBars({ data, height = 220, format = (v) => v.toLocaleString() }) {
+  const [hover, setHover] = useState(null); // { bar, part }
+  const rows = (Array.isArray(data) ? data : [])
+    .map((d) => ({
+      label: String(d.label ?? ''),
+      parts: (Array.isArray(d.parts) ? d.parts : [])
+        // Number(null) is 0 and 0 is finite, so an explicit check is needed or
+        // a missing figure draws as a zero-height segment that reads as "none".
+        .filter((p) => p && p.value !== null && p.value !== undefined && p.value !== ''
+          && typeof p.value !== 'boolean' && Number.isFinite(Number(p.value)))
+        .map((p) => ({ name: String(p.name ?? ''), value: Math.max(0, Number(p.value)) })),
+    }))
+    .filter((d) => d.parts.length);
+  if (!rows.length) return <div className="rp-empty">No data</div>;
+
+  // One colour per distinct series name, assigned in first-seen order so the
+  // legend and the stack agree.
+  const names = [];
+  for (const r of rows) for (const p of r.parts) if (!names.includes(p.name)) names.push(p.name);
+  const colourOf = (name) => `var(--rp-cat-${names.indexOf(name) % 6})`;
+
+  const totals = rows.map((r) => r.parts.reduce((a, p) => a + p.value, 0));
+  const max = Math.max(1, ...totals);
+
+  return (
+    <div className="rp-stack">
+      <div className="rp-stack-legend">
+        {names.map((n) => (
+          <span key={n}><i style={{ background: colourOf(n) }} />{n}</span>
+        ))}
+      </div>
+      <div className="rp-stack-plot" style={{ height }} onMouseLeave={() => setHover(null)}>
+        {rows.map((r, bi) => (
+          <div key={r.label} className="rp-stack-col">
+            <span className="rp-stack-total">{format(totals[bi])}</span>
+            <div className="rp-stack-bar" style={{ height: `${(totals[bi] / max) * 100}%` }}>
+              {r.parts.map((p, pi) => (
+                <div
+                  key={p.name}
+                  className={`rp-stack-seg${hover && hover.bar === bi && hover.part === pi ? ' on' : ''}`}
+                  style={{
+                    height: `${totals[bi] ? (p.value / totals[bi]) * 100 : 0}%`,
+                    background: colourOf(p.name),
+                  }}
+                  onMouseEnter={() => setHover({ bar: bi, part: pi })}
+                  title={`${r.label} · ${p.name}: ${format(p.value)}`}
+                />
+              ))}
+            </div>
+            <span className="rp-stack-label">{r.label}</span>
+          </div>
+        ))}
+      </div>
+      {hover && (
+        <div className="rp-stack-read">
+          <b>{rows[hover.bar].label}</b>
+          <span>{rows[hover.bar].parts[hover.part].name}</span>
+          <b>{format(rows[hover.bar].parts[hover.part].value)}</b>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Sankey — where quantity flows from and to.
+ *
+ * `nodes` is [{ id, label }] and `links` is [{ source, target, value }].
+ *
+ * Layered rather than force-directed: depth is computed by walking forward from
+ * the nodes nothing flows into, which is what makes a Sankey readable — money
+ * or cases move left to right and a reader can follow one ribbon the whole way.
+ * A cycle would make that walk infinite, so depth is capped; the alternative,
+ * refusing to draw, would hide the very thing worth seeing in a laundering
+ * chain that loops back on itself.
+ */
+export function Sankey({ nodes, links, height = 300, format = (v) => v.toLocaleString() }) {
+  const [hover, setHover] = useState(null);
+  const [wrapRef, mw] = useMeasuredWidth();
+
+  const nodeList = (Array.isArray(nodes) ? nodes : [])
+    .filter((n) => n && n.id != null)
+    .map((n) => ({ id: String(n.id), label: String(n.label ?? n.id) }));
+  const byId = new Map(nodeList.map((n) => [n.id, n]));
+  const flows = (Array.isArray(links) ? links : [])
+    .filter((l) => l && byId.has(String(l.source)) && byId.has(String(l.target))
+      && l.value !== null && l.value !== undefined && l.value !== ''
+      && Number.isFinite(Number(l.value)) && Number(l.value) > 0
+      && String(l.source) !== String(l.target))
+    .map((l) => ({ source: String(l.source), target: String(l.target), value: Number(l.value) }));
+  if (!nodeList.length || !flows.length) return <div className="rp-empty">No data</div>;
+
+  // Depth: 0 for anything with no inflow, otherwise one past its deepest
+  // source. Capped so a cycle terminates rather than spinning.
+  const depth = new Map(nodeList.map((n) => [n.id, 0]));
+  const incoming = new Set(flows.map((f) => f.target));
+  for (let pass = 0; pass < Math.min(nodeList.length, 12); pass++) {
+    let moved = false;
+    for (const f of flows) {
+      const want = depth.get(f.source) + 1;
+      if (want > depth.get(f.target)) { depth.set(f.target, want); moved = true; }
+    }
+    if (!moved) break;
+  }
+  for (const n of nodeList) if (!incoming.has(n.id)) depth.set(n.id, 0);
+
+  const maxDepth = Math.max(...[...depth.values()]);
+  const columns = [];
+  for (let d = 0; d <= maxDepth; d++) columns.push(nodeList.filter((n) => depth.get(n.id) === d));
+
+  // A node is as tall as the larger of what enters and what leaves it.
+  const through = (id) => Math.max(
+    flows.filter((f) => f.target === id).reduce((a, f) => a + f.value, 0),
+    flows.filter((f) => f.source === id).reduce((a, f) => a + f.value, 0),
+  );
+  const colTotal = columns.map((c) => c.reduce((a, n) => a + through(n.id), 0) || 1);
+  const scale = Math.max(...colTotal);
+
+  const w = mw || 640;
+  const padX = 4;
+  const nodeW = 12;
+  const gap = 10;
+  const colX = (d) => padX + (d * (w - padX * 2 - nodeW)) / Math.max(1, maxDepth);
+
+  // Vertical placement, stacked within each column.
+  const box = new Map();
+  columns.forEach((col, d) => {
+    const avail = height - gap * Math.max(0, col.length - 1);
+    let y = 0;
+    for (const n of col) {
+      const h = Math.max(3, (through(n.id) / scale) * avail);
+      box.set(n.id, { x: colX(d), y, h, d });
+      y += h + gap;
+    }
+  });
+
+  // Ribbons leave and arrive stacked in the same order, so they do not cross
+  // themselves within a node.
+  const outAt = new Map();
+  const inAt = new Map();
+  const ribbons = flows.map((f, i) => {
+    const a = box.get(f.source);
+    const b = box.get(f.target);
+    const aTotal = flows.filter((x) => x.source === f.source).reduce((s, x) => s + x.value, 0) || 1;
+    const bTotal = flows.filter((x) => x.target === f.target).reduce((s, x) => s + x.value, 0) || 1;
+    const ah = (f.value / aTotal) * a.h;
+    const bh = (f.value / bTotal) * b.h;
+    const ay = a.y + (outAt.get(f.source) || 0);
+    const by = b.y + (inAt.get(f.target) || 0);
+    outAt.set(f.source, (outAt.get(f.source) || 0) + ah);
+    inAt.set(f.target, (inAt.get(f.target) || 0) + bh);
+    const x1 = a.x + nodeW;
+    const x2 = b.x;
+    const mx = (x1 + x2) / 2;
+    return {
+      i,
+      flow: f,
+      colour: `var(--rp-cat-${a.d % 6})`,
+      d: `M${x1},${ay} C${mx},${ay} ${mx},${by} ${x2},${by} L${x2},${by + bh} C${mx},${by + bh} ${mx},${ay + ah} ${x1},${ay + ah} Z`,
+    };
+  });
+
+  return (
+    <div className="rp-sankey" ref={wrapRef}>
+      <svg width="100%" height={height} viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none">
+        {ribbons.map((r) => (
+          <path
+            key={r.i}
+            d={r.d}
+            fill={r.colour}
+            className={`rp-sankey-flow${hover === r.i ? ' on' : ''}`}
+            onMouseEnter={() => setHover(r.i)}
+            onMouseLeave={() => setHover(null)}
+          >
+            <title>{`${byId.get(r.flow.source).label} → ${byId.get(r.flow.target).label}: ${format(r.flow.value)}`}</title>
+          </path>
+        ))}
+        {nodeList.map((n) => {
+          const b = box.get(n.id);
+          return (
+            <rect
+              key={n.id}
+              x={b.x} y={b.y} width={nodeW} height={b.h}
+              rx="2"
+              fill={`var(--rp-cat-${b.d % 6})`}
+              className="rp-sankey-node"
+            >
+              <title>{`${n.label}: ${format(through(n.id))}`}</title>
+            </rect>
+          );
+        })}
+      </svg>
+      {/* Labels in HTML rather than SVG text: they wrap, they inherit the
+          page's font stack, and a Kannada node name renders with the right
+          fallback face instead of tofu. */}
+      <div className="rp-sankey-labels">
+        {nodeList.map((n) => {
+          const b = box.get(n.id);
+          return (
+            <span
+              key={n.id}
+              className="rp-sankey-label"
+              style={{
+                left: `${((b.x + (b.d === maxDepth ? -4 : nodeW + 4)) / w) * 100}%`,
+                top: b.y + b.h / 2,
+                transform: `translateY(-50%)${b.d === maxDepth ? ' translateX(-100%)' : ''}`,
+              }}
+            >
+              {n.label}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

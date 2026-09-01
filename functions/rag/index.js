@@ -100,8 +100,9 @@ async function getAccessToken() {
 }
 
 // AG-UI-style "static generative UI": we ask the model to optionally append a
-// fenced JSON block describing typed components (bar-chart / pie-chart / table /
-// cards). The app owns the rendering; the agent only proposes typed specs.
+// fenced JSON block describing typed components. The app owns the rendering;
+// the agent only proposes typed specs, and only from the vocabulary in
+// AGUI_TYPES — anything else is dropped rather than rendered.
 // Two-pass generative UI. Appending component instructions to the user's query
 // polluted the retrieval embedding (short questions stopped matching their
 // documents), so pass 1 sends the query CLEAN, and pass 2 — run only when the
@@ -111,6 +112,25 @@ const AGUI_TRANSFORM =
   'Convert the data in the TEXT below into ONE fenced ```agui code block of JSON ' +
   '{"components":[...]} where each component is ' +
   '{"type":"bar-chart"|"pie-chart","title":s,"data":[{"label":s,"value":n}]} or ' +
+  '{"type":"line-chart","title":s,"data":[{"label":s,"value":n}]} (a value over ' +
+  'ordered time periods — months, quarters, years) or ' +
+  '{"type":"multi-line-chart","title":s,"series":[{"name":s,"points":[{"label":s,"value":n}]}]} ' +
+  '(several things compared over the SAME periods — every series must have the same ' +
+  'labels in the same order) or ' +
+  '{"type":"stacked-bar-chart","title":s,"data":[{"label":s,"parts":[{"name":s,"value":n}]}]} ' +
+  '(a total broken into named parts per category) or ' +
+  '{"type":"heat-grid","title":s,"rows":[s],"cols":[s],"values":[[n]]} (two dimensions ' +
+  'crossed — day against hour, district against crime type; values must be a grid ' +
+  'rows x cols) or ' +
+  '{"type":"scatter-plot","title":s,"xLabel":s,"yLabel":s,"data":[{"x":n,"y":n,"label":s}]} ' +
+  '(two measures against each other, to show a relationship) or ' +
+  '{"type":"funnel","title":s,"data":[{"label":s,"value":n}]} (stages that narrow — ' +
+  'registered, investigated, chargesheeted, convicted) or ' +
+  '{"type":"pyramid","title":s,"data":[{"label":s,"value":n}]} (a ranked hierarchy of ' +
+  'severity or seniority) or ' +
+  '{"type":"sankey","title":s,"nodes":[{"id":s,"label":s}],' +
+  '"links":[{"source":s,"target":s,"value":n}]} (where quantity FLOWS between things — ' +
+  'money between accounts, cases between statuses or stations) or ' +
   '{"type":"table","title":s,"columns":[s],"rows":[[cells]]} or ' +
   '{"type":"cards","title":s,"items":[{"title":s,"subtitle":s,"body":s,"badge":s}]} or ' +
   '{"type":"geo-map","title":s,"data":[{"district":s,"value":n}]} (Karnataka district ' +
@@ -119,6 +139,10 @@ const AGUI_TRANSFORM =
   '"links":[{"source":s,"target":s}]} (use for relationships between people/gangs/entities). ' +
   'RULE: if the values are per Karnataka district, ALWAYS use geo-map (not bar-chart), ' +
   'with plain district names (e.g. "Bengaluru City", "Kalaburagi" — no DIST suffix). ' +
+  'RULE: pick the shape that matches the QUESTION, not the one that is easiest. ' +
+  'Ordered periods -> line-chart. Parts of a whole per category -> stacked-bar-chart. ' +
+  'Two dimensions crossed -> heat-grid. Movement between things -> sankey. ' +
+  'A plain ranking -> bar-chart. Never draw a line through fewer than three points. ' +
   'Choose the 1-2 components that best fit the data. ' +
   // The renderer normalises stray markup anyway, but keeping it out of the
   // JSON in the first place gives cleaner cells and shorter payloads.
@@ -873,8 +897,14 @@ function looksDataShaped(text) {
   return t.length >= 120 && (/\d/.test(t) || listLines >= 3);
 }
 
+// What the renderer can draw. A model can only propose what this list allows,
+// so the list is the assistant's visual vocabulary — it was six types for a
+// long time, and that quietly shaped the answers: asked for a trend it drew a
+// bar chart, asked for a composition it drew a table.
 const AGUI_TYPES = new Set([
-  'bar-chart', 'pie-chart', 'table', 'cards', 'geo-map', 'network-graph',
+  'bar-chart', 'pie-chart', 'line-chart', 'multi-line-chart', 'stacked-bar-chart',
+  'heat-grid', 'scatter-plot', 'funnel', 'pyramid', 'sankey',
+  'table', 'cards', 'geo-map', 'network-graph',
 ]);
 
 // Pull a ```agui (or ```json) fenced block out of the answer text. Returns
