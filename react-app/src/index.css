@@ -8439,3 +8439,128 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 }
 .as-attach-warn svg { flex: none; margin-top: 2px; color: var(--gold); }
 .as-attach-warn em { color: var(--text-3); font-style: normal; }
+
+/* ── Export review ─────────────────────────────────────────────────────────
+   A document with its problems marked, beside the conversation about them.
+   The document column is the wide one on purpose: the reviewer's job is to
+   read, and a review tool that shows four lines of text and a tall sidebar of
+   controls quietly encourages deciding without reading. */
+.xr-page { max-width: 1240px; }
+.xr-back {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: 0; color: var(--text-3);
+  font-size: 12px; cursor: pointer; padding: 0; margin-bottom: 10px;
+}
+.xr-back:hover { color: var(--text-1); }
+.xr-head h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 17px; }
+.xr-meta { margin: 0; font-size: 12px; color: var(--text-3); }
+.xr-dot { margin: 0 7px; opacity: 0.5; }
+.xr-status { text-transform: capitalize; font-weight: 600; }
+.xr-status-pending { color: var(--gold); }
+.xr-status-changes_requested { color: var(--gold-dark); }
+.xr-status-approved { color: var(--green); }
+.xr-status-rejected { color: var(--red); }
+.xr-returned {
+  display: flex; align-items: flex-start; gap: 7px;
+  margin: 10px 0 0; padding: 9px 12px;
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
+  border-left: 3px solid var(--gold); border-radius: var(--radius-sm);
+  font-size: 12.5px; color: var(--text-1);
+}
+.xr-error {
+  margin: 10px 0; padding: 9px 12px; border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+  color: var(--red-dark); font-size: 12.5px;
+}
+.xr-loading { color: var(--text-3); font-size: 13px; }
+
+.xr-split { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); gap: 16px; margin-top: 14px; }
+@media (max-width: 1000px) { .xr-split { grid-template-columns: 1fr; } }
+
+.xr-doc-wrap {
+  background: var(--bg-1); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.xr-doc-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+  background: var(--bg-2); font-size: 12px; color: var(--text-3);
+}
+.xr-doc-bar > span:first-child { margin-right: auto; }
+.xr-doc {
+  padding: 16px 18px; max-height: 62vh; overflow-y: auto;
+  font-size: 13.5px; line-height: 1.75; color: var(--text-1);
+  white-space: pre-wrap; word-break: break-word;
+}
+.xr-mark { border-radius: 3px; padding: 1px 2px; cursor: pointer; background: none; color: inherit; }
+/* Three states, and they must be distinguishable without relying on colour
+   alone — the underline carries the meaning for anyone who cannot separate
+   the hues. */
+.xr-mark-finding { background: color-mix(in srgb, var(--gold) 22%, transparent); border-bottom: 2px dotted var(--gold-dark); }
+.xr-mark-open { background: color-mix(in srgb, var(--red) 18%, transparent); border-bottom: 2px solid var(--red); }
+.xr-mark-resolved { background: color-mix(in srgb, var(--green) 15%, transparent); border-bottom: 2px solid var(--green); }
+.xr-mark.active { outline: 2px solid var(--blue-500); outline-offset: 1px; }
+.xr-hint, .xr-nodoc { margin: 0; padding: 10px 18px 14px; font-size: 12px; color: var(--text-3); }
+.xr-newthread { padding: 12px 18px 16px; border-top: 1px solid var(--border); background: var(--bg-2); }
+.xr-newthread textarea, .xr-reply textarea, .xr-return textarea {
+  width: 100%; margin-top: 6px; padding: 7px 9px; font: inherit; font-size: 12.5px;
+  border: 1px solid var(--border-bright); border-radius: var(--radius-sm);
+  background: var(--bg-1); color: var(--text-0); resize: vertical;
+}
+
+.xr-threads { display: flex; flex-direction: column; gap: 10px; }
+.xr-empty { font-size: 12.5px; color: var(--text-3); margin: 0; }
+.xr-thread-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.xr-thread {
+  background: var(--bg-1); border: 1px solid var(--border);
+  border-left: 3px solid var(--red); border-radius: var(--radius); padding: 11px 12px;
+}
+.xr-thread.resolved { border-left-color: var(--green); opacity: 0.85; }
+.xr-thread.outdated { border-left-color: var(--text-4); opacity: 0.7; }
+.xr-thread.active { outline: 2px solid var(--blue-500); outline-offset: 1px; }
+.xr-thread-head {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
+}
+.xr-thread-state { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); }
+.xr-thread-rule { font-size: 11px; color: var(--text-2); }
+.xr-quote {
+  margin: 7px 0; padding: 6px 9px; border-left: 2px solid var(--border-bright);
+  background: var(--bg-2); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 12px; color: var(--text-2); font-style: italic;
+}
+.xr-thread-why, .xr-outdated-note { margin: 0 0 7px; font-size: 11.5px; color: var(--text-3); }
+.xr-comments { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.xr-comment p { margin: 3px 0 0; font-size: 12.5px; color: var(--text-1); }
+.xr-comment-who {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 600; color: var(--text-2);
+}
+.xr-comment-who time { margin-left: auto; font-weight: 400; color: var(--text-4); }
+.xr-badge-agent {
+  font-style: normal; font-weight: 500; font-size: 10px;
+  padding: 1px 5px; border-radius: 999px;
+  background: color-mix(in srgb, var(--blue-500) 14%, transparent); color: var(--blue-600);
+}
+.xr-comment-agent { border-left: 2px solid var(--blue-400); padding-left: 7px; }
+.xr-reply { margin-top: 8px; }
+.xr-reply-actions { display: flex; gap: 7px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
+
+.xr-decide { margin-top: 16px; padding-top: 13px; border-top: 1px solid var(--border); }
+.xr-decide-row { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+.xr-blocked { font-size: 12px; color: var(--gold-dark); }
+.xr-owner-note { margin: 0; font-size: 12.5px; color: var(--text-2); }
+.xr-return label { display: block; font-size: 12px; color: var(--text-2); }
+
+.xa-open-review { margin: 8px 0 0; font-size: 12.5px; }
+.xa-open-review a { display: inline-flex; align-items: center; gap: 5px; color: var(--blue-600); font-weight: 600; }
+.xa-revs { margin-left: 8px; font-size: 11px; color: var(--text-3); }
+
+.xh-icon.warn { color: var(--gold-dark); }
+
+/* Visually hidden, still reachable by a screen reader. display:none would take
+   these labels out of the accessibility tree entirely. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}

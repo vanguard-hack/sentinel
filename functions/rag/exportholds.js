@@ -78,10 +78,23 @@ async function writeHold(bucket, rec) {
   return rec;
 }
 
+/** When this hold last moved — a new revision restarts the review clock. */
+const lastActivity = (rec) => Math.max(
+  rec.requestedAt || 0,
+  rec.changesRequestedAt || 0,
+  ...(rec.revisions || []).map((r) => r.at || 0),
+);
+
 /** Effective status, applying expiry at read time rather than by a sweeper. */
 function effectiveStatus(rec, now = Date.now()) {
   if (!rec) return 'missing';
-  if (rec.status === 'pending' && now - rec.requestedAt > PENDING_TTL_MS) return 'expired';
+  // A review in progress expires from the last thing that happened to it, not
+  // from when it was first raised — otherwise a document under active
+  // discussion dies mid-conversation on day seven.
+  if (rec.status === 'changes_requested') {
+    return now - (rec.changesRequestedAt || rec.requestedAt) > PENDING_TTL_MS ? 'expired' : 'changes_requested';
+  }
+  if (rec.status === 'pending' && now - lastActivity(rec) > PENDING_TTL_MS) return 'expired';
   if (rec.status === 'approved' && !rec.consumedAt && now - rec.decidedAt > APPROVAL_TTL_MS) {
     return 'expired';
   }
@@ -113,6 +126,21 @@ async function create(bucket, { email, name, role, kind, title, reasons, fingerp
     })),
     stats: stats || {},
     fingerprint: String(fingerprint || ''),
+    // Revision history. `fingerprint` above always mirrors the LATEST
+    // revision, so every existing caller keeps working; the array is what makes
+    // "approve, then swap the document" impossible across a review loop.
+    revisions: [{
+      rev: 1,
+      at: Date.now(),
+      by: String(email || '').toLowerCase(),
+      byName: String(name || ''),
+      fingerprint: String(fingerprint || ''),
+      reasons: (reasons || []).map((r) => ({ category: r.category, label: r.label })),
+      stats: stats || {},
+    }],
+    changesRequestedAt: null,
+    changesRequestedBy: null,
+    changesRequestedName: null,
     decidedAt: null,
     decidedBy: null,
     decidedName: null,
@@ -192,7 +220,7 @@ async function list(bucket, { status = 'pending', limit = 100 } = {}) {
  * people; without this check a supervisor exporting a flagged document would be
  * a single-party decision wearing a queue.
  */
-async function decide(bucket, id, { decision, approverEmail, approverName, note }) {
+async function decide(bucket, id, { decision, approverEmail, approverName, note, openThreads = 0 }) {
   if (!['approved', 'rejected'].includes(decision)) {
     throw Object.assign(new Error('decision must be approved or rejected'), { code: 400 });
   }
@@ -202,6 +230,12 @@ async function decide(bucket, id, { decision, approverEmail, approverName, note 
   const status = effectiveStatus(rec);
   if (status === 'expired') {
     throw Object.assign(new Error('This request has expired; the officer must export again'), { code: 409 });
+  }
+  if (status === 'changes_requested') {
+    throw Object.assign(
+      new Error('Changes were requested — the officer must submit a revision before this can be decided'),
+      { code: 409 },
+    );
   }
   if (status !== 'pending') {
     throw Object.assign(
@@ -216,6 +250,23 @@ async function decide(bucket, id, { decision, approverEmail, approverName, note 
     throw Object.assign(
       new Error('You cannot approve your own export — a second officer must review it'),
       { code: 403 },
+    );
+  }
+
+  // An approval closes the review, so it cannot be granted while the reviewer's
+  // own questions are still open. The supervisor is never deadlocked — they can
+  // resolve any thread themselves once satisfied — but a concern has to be
+  // actively closed rather than quietly outrun by the Approve button.
+  //
+  // Rejection is deliberately NOT gated: refusing a document while objections
+  // stand is coherent, and needing to tidy up before saying no would be absurd.
+  if (decision === 'approved' && Number(openThreads) > 0) {
+    throw Object.assign(
+      new Error(
+        `${openThreads} unresolved ${openThreads === 1 ? 'comment' : 'comments'} — `
+        + 'resolve or answer them before approving',
+      ),
+      { code: 409 },
     );
   }
 
@@ -237,6 +288,106 @@ async function decide(bucket, id, { decision, approverEmail, approverName, note 
  * a rejected hold, someone else's approval, an approval for a different
  * document, or a second use of one that already released.
  */
+
+/**
+ * Send the document back to the officer with the review still attached.
+ *
+ * Distinct from `rejected`, and the distinction is the whole point of the loop:
+ * a rejection ends the request, while this keeps the same hold, the same
+ * threads and the same history, and waits for a revision. The officer sees
+ * what has to change, fixes it, and resubmits into the conversation that was
+ * already happening rather than starting a fresh one a supervisor has to read
+ * from scratch.
+ */
+async function requestChanges(bucket, id, { approverEmail, approverName, note }) {
+  const rec = await readHold(bucket, id);
+  if (!rec) throw Object.assign(new Error('No such export request'), { code: 404 });
+
+  const status = effectiveStatus(rec);
+  if (status === 'expired') {
+    throw Object.assign(new Error('This request has expired; the officer must export again'), { code: 409 });
+  }
+  if (status !== 'pending') {
+    throw Object.assign(new Error(`This request is already ${status}`), { code: 409 });
+  }
+  const approver = String(approverEmail || '').toLowerCase();
+  if (!approver) throw Object.assign(new Error('approver identity missing'), { code: 401 });
+  if (approver === rec.requestedBy) {
+    throw Object.assign(
+      new Error('You cannot review your own export — a second officer must look at it'),
+      { code: 403 },
+    );
+  }
+
+  return writeHold(bucket, {
+    ...rec,
+    status: 'changes_requested',
+    changesRequestedAt: Date.now(),
+    changesRequestedBy: approver,
+    changesRequestedName: String(approverName || ''),
+    note: String(note || '').slice(0, 500),
+  });
+}
+
+/**
+ * The officer submits a corrected document.
+ *
+ * THIS is where the fingerprint binding earns its keep. Each revision carries
+ * its own hash and `fingerprint` moves to the newest, so an approval granted on
+ * revision 3 cannot release revision 1 — the check in release() is unchanged
+ * and now simply has a moving target that only ever moves forward.
+ *
+ * Only the officer who raised the request may revise it. Otherwise the review
+ * loop would be a way for anyone to substitute a document into someone else's
+ * approved request, which is the exact hole the hash was added to close.
+ */
+async function addRevision(bucket, id, { email, name, reasons, fingerprint, stats }) {
+  const rec = await readHold(bucket, id);
+  if (!rec) throw Object.assign(new Error('No such export request'), { code: 404 });
+
+  const status = effectiveStatus(rec);
+  if (status === 'expired') {
+    throw Object.assign(new Error('This request has expired; export again to start a new review'), { code: 409 });
+  }
+  if (!['pending', 'changes_requested'].includes(status)) {
+    throw Object.assign(new Error(`This request is ${status} and cannot be revised`), { code: 409 });
+  }
+  if (rec.requestedBy !== String(email || '').toLowerCase()) {
+    throw Object.assign(new Error('Only the officer who requested this export can revise it'), { code: 403 });
+  }
+
+  const rev = (rec.revisions || []).length + 1;
+  return writeHold(bucket, {
+    ...rec,
+    status: 'pending',
+    fingerprint: String(fingerprint || ''),
+    reasons: (reasons || []).map((r) => ({
+      category: r.category, label: r.label, why: r.why, evidence: String(r.evidence || '').slice(0, 120),
+    })),
+    stats: stats || {},
+    revisions: [...(rec.revisions || []), {
+      rev,
+      at: Date.now(),
+      by: String(email || '').toLowerCase(),
+      byName: String(name || ''),
+      fingerprint: String(fingerprint || ''),
+      reasons: (reasons || []).map((r) => ({ category: r.category, label: r.label })),
+      stats: stats || {},
+    }],
+    // A new revision reopens the question, so any previous decision is void.
+    changesRequestedAt: null,
+    changesRequestedBy: null,
+    changesRequestedName: null,
+    decidedAt: null,
+    decidedBy: null,
+    decidedName: null,
+    decision: null,
+  });
+}
+
+/** The revision under review — the one a supervisor is looking at. */
+const latestRevision = (rec) => ((rec && rec.revisions) || []).length || 1;
+
 async function release(bucket, id, { email, fingerprint }) {
   const rec = await readHold(bucket, id);
   if (!rec) return { ok: false, reason: 'No such approval' };
@@ -261,5 +412,6 @@ async function release(bucket, id, { email, fingerprint }) {
 
 module.exports = {
   create, get, list, decide, release, effectiveStatus,
+  requestChanges, addRevision, latestRevision,
   HOLD_PREFIX, PENDING_TTL_MS, APPROVAL_TTL_MS,
 };

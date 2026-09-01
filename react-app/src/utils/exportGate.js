@@ -138,3 +138,84 @@ export async function fetchExportStatus(approvalId) {
   if (!res.ok) throw new Error(data.error || 'Could not check the request');
   return data.request;
 }
+
+// ── Review loop ────────────────────────────────────────────────────────────
+//
+// Both sides of a review use these: the supervisor raising and resolving
+// threads, and the officer who has to answer them. The server decides which of
+// those the caller is — the client asking nicely is not a permission.
+
+const reviewCall = async (path, body, what) => {
+  const res = await post(path, body);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `${what} (HTTP ${res.status})`);
+  return data;
+};
+
+export const fetchExportReview = (approvalId) =>
+  reviewCall('export/review', { approvalId }, 'Could not open the review');
+
+export const addReviewThread = (approvalId, { start, end, quote, body, finding }) =>
+  reviewCall('export/thread', { approvalId, start, end, quote, body, finding }, 'Could not add the comment');
+
+export const addReviewComment = (approvalId, threadId, body) =>
+  reviewCall('export/comment', { approvalId, threadId, body }, 'Could not add the comment');
+
+export const resolveReviewThread = (approvalId, threadId, resolved = true) =>
+  reviewCall('export/resolve', { approvalId, threadId, resolved }, 'Could not resolve the comment');
+
+export const annotateExportReview = (approvalId) =>
+  reviewCall('export/annotate', { approvalId }, 'Could not draft notes');
+
+export const requestExportChanges = (approvalId, note) =>
+  reviewCall('export/changes', { approvalId, note }, 'Could not return the request');
+
+/**
+ * Where a highlight sits, as character offsets into the reviewed text.
+ *
+ * Overlapping findings are merged rather than nested: two rules matching the
+ * same words must not produce two stacked <mark> elements the reviewer has to
+ * peel apart to read the sentence underneath.
+ */
+export function highlightSpans(findings = [], threads = []) {
+  const spans = [
+    ...findings.map((f) => ({ start: f.start, end: f.end, kind: 'finding', ref: f })),
+    ...threads
+      .filter((t) => !t.outdated)
+      .map((t) => ({
+        start: t.anchor.start, end: t.anchor.end,
+        kind: t.resolved ? 'resolved' : 'open', ref: t,
+      })),
+  ]
+    .filter((s) => Number.isFinite(s.start) && s.end > s.start)
+    .sort((a, b) => a.start - b.start || b.end - a.end);
+
+  const out = [];
+  for (const s of spans) {
+    const prev = out[out.length - 1];
+    if (prev && s.start < prev.end) {
+      // An open thread outranks a resolved one, which outranks a bare finding:
+      // the reviewer needs to see what still needs an answer.
+      const rank = { open: 3, resolved: 2, finding: 1 };
+      if (rank[s.kind] > rank[prev.kind]) prev.kind = s.kind;
+      if (s.kind !== 'finding') prev.threads = [...(prev.threads || []), s.ref];
+      prev.end = Math.max(prev.end, s.end);
+      continue;
+    }
+    out.push({ ...s, threads: s.kind === 'finding' ? [] : [s.ref] });
+  }
+  return out;
+}
+
+/** Split text into rendered pieces, each either plain or highlighted. */
+export function segmentText(text = '', spans = []) {
+  const pieces = [];
+  let at = 0;
+  for (const s of spans) {
+    if (s.start > at) pieces.push({ text: text.slice(at, s.start), span: null });
+    pieces.push({ text: text.slice(s.start, s.end), span: s });
+    at = s.end;
+  }
+  if (at < text.length) pieces.push({ text: text.slice(at), span: null });
+  return pieces;
+}

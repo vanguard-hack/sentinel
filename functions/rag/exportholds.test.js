@@ -113,9 +113,18 @@ const run = async () => {
   check('the officer is told the reason for rejection', /Redact the witness first/.test(rej.reason));
 
   // ── Expiry ───────────────────────────────────────────────────────────────
+  // Age the whole record, revision timestamps included. The review clock runs
+  // from the last thing that HAPPENED to a hold, not from when it was raised —
+  // otherwise a document under active discussion dies mid-conversation on day
+  // seven — so backdating requestedAt alone describes a record that cannot
+  // occur, and asserting on it would be testing a shape the code never sees.
+  const age = (rec, ms) => {
+    rec.requestedAt = Date.now() - ms;
+    for (const r of rec.revisions || []) r.at = rec.requestedAt;
+    return rec;
+  };
   const stale = await holds.create(b, REQ);
-  const raw = JSON.parse(b.store.get(`${holds.HOLD_PREFIX}${stale.id}.json`));
-  raw.requestedAt = Date.now() - holds.PENDING_TTL_MS - 1000;
+  const raw = age(JSON.parse(b.store.get(`${holds.HOLD_PREFIX}${stale.id}.json`)), holds.PENDING_TTL_MS + 1000);
   b.store.set(`${holds.HOLD_PREFIX}${stale.id}.json`, JSON.stringify(raw));
   check('a forgotten request expires', (await holds.get(b, stale.id)).status === 'expired');
   check('and drops out of the pending queue', !(await holds.list(b, { status: 'pending' })).some((r) => r.id === stale.id));

@@ -12,6 +12,7 @@ const grounding = require('./grounding');
 const guard = require('./guard');
 const exportscreen = require('./exportscreen');
 const exportholds = require('./exportholds');
+const exportreview = require('./exportreview');
 const assurance = require('./assurance');
 const statutory = require('./statutory');
 const legalKb = require('./legal_kb.json');
@@ -1871,7 +1872,7 @@ function rateLimited(key, max) {
 
 // Routes that cost money per call: Zoho transcription and OCR, SmartBrowz PDF
 // rendering, and every lane that reaches an LLM.
-const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|digitise\/(upload|ingest))$/;
+const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|export\/annotate|digitise\/(upload|ingest))$/;
 const isAdminUser = (u) => /admin/i.test(u?.role_details?.role_name || '');
 
 async function handleAccess(req, res, action) {
@@ -2221,6 +2222,105 @@ async function handleAudit(req, res, action) {
 // download that silently never happens.
 const canApproveExports = (role) => ['admin', 'supervisor'].includes(role);
 
+
+// ── Agent review comments ──────────────────────────────────────────────────
+//
+// The rules already say WHAT was matched and WHICH law applies. What a word
+// list cannot say is why this particular sentence is a problem — that a first
+// name plus a lane identifies a household even with the surname gone, or that
+// two fields which are each harmless together are not.
+//
+// Three constraints shape this handler.
+//
+// The document is UNTRUSTED. A held export is very often a seized statement, an
+// OCR'd page or a transcript, which is exactly where an instruction aimed at an
+// assistant arrives. It is fenced, and the model is told plainly that it is
+// reading evidence rather than orders.
+//
+// The agent EXPLAINS, it does not decide. Its comments are written as kind
+// 'agent' so they render as machine-written, it cannot resolve a thread, and it
+// cannot approve anything. A supervisor reading the file in six months has to
+// be able to tell which sentences a person wrote.
+//
+// And it is triggered, not automatic. Drafting on every held export would add a
+// model call and several seconds to an export the officer is waiting on, to
+// produce commentary nobody may read.
+const ANNOTATE_SYSTEM =
+  'You are helping a Karnataka police supervisor review a document before it leaves the system. '
+  + 'For each flagged passage, write ONE or TWO sentences saying what specifically in that passage '
+  + 'creates the risk, and what the officer could change. Be concrete about the words in the text. '
+  + 'Do not restate the law — the supervisor already has it. Do not recommend approving or rejecting; '
+  + 'that is the supervisor\'s decision, not yours. If a passage looks harmless in context, say so.\n\n'
+  + 'Reply as JSON: {"notes":[{"index":<number>,"note":"<text>"}]} using the index of each passage.';
+
+async function annotateExport(req, res, { app, bucket, caller, hold, rev, text }) {
+  if (!text) return json(res, 409, { error: 'The document for this revision is no longer stored.' });
+
+  const findings = exportscreen.screen(text, { isHtml: false }).findings.slice(0, 12);
+  if (!findings.length) return json(res, 200, { threads: [], note: 'Nothing flagged to explain.' });
+
+  const passages = findings
+    .map((f, i) => `[${i}] rule: ${f.label} — matched "${f.quote}"\n    passage: ${f.sentence}`)
+    .join('\n\n');
+
+  const raw = await callLLM([
+    { role: 'system', content: ANNOTATE_SYSTEM },
+    {
+      role: 'user',
+      content: guard.fence(passages, 'passages from a police document awaiting export review')
+        + '\n\nWrite one note per passage.',
+    },
+  ], { maxTokens: 900, temperature: 0.2, timeoutMs: 20_000 });
+
+  if (!raw) return json(res, 503, { error: 'The assistant is unavailable — add your own comment instead.' });
+
+  const outScan = guard.scanOutput(raw, { systemPrompt: ANNOTATE_SYSTEM });
+  if (outScan.action === 'replace') {
+    console.warn('annotate output withheld:', guard.summarise(outScan.findings));
+    return json(res, 502, { error: outScan.message });
+  }
+
+  let notes = [];
+  try {
+    const m = raw.match(/\{[\s\S]*\}/);
+    notes = m ? (JSON.parse(m[0]).notes || []) : [];
+  } catch {
+    return json(res, 502, { error: 'The assistant\'s reply could not be read — add your own comment instead.' });
+  }
+
+  // One thread per passage the agent had something to say about. Threads open
+  // UNRESOLVED, so an agent note blocks approval exactly as a supervisor's
+  // would until a human has looked at it — the machine raises the question, a
+  // person still has to answer it.
+  const existing = await exportreview.listThreads(bucket, hold.id);
+  const already = new Set(existing.map((t) => t.anchor.quote));
+  const made = [];
+  for (const n of notes) {
+    const f = findings[Number(n.index)];
+    if (!f || !n.note) continue;
+    if (already.has(f.sentence)) continue;
+    made.push(await exportreview.createThread(bucket, hold.id, {
+      rev,
+      start: f.sentenceStart,
+      end: f.sentenceStart + f.sentence.length,
+      quote: f.sentence,
+      finding: f,
+      author: 'agent',
+      authorName: 'Sentinel',
+      kind: 'agent',
+      body: String(n.note).slice(0, 1200),
+    }));
+  }
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'export-annotated', feature: 'Export Control', path: '/export-review',
+    detail: `${hold.title} — ${made.length} note(s) drafted on revision ${rev}`,
+  }], caller);
+
+  const threads = exportreview.reanchor(await exportreview.listThreads(bucket, hold.id), text);
+  return json(res, 200, { threads, drafted: made.length });
+}
+
 async function handleExport(req, res, action) {
   const body = JSON.parse((await readBody(req)) || '{}');
   const app = catalystSDK.initialize(req);
@@ -2258,17 +2358,69 @@ async function handleExport(req, res, action) {
           ? `${title} — approved by ${rel.hold.decidedName || rel.hold.decidedBy}`
           : `${title} — ${rel.reason}`,
       }], caller);
+      if (rel.ok) {
+        // The review is over, so the copy of the document stops existing. The
+        // hold record — who approved what, and when — is what outlives it.
+        try { await exportreview.purge(bucket, String(body.approvalId)); }
+        catch (e) { console.error('review purge failed (non-fatal):', e && e.message); }
+      }
       return rel.ok
         ? json(res, 200, { status: 'cleared', reasons: [] })
         : json(res, 403, { status: 'refused', error: rel.reason });
     }
 
     let hold;
+    // Declared out here because the 202 below reads it; a const inside the try
+    // is scoped to the try and would throw only on the revision path — the one
+    // path a syntax check cannot see and a happy-path test would never take.
+    let returnedBy = '';
     try {
-      hold = await exportholds.create(bucket, {
-        email, name, role, kind: String(body.kind || 'export').slice(0, 40), title,
-        reasons: verdict.reasons, fingerprint, stats: verdict.stats,
-      });
+      // A revision of an existing review, or a new one.
+      //
+      // Found here rather than passed by the client. Making the officer's
+      // browser carry a review id through Report Studio, the case diary and
+      // every other export surface would be a lot of plumbing for something the
+      // server can simply look up — and any client that forgot would silently
+      // open a second review, leaving the supervisor with two half-conversations
+      // about the same document.
+      //
+      // Scoped to the officer's OWN request, same kind, same title, and only
+      // when a supervisor has explicitly sent it back. That last condition is
+      // what makes it unambiguous: "changes_requested" means someone asked for
+      // exactly this document again.
+      const reviseId = String(body.reviseId || '') || (await (async () => {
+        try {
+          const mine = await exportholds.list(bucket, { status: 'changes_requested', limit: 100 });
+          const match = mine.find((h) => h.requestedBy === email && h.title === title
+            && h.kind === String(body.kind || 'export').slice(0, 40));
+          return match ? match.id : '';
+        } catch { return ''; }
+      })());
+
+      // Read before revising: addRevision clears changesRequestedName, which is
+      // correct (changes are no longer outstanding) but leaves nothing to name
+      // in the message the officer reads next.
+      returnedBy = reviseId
+        ? ((await exportholds.get(bucket, reviseId)) || {}).changesRequestedName || ''
+        : '';
+      hold = reviseId
+        ? await exportholds.addRevision(bucket, reviseId, {
+          email, name, reasons: verdict.reasons, fingerprint, stats: verdict.stats,
+        })
+        : await exportholds.create(bucket, {
+          email, name, role, kind: String(body.kind || 'export').slice(0, 40), title,
+          reasons: verdict.reasons, fingerprint, stats: verdict.stats,
+        });
+      // The reviewed text, stored against its revision. Best-effort on purpose:
+      // a supervisor with no document sees the reasons and can still decide, as
+      // they could before this feature existed, which is a worse review but not
+      // a broken one. Failing the whole export here would trade a degraded
+      // review for no export at all.
+      try {
+        await exportreview.putContent(bucket, hold.id, exportholds.latestRevision(hold), verdict.text);
+      } catch (e) {
+        console.error('review content write failed (non-fatal):', e && e.message);
+      }
     } catch (e) {
       // Same fail-closed rule as handleReportPdf: a hold that cannot be
       // recorded is a hold nobody can act on, so the export does not proceed.
@@ -2281,13 +2433,19 @@ async function handleExport(req, res, action) {
     }
     await storeAuditEvents(req, app, bucket, [{
       action: 'export-held', feature: 'Export Control', path: '/export',
-      detail: `${title} — ${exportscreen.summarise(verdict)}`,
+      detail: `${title} — ${exportscreen.summarise(verdict)}`
+        + (exportholds.latestRevision(hold) > 1 ? ` (revision ${exportholds.latestRevision(hold)})` : ''),
     }], caller);
+    const revised = exportholds.latestRevision(hold) > 1;
     return json(res, 202, {
       status: 'pending_approval',
       approvalId: hold.id,
+      revision: exportholds.latestRevision(hold),
       reasons: verdict.reasons,
-      message: 'This export needs supervisor approval before it can leave Sentinel.',
+      message: revised
+        ? `Sent back to ${returnedBy || 'the supervisor'} as revision `
+          + `${exportholds.latestRevision(hold)}, with the earlier comments attached.`
+        : 'This export needs supervisor approval before it can leave Sentinel.',
     });
   }
 
@@ -2302,12 +2460,109 @@ async function handleExport(req, res, action) {
     return json(res, 200, { request: publicHold(hold) });
   }
 
+  // ── The review itself ───────────────────────────────────────────────────
+  //
+  // Placed ABOVE the supervisor gate because a review has two participants.
+  // The officer who raised the export has to be able to read what was said
+  // about their document — a workflow where only the reviewer can see the
+  // comments is not a review, it is a verdict.
+  if (['review', 'thread', 'comment', 'resolve', 'annotate'].includes(action)) {
+    const holdId = String(body.approvalId || '');
+    const hold = await exportholds.get(bucket, holdId);
+    if (!hold) return json(res, 404, { error: 'No such export request' });
+
+    const isOwner = hold.requestedBy === email;
+    const isReviewer = canApproveExports(role);
+    if (!isOwner && !isReviewer) return json(res, 403, { error: 'Not your export request' });
+
+    const rev = exportholds.latestRevision(hold);
+    const text = await exportreview.getContent(bucket, holdId, rev);
+
+    // Reading a held export means reading a document flagged as sensitive, so
+    // it is logged like any other reach for protected material.
+    const loadThreads = async () =>
+      exportreview.reanchor(await exportreview.listThreads(bucket, holdId), text);
+
+    if (action === 'review') {
+      const threads = await loadThreads();
+      await storeAuditEvents(req, app, bucket, [{
+        action: 'export-review-read', feature: 'Export Control', path: '/export-review',
+        detail: `${hold.title} — revision ${rev}, ${threads.length} thread(s)`,
+      }], caller);
+      return json(res, 200, {
+        request: publicHold(hold),
+        revision: rev,
+        text,
+        // Recomputed rather than stored: the rules can change between the
+        // screen and the review, and a highlight that no longer reflects the
+        // current rule set would mislead the person acting on it.
+        findings: text ? exportscreen.screen(text, { isHtml: false }).findings : [],
+        threads,
+        openThreads: exportreview.openThreads(threads).length,
+        canReview: isReviewer && !isOwner,
+        isOwner,
+      });
+    }
+
+    if (action === 'thread') {
+      const t = await exportreview.createThread(bucket, holdId, {
+        rev,
+        start: body.start, end: body.end, quote: body.quote, finding: body.finding,
+        author: email, authorName: name,
+        kind: isReviewer && !isOwner ? 'supervisor' : 'officer',
+        body: body.body,
+      });
+      return json(res, 200, { thread: t, threads: await loadThreads() });
+    }
+
+    if (action === 'comment') {
+      if (!body.threadId) return json(res, 400, { error: 'threadId is required' });
+      await exportreview.addComment(bucket, holdId, String(body.threadId), {
+        author: email, authorName: name,
+        kind: isReviewer && !isOwner ? 'supervisor' : 'officer',
+        body: body.body,
+      });
+      return json(res, 200, { threads: await loadThreads() });
+    }
+
+    if (action === 'resolve') {
+      // Only the reviewer closes a thread. An officer who could resolve the
+      // objections raised against their own document would be approving it in
+      // all but name.
+      if (!isReviewer || isOwner) {
+        return json(res, 403, { error: 'Only the reviewing officer can resolve a comment' });
+      }
+      await exportreview.resolveThread(bucket, holdId, String(body.threadId || ''), {
+        by: email, byName: name, resolved: body.resolved !== false,
+      });
+      return json(res, 200, { threads: await loadThreads() });
+    }
+
+    if (action === 'annotate') return await annotateExport(req, res, { app, bucket, caller, hold, rev, text });
+  }
+
   if (!canApproveExports(role)) {
     return json(res, 403, { error: 'Supervisor or admin access required' });
   }
 
+  if (action === 'changes') {
+    try {
+      const rec = await exportholds.requestChanges(bucket, String(body.approvalId || ''), {
+        approverEmail: email, approverName: name, note: body.note,
+      });
+      await storeAuditEvents(req, app, bucket, [{
+        action: 'export-changes-requested', feature: 'Export Control', path: '/export',
+        detail: `${rec.title} — returned to ${rec.requestedName || rec.requestedBy}` +
+                (rec.note ? ` (${rec.note})` : ''),
+      }], caller);
+      return json(res, 200, { request: publicHold(rec) });
+    } catch (e) {
+      return json(res, e.code || 500, { error: e.message || 'Could not return the request' });
+    }
+  }
+
   if (action === 'pending') {
-    const status = ['pending', 'approved', 'rejected', 'all'].includes(body.status)
+    const status = ['pending', 'changes_requested', 'approved', 'rejected', 'all'].includes(body.status)
       ? body.status
       : 'pending';
     const items = await exportholds.list(bucket, { status, limit: Number(body.limit) || 100 });
@@ -2316,11 +2571,18 @@ async function handleExport(req, res, action) {
 
   if (action === 'decide') {
     try {
-      const rec = await exportholds.decide(bucket, String(body.approvalId || ''), {
+      // Counted here, from storage, never taken from the request body — a
+      // client that sends openThreads: 0 must not be able to approve past an
+      // objection it simply chose not to mention.
+      const id = String(body.approvalId || '');
+      const text = await exportreview.getContent(bucket, id, exportholds.latestRevision(await exportholds.get(bucket, id)));
+      const threads = exportreview.reanchor(await exportreview.listThreads(bucket, id), text);
+      const rec = await exportholds.decide(bucket, id, {
         decision: body.decision === 'approved' ? 'approved' : 'rejected',
         approverEmail: email,
         approverName: name,
         note: body.note,
+        openThreads: exportreview.openThreads(threads).length,
       });
       await storeAuditEvents(req, app, bucket, [{
         action: rec.decision === 'approved' ? 'export-approved' : 'export-rejected',
@@ -2357,6 +2619,15 @@ const publicHold = (h) => ({
   decision: h.decision,
   note: h.note,
   consumedAt: h.consumedAt,
+  // The review loop. `fingerprint` is deliberately still absent — it is the
+  // secret that binds an approval to one document, and publishing it would let
+  // anyone confirm whether a document they hold is the approved one.
+  revisions: (h.revisions || []).map((r) => ({
+    rev: r.rev, at: r.at, by: r.by, byName: r.byName, reasons: r.reasons, stats: r.stats,
+  })),
+  changesRequestedAt: h.changesRequestedAt || null,
+  changesRequestedBy: h.changesRequestedBy || null,
+  changesRequestedName: h.changesRequestedName || null,
 });
 
 // ── Action queue (statutory obligations across every open case) ────────────
@@ -4404,6 +4675,12 @@ module.exports = async (req, res) => {
     if (path.endsWith('/export/pending')) return await handleExport(req, res, 'pending');
     if (path.endsWith('/export/decide')) return await handleExport(req, res, 'decide');
     if (path.endsWith('/export/status')) return await handleExport(req, res, 'status');
+    if (path.endsWith('/export/review')) return await handleExport(req, res, 'review');
+    if (path.endsWith('/export/thread')) return await handleExport(req, res, 'thread');
+    if (path.endsWith('/export/comment')) return await handleExport(req, res, 'comment');
+    if (path.endsWith('/export/resolve')) return await handleExport(req, res, 'resolve');
+    if (path.endsWith('/export/annotate')) return await handleExport(req, res, 'annotate');
+    if (path.endsWith('/export/changes')) return await handleExport(req, res, 'changes');
     if (path.endsWith('/assurance/selftest')) return await handleAssurance(req, res);
     if (path.endsWith('/investigation/actions')) return await handleActionQueue(req, res);
     if (path.endsWith('/investigation/obligation-ack')) return await handleObligationAck(req, res);

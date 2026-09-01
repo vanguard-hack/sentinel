@@ -12,14 +12,16 @@
 // change, and "rejected" on its own tells them nothing.
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  CheckCircle2, Clock, FileLock2, Inbox, RefreshCw, ShieldAlert, ShieldCheck, XCircle,
+  CheckCircle2, Clock, CornerUpLeft, FileLock2, FileSearch, Inbox, RefreshCw, ShieldAlert, ShieldCheck, XCircle,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import TopBar from '../components/TopBar';
 import { fetchExportRequests, decideExport } from '../utils/exportGate';
 import { logAudit } from '../utils/audit';
 
 const TABS = [
   { key: 'pending', label: 'Awaiting decision', icon: Clock },
+  { key: 'changes_requested', label: 'Sent back', icon: CornerUpLeft },
   { key: 'approved', label: 'Approved', icon: CheckCircle2 },
   { key: 'rejected', label: 'Not approved', icon: XCircle },
 ];
@@ -161,6 +163,16 @@ export default function ExportApprovals() {
                 </span>
               </p>
             </header>
+
+            <p className="xa-open-review">
+              <Link to={`/export-review/${req.id}`}>
+                <FileSearch size={13} aria-hidden="true" />
+                {req.status === 'pending' ? 'Read the document and comment' : 'Open the review'}
+              </Link>
+              {(req.revisions || []).length > 1 && (
+                <span className="xa-revs">revision {req.revisions.length}</span>
+              )}
+            </p>
 
             <ul className="xa-reasons">
               {(req.reasons || []).map((r, i) => (

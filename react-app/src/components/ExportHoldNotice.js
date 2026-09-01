@@ -12,8 +12,9 @@
 // arrives is the worst outcome available, because the officer assumes it
 // worked and only finds out later that it did not. So the dialog polls its own
 // request and, the moment a supervisor approves, offers the download again.
+import { Link } from 'react-router-dom';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckCircle2, FileLock2, Loader2, ShieldAlert, X } from 'lucide-react';
+import { CheckCircle2, FileLock2, Loader2, ShieldAlert, X, CornerUpLeft } from 'lucide-react';
 import { fetchExportStatus } from '../utils/exportGate';
 
 const POLL_MS = 6000;
@@ -43,6 +44,9 @@ export default function ExportHoldNotice({ hold, onRetry, onClose }) {
   }, [approvalId]);
 
   useEffect(() => {
+    // Keep polling while the request is still moving. A hold that has been sent
+    // back can become pending again when the officer revises it, so stopping at
+    // the first non-pending status would freeze this dialog mid-conversation.
     if (status !== 'pending') return undefined;
     timer.current = setInterval(poll, POLL_MS);
     return () => clearInterval(timer.current);
@@ -129,6 +133,30 @@ export default function ExportHoldNotice({ hold, onRetry, onClose }) {
               <button type="button" className="xh-btn solid" onClick={retry} disabled={retrying}>
                 {retrying ? 'Downloading…' : 'Download'}
               </button>
+            </div>
+          </>
+        )}
+
+        {status === 'changes_requested' && (
+          <>
+            <div className="xh-head">
+              <span className="xh-icon warn"><CornerUpLeft size={16} strokeWidth={2.1} /></span>
+              <div>
+                <h3 id="xh-title">Sent back for changes</h3>
+                <p className="xh-sub">
+                  {note || 'The supervisor has asked for changes before this can leave Sentinel.'}
+                </p>
+                <p className="xh-sub">
+                  Open the review to read the comments on each passage. Make the changes and export
+                  again — the new version attaches to the same review, so nothing is repeated.
+                </p>
+              </div>
+            </div>
+            <div className="xh-actions">
+              <Link className="xh-btn solid" to={`/export-review/${approvalId}`} onClick={onClose}>
+                Read the comments
+              </Link>
+              <button type="button" className="xh-btn" onClick={onClose}>Close</button>
             </div>
           </>
         )}

@@ -176,6 +176,69 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // Cache the compiled expression per term. The rule set is fixed at module load,
 // so this is built once per container rather than once per export.
 const latinRe = new Map();
+/**
+ * The same pattern with /g, for LOCATING every occurrence rather than asking
+ * whether one exists.
+ *
+ * A reviewing supervisor needs every place a concern appears, not the first —
+ * a name redacted in paragraph two and left standing in paragraph nine is
+ * exactly the miss this review exists to catch. Cached separately because a
+ * /g regex carries mutable lastIndex state and must never be shared with the
+ * boolean test path.
+ */
+const latinReG = new Map();
+function termRegexAll(term) {
+  let re = latinReG.get(term);
+  if (!re) {
+    const body = term.split(/\s+/).map(escapeRe).join('\\s+');
+    re = new RegExp(`(?<![\\p{L}\\d])${body}(?![\\p{L}\\d])`, 'giu');
+    latinReG.set(term, re);
+  }
+  re.lastIndex = 0;
+  return re;
+}
+
+/** Every occurrence of `term` in `text`, as {start, end, quote}. */
+function locate(term, text, { native = false } = {}) {
+  const spans = [];
+  if (native) {
+    let i = text.indexOf(term);
+    while (i !== -1 && spans.length < 50) {
+      spans.push({ start: i, end: i + term.length, quote: text.slice(i, i + term.length) });
+      i = text.indexOf(term, i + term.length);
+    }
+    return spans;
+  }
+  const re = termRegexAll(term);
+  let m;
+  while ((m = re.exec(text)) !== null && spans.length < 50) {
+    spans.push({ start: m.index, end: m.index + m[0].length, quote: m[0] });
+    if (m.index === re.lastIndex) re.lastIndex++;
+  }
+  return spans;
+}
+
+/**
+ * Widen a match to the sentence around it.
+ *
+ * "molestation" on its own tells a supervisor nothing they can act on; the
+ * sentence containing it is the unit they actually judge, and it is what the
+ * comment thread anchors to so the anchor survives an edit elsewhere in the
+ * paragraph.
+ */
+function sentenceAround(text, start, end) {
+  const before = text.lastIndexOf('.', start);
+  const nlBefore = text.lastIndexOf('\n', start);
+  let from = Math.max(before, nlBefore);
+  from = from === -1 ? 0 : from + 1;
+  let to = text.length;
+  for (const ch of ['.', '\n']) {
+    const i = text.indexOf(ch, end);
+    if (i !== -1 && i + 1 < to) to = i + 1;
+  }
+  return { from, to: Math.min(to, from + 400), sentence: text.slice(from, Math.min(to, from + 400)).trim() };
+}
+
 function termRegex(term) {
   let re = latinRe.get(term);
   if (!re) {
@@ -283,9 +346,56 @@ function screen(input, opts = {}) {
     });
   }
 
+  // ── Positional findings, for review ──────────────────────────────────────
+  //
+  // `reasons` answers "may this leave?" and is deliberately one entry per rule:
+  // a supervisor deciding yes or no does not need the same category listed
+  // nine times. `findings` answers the different question a REVIEWER asks —
+  // "where, exactly?" — so it carries every occurrence with its offsets and the
+  // sentence around it.
+  //
+  // Kept as a separate array rather than folded into `reasons` because the
+  // decision path and the review path have genuinely different needs, and
+  // because every existing caller of `reasons` keeps working unchanged.
+  const findings = [];
+  const seen = new Set();
+  for (const rule of RULES) {
+    const terms = [
+      ...rule.latin.map((t) => ({ term: t, native: false })),
+      ...(rule.native || []).map((t) => ({ term: t, native: true })),
+    ];
+    for (const { term, native } of terms) {
+      for (const span of locate(term, text, { native })) {
+        // Two rules matching the same words produce one finding, not two
+        // stacked highlights the reviewer has to peel apart.
+        const key = `${rule.id}:${span.start}:${span.end}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const ctx = sentenceAround(text, span.start, span.end);
+        findings.push({
+          category: rule.id,
+          label: rule.label,
+          why: rule.why,
+          quote: span.quote,
+          start: span.start,
+          end: span.end,
+          sentence: ctx.sentence,
+          sentenceStart: ctx.from,
+        });
+      }
+    }
+  }
+  findings.sort((a, b) => a.start - b.start || a.end - b.end);
+
   return {
     needsReview: reasons.length > 0,
     reasons,
+    findings,
+    // The extracted plain text the offsets refer to. Returned so a caller
+    // storing a document for review stores the SAME string the positions were
+    // computed against — recomputing it later would risk offsets that point at
+    // the wrong words after any change to the extractor.
+    text,
     stats: { chars: text.length, phones: phones.size, aadhaar: aadhaar.size },
   };
 }
@@ -311,4 +421,4 @@ const summarise = (verdict) =>
     ? verdict.reasons.map((r) => r.label).join(', ')
     : 'no sensitive content detected';
 
-module.exports = { screen, fingerprint, textFromHtml, summarise, RULES, PHONE_LIMIT, AADHAAR_LIMIT };
+module.exports = { screen, fingerprint, textFromHtml, summarise, locate, sentenceAround, RULES, PHONE_LIMIT, AADHAAR_LIMIT };
