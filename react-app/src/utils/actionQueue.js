@@ -122,3 +122,87 @@ export function byOfficer(obligations) {
 }
 
 export const canCommand = (role) => ['admin', 'supervisor'].includes(role);
+
+// ── Presentation helpers for the table view ───────────────────────────────
+//
+// The queue was a column of tall cards, one per obligation, each carrying a
+// finding, a consequence, a citation and an action. That reads well for three
+// and is unusable for forty — a supervisor scrolls past the thing they opened
+// the page for. So the list is now a table that can be scanned and sorted,
+// with the prose behind a row that expands.
+//
+// Nothing is removed by that change: every card is still reachable, it is just
+// no longer all shouted at once.
+
+/** Initials for an avatar chip. "Umesh Sindagi" → "US", "Rao" → "RA". */
+export function initials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '—';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Six pastel tones. Assigned by hashing the name so an officer keeps the same
+// colour across pages and reloads — a chip that changes colour on refresh is
+// noise pretending to be information.
+const TONES = ['violet', 'amber', 'teal', 'rose', 'sky', 'lime'];
+export function avatarTone(name) {
+  const s = String(name || '');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return TONES[h % TONES.length];
+}
+
+/**
+ * The deadline as a short chip, for a table cell.
+ *
+ * `countdown` writes a sentence for a card; this writes two or three words for
+ * a column, and reports the urgency separately so the cell can be coloured
+ * without re-parsing its own text.
+ */
+export function deadlineChip(clock) {
+  if (!clock || !Number.isFinite(clock.remainingDays)) return { text: '—', tone: 'none' };
+  const d = clock.remainingDays;
+  if (d < 0) return { text: `${Math.abs(d)}d over`, tone: 'over' };
+  if (d === 0) return { text: 'Today', tone: 'over' };
+  if (d <= 7) return { text: `${d}d left`, tone: 'soon' };
+  return { text: `${d}d left`, tone: 'ok' };
+}
+
+// Sorting. `severity` is the default because the queue's whole claim is that it
+// orders itself; the rest exist because a supervisor looking for one officer's
+// cases should not have to read every row.
+export const SORTS = {
+  severity: (o) => (SEVERITY[o.severity]?.rank ?? 9),
+  deadline: (o) => (Number.isFinite(o.clock?.remainingDays) ? o.clock.remainingDays : 99999),
+  crimeNo: (o) => String(o.crimeNo || ''),
+  title: (o) => String(o.title || ''),
+  officer: (o) => String(o.ioName || ''),
+  kind: (o) => String(o.kind || ''),
+};
+
+/**
+ * Sort a queue by one column.
+ *
+ * Severity is always the tie-breaker, whatever the chosen column: two rows
+ * that sort equally on officer or case number are not equally urgent, and
+ * leaving their order to chance would make the table's own ordering
+ * meaningless in exactly the places it matters most.
+ */
+export function sortObligations(list, key = 'severity', dir = 'asc') {
+  const pick = SORTS[key] || SORTS.severity;
+  const sign = dir === 'desc' ? -1 : 1;
+  return [...(list || [])].sort((a, b) => {
+    const av = pick(a);
+    const bv = pick(b);
+    let r = 0;
+    if (typeof av === 'string' || typeof bv === 'string') r = String(av).localeCompare(String(bv));
+    else r = av - bv;
+    if (r !== 0) return r * sign;
+    const sr = (SEVERITY[a.severity]?.rank ?? 9) - (SEVERITY[b.severity]?.rank ?? 9);
+    if (sr !== 0) return sr;
+    const ar = Number.isFinite(a.clock?.remainingDays) ? a.clock.remainingDays : 99999;
+    const br = Number.isFinite(b.clock?.remainingDays) ? b.clock.remainingDays : 99999;
+    return ar - br;
+  });
+}

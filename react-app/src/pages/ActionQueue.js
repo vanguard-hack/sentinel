@@ -17,17 +17,33 @@
 //   • Every obligation can be dismissed as done-off-system with a reason. An
 //     alert that cannot be dismissed is an alert officers learn to scroll
 //     past, and that is how this page would die.
+//
+// LAID OUT AS A TABLE, NOT A COLUMN OF CARDS
+//
+// The first version gave every obligation a tall card carrying its finding,
+// consequence, citation and action. That reads well for three obligations and
+// is unusable for forty: a supervisor scrolls past the one thing they opened
+// the page to find, and the page's own claim — that it sorts itself — is
+// invisible when only two rows fit on screen.
+//
+// So the queue is a sortable table with one line per obligation, and the prose
+// lives behind a row that expands. Nothing was dropped; it is simply no longer
+// all shouted at once. The counts moved into stat tiles at the top for the same
+// reason — "3 overdue" is the number a supervisor came for, and it should not
+// have to be assembled from a sentence.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  AlertTriangle, CalendarClock, Check, CheckCircle2, ChevronDown, ClipboardCheck,
-  Clock, ExternalLink, Loader2, RefreshCw, RotateCcw, Scale, ShieldAlert,
+  AlertTriangle, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronsUpDown,
+  ClipboardCheck, Clock, ExternalLink, Flame, Loader2, RefreshCw, RotateCcw,
+  Scale, ShieldAlert, Timer,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { logAudit } from '../utils/audit';
 import {
   fetchActionQueue, acknowledgeObligation, reopenObligation,
   SEVERITY, KIND_LABEL, countdown, citation, byOfficer, canCommand,
+  initials, avatarTone, deadlineChip, sortObligations,
 } from '../utils/actionQueue';
 
 const KIND_ICONS = {
@@ -37,6 +53,28 @@ const KIND_ICONS = {
   procedural: ClipboardCheck,
 };
 
+// The four tiles. Deliberately not "total obligations": a total tells a
+// supervisor nothing they can act on, whereas "3 overdue" is the number they
+// opened the page for. Cases sits last as the denominator that gives the rest
+// their scale — nine obligations across nine files is a bad week, nine across
+// one file is a single case in trouble.
+const TILES = [
+  { key: 'overdue', label: 'Overdue', hint: 'past the statutory date', Icon: Flame, tone: 'overdue' },
+  { key: 'critical', label: 'Critical', hint: 'inside a week', Icon: AlertTriangle, tone: 'critical' },
+  { key: 'high', label: 'High', hint: 'needs attention', Icon: Timer, tone: 'high' },
+  { key: 'cases', label: 'Cases affected', hint: 'files with something outstanding', Icon: ClipboardCheck, tone: 'neutral' },
+];
+
+const COLUMNS = [
+  { key: 'severity', label: 'Priority', sortable: true },
+  { key: 'crimeNo', label: 'Case', sortable: true },
+  { key: 'title', label: 'Obligation', sortable: true },
+  { key: 'kind', label: 'Type', sortable: true },
+  { key: 'officer', label: 'Officer', sortable: true },
+  { key: 'deadline', label: 'Deadline', sortable: true },
+  { key: 'actions', label: '', sortable: false },
+];
+
 export default function ActionQueue() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -45,6 +83,8 @@ export default function ActionQueue() {
   const [acking, setAcking] = useState(null); // obligation key being dismissed
   const [note, setNote] = useState('');
   const [showDone, setShowDone] = useState(false);
+  const [sort, setSort] = useState({ key: 'severity', dir: 'asc' });
+  const [openRow, setOpenRow] = useState(null); // the obligation showing its prose
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -76,6 +116,11 @@ export default function ActionQueue() {
       done: scoped.filter((o) => o.acknowledged),
     };
   }, [data, scope]);
+
+  const rows = useMemo(() => sortObligations(open, sort.key, sort.dir), [open, sort]);
+
+  const toggleSort = (key) => setSort((s0) =>
+    (s0.key === key ? { key, dir: s0.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
 
   const counts = useMemo(() => ({
     overdue: open.filter((o) => o.severity === 'overdue').length,
@@ -116,29 +161,25 @@ export default function ActionQueue() {
           page announces "Nothing needs action today" for as long as the fetch
           takes and then contradicts itself — an all-clear is the one message
           that must never appear before it has been earned. */}
-      <div className={`aq-head ${!data ? 'calm' : counts.overdue ? 'overdue' : counts.critical ? 'critical' : 'calm'}`}>
-        <div className="aq-head-main">
+      <div className="aq-bar">
+        <div className="aq-bar-main">
           <h2>
             {!data
               ? 'Checking every open case…'
               : open.length === 0
               ? 'Nothing needs action today'
-              : `${open.length} obligation${open.length === 1 ? '' : 's'} across ${counts.cases} case${counts.cases === 1 ? '' : 's'}`}
+              : `${open.length} obligation${open.length === 1 ? '' : 's'} outstanding`}
           </h2>
           <p>
             {!data
               ? 'Reading the case diaries for statutory deadlines and evidentiary gaps.'
               : open.length === 0
-              ? 'Every open case is within its statutory windows and has no outstanding evidentiary gap on file.'
-              : [
-                  counts.overdue ? `${counts.overdue} overdue` : null,
-                  counts.critical ? `${counts.critical} critical` : null,
-                  counts.high ? `${counts.high} high` : null,
-                ].filter(Boolean).join(' · ')}
+              ? 'Every open case is within its statutory windows with no outstanding gap on file.'
+              : `Across ${counts.cases} case${counts.cases === 1 ? '' : 's'}, ordered by what breaks first.`}
           </p>
         </div>
-        <div className="aq-head-tools">
-          <div className="aq-scope">
+        <div className="aq-bar-tools">
+          <div className="aq-scope" role="group" aria-label="Which cases to show">
             <button type="button" className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>All cases</button>
             <button type="button" className={scope === 'mine' ? 'on' : ''} onClick={() => setScope('mine')}>Mine</button>
             {command && (
@@ -147,11 +188,32 @@ export default function ActionQueue() {
               </button>
             )}
           </div>
-          <button type="button" className="aq-refresh" onClick={load} disabled={busy} title="Refresh">
-            {busy ? <Loader2 size={14} className="aq-spin" /> : <RefreshCw size={14} />}
+          <button type="button" className="aq-refresh" onClick={load} disabled={busy} aria-label="Refresh">
+            {busy ? <Loader2 size={14} className="aq-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />}
           </button>
         </div>
       </div>
+
+      {/* ── The four numbers ────────────────────────────────────────────── */}
+      {scope !== 'command' && (
+        <div className="aq-tiles">
+          {TILES.map((t) => (
+            // A zero must LOOK calm. The tone class is dropped when the count
+            // is nothing, because a red tile reading "0 overdue" is the page
+            // crying wolf every morning, which is precisely how it stops being
+            // read. (Tried this in CSS with :has(b:empty) — it cannot test text
+            // content, so it matched always and did the opposite.)
+            <div key={t.key} className={`aq-tile ${data && counts[t.key] > 0 ? t.tone : 'neutral'}`}>
+              <span className="aq-tile-icon"><t.Icon size={18} aria-hidden="true" /></span>
+              <span className="aq-tile-body">
+                <b>{data ? counts[t.key] : '—'}</b>
+                <span className="aq-tile-label">{t.label}</span>
+              </span>
+              <span className="aq-tile-hint">{t.hint}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {error && <div className="aq-error"><AlertTriangle size={15} /> {error}</div>}
       {!data && !error && <div className="aq-loading"><Loader2 size={18} className="aq-spin" /> Reading the case files…</div>}
@@ -222,86 +284,148 @@ export default function ActionQueue() {
 
       {/* ── The queue ───────────────────────────────────────────────────── */}
       {/* Rendered conditionally rather than hidden with the `hidden` attribute:
-          `.aq-list` sets display:grid, and an author rule beats the UA
+          the table sets its own display, and an author rule beats the UA
           stylesheet's [hidden]{display:none}, so the attribute alone would
           leave both this and the command panel on screen at once. */}
-      {scope !== 'command' && (
-      <div className="aq-list">
-        {open.map((o) => {
-          const k = keyOf(o);
-          const sev = SEVERITY[o.severity] || SEVERITY.medium;
-          const Icon = KIND_ICONS[o.kind] || ClipboardCheck;
-          const cd = countdown(o.clock);
-          const cite = citation(o.authority);
-          return (
-            <article key={k} className={`aq-card ${sev.tone}`}>
-              <header className="aq-card-head">
-                <span className={`aq-sev ${sev.tone}`}>{sev.label}</span>
-                <span className="aq-kind"><Icon size={11} /> {KIND_LABEL[o.kind] || o.kind}</span>
-                {cd && (
-                  <span className={`aq-clock ${cd.over ? 'over' : ''}`}>
-                    <CalendarClock size={12} /> {cd.text}
-                  </span>
-                )}
-                <Link to={`/investigation-diary/${o.caseMasterId}`} className="aq-case">
-                  {o.crimeNo} <ExternalLink size={11} />
-                </Link>
-              </header>
+      {scope !== 'command' && rows.length > 0 && (
+        <div className="aq-table-wrap">
+          <table className="aq-table">
+            <thead>
+              <tr>
+                {COLUMNS.map((c) => (
+                  <th key={c.key || c.label} scope="col" className={`aq-th-${c.key}`}>
+                    {c.sortable ? (
+                      <button
+                        type="button"
+                        className={`aq-sort${sort.key === c.key ? ' on' : ''}`}
+                        onClick={() => toggleSort(c.key)}
+                        aria-label={`Sort by ${c.label}`}
+                      >
+                        {c.label}
+                        <ChevronsUpDown size={12} aria-hidden="true" />
+                      </button>
+                    ) : c.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((o) => {
+                const k = keyOf(o);
+                const sev = SEVERITY[o.severity] || SEVERITY.medium;
+                const Icon = KIND_ICONS[o.kind] || ClipboardCheck;
+                const chip = deadlineChip(o.clock);
+                const cite = citation(o.authority);
+                const expanded = openRow === k;
+                return (
+                  <React.Fragment key={k}>
+                    <tr className={`aq-row ${sev.tone}${expanded ? ' open' : ''}`}>
+                      <td><span className={`aq-sev ${sev.tone}`}>{sev.label}</span></td>
+                      <td>
+                        <Link to={`/investigation-diary/${o.caseMasterId}`} className="aq-case">
+                          {o.crimeNo} <ExternalLink size={11} aria-hidden="true" />
+                        </Link>
+                      </td>
+                      <td className="aq-td-title">{o.title}</td>
+                      <td>
+                        <span className="aq-kind"><Icon size={11} aria-hidden="true" /> {KIND_LABEL[o.kind] || o.kind}</span>
+                      </td>
+                      <td>
+                        {o.ioName ? (
+                          <span className="aq-who">
+                            <span className={`aq-avatar ${avatarTone(o.ioName)}`}>{initials(o.ioName)}</span>
+                            <span className="aq-who-name">{o.ioName}</span>
+                          </span>
+                        ) : <span className="aq-muted">Unassigned</span>}
+                      </td>
+                      <td>
+                        <span className={`aq-chip ${chip.tone}`}>
+                          {chip.tone !== 'none' && <CalendarClock size={11} aria-hidden="true" />}
+                          {chip.text}
+                        </span>
+                      </td>
+                      <td className="aq-td-actions">
+                        <button
+                          type="button"
+                          className="aq-details"
+                          aria-expanded={expanded}
+                          onClick={() => { setOpenRow(expanded ? null : k); setAcking(null); }}
+                        >
+                          Details
+                          <ChevronDown size={12} className={expanded ? 'open' : ''} aria-hidden="true" />
+                        </button>
+                      </td>
+                    </tr>
 
-              <h3>{o.title}</h3>
-              <p className="aq-finding">{o.finding}</p>
-              <p className="aq-consequence">{o.consequence}</p>
+                    {/* The prose the table cannot hold, one row at a time. The
+                        finding is a claim about the file, the consequence is
+                        what the law does about it, and the action is what to
+                        do — that ordering is the whole argument for the row
+                        existing, so it survives the layout change intact. */}
+                    {expanded && (
+                      <tr className={`aq-detail ${sev.tone}`}>
+                        <td colSpan={COLUMNS.length}>
+                          <div className="aq-detail-body">
+                            <div className="aq-detail-prose">
+                              <p className="aq-finding">{o.finding}</p>
+                              <p className="aq-consequence">{o.consequence}</p>
+                              <p className="aq-next"><strong>Next:</strong> {o.action}</p>
+                            </div>
+                            <div className="aq-detail-side">
+                              {cite && (
+                                <span className="aq-cite" title={o.authority?.title || ''}>
+                                  <Scale size={11} aria-hidden="true" /> {cite}
+                                  {o.authority?.verified === false && <em>unverified</em>}
+                                </span>
+                              )}
+                              {o.basis && <span className={`aq-basis ${o.certain ? '' : 'soft'}`}>{o.basis}</span>}
+                              {countdown(o.clock) && (
+                                <span className={`aq-basis ${countdown(o.clock).over ? 'soft' : ''}`}>
+                                  {countdown(o.clock).text}
+                                </span>
+                              )}
 
-              {(cite || o.basis) && (
-                <div className="aq-meta">
-                  {cite && (
-                    <span className="aq-cite" title={o.authority?.title || ''}>
-                      <Scale size={11} /> {cite}
-                      {o.authority?.verified === false && <em>unverified</em>}
-                    </span>
-                  )}
-                  {o.basis && <span className={`aq-basis ${o.certain ? '' : 'soft'}`}>{o.basis}</span>}
-                </div>
-              )}
-
-              <div className="aq-action">
-                <span><strong>Next:</strong> {o.action}</span>
-              </div>
-
-              {acking === k ? (
-                <div className="aq-ack">
-                  <label htmlFor={`n-${k}`}>
-                    What was done? A supervisor reviewing the queue sees this.
-                  </label>
-                  <textarea
-                    id={`n-${k}`}
-                    rows={2}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="e.g. Seizure panchanama filed on paper 04/02, not yet entered."
-                  />
-                  <div className="aq-ack-btns">
-                    <button type="button" className="aq-btn ghost" onClick={() => { setAcking(null); setNote(''); }}>
-                      Cancel
-                    </button>
-                    <button type="button" className="aq-btn solid" disabled={!note.trim()} onClick={() => submitAck(o)}>
-                      <Check size={13} /> Mark done
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className="aq-dismiss"
-                  onClick={() => { setAcking(k); setNote(''); }}
-                >
-                  Already handled off-system
-                </button>
-              )}
-            </article>
-          );
-        })}
-      </div>
+                              {acking === k ? (
+                                <div className="aq-ack">
+                                  <label htmlFor={`n-${k}`}>
+                                    What was done? A supervisor reviewing the queue sees this.
+                                  </label>
+                                  <textarea
+                                    id={`n-${k}`}
+                                    rows={2}
+                                    value={note}
+                                    onChange={(e) => setNote(e.target.value)}
+                                    placeholder="e.g. Seizure panchanama filed on paper 04/02, not yet entered."
+                                  />
+                                  <div className="aq-ack-btns">
+                                    <button type="button" className="aq-btn ghost" onClick={() => { setAcking(null); setNote(''); }}>
+                                      Cancel
+                                    </button>
+                                    <button type="button" className="aq-btn solid" disabled={!note.trim()} onClick={() => submitAck(o)}>
+                                      <Check size={13} aria-hidden="true" /> Mark done
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="aq-dismiss"
+                                  onClick={() => { setAcking(k); setNote(''); }}
+                                >
+                                  Already handled off-system
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {open.length === 0 && data && scope !== 'command' && (

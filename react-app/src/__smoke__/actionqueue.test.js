@@ -212,3 +212,98 @@ test('the severities the night-arrest check uses are both known to the UI', () =
   expect(SEVERITY.high).toBeDefined();
   expect(SEVERITY.medium).toBeDefined();
 });
+
+// ── The table view ────────────────────────────────────────────────────────
+//
+// The queue moved from a column of tall cards to a sortable table, which put
+// the ordering logic somewhere it can be tested rather than left to the order
+// the server happened to return.
+import { initials, avatarTone, deadlineChip, sortObligations } from '../utils/actionQueue';
+
+test('initials come from the first and last name', () => {
+  expect(initials('Umesh Sindagi')).toBe('US');
+  expect(initials('A Rao')).toBe('AR');
+  expect(initials('Sunitha Devi Rangappa')).toBe('SR');
+});
+
+test('a single name still yields two letters, and nothing yields a dash', () => {
+  expect(initials('Rao')).toBe('RA');
+  expect(initials('')).toBe('—');
+  expect(initials(null)).toBe('—');
+  expect(initials('   ')).toBe('—');
+});
+
+test('an officer keeps the same avatar colour across reloads', () => {
+  // A chip that changes colour on refresh is noise pretending to be
+  // information, so the tone is hashed from the name rather than assigned.
+  expect(avatarTone('Umesh Sindagi')).toBe(avatarTone('Umesh Sindagi'));
+  expect(avatarTone('A Rao')).toBe(avatarTone('A Rao'));
+});
+
+test('the deadline chip says how urgent it is as well as how long', () => {
+  expect(deadlineChip({ remainingDays: 13 })).toEqual({ text: '13d left', tone: 'ok' });
+  expect(deadlineChip({ remainingDays: 4 })).toEqual({ text: '4d left', tone: 'soon' });
+  expect(deadlineChip({ remainingDays: 0 })).toEqual({ text: 'Today', tone: 'over' });
+  expect(deadlineChip({ remainingDays: -4 })).toEqual({ text: '4d over', tone: 'over' });
+});
+
+test('an obligation with no clock gets a dash, not an invented countdown', () => {
+  // The night-arrest finding is about something that already happened.
+  expect(deadlineChip(null)).toEqual({ text: '—', tone: 'none' });
+  expect(deadlineChip({})).toEqual({ text: '—', tone: 'none' });
+});
+
+const row = (over = {}) => ({
+  severity: 'medium', crimeNo: '412/2026', title: 'B', kind: 'procedural',
+  ioName: 'B Officer', clock: null, ...over,
+});
+
+test('the default sort puts the worst first', () => {
+  const sorted = sortObligations([
+    row({ severity: 'high', title: 'h' }),
+    row({ severity: 'overdue', title: 'o' }),
+    row({ severity: 'critical', title: 'c' }),
+  ]);
+  expect(sorted.map((o) => o.title)).toEqual(['o', 'c', 'h']);
+});
+
+test('sorting by another column still breaks ties on severity', () => {
+  // Two rows for the same officer are not equally urgent, and leaving their
+  // order to chance would make the table meaningless where it matters most.
+  const sorted = sortObligations([
+    row({ ioName: 'A Rao', severity: 'medium', title: 'mid' }),
+    row({ ioName: 'A Rao', severity: 'overdue', title: 'bad' }),
+  ], 'officer');
+  expect(sorted.map((o) => o.title)).toEqual(['bad', 'mid']);
+});
+
+test('sorting by deadline puts the nearest clock first and the clockless last', () => {
+  const sorted = sortObligations([
+    row({ title: 'none' }),
+    row({ title: 'far', clock: { remainingDays: 40 } }),
+    row({ title: 'over', clock: { remainingDays: -2 } }),
+  ], 'deadline');
+  expect(sorted.map((o) => o.title)).toEqual(['over', 'far', 'none']);
+});
+
+test('the direction can be reversed without losing the tie-break', () => {
+  const asc = sortObligations([row({ crimeNo: '1' }), row({ crimeNo: '2' })], 'crimeNo', 'asc');
+  const desc = sortObligations([row({ crimeNo: '1' }), row({ crimeNo: '2' })], 'crimeNo', 'desc');
+  expect(asc.map((o) => o.crimeNo)).toEqual(['1', '2']);
+  expect(desc.map((o) => o.crimeNo)).toEqual(['2', '1']);
+});
+
+test('sorting never mutates the list it was given', () => {
+  const list = [row({ severity: 'medium' }), row({ severity: 'overdue' })];
+  const before = list.map((o) => o.severity);
+  sortObligations(list);
+  expect(list.map((o) => o.severity)).toEqual(before);
+});
+
+test('an unknown sort key falls back to severity rather than shuffling', () => {
+  const sorted = sortObligations([
+    row({ severity: 'high', title: 'h' }),
+    row({ severity: 'overdue', title: 'o' }),
+  ], 'nonsense');
+  expect(sorted.map((o) => o.title)).toEqual(['o', 'h']);
+});

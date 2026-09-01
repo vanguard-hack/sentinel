@@ -8227,153 +8227,216 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 }
 
 /* ── Action queue ───────────────────────────────────────────────────────────
-   Colour carries the deadline, not the decoration: red only when something is
-   overdue or nearly so. A page that is amber every morning teaches officers to
-   stop looking at it. */
-.aq-head {
+   Rebuilt as tiles plus a table. The old layout gave every obligation a tall
+   card, which reads well for three and is unusable for forty — the supervisor
+   scrolls past the row they came for, and the page's own claim that it sorts
+   itself is invisible when two rows fill the screen.
+
+   Colour still carries the deadline and nothing else: red only when something
+   is overdue or nearly so. A page that is amber every morning teaches officers
+   to stop looking at it. */
+
+/* The bar: verdict on the left, scope and refresh on the right. */
+.aq-bar {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  margin-bottom: 14px; padding: 16px 18px; border-radius: 13px;
-  background: var(--bg-1); border: 1px solid var(--border);
-  border-left: 4px solid var(--green); box-shadow: var(--shadow-card);
+  margin-bottom: 14px;
 }
-.aq-head.critical { border-left-color: var(--gold); }
-.aq-head.overdue { border-left-color: var(--red); }
-.aq-head-main { flex: 1; min-width: 220px; }
-.aq-head h2 { margin: 0; font-size: 16px; font-weight: 800; color: var(--text-0); }
-.aq-head p { margin: 3px 0 0; font-size: 11.5px; color: var(--text-3); }
-.aq-head-tools { display: flex; align-items: center; gap: 8px; }
-.aq-scope { display: flex; border: 1px solid var(--border-bright); border-radius: 999px; overflow: hidden; }
+.aq-bar-main { flex: 1; min-width: 220px; }
+.aq-bar h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; color: var(--text-0); }
+.aq-bar p { margin: 3px 0 0; font-size: 12.5px; color: var(--text-3); }
+.aq-bar-tools { display: flex; align-items: center; gap: 8px; }
+
+.aq-scope { display: inline-flex; background: var(--bg-3); border-radius: 9px; padding: 3px; }
 .aq-scope button {
-  padding: 6px 14px; border: 0; background: var(--bg-1); cursor: pointer;
-  font-size: 11.5px; font-weight: 600; color: var(--text-3);
+  border: 0; background: none; cursor: pointer;
+  padding: 6px 13px; border-radius: 7px;
+  font-size: 12.5px; font-weight: 600; color: var(--text-3);
 }
-.aq-scope button.on { background: var(--blue-500); color: #fff; }
+.aq-scope button.on { background: var(--bg-1); color: var(--text-0); box-shadow: var(--shadow-card); }
 .aq-refresh {
-  display: grid; place-items: center; width: 30px; height: 30px;
-  border: 1px solid var(--border-bright); border-radius: 9px;
-  background: var(--bg-1); color: var(--text-3); cursor: pointer;
+  display: grid; place-items: center; width: 32px; height: 32px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--bg-1); color: var(--text-2); cursor: pointer;
 }
-.aq-refresh:hover:not(:disabled) { background: var(--bg-2); color: var(--text-1); }
-.aq-spin { animation: xh-rot 1.1s linear infinite; }
+.aq-refresh:disabled { opacity: 0.55; }
+.aq-spin { animation: aq-rot 0.9s linear infinite; }
+@keyframes aq-rot { to { transform: rotate(360deg); } }
 
-.aq-error, .aq-loading {
-  display: flex; align-items: center; gap: 8px; justify-content: center;
-  padding: 18px; margin-bottom: 12px; border-radius: 11px; font-size: 11.5px;
-  background: var(--bg-1); border: 1px solid var(--border); color: var(--text-3);
+/* ── The four numbers ──────────────────────────────────────────────────── */
+.aq-tiles {
+  display: grid; gap: 12px; margin-bottom: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
 }
-.aq-error { color: var(--red); border-color: color-mix(in srgb, var(--red) 22%, transparent); }
-.aq-note { margin: 0 0 12px; font-size: 11px; color: var(--text-4); }
+.aq-tile {
+  display: flex; align-items: center; gap: 12px;
+  padding: 15px 16px; background: var(--bg-1);
+  border: 1px solid var(--border); border-radius: 14px;
+}
+.aq-tile-icon {
+  display: grid; place-items: center; width: 40px; height: 40px; flex: none;
+  border-radius: 11px; background: var(--bg-3); color: var(--text-2);
+}
+.aq-tile-body { display: flex; flex-direction: column; line-height: 1.15; }
+.aq-tile-body b { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; color: var(--text-0); }
+.aq-tile-label { font-size: 12.5px; color: var(--text-2); }
+.aq-tile-hint { margin-left: auto; max-width: 92px; text-align: right; font-size: 10.5px; color: var(--text-4); line-height: 1.3; }
+/* Only a tile with something IN it takes colour — a zero must look calm, or
+   the page cries wolf every morning. The tone class is withheld by the
+   component when the count is 0; CSS cannot test text content. */
+.aq-tile.overdue .aq-tile-icon { background: color-mix(in srgb, var(--red) 13%, transparent); color: var(--red-dark); }
+.aq-tile.overdue { border-color: color-mix(in srgb, var(--red) 30%, var(--border)); }
+.aq-tile.critical .aq-tile-icon { background: color-mix(in srgb, var(--gold) 15%, transparent); color: var(--gold-dark); }
+.aq-tile.high .aq-tile-icon { background: color-mix(in srgb, var(--blue-500) 12%, transparent); color: var(--blue-600); }
 
-.aq-list { display: grid; gap: 11px; }
-.aq-card {
-  padding: 14px 16px; border-radius: 13px;
+/* ── The table ─────────────────────────────────────────────────────────── */
+.aq-table-wrap {
   background: var(--bg-1); border: 1px solid var(--border);
-  border-left: 3px solid var(--text-4); box-shadow: var(--shadow-card);
+  border-radius: 14px; overflow-x: auto;
 }
-.aq-card.overdue { border-left-color: var(--red); }
-.aq-card.critical { border-left-color: var(--red); }
-.aq-card.high { border-left-color: var(--gold); }
-.aq-card.medium { border-left-color: var(--blue-500); }
+.aq-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.aq-table thead th {
+  padding: 11px 14px; text-align: left; white-space: nowrap;
+  background: var(--bg-2); border-bottom: 1px solid var(--border);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
+  text-transform: uppercase; color: var(--text-3);
+}
+.aq-sort {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit;
+}
+.aq-sort:hover { color: var(--text-1); }
+.aq-sort.on { color: var(--blue-600); }
 
-.aq-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.aq-row > td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.aq-row:hover > td { background: var(--bg-2); }
+.aq-row.open > td { background: var(--bg-2); border-bottom-color: transparent; }
+.aq-td-title { font-weight: 600; color: var(--text-0); min-width: 220px; }
+.aq-td-actions { text-align: right; }
+.aq-muted { color: var(--text-4); font-size: 12px; }
+
+/* Priority pill. Overdue and critical share red because they mean the same
+   thing to a diary — one has already happened. */
 .aq-sev {
-  padding: 2px 9px; border-radius: 999px; font-size: 9.5px; font-weight: 800;
-  letter-spacing: .05em; text-transform: uppercase;
+  display: inline-block; padding: 3px 9px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap;
 }
-.aq-sev.overdue, .aq-sev.critical { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
-.aq-sev.high { color: var(--gold); background: color-mix(in srgb, var(--gold) 14%, transparent); }
-.aq-sev.medium { color: var(--blue-500); background: color-mix(in srgb, var(--blue-500) 12%, transparent); }
-.aq-kind {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 10px; color: var(--text-4); font-weight: 600;
-}
-.aq-clock {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700;
-  color: var(--text-2); background: var(--bg-3);
-}
-.aq-clock.over { color: #fff; background: var(--red); }
-.aq-case {
-  display: inline-flex; align-items: center; gap: 4px; margin-left: auto;
-  font-size: 11.5px; font-weight: 700; color: var(--blue-500); text-decoration: none;
-}
-.aq-case:hover { text-decoration: underline; }
+.aq-sev.overdue { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red-dark); }
+.aq-sev.critical { background: color-mix(in srgb, var(--red) 10%, transparent); color: var(--red-dark); }
+.aq-sev.high { background: color-mix(in srgb, var(--gold) 16%, transparent); color: var(--gold-dark); }
+.aq-sev.medium { background: var(--bg-3); color: var(--text-2); }
 
-.aq-card h3 { margin: 0 0 5px; font-size: 14px; font-weight: 700; color: var(--text-0); line-height: 1.35; }
-.aq-finding { margin: 0 0 5px; font-size: 11.5px; line-height: 1.6; color: var(--text-2); }
-.aq-consequence {
-  margin: 0; padding: 9px 11px; border-radius: 9px;
-  font-size: 11.5px; line-height: 1.6; color: var(--text-1);
-  background: var(--bg-2); border-left: 2px solid var(--border-bright);
-}
+.aq-case { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--blue-600); white-space: nowrap; }
+.aq-kind { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
 
-.aq-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+/* Officer chip. The colour is hashed from the name so it is stable across
+   reloads — a chip that changes colour on refresh is noise pretending to be
+   information. */
+.aq-who { display: inline-flex; align-items: center; gap: 8px; }
+.aq-who-name { font-size: 12.5px; color: var(--text-1); white-space: nowrap; }
+.aq-avatar {
+  display: grid; place-items: center; width: 28px; height: 28px; flex: none;
+  border-radius: 50%; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em;
+}
+.aq-avatar.violet { background: #ede9fe; color: #5b21b6; }
+.aq-avatar.amber  { background: #fef3c7; color: #92400e; }
+.aq-avatar.teal   { background: #ccfbf1; color: #115e59; }
+.aq-avatar.rose   { background: #ffe4e6; color: #9f1239; }
+.aq-avatar.sky    { background: #e0f2fe; color: #075985; }
+.aq-avatar.lime   { background: #ecfccb; color: #3f6212; }
+
+/* Deadline chip. `none` is for an obligation with no clock — it is about
+   something that already happened, and inventing a countdown for it would be
+   a lie the officer cannot check. */
+.aq-chip {
+  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  padding: 4px 9px; border-radius: 8px; font-size: 11.5px; font-weight: 600;
+}
+.aq-chip.over { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red-dark); }
+.aq-chip.soon { background: color-mix(in srgb, var(--gold) 15%, transparent); color: var(--gold-dark); }
+.aq-chip.ok   { background: var(--bg-3); color: var(--text-2); }
+.aq-chip.none { background: none; color: var(--text-4); font-weight: 500; }
+
+.aq-details {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px; border: 1px solid var(--border-bright); border-radius: 8px;
+  background: var(--bg-1); color: var(--text-1);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.aq-details:hover { background: var(--bg-3); }
+.aq-details svg { transition: transform 0.15s ease; }
+.aq-details svg.open { transform: rotate(180deg); }
+
+/* ── The expanded row ──────────────────────────────────────────────────── */
+.aq-detail > td { padding: 0 14px 16px; border-bottom: 1px solid var(--border); background: var(--bg-2); }
+.aq-detail-body { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 20px; }
+@media (max-width: 900px) { .aq-detail-body { grid-template-columns: 1fr; } }
+.aq-detail-prose p { margin: 0 0 7px; font-size: 12.5px; line-height: 1.6; }
+.aq-finding { color: var(--text-1); }
+.aq-consequence { color: var(--text-2); }
+.aq-next { color: var(--text-0); }
+.aq-detail-side { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
 .aq-cite {
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 2px 8px; border-radius: 6px; font-size: 10.5px; font-weight: 600;
-  color: var(--text-2); background: var(--bg-3);
+  padding: 3px 8px; border-radius: 7px; background: var(--bg-3);
+  font-size: 11px; color: var(--text-2);
 }
-.aq-cite em { font-style: normal; font-size: 9px; color: var(--text-4); text-transform: uppercase; letter-spacing: .04em; }
-.aq-basis { font-size: 10.5px; color: var(--text-4); }
-.aq-basis.soft { font-style: italic; }
-
-.aq-action { margin-top: 9px; font-size: 11.5px; line-height: 1.55; color: var(--text-2); }
-.aq-action strong { color: var(--text-0); }
-
+.aq-cite em { font-style: normal; font-size: 9.5px; color: var(--text-4); text-transform: uppercase; letter-spacing: 0.04em; }
+.aq-basis { font-size: 11px; color: var(--text-3); }
+.aq-basis.soft { color: var(--text-4); font-style: italic; }
 .aq-dismiss {
-  margin-top: 10px; padding: 0; border: 0; background: transparent; cursor: pointer;
-  font-size: 11px; color: var(--text-4); text-decoration: underline;
+  margin-top: 2px; background: none; border: 0; padding: 0;
+  font-size: 11.5px; color: var(--text-3); cursor: pointer; text-decoration: underline;
 }
-.aq-dismiss:hover { color: var(--text-2); }
-
-.aq-ack { margin-top: 11px; display: grid; gap: 6px; }
-.aq-ack label { font-size: 11px; color: var(--text-3); }
+.aq-dismiss:hover { color: var(--text-1); }
+.aq-ack { width: 100%; }
+.aq-ack label { display: block; font-size: 11.5px; color: var(--text-2); margin-bottom: 4px; }
 .aq-ack textarea {
-  width: 100%; padding: 8px 10px; border-radius: 9px; resize: vertical;
-  border: 1px solid var(--border-bright); background: var(--bg-2);
-  color: var(--text-1); font: inherit; font-size: 11.5px; line-height: 1.5;
+  width: 100%; padding: 7px 9px; font: inherit; font-size: 12px;
+  border: 1px solid var(--border-bright); border-radius: 8px;
+  background: var(--bg-1); color: var(--text-0); resize: vertical;
 }
-.aq-ack textarea:focus { outline: none; border-color: var(--blue-500); }
-.aq-ack-btns { display: flex; justify-content: flex-end; gap: 7px; }
+.aq-ack-btns { display: flex; gap: 7px; margin-top: 7px; }
 .aq-btn {
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 6px 13px; border-radius: 8px; font-size: 11.5px; font-weight: 600; cursor: pointer;
-  border: 1px solid var(--border-bright); background: var(--bg-2); color: var(--text-2);
+  padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border-bright); background: var(--bg-1); color: var(--text-1);
 }
-.aq-btn:hover:not(:disabled) { background: var(--bg-3); }
 .aq-btn.solid { background: var(--blue-500); border-color: var(--blue-500); color: #fff; }
-.aq-btn:disabled { opacity: .5; cursor: default; }
+.aq-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.aq-clear {
-  display: grid; place-items: center; gap: 9px; padding: 44px 20px; text-align: center;
-  border-radius: 13px; background: var(--bg-1); border: 1px dashed var(--border-bright);
-  color: var(--text-4);
+/* ── States ────────────────────────────────────────────────────────────── */
+.aq-error, .aq-loading, .aq-note {
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 14px; margin-bottom: 12px; border-radius: 11px;
+  font-size: 12.5px;
 }
-.aq-clear svg { color: var(--green); }
-.aq-clear p { margin: 0; font-size: 11.5px; max-width: 440px; line-height: 1.6; }
+.aq-error { background: color-mix(in srgb, var(--red) 9%, transparent); color: var(--red-dark); }
+.aq-loading, .aq-note { background: var(--bg-2); color: var(--text-3); }
+.aq-clear {
+  display: flex; flex-direction: column; align-items: center; gap: 9px;
+  padding: 46px 20px; background: var(--bg-1);
+  border: 1px solid var(--border); border-radius: 14px; color: var(--green);
+}
+.aq-clear p { margin: 0; font-size: 13px; color: var(--text-2); }
 
 .aq-done { margin-top: 14px; }
 .aq-done-head {
   display: flex; align-items: center; gap: 7px; width: 100%;
-  padding: 10px 13px; border-radius: 10px; cursor: pointer;
-  border: 1px solid var(--border); background: var(--bg-2);
-  color: var(--text-3); font-size: 11.5px; font-weight: 600;
+  background: none; border: 0; padding: 9px 2px; cursor: pointer;
+  font-size: 12.5px; font-weight: 600; color: var(--text-3);
 }
-.aq-done-head svg { transition: transform .16s ease; }
+.aq-done-head svg { transition: transform 0.15s ease; }
 .aq-done-head svg.open { transform: rotate(180deg); }
 .aq-done-row {
-  display: flex; align-items: center; gap: 12px; justify-content: space-between;
-  padding: 10px 13px; border: 1px solid var(--border); border-top: 0;
-  background: var(--bg-1); font-size: 11.5px; color: var(--text-2);
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; margin-bottom: 6px;
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: 11px;
+  font-size: 12.5px; color: var(--text-2);
 }
-.aq-done-row:last-child { border-radius: 0 0 10px 10px; }
-.aq-done-note { display: block; margin-top: 2px; font-size: 10.5px; color: var(--text-4); }
-
-.aq-foot {
-  margin: 16px 0 0; padding: 12px 14px; border-radius: 11px;
-  background: var(--bg-2); border: 1px solid var(--border);
-  font-size: 11px; line-height: 1.65; color: var(--text-4);
-}
+.aq-done-row > div { flex: 1; min-width: 0; }
+.aq-done-note { display: block; font-size: 11.5px; color: var(--text-3); font-style: italic; margin-top: 2px; }
+.aq-foot { margin-top: 18px; font-size: 11px; line-height: 1.6; color: var(--text-4); }
 
 /* ── Action queue: command view (by officer) ─────────────────────────────── */
 .aq-cmd { display: grid; gap: 10px; }

@@ -14,7 +14,6 @@ const exportscreen = require('./exportscreen');
 const exportholds = require('./exportholds');
 const exportreview = require('./exportreview');
 const shares = require('./shares');
-const bhashini = require('./bhashini');
 const assurance = require('./assurance');
 const statutory = require('./statutory');
 const legalKb = require('./legal_kb.json');
@@ -1055,30 +1054,6 @@ async function handleTranscribe(req, res) {
   if (buf.length > 15 * 1024 * 1024) return json(res, 413, { error: 'audio too large (15MB max)' });
 
   const lang = String(language || 'en').slice(0, 2).toLowerCase();
-
-  // Bhashini first for Indian languages, when a deployment has configured it.
-  //
-  // Zia handles English well and is already inside the same data centre, so
-  // there is nothing to gain by routing English through a second service. What
-  // Bhashini is here for is Kannada and Hindi, where its models are built for
-  // the language rather than supporting it — and it is Indian government
-  // infrastructure, so using it costs nothing on data residency.
-  //
-  // Strictly an upgrade: unconfigured, or slow, or wrong in any way, and this
-  // falls through to the Zia path below exactly as before. An officer waiting
-  // on a transcription must never pay for an integration that is not working.
-  if (bhashini.available() && ['kn', 'hi'].includes(lang)) {
-    try {
-      const out = await bhashini.transcribe(buf.toString('base64'), lang, {
-        audioFormat: /wav/i.test(mimetype || '') ? 'wav' : 'mp3',
-      });
-      if (out && out.text) {
-        return json(res, 200, { text: out.text.trim(), provider: 'bhashini' });
-      }
-    } catch (e) {
-      console.warn('bhashini transcription failed, falling back to Zia:', e && e.message);
-    }
-  }
 
   const token = await getAccessToken();
   const form = new FormData();
@@ -4816,10 +4791,6 @@ module.exports = async (req, res) => {
           claude: !!process.env.ANTHROPIC_API_KEY,
           order: PROVIDER_ORDER,
         },
-        // Reported for the same reason as the rest: a deploy that silently
-        // cleared these would leave Kannada transcription quietly downgraded
-        // to the fallback with nothing on screen to say so.
-        bhashini: bhashini.available(),
         rag: !!(process.env.RAG_REFRESH_TOKEN || process.env.RAG_ACCESS_TOKEN),
       });
     }

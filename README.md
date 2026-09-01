@@ -1444,27 +1444,3 @@ prototype. The dataset is **synthetic** — see [The Dataset](#the-dataset).
 **Sentinel** · Made with ❤️ by **Team Vanguard** for the Karnataka State Police Datathon 2026
 
 </div>
-
-
-## Optional: Bhashini (Government of India language stack)
-
-Kannada and Hindi speech-to-text can be routed through
-[Bhashini](https://bhashini.gitbook.io/bhashini-apis) (MeitY, National Language
-Translation Mission) instead of Zia. It is free, its Indic models are built for
-these languages rather than supporting them, and it runs on Indian government
-infrastructure — so it improves quality without weakening data residency, which
-is why it is the only external language provider Sentinel will use.
-
-It is strictly optional. Unconfigured, transcription behaves exactly as it does
-today; every failure falls through to Zia.
-
-Set these on the `rag` function (Catalyst console, or `catalyst-config.json`):
-
-| Variable | Where it comes from |
-|---|---|
-| `BHASHINI_USER_ID` | ULCA dashboard, after registering |
-| `BHASHINI_API_KEY` | ULCA dashboard |
-| `BHASHINI_PIPELINE_ID` | Optional — defaults to the public MeitY pipeline |
-
-`GET /server/rag/health` reports `bhashini: true` once it is configured, so a
-deploy that clears the keys is visible rather than a silent downgrade.
