@@ -247,6 +247,43 @@ const DOC_V2 = 'Case summary. The victim of the molestation on 12/06 is withheld
     !!(await holds.get(b, hold.id)),
     'who approved what, and when, outlives the document');
 
+  // ── Both export routes must store the document ─────────────────────────
+  //
+  // This is the regression that shipped. Sentinel has two export paths —
+  // handleReportPdf for anything rendered server-side (Report Studio, the case
+  // diary, investigation summaries) and handleExport for what the browser
+  // rasterises — and only the second learned to keep the document. A supervisor
+  // opening a case diary got "no longer stored" for the exact class of document
+  // this feature exists to review, while a dashboard screenshot worked fine.
+  //
+  // Asserted against the source because the alternative is a live Catalyst
+  // request. Thin, but it is the specific thing that broke, and it fails if a
+  // third export surface is added later without going through the same door.
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
+
+  check('there is ONE function that opens a hold, not a copy per route',
+    (src.match(/async function openExportHold\(/g) || []).length === 1);
+  check('  and it is the only place a hold is created',
+    (src.match(/exportholds\.create\(/g) || []).length === 1,
+    'a second creation site is a second place to forget the document');
+  check('  and it is the only place a revision is added',
+    (src.match(/exportholds\.addRevision\(/g) || []).length === 1);
+  check('  and it stores the reviewed text', /exportreview\.putContent\(bucket, hold\.id, rev/.test(src));
+
+  const callers = (src.match(/await openExportHold\(bucket, \{/g) || []).length;
+  check('both export routes go through it', callers === 2, `${callers} caller(s)`);
+
+  const pdfRoute = src.slice(src.indexOf('async function handleReportPdf'), src.indexOf('async function streamToString'));
+  check('the server-rendered PDF route opens its hold through the shared door',
+    /openExportHold\(bucket, \{/.test(pdfRoute),
+    'this is the route the case diary and Report Studio use');
+  check('  and drops the stored copy when an approval is redeemed',
+    /exportreview\.purge\(bucket, String\(body\.approvalId\)\)/.test(pdfRoute));
+
+  check('storing the document never fails the export',
+    /console\.error\('review content write failed \(non-fatal\)/.test(src),
+    'a degraded review beats no export at all');
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

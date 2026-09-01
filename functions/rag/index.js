@@ -1082,6 +1082,78 @@ async function handleTranscribe(req, res) {
   return json(res, 200, { text: String(text).trim(), raw: data });
 }
 
+
+/**
+ * Open a held export, or attach it to the review already in progress.
+ *
+ * ONE function because there are TWO export routes, and they diverged.
+ *
+ * handleReportPdf serves everything rendered server-side — Report Studio, the
+ * case diary, investigation summaries — and handleExport serves what the
+ * browser rasterises. Both screen, both open holds, and when the review loop
+ * was added only the second one learned to store the document. The result was
+ * a review page that worked for a dashboard screenshot and showed "no longer
+ * stored" for a case diary, which is the document the whole feature exists for.
+ *
+ * So the sequence lives here once: find the open review, add a revision or
+ * create a hold, store the text against that revision. A third export surface
+ * added later gets all three by calling this.
+ */
+async function openExportHold(bucket, { email, name, role, kind, title, verdict, fingerprint, reviseId }) {
+  // Scoped to the officer's OWN request, same kind, same title, and only when a
+  // supervisor has explicitly sent it back — "changes_requested" is what makes
+  // it unambiguous that this is the same document coming round again.
+  let target = String(reviseId || '');
+  if (!target) {
+    try {
+      const sentBack = await exportholds.list(bucket, { status: 'changes_requested', limit: 100 });
+      const match = sentBack.find((h) => h.requestedBy === email && h.title === title && h.kind === kind);
+      if (match) target = match.id;
+    } catch { /* a failed lookup just means a new review, never a failed export */ }
+  }
+
+  // Read before revising: addRevision clears changesRequestedName, which is
+  // right (the changes are no longer outstanding) but leaves nothing to name in
+  // the message the officer reads next.
+  const returnedBy = target
+    ? ((await exportholds.get(bucket, target)) || {}).changesRequestedName || ''
+    : '';
+
+  const hold = target
+    ? await exportholds.addRevision(bucket, target, {
+      email, name, reasons: verdict.reasons, fingerprint, stats: verdict.stats,
+    })
+    : await exportholds.create(bucket, {
+      email, name, role, kind, title,
+      reasons: verdict.reasons, fingerprint, stats: verdict.stats,
+    });
+
+  const rev = exportholds.latestRevision(hold);
+
+  // Best-effort, deliberately. A supervisor with no document sees the reasons
+  // and can still decide, as they could before this feature existed — a worse
+  // review, but not a broken export. Failing the whole thing here would trade a
+  // degraded review for no export at all.
+  try {
+    await exportreview.putContent(bucket, hold.id, rev, verdict.text);
+  } catch (e) {
+    console.error('review content write failed (non-fatal):', e && e.message);
+  }
+
+  return { hold, rev, returnedBy, revised: rev > 1 };
+}
+
+/** The 202 body both export routes return when a document is held. */
+const heldResponse = ({ hold, rev, returnedBy, revised }, verdict, noun = 'export') => ({
+  status: 'pending_approval',
+  approvalId: hold.id,
+  revision: rev,
+  reasons: verdict.reasons,
+  message: revised
+    ? `Sent back to ${returnedBy || 'the supervisor'} as revision ${rev}, with the earlier comments attached.`
+    : `This ${noun} needs supervisor approval before it can leave Sentinel.`,
+});
+
 // ── PDF report via SmartBrowz ───────────────────────────────────────────────
 // POST /server/rag/report-pdf  { html, kind?, title?, approvalId? }
 //   →  200 { pdf: <base64> }                       cleared, or approval redeemed
@@ -1140,13 +1212,16 @@ async function handleReportPdf(req, res) {
         detail: `${title} — approved by ${rel.hold.decidedName || rel.hold.decidedBy}` +
                 (rel.hold.note ? ` (${rel.hold.note})` : ''),
       }], caller);
+      // The review is over, so the copy of the document stops existing. The
+      // hold record — who approved what, and when — is what outlives it.
+      try { await exportreview.purge(bucket, String(body.approvalId)); }
+      catch (e) { console.error('review purge failed (non-fatal):', e && e.message); }
       // fall through and render
     } else {
-      let hold;
+      let opened;
       try {
-        hold = await exportholds.create(bucket, {
-          email, name, role, kind, title,
-          reasons: verdict.reasons, fingerprint, stats: verdict.stats,
+        opened = await openExportHold(bucket, {
+          email, name, role, kind, title, verdict, fingerprint,
         });
       } catch (e) {
         // Fail CLOSED, and say why. If the request cannot be recorded there is
@@ -1165,17 +1240,13 @@ async function handleReportPdf(req, res) {
       }
       await storeAuditEvents(req, app, bucket, [{
         action: 'export-held', feature: 'Export Control', path: '/export',
-        detail: `${title} — ${exportscreen.summarise(verdict)}`,
+        detail: `${title} — ${exportscreen.summarise(verdict)}`
+          + (opened.revised ? ` (revision ${opened.rev})` : ''),
       }], caller);
       // 202, not 403: nothing has gone wrong and the officer has done nothing
       // suspect. The document needs a second signature, which is what
       // departmental policy would ask for anyway.
-      return json(res, 202, {
-        status: 'pending_approval',
-        approvalId: hold.id,
-        reasons: verdict.reasons,
-        message: 'This report needs supervisor approval before it can leave Sentinel.',
-      });
+      return json(res, 202, heldResponse(opened, verdict, 'report'));
     }
   }
 
@@ -2369,58 +2440,12 @@ async function handleExport(req, res, action) {
         : json(res, 403, { status: 'refused', error: rel.reason });
     }
 
-    let hold;
-    // Declared out here because the 202 below reads it; a const inside the try
-    // is scoped to the try and would throw only on the revision path — the one
-    // path a syntax check cannot see and a happy-path test would never take.
-    let returnedBy = '';
+    let opened;
     try {
-      // A revision of an existing review, or a new one.
-      //
-      // Found here rather than passed by the client. Making the officer's
-      // browser carry a review id through Report Studio, the case diary and
-      // every other export surface would be a lot of plumbing for something the
-      // server can simply look up — and any client that forgot would silently
-      // open a second review, leaving the supervisor with two half-conversations
-      // about the same document.
-      //
-      // Scoped to the officer's OWN request, same kind, same title, and only
-      // when a supervisor has explicitly sent it back. That last condition is
-      // what makes it unambiguous: "changes_requested" means someone asked for
-      // exactly this document again.
-      const reviseId = String(body.reviseId || '') || (await (async () => {
-        try {
-          const mine = await exportholds.list(bucket, { status: 'changes_requested', limit: 100 });
-          const match = mine.find((h) => h.requestedBy === email && h.title === title
-            && h.kind === String(body.kind || 'export').slice(0, 40));
-          return match ? match.id : '';
-        } catch { return ''; }
-      })());
-
-      // Read before revising: addRevision clears changesRequestedName, which is
-      // correct (changes are no longer outstanding) but leaves nothing to name
-      // in the message the officer reads next.
-      returnedBy = reviseId
-        ? ((await exportholds.get(bucket, reviseId)) || {}).changesRequestedName || ''
-        : '';
-      hold = reviseId
-        ? await exportholds.addRevision(bucket, reviseId, {
-          email, name, reasons: verdict.reasons, fingerprint, stats: verdict.stats,
-        })
-        : await exportholds.create(bucket, {
-          email, name, role, kind: String(body.kind || 'export').slice(0, 40), title,
-          reasons: verdict.reasons, fingerprint, stats: verdict.stats,
-        });
-      // The reviewed text, stored against its revision. Best-effort on purpose:
-      // a supervisor with no document sees the reasons and can still decide, as
-      // they could before this feature existed, which is a worse review but not
-      // a broken one. Failing the whole export here would trade a degraded
-      // review for no export at all.
-      try {
-        await exportreview.putContent(bucket, hold.id, exportholds.latestRevision(hold), verdict.text);
-      } catch (e) {
-        console.error('review content write failed (non-fatal):', e && e.message);
-      }
+      opened = await openExportHold(bucket, {
+        email, name, role, kind: String(body.kind || 'export').slice(0, 40), title,
+        verdict, fingerprint, reviseId: body.reviseId,
+      });
     } catch (e) {
       // Same fail-closed rule as handleReportPdf: a hold that cannot be
       // recorded is a hold nobody can act on, so the export does not proceed.
@@ -2434,19 +2459,9 @@ async function handleExport(req, res, action) {
     await storeAuditEvents(req, app, bucket, [{
       action: 'export-held', feature: 'Export Control', path: '/export',
       detail: `${title} — ${exportscreen.summarise(verdict)}`
-        + (exportholds.latestRevision(hold) > 1 ? ` (revision ${exportholds.latestRevision(hold)})` : ''),
+        + (opened.revised ? ` (revision ${opened.rev})` : ''),
     }], caller);
-    const revised = exportholds.latestRevision(hold) > 1;
-    return json(res, 202, {
-      status: 'pending_approval',
-      approvalId: hold.id,
-      revision: exportholds.latestRevision(hold),
-      reasons: verdict.reasons,
-      message: revised
-        ? `Sent back to ${returnedBy || 'the supervisor'} as revision `
-          + `${exportholds.latestRevision(hold)}, with the earlier comments attached.`
-        : 'This export needs supervisor approval before it can leave Sentinel.',
-    });
+    return json(res, 202, heldResponse(opened, verdict));
   }
 
   // An officer polling their own held request. Scoped to the caller's own

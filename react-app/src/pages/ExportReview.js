@@ -285,8 +285,19 @@ export default function ExportReview() {
               </div>
             ) : (
               <p className="xr-nodoc">
-                The document for this revision is no longer stored — it is removed once an export is
-                released or expires. The flags and the discussion below are the record.
+                {/*
+                  Two very different situations, and telling an officer the wrong
+                  one sends them looking for a problem that is not there. A
+                  finished export genuinely had its copy deleted; a request still
+                  waiting never had one, because it was raised before documents
+                  were kept for review — or the write failed.
+                */}
+                {['approved', 'rejected', 'expired'].includes(req.status)
+                  ? 'The document for this revision is no longer stored — the copy is removed once an '
+                    + 'export is released or expires. The flags and the discussion below are the record.'
+                  : 'No copy of this document was kept. It was raised before Sentinel began storing '
+                    + 'documents for review, so there is nothing to read here. Export the report again '
+                    + 'to open a review you can comment on line by line.'}
               </p>
             )}
 
