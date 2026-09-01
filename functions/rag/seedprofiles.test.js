@@ -25,7 +25,16 @@ const at = (d) => NOW - d * DAY;
 
 // Mirrors what handleInvestigationSeed writes, including the shapes
 // appendInvestigationEntry adds (id, ts, ioName).
+const atIst = (ms, hhmm) => {
+  const base = new Date(ms + 330 * 60_000);
+  const [h, m] = String(hhmm).split(':').map(Number);
+  return Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), h, m) - 330 * 60_000;
+};
+
 function buildFromProfile(p, i = 0) {
+  const arrestTs = p.arrestAtIst
+    ? atIst(at(p.arrestedDaysAgo), p.arrestAtIst)
+    : at(p.arrestedDaysAgo || 5);
   const rec = {
     caseMasterId: `CM-${i}`,
     crimeNo: `4${i}2/2026`,
@@ -42,11 +51,17 @@ function buildFromProfile(p, i = 0) {
       id: `e${k}`, description: e.description, type: e.type,
       seizureMemoRef: e.seizureMemoRef || '', fslStatus: 'Not sent', ts: at(e.daysAgo), seeded: true,
     })),
+    latitude: 12.9716,
+    longitude: 77.5946,
     persons: (p.persons || []).map((q, k) => ({
-      id: `p${k}`, ...q, ts: at(p.arrestedDaysAgo || 5), seeded: true,
+      id: `p${k}`, ...q, ts: arrestTs, seeded: true,
     })),
     timeline: p.arrestedDaysAgo
-      ? [{ id: 't1', type: 'Arrest', detail: 'Accused arrested.', ts: at(p.arrestedDaysAgo), seeded: true }]
+      ? [{
+        id: 't1', type: 'Arrest',
+        detail: `${(p.persons || [])[0]?.name || 'Accused'} arrested.`,
+        ts: arrestTs, seeded: true,
+      }]
       : [],
     findings: [],
   };
@@ -61,6 +76,11 @@ const PROFILES = {
     persons: [{ name: 'Unknown accused', role: 'Accused', status: 'At large' }], statements: 1,
   },
   'quiet-case': { lastDiaryDaysAgo: 96, persons: [{ name: 'Mahesh Gowda', role: 'Suspect', status: 'On bail' }], statements: 2 },
+  'night-arrest': {
+    arrestedDaysAgo: 9, arrestAtIst: '21:40',
+    persons: [{ name: 'Sunitha Rangappa', role: 'Accused', status: 'Arrested', gender: 'Female' }],
+    statements: 1,
+  },
   'clean-case': {
     persons: [{ name: 'Prakash Rao', role: 'Accused', status: 'On bail' }], statements: 2,
     evidence: [{ description: 'Recovered crowbar', type: 'Physical', daysAgo: 4, seizureMemoRef: 'SM/2026/118' }],
@@ -147,6 +167,40 @@ check('it builds on real CaseMaster rows', /FROM CaseMaster/.test(seeder));
 check('everything it writes is stamped seeded', /seeded: true/.test(seeder));
 check('it writes an audit entry', /seed-investigations/.test(seeder));
 check('it reports what it skipped, not only what it made', /skipped: skipped\.length/.test(seeder));
+
+
+// ── The night-arrest profile ───────────────────────────────────────────────
+//
+// The one seeded finding that depends on real astronomy rather than a
+// countdown, so it is worth checking the seed actually lands after dark
+// wherever in the year it is run.
+
+const na = findOne('night-arrest', 'night-arrest:p0');
+check('night-arrest produces a BNSS 43(5) finding', !!na);
+check('  it cites 43(5) and its CrPC ancestor',
+  na && na.authority.section === '43(5)' && na.authority.legacy === 'CrPC 46(4)');
+check('  the arrest reads as 21:40, not as whatever time the seed ran',
+  na && /21:40/.test(na.finding), na && na.finding);
+check('  it is high, because 21:40 is nowhere near the line',
+  na && na.severity === 'high' && na.certain === true, na && na.severity);
+check('  the woman is named in the finding', na && /Sunitha Rangappa/.test(na.finding));
+check('  and it asks for the permission rather than declaring the arrest bad',
+  na && /prior written permission/.test(na.consequence) && /arrest stands/.test(na.consequence));
+
+// 21:40 is after sunset everywhere in Karnataka on every date, so this seed
+// demonstrates the rule in June and in December alike.
+check('  the profile is after sunset at any time of year', (() => {
+  const solar = require('./solar');
+  return [0, 90, 180, 270].every((offset) => {
+    const rec = buildFromProfile({ ...PROFILES['night-arrest'] });
+    const ts = rec.persons[0].ts - offset * DAY;
+    const v = solar.nightArrest(ts, 12.9716, 77.5946);
+    return v && v.night && !v.borderline;
+  });
+})());
+
+check('the clean case still raises nothing beside it',
+  obligationsOf('clean-case').length === 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

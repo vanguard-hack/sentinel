@@ -67,6 +67,8 @@
 // Procedural and evidentiary authorities. `verified: false` throughout, per the
 // convention in legal.js — this is an operational reference for a prototype,
 // not a citation checked against the bare act.
+const solar = require('./solar');
+
 const AUTHORITIES = {
   custody: {
     act: 'BNSS', section: '187(3)', legacy: 'CrPC 167(2)',
@@ -96,6 +98,11 @@ const AUTHORITIES = {
   seizure: {
     act: 'BNSS', section: '106', legacy: 'CrPC 102',
     title: 'Power to seize property',
+    verified: false,
+  },
+  womanNightArrest: {
+    act: 'BNSS', section: '43(5)', legacy: 'CrPC 46(4)',
+    title: 'Arrest of a woman after sunset and before sunrise',
     verified: false,
   },
 };
@@ -430,6 +437,89 @@ function obligationsFor(rec, kb, now = Date.now()) {
       authority: null,
       clock: null,
       action: 'Record the search and surveillance steps taken as a timeline entry.',
+    });
+  }
+
+  // ── 6. A woman arrested between sunset and sunrise ──────────────────────
+  //
+  // BNSS 43(5) (CrPC 46(4)): save in exceptional circumstances no woman shall
+  // be arrested after sunset and before sunrise, and where such circumstances
+  // exist the woman police officer shall obtain the prior written permission of
+  // the jurisdictional magistrate.
+  //
+  // The courts have read the provision as DIRECTORY rather than mandatory — a
+  // breach does not invalidate the arrest, but the officer must be able to
+  // explain it. That is exactly this queue's register, and it is why the
+  // wording below asks whether the permission is on the file rather than
+  // asserting the arrest was unlawful. An officer who did obtain permission and
+  // recorded it elsewhere has a two-second answer; an officer who did not has
+  // found out now rather than in the witness box.
+  //
+  // It fires only on what the record actually says. No gender, no coordinate or
+  // no arrest time and the check does not run — a legal finding about a named
+  // officer inferred from a blank field would be worse than no finding at all.
+  const nightArrests = [];
+  for (const p of persons) {
+    if (String(p.status) !== 'Arrested') continue;
+    if (String(p.gender) !== 'Female') continue;
+
+    // The arrest instant: the timeline event naming this person if there is
+    // one, otherwise the person entry's own timestamp.
+    const named = timeline.find(
+      (t) => String(t.type) === 'Arrest' && p.name && String(t.detail || '').includes(p.name),
+    );
+    const when = toTime(named ? named.ts : p.ts);
+    if (when === null) continue;
+
+    const where = Number.isFinite(rec.latitude) && Number.isFinite(rec.longitude)
+      ? { lat: rec.latitude, lon: rec.longitude, approximate: false }
+      : { ...solar.KARNATAKA_CENTRE, approximate: true };
+
+    const verdict = solar.nightArrest(
+      when,
+      where.approximate ? where.latitude : where.lat,
+      where.approximate ? where.longitude : where.lon,
+    );
+    if (!verdict || !verdict.night) continue;
+    nightArrests.push({ person: p, verdict, approximate: where.approximate });
+  }
+
+  for (const { person, verdict, approximate } of nightArrests) {
+    const past = verdict.minutesPastSunset;
+    const howFar = past !== null
+      ? `${past} minute${past === 1 ? '' : 's'} after sunset (${verdict.sunsetClock})`
+      : `${verdict.minutesToSunrise} minute${verdict.minutesToSunrise === 1 ? '' : 's'} before sunrise (${verdict.sunriseClock})`;
+
+    // A margin this small sits inside the slack of a hand-written arrest time,
+    // so it is raised as something to check rather than as a finding. Asserting
+    // a breach on a four-minute margin is how a queue loses its credibility.
+    const tight = verdict.borderline || approximate;
+
+    add({
+      id: `night-arrest:${person.id || person.name || 'accused'}`,
+      severity: tight ? 'medium' : 'high',
+      kind: 'statutory',
+      title: verdict.borderline
+        ? 'Arrest of a woman close to sunset — check the timing'
+        : 'Woman arrested at night — magistrate’s permission required',
+      finding: `${person.name || 'A woman'} was arrested at ${verdict.atClock}, ${howFar}.`
+        + (approximate
+          ? ' This case has no recorded location, so sunset is computed from the centre of Karnataka and may be out by several minutes.'
+          : '')
+        + (verdict.borderline && !approximate
+          ? ' The margin is small enough that a rounded arrest time could put it either side of the line.'
+          : ''),
+      consequence: 'BNSS 43(5) requires the prior written permission of the jurisdictional magistrate '
+        + 'for an arrest in this window. Nothing in the file records one. The courts treat the '
+        + 'provision as directory rather than mandatory, so the arrest stands — but the officer '
+        + 'will be asked to account for it.',
+      basis: approximate
+        ? 'Sunset for the centre of Karnataka on the date of arrest'
+        : 'Sunset at the case location on the date of arrest',
+      certain: !tight,
+      authority: AUTHORITIES.womanNightArrest,
+      clock: null,
+      action: 'Attach the magistrate’s prior permission, or record why the circumstances were exceptional.',
     });
   }
 

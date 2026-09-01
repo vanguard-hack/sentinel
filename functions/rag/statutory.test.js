@@ -277,5 +277,107 @@ for (const o of everything) {
   check(`"${o.id}" says what to do next`, (o.action || '').length > 20);
 }
 
+
+// ── BNSS 43(5): a woman arrested between sunset and sunrise ───────────────
+//
+// The check that depends on real astronomy rather than a clock hour, so the
+// cases below sit either side of an actual sunset (18:47 IST in Bengaluru on
+// 15 June) rather than either side of a round number. A fixed 18:00 rule would
+// get two of them wrong.
+//
+// It also has to stay SILENT more often than it fires. A queue that raises a
+// legal finding against a named officer from a blank gender field, a missing
+// arrest time or a man's arrest is one that gets switched off, so each of
+// those is asserted as a non-event.
+{
+  const IST = 330 * 60_000;
+  const NIGHT_NOW = Date.parse('2026-06-20T09:00:00Z');
+  const arrestAt = (hhmm) => Date.parse(`2026-06-15T${hhmm}:00.000Z`) - IST;
+
+  const caseWith = (person, coords = true) => ({
+    caseMasterId: 'CM-N', crimeNo: '412/2026', station: '101',
+    status: 'Under Investigation', sections: '379',
+    latitude: coords ? 12.9716 : null,
+    longitude: coords ? 77.5946 : null,
+    persons: [person],
+    timeline: [], evidence: [],
+    statements: [{ id: 's1', ts: NIGHT_NOW }],
+    diaryEntries: [{ id: 'd1', ts: NIGHT_NOW }],
+  });
+  const woman = (hhmm, extra = {}) => ({
+    id: 'p1', name: 'Sunitha R', role: 'Accused', status: 'Arrested',
+    gender: 'Female', ts: arrestAt(hhmm), ...extra,
+  });
+  const nightOf = (person, coords = true) =>
+    st.obligationsFor(caseWith(person, coords), KB, NIGHT_NOW)
+      .filter((o) => o.id.startsWith('night-arrest'));
+
+  const late = nightOf(woman('21:40'));
+  check('a woman arrested at 21:40 raises BNSS 43(5)', late.length === 1);
+  check('  at high, because nothing about it is uncertain', late[0]?.severity === 'high');
+  check('  it says how long after sunset, and when sunset was',
+    /172 minutes after sunset \(18:47\)/.test(late[0]?.finding || ''), late[0]?.finding);
+  check('  it cites the section and its CrPC ancestor',
+    late[0]?.authority.section === '43(5)' && late[0]?.authority.legacy === 'CrPC 46(4)');
+  check('  it asks for the permission rather than declaring the arrest unlawful',
+    /prior written permission/.test(late[0]?.consequence || '')
+    && /arrest stands/.test(late[0]?.consequence || ''),
+    'the courts read the provision as directory, and the queue must not overstate it');
+  check('  and the wording never blames the officer',
+    !/you (failed|did not|neglected)/i.test(JSON.stringify(late[0] || {})));
+
+  // 18:30 and 18:55 straddle the real sunset. This pair is the argument for
+  // computing it rather than assuming an hour.
+  check('an arrest at 18:30 in June raises nothing — the sun has not set',
+    nightOf(woman('18:30')).length === 0,
+    'a fixed 18:00 cutoff would have flagged this');
+  const tight = nightOf(woman('18:55'));
+  check('an arrest at 18:55 does raise it', tight.length === 1);
+  check('  but only at medium, because seven minutes is inside a rounded time',
+    tight[0]?.severity === 'medium' && tight[0]?.certain === false);
+  check('  and it says so plainly', /margin is small/.test(tight[0]?.finding || ''));
+
+  const dawn = nightOf(woman('04:30'));
+  check('an arrest before sunrise raises it too', dawn.length === 1);
+  check('  measured against sunrise, not sunset',
+    /before sunrise/.test(dawn[0]?.finding || ''), dawn[0]?.finding);
+
+  // Silence, which matters as much.
+  check('a man arrested at the same hour raises nothing',
+    nightOf(woman('21:40', { gender: 'Male' })).length === 0);
+  check('a blank gender raises nothing — the check never guesses',
+    nightOf(woman('21:40', { gender: '' })).length === 0);
+  check('a woman not shown as arrested raises nothing',
+    nightOf(woman('21:40', { status: 'On bail' })).length === 0);
+  check('no arrest time raises nothing',
+    nightOf(woman('21:40', { ts: null })).length === 0);
+  check('a daytime arrest raises nothing', nightOf(woman('11:00')).length === 0);
+
+  // Without a coordinate the finding is still made, but it is downgraded and
+  // it says why.
+  const guessed = nightOf(woman('21:40'), false);
+  check('with no case location the finding still stands', guessed.length === 1);
+  check('  but is downgraded and marked uncertain',
+    guessed[0]?.severity === 'medium' && guessed[0]?.certain === false);
+  check('  and admits the sunset is approximate',
+    /centre of Karnataka/.test(guessed[0]?.finding || ''), guessed[0]?.finding);
+  check('  with a basis that says which sunset was used',
+    /centre of Karnataka/.test(guessed[0]?.basis || ''));
+
+  // The timeline is preferred over the person entry when it names them, because
+  // an Arrest event is a better record of when it happened.
+  const rec = caseWith(woman('11:00'));
+  rec.timeline = [{ id: 't1', type: 'Arrest', detail: 'Sunitha R arrested at the bus stand.', ts: arrestAt('22:15') }];
+  const fromTimeline = st.obligationsFor(rec, KB, NIGHT_NOW).filter((o) => o.id.startsWith('night-arrest'));
+  check('an Arrest event naming the person outranks the person entry\'s own timestamp',
+    fromTimeline.length === 1 && /22:15/.test(fromTimeline[0].finding), fromTimeline[0]?.finding);
+
+  // Two women, two findings — one row per person, not one per case.
+  const two = caseWith(woman('21:40'));
+  two.persons = [woman('21:40'), { ...woman('22:10'), id: 'p2', name: 'Kavya M' }];
+  check('two women arrested at night produce two separate findings',
+    st.obligationsFor(two, KB, NIGHT_NOW).filter((o) => o.id.startsWith('night-arrest')).length === 2);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

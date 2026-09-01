@@ -183,3 +183,32 @@ describe('SEVERITY', () => {
     });
   });
 });
+
+// ── BNSS 43(5) ─────────────────────────────────────────────────────────────
+//
+// The night-arrest finding has no clock — it is about something that already
+// happened, not something running out — so the card has to render without one.
+// The citation carries both the new section and the CrPC one every officer
+// trained before 2024 will recognise faster.
+
+test('a night-arrest finding cites BNSS and the CrPC section it replaced', () => {
+  expect(citation({ act: 'BNSS', section: '43(5)', legacy: 'CrPC 46(4)' }))
+    .toBe('BNSS 43(5) · CrPC 46(4)');
+});
+
+test('an obligation with no clock renders no countdown rather than a broken one', () => {
+  expect(countdown(null)).toBeNull();
+  expect(countdown(undefined)).toBeNull();
+});
+
+test('a clockless high finding still outranks a clocked medium one', () => {
+  expect(SEVERITY.high.rank).toBeLessThan(SEVERITY.medium.rank);
+});
+
+test('the severities the night-arrest check uses are both known to the UI', () => {
+  // It emits 'high' when the arrest is clearly after dark and 'medium' when the
+  // margin or the location is uncertain. An unknown severity would fall back to
+  // a default chip and silently lose that distinction.
+  expect(SEVERITY.high).toBeDefined();
+  expect(SEVERITY.medium).toBeDefined();
+});

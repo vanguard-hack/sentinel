@@ -2846,6 +2846,18 @@ const SEED_PROFILES = [
     statements: 2,
   },
   {
+    key: 'night-arrest',
+    note: 'A woman arrested after sunset — BNSS 43(5) wants the magistrate\'s prior permission on the file.',
+    arrestedDaysAgo: 9,
+    // A clock time, not "nine days ago at whatever o'clock it is now". The
+    // whole finding turns on where the arrest sits relative to sunset, so the
+    // seed has to put it somewhere specific — comfortably after dark, so the
+    // demonstration is the rule firing rather than a borderline judgement.
+    arrestAtIst: '21:40',
+    persons: [{ name: 'Sunitha Rangappa', role: 'Accused', status: 'Arrested', gender: 'Female' }],
+    statements: 1,
+  },
+  {
     key: 'clean-case',
     note: 'A well-kept file. Raises nothing — which is what a queue has to be able to do.',
     persons: [{ name: 'Prakash Rao', role: 'Accused', status: 'On bail' }],
@@ -2869,7 +2881,7 @@ async function handleInvestigationSeed(req, res) {
   let cases = [];
   try {
     cases = await app.zcql().executeZCQLQuery(
-      'SELECT CaseMasterID, CrimeNo, CaseNo, CrimeRegisteredDate, PoliceStationID '
+      'SELECT CaseMasterID, CrimeNo, CaseNo, CrimeRegisteredDate, PoliceStationID, latitude, longitude '
       + 'FROM CaseMaster ORDER BY CaseMasterID DESC LIMIT 0, 40',
     );
   } catch (e) {
@@ -2903,6 +2915,8 @@ async function handleInvestigationSeed(req, res) {
       ioName: io.name,
       station: String(c.PoliceStationID || ''),
       registeredDate: String(c.CrimeRegisteredDate || '').slice(0, 10),
+      latitude: c.latitude,
+      longitude: c.longitude,
       // Theft/house-breaking: resolves in legal_kb, so the custody window is
       // derived from real punishment text rather than assumed.
       sections: '379, 457',
@@ -2914,16 +2928,30 @@ async function handleInvestigationSeed(req, res) {
     if (!record || !created) { skipped.push(caseMasterId); continue; }
 
     const at = (daysAgo) => now - (daysAgo || 0) * DAY;
+    // A profile that names a clock time gets that time in IST on the day in
+    // question, rather than "n days ago at whatever o'clock the seed ran" —
+    // which would put a night-arrest demonstration in daylight half the time.
+    const atIst = (daysAgo, hhmm) => {
+      const base = new Date(at(daysAgo) + 330 * 60_000);
+      const [h, m] = String(hhmm).split(':').map(Number);
+      return Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), h, m) - 330 * 60_000;
+    };
+    const arrestTs = profile.arrestAtIst
+      ? atIst(profile.arrestedDaysAgo, profile.arrestAtIst)
+      : at(profile.arrestedDaysAgo || 5);
 
     for (const p of profile.persons || []) {
       await appendInvestigationEntry(bucket, caseMasterId, 'persons', {
-        ...p, seeded: true, ts: at(profile.arrestedDaysAgo || 5),
+        ...p, seeded: true, ts: arrestTs,
       }, io);
     }
     if (profile.arrestedDaysAgo) {
       await appendInvestigationEntry(bucket, caseMasterId, 'timeline', {
-        type: 'Arrest', detail: 'Accused arrested and produced before the magistrate.',
-        seeded: true, ts: at(profile.arrestedDaysAgo),
+        type: 'Arrest',
+        detail: profile.arrestAtIst
+          ? `${(profile.persons || [])[0]?.name || 'Accused'} arrested.`
+          : 'Accused arrested and produced before the magistrate.',
+        seeded: true, ts: arrestTs,
       }, io);
     }
     for (const e of profile.evidence || []) {
@@ -3106,6 +3134,14 @@ async function createInvestigationRecord(bucket, payload, createdByEmail) {
     district: String(payload.district || ''),
     caseType: String(payload.caseType || ''),
     sections: String(payload.sections || ''),
+    // Where the case is, carried so sunset can be computed for the right place.
+    // Stored as null rather than 0 when absent: Number(null) is a perfectly
+    // valid 0°N 0°E, and a coordinate defaulted to the Gulf of Guinea would put
+    // every arrest five and a half hours out.
+    latitude: Number.isFinite(Number(payload.latitude)) && payload.latitude !== null && payload.latitude !== ''
+      ? Number(payload.latitude) : null,
+    longitude: Number.isFinite(Number(payload.longitude)) && payload.longitude !== null && payload.longitude !== ''
+      ? Number(payload.longitude) : null,
     registeredDate: String(payload.registeredDate || ''),
     status: 'Under Investigation',
     lastDiaryDate: '',

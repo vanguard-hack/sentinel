@@ -713,10 +713,17 @@ function EvidenceTab({ rec, onAdd, onUpdate, onDelete }) {
   );
 }
 
+const PERSON_GENDERS = ['', 'Male', 'Female', 'Transgender'];
+
 const PERSON_FIELDS = [
   { key: 'name', label: 'Name', required: true },
   { key: 'role', label: 'Role', type: 'select', options: PERSON_ROLES },
   { key: 'status', label: 'Status', type: 'select', options: PERSON_STATUSES },
+  // Not a demographic field for its own sake. BNSS 43(5) forbids arresting a
+  // woman between sunset and sunrise without a magistrate's prior permission,
+  // and the Action Queue cannot raise that unless the record says who was
+  // arrested. Left blank the check simply does not fire — it never guesses.
+  { key: 'gender', label: 'Gender', type: 'select', options: PERSON_GENDERS },
   { key: 'notes', label: 'Notes', type: 'textarea', wide: true },
 ];
 
