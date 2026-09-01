@@ -15,6 +15,7 @@
  *      (plan.rollup === 'district').
  */
 
+const i18n = require('./i18n');
 const MASTERS = require('./masters.json');
 
 const DISTRICT_IDS = Object.fromEntries(
@@ -438,7 +439,7 @@ const isNum = (v) => v !== '' && v !== null && v !== undefined && !isNaN(Number(
 const KA_DISTRICTS = new Set(Object.keys(DISTRICT_IDS));
 
 // Deterministic agui components from result rows.
-function rowsToComponents(flat, title) {
+function rowsToComponents(flat, title, lang) {
   if (!flat.length) return [];
   const columns = Object.keys(flat[0]);
   if (flat.length === 1 && columns.length === 1) return [];
@@ -452,12 +453,12 @@ function rowsToComponents(flat, title) {
     return [
       {
         type: 'geo-map',
-        title: title || `${columns[1]} by district`,
+        title: title || i18n.t('component.byDistrict', lang, { column: columns[1] }),
         data: flat.map((r) => ({ district: String(r[columns[0]]), value: Number(r[columns[1]]) })),
       },
       {
         type: 'table',
-        title: 'District figures',
+        title: i18n.t('component.districtFigures', lang),
         columns,
         rows: flat.map((r) => columns.map((c) => (r[c] == null ? '' : String(r[c])))),
       },

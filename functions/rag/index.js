@@ -14,6 +14,7 @@ const exportscreen = require('./exportscreen');
 const exportholds = require('./exportholds');
 const exportreview = require('./exportreview');
 const shares = require('./shares');
+const i18n = require('./i18n');
 const assurance = require('./assurance');
 const statutory = require('./statutory');
 const legalKb = require('./legal_kb.json');
@@ -685,6 +686,10 @@ function slashToQuery(name, arg) {
 // the query is identified and normalised to English for retrieval, and the
 // answer is generated back in the officer's language.
 const SUPPORTED_LANGS = ['en', 'hi', 'kn'];
+// Used to verify an answer really came back in the language it was meant to.
+// Presence of the script is decisive; absence of it in text that has words is
+// the translation having quietly failed.
+const SCRIPT = { hi: /[\u0900-\u097F]/, kn: /[\u0C80-\u0CFF]/ };
 const LANG_NAME = { en: 'English', hi: 'Hindi', kn: 'Kannada' };
 
 // Language identification.
@@ -4973,8 +4978,20 @@ module.exports = async (req, res) => {
     // data out of the prompt; this catches an identifier the model restated or
     // inferred rather than copied. Every answer leaving this handler goes
     // through it.
+    // Set by finalAnswer to the language the answer is ACTUALLY in, which is
+    // not always the one that was asked for.
+    let deliveredLang = null;
+
     const finalAnswer = async (text, lang) => {
       const localised = await localiseAnswer(text, lang);
+      // localiseAnswer falls back to the English text when the model call
+      // fails, which is right — an English answer beats no answer. But then
+      // reporting response_lang: 'kn' is a lie the client acts on, and the
+      // officer is left wondering why the interface switched languages on
+      // them. So the delivered language is what the script says it is.
+      deliveredLang = SCRIPT[lang] && !SCRIPT[lang].test(localised) && /[A-Za-z]{4}/.test(localised)
+        ? 'en'
+        : lang;
       const g = redaction.guardAnswer(localised, await resolveCaller());
       if (g.redactions.length) {
         redactionLog = redactionLog.concat(
@@ -5112,7 +5129,7 @@ module.exports = async (req, res) => {
         // A checker that breaks must not take the answer with it.
         console.error('grounding check failed (non-fatal):', e && e.message);
       }
-      const groundingWarning = groundingResult ? grounding.warning(groundingResult) : null;
+      const groundingWarning = groundingResult ? grounding.warning(groundingResult, responseLang) : null;
 
       // Last line of defence, and deliberately the narrowest. It looks only for
       // the assistant having plainly complied with an attack — reciting its
@@ -5135,7 +5152,7 @@ module.exports = async (req, res) => {
       // Protected identity: say what was withheld and how to reach it, rather
       // than letting the officer read a case file with silent holes in it.
       const withheldReach = protectedReaches.find((pa) => pa.fieldsWithheld > 0);
-      const protectedNotice = withheldReach ? redaction.protectedNotice(withheldReach) : null;
+      const protectedNotice = withheldReach ? redaction.protectedNotice(withheldReach, responseLang) : null;
 
       // finalAnswer runs the tier-2 guard and writes the decision record, so
       // the citations have to be settled before it is called.
@@ -5175,7 +5192,11 @@ module.exports = async (req, res) => {
           }
           : {}),
         detected_lang: lid.lang,
-        response_lang: responseLang,
+        // What the answer is in, not what was asked for — see finalAnswer.
+        response_lang: deliveredLang || responseLang,
+        ...(deliveredLang && deliveredLang !== responseLang
+          ? { localisation: 'unavailable' }
+          : {}),
         // Worth telling the officer, not just the audit trail. A file that
         // contains an instruction aimed at an AI assistant is itself a finding:
         // somebody prepared that document expecting it to be read by a system
@@ -5184,10 +5205,7 @@ module.exports = async (req, res) => {
         ...(attachmentThreat
           ? {
             attachment_warning: {
-              notice:
-                'The attached file contains text written to look like an instruction to this '
-                + 'assistant. It was read as document content and nothing in it was obeyed — but '
-                + 'a document written that way is worth treating as suspect.',
+              notice: i18n.t('attachment.injection', responseLang),
               detail: guard.summarise(attachmentThreat),
             },
           }
@@ -5220,7 +5238,12 @@ module.exports = async (req, res) => {
     // that leaves no trace is the one an attacker would most like to be able to
     // make repeatedly.
     if (inputScan.action === 'refuse') {
-      return await respondWith(inputScan.message, {
+      // The refusal is fixed text, so it is served from the string table rather
+      // than being generated in English and translated on the way out. An
+      // officer who asked in Kannada and is being turned down deserves the
+      // reason in Kannada — that is the exchange where a foreign-language
+      // sentence reads most like the system malfunctioning.
+      return await respondWith(i18n.t('guard.refusal', responseLang) || inputScan.message, {
         source: 'guardrail',
         refused: 'prompt-exfiltration',
       }, []);
@@ -5871,7 +5894,7 @@ module.exports = async (req, res) => {
             // an identifier the model saw is supported, and feeding fewer rows
             // here than it was shown would invent phantom inventions.
             evidence.add(flat, flat.length);
-            const components = zcql.rowsToComponents(flat);
+            const components = zcql.rowsToComponents(flat, undefined, responseLang);
             // When the result is a multi-row list, the table carries the data;
             // the prose must be a SHORT summary and never re-list the rows.
             const isList = flat.length > 3;

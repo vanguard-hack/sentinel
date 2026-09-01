@@ -52,6 +52,8 @@
  * proves an identifier was seen; it cannot prove a sentence is true.
  */
 
+const i18n = require('./i18n');
+
 const legal = require('./legal');
 
 /**
@@ -213,27 +215,36 @@ function check(answer, { evidence, question, history } = {}) {
 }
 
 /** One sentence for the officer, naming what to distrust and why. */
-function warning(result) {
+function warning(result, lang) {
   if (!result || result.grounded) return null;
   const parts = [];
   if (result.unsupported.length) {
     const ids = result.unsupported.filter((u) => u.kind !== 'legal_section');
     const secs = result.unsupported.filter((u) => u.kind === 'legal_section');
+    // Singular and plural are separate table entries rather than an English
+    // suffix: Hindi and Kannada inflect the verb rather than the noun, so a
+    // pluralised template cannot be reproduced by adding a letter.
     if (ids.length) {
-      parts.push(
-        `${ids.map((u) => u.value).join(', ')} ${ids.length === 1 ? 'does' : 'do'} not appear in any record retrieved for this answer — treat ${ids.length === 1 ? 'it' : 'them'} as unverified.`
-      );
+      parts.push(i18n.t(
+        ids.length === 1 ? 'grounding.unsupported.one' : 'grounding.unsupported.many',
+        lang,
+        { ids: ids.map((u) => u.value).join(', ') },
+      ));
     }
     if (secs.length) {
-      parts.push(
-        `${secs.map((u) => u.value).join(', ')} ${secs.length === 1 ? 'is' : 'are'} outside Sentinel's legal reference — check the bare Act before relying on ${secs.length === 1 ? 'it' : 'them'}.`
-      );
+      parts.push(i18n.t(
+        secs.length === 1 ? 'grounding.sections.one' : 'grounding.sections.many',
+        lang,
+        { ids: secs.map((u) => u.value).join(', ') },
+      ));
     }
   }
   if (result.contradiction) {
-    parts.push(
-      `This answer reports nothing on file, but ${result.retrieved_rows} record${result.retrieved_rows === 1 ? ' was' : 's were'} retrieved — open the sources below before accepting it.`
-    );
+    parts.push(i18n.t(
+      result.retrieved_rows === 1 ? 'grounding.contradiction.one' : 'grounding.contradiction.many',
+      lang,
+      { rows: result.retrieved_rows },
+    ));
   }
   return parts.join(' ');
 }

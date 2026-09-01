@@ -16,6 +16,8 @@
 
 // Fields carrying identity, ordered from most to least sensitive. A role sees
 // a field only if its clearance is at or above the field's tier.
+const i18n = require('./i18n');
+
 const FIELD_TIERS = {
   // Direct identifiers of private individuals.
   VictimName: 3,
@@ -209,17 +211,13 @@ function filterRows(rows, role, options) {
  * one is unlockable by stating a purpose, the other is not unlockable at all
  * at their clearance and no amount of typing will change it.
  */
-function protectedNotice(access) {
+function protectedNotice(access, lang) {
   if (!access || !access.fieldsWithheld) return null;
-  if (!access.cleared) {
-    return 'Victim and complainant identity on offences against women and children '
-      + 'is restricted to investigators and above. The case details above are complete '
-      + 'in every other respect.';
-  }
-  return 'Victim and complainant identity is withheld on offences against women and '
-    + 'children (BNS s.72, POCSO s.23). Ask again stating why you need it for this '
-    + 'case — the name will be released and your reason recorded in the audit trail '
-    + 'against your badge.';
+  // Fixed text, so it comes from the string table rather than a translation
+  // call. A legal sentence re-worded slightly differently on every request is
+  // worse than one written once and checked once — and a provider outage must
+  // not silently revert this particular notice to English.
+  return i18n.t(access.cleared ? 'protected.unlockable' : 'protected.blocked', lang);
 }
 
 // Free-text excerpts (OCR'd scans, document chunks) can't be filtered by field,
