@@ -353,10 +353,20 @@ const TOOL_SCHEMA_NOTE =
 const TOOL_SYSTEM =
   'You are Sentinel Assistant, working for a Karnataka police officer. Answer ' +
   'the question by calling the tools available to you, then say what you found.\n\n' +
-  TOOL_SCHEMA_NOTE + +
+  // BUG FIX: this read `TOOL_SCHEMA_NOTE + + 'Call tools...'`. The second plus
+  // parsed as a UNARY plus on the following string, which evaluates to NaN, so
+  // the concatenation produced the literal text "NaN" and silently dropped the
+  // whole parallelism-and-error-recovery paragraph from the system prompt. The
+  // loop has been running without those instructions; nothing failed loudly,
+  // it just batched less and retried failing calls more.
+  TOOL_SCHEMA_NOTE +
   'Call tools in parallel when they do not depend on each other. Look up a ' +
   'reference id rather than guessing it. If a tool returns an error, read it and ' +
   'fix the call rather than repeating it.\n\n' +
+  'When the officer asks what is urgent, what needs doing, or whether anything ' +
+  'is running out of time, call case_obligations — that is a different question ' +
+  'from retrieving records, and query_records cannot answer it. Lead with the ' +
+  'nearest deadline and say what happens when it passes.\n\n' +
   'Answer only from what the tools returned. If they returned nothing useful, ' +
   'say so plainly — never fill the gap from general knowledge, and never state a ' +
   'number the records did not give you. Some results note that rows were ' +
@@ -398,6 +408,21 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
       const hits = await searchDigitised(bucket, q, 6);
       scanHits.push(...hits);
       return hits;
+    },
+    // The same builder the Action Queue page uses, so "what's urgent?" asked in
+    // chat and the page an officer opens cannot give different answers.
+    // Computed lazily: most questions never touch it, and it reads every open
+    // case record.
+    caseObligations: async () => {
+      // Identity resolved here rather than threaded through runToolLoop's
+      // signature: requestUser is memoised per app instance, so this costs
+      // nothing on the hot path, and it keeps "whose cases?" answered by the
+      // session rather than by anything the model could influence.
+      const u = await requestUser(app);
+      return buildActionQueue(bucket, {
+        email: String(u?.email_id || '').toLowerCase(),
+        name: [u?.first_name, u?.last_name].filter(Boolean).join(' '),
+      });
     },
   };
 
@@ -2323,17 +2348,15 @@ const publicHold = (h) => ({
 // cap is applied to the index, which is already newest-first.
 const ACTION_QUEUE_CASE_CAP = 80;
 
-async function handleActionQueue(req, res) {
-  const body = JSON.parse((await readBody(req)) || '{}');
-  const app = catalystSDK.initialize(req);
-  const bucket = app.stratus().bucket(CONV_BUCKET);
-  const { role, caller } = await myRole(app, bucket);
-  if (!caller || !canInvestigate(role)) {
-    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
-  }
-  const email = String(caller?.email_id || '').toLowerCase();
-  const name = [caller?.first_name, caller?.last_name].filter(Boolean).join(' ');
-
+/**
+ * Build the obligation queue for one caller.
+ *
+ * Factored out of the HTTP handler because the assistant needs the same answer:
+ * an officer asking "what's urgent on my cases?" in chat must get exactly what
+ * the Action Queue page shows, not a second implementation that can drift from
+ * it. One engine, one loader, two surfaces.
+ */
+async function buildActionQueue(bucket, { email, name }) {
   const index = await loadInvIndex(bucket);
   // Settled cases carry no live obligation, so they are dropped before the
   // record fetch rather than after — the cap should be spent on cases that can
@@ -2369,14 +2392,27 @@ async function handleActionQueue(req, res) {
     ]),
   );
 
-  return json(res, 200, {
+  return {
     obligations: queue.obligations.map((o) => ({ ...o, mine: ownership.get(o.caseMasterId) === true })),
     counts: queue.counts,
     scanned: records.filter(Boolean).length,
     capped: index.filter((c) => !['Chargesheet Filed', 'Closed'].includes(String(c.status))).length > ACTION_QUEUE_CASE_CAP,
-    role,
     generatedAt: Date.now(),
+  };
+}
+
+async function handleActionQueue(req, res) {
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+  const queue = await buildActionQueue(bucket, {
+    email: String(caller?.email_id || '').toLowerCase(),
+    name: [caller?.first_name, caller?.last_name].filter(Boolean).join(' '),
   });
+  return json(res, 200, { ...queue, role });
 }
 
 // Acknowledge an obligation as handled off-system, or undo that.

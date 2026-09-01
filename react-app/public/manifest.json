@@ -1,25 +1,41 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
-  "icons": [
-    {
-      "src": "favicon-64.png",
-      "sizes": "64x64",
-      "type": "image/png"
-    },
-    {
-      "src": "logo192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "logo512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
-  ],
-  "start_url": ".",
+  "name": "Sentinel — Karnataka State Police",
+  "short_name": "Sentinel",
+  "description": "Crime analytics and investigation intelligence for the Karnataka State Police. Case records, statutory deadlines, criminal networks and a grounded assistant — installable, and usable at a scene with no signal.",
+  "id": "/app/",
+  "start_url": "/app/",
+  "scope": "/app/",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "orientation": "any",
+  "lang": "en-IN",
+  "dir": "ltr",
+  "categories": ["government", "productivity", "utilities"],
+  "theme_color": "#1d4ed8",
+  "background_color": "#f0f4f8",
+  "icons": [
+    { "src": "favicon-64.png", "sizes": "64x64", "type": "image/png" },
+    { "src": "logo192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "logo512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "logo512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Action Queue",
+      "short_name": "Actions",
+      "description": "What breaks first across every open case",
+      "url": "/app/action-queue"
+    },
+    {
+      "name": "Assistant",
+      "short_name": "Ask",
+      "description": "Ask the case records a question",
+      "url": "/app/assistant"
+    },
+    {
+      "name": "Investigation Diary",
+      "short_name": "Diary",
+      "description": "File a case diary entry",
+      "url": "/app/investigation-diary"
+    }
+  ]
 }

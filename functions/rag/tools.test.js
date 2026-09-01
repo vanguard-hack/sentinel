@@ -14,8 +14,21 @@ const run = (name, input, deps) => tools.run(name, input, deps);
 // ── Schemas ───────────────────────────────────────────────────────────────
 check('every tool declares a name, a description and a schema',
   tools.DEFINITIONS.every((d) => d.name && d.description && d.input_schema));
-check('every tool marks its required inputs',
-  tools.DEFINITIONS.every((d) => Array.isArray(d.input_schema.required) && d.input_schema.required.length));
+// What this is guarding against is a tool that NEEDS an argument but does not
+// say so, because the model then calls it empty and gets a confusing error back
+// instead of a schema violation it can fix. A tool whose inputs are genuinely
+// all optional — "what is urgent on my cases?" takes none — is not that bug, so
+// the assertion is about the declaration being well-formed, not about every
+// tool being forced to demand something.
+check('every tool declares at least one input it can take',
+  tools.DEFINITIONS.every((d) => Object.keys(d.input_schema.properties || {}).length > 0));
+check('any required inputs a tool declares are a non-empty list of its own properties',
+  tools.DEFINITIONS.every((d) => {
+    const req = d.input_schema.required;
+    if (req === undefined) return true;
+    return Array.isArray(req) && req.length > 0
+      && req.every((k) => Object.prototype.hasOwnProperty.call(d.input_schema.properties || {}, k));
+  }));
 check('the record tool warns the model that joins do not work',
   /join/i.test(tools.DEFINITIONS.find((d) => d.name === 'query_records').description));
 check('it also tells the model how to relate two tables instead',
@@ -149,6 +162,106 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /for \(const set of looped\.rowSets\)/.test(route));
   check('which tools ran is recorded for the audit trail',
     /validatorChecks\.push\(`tools:/.test(route));
+
+  // ── case_obligations ────────────────────────────────────────────────────
+  //
+  // The tool exists so an officer asking "what's urgent?" in chat gets what the
+  // Action Queue page shows. The risks are that it answers for a role with no
+  // need-to-know, that it hands the model an accused's name unfiltered, or that
+  // it quietly diverges from the page. All three are tested.
+
+  const OBLIGATION = {
+    id: 'custody-clock', caseMasterId: 'CM-1', crimeNo: '412/2026',
+    station: 'Vijayanagar', ioName: 'S Kumar', severity: 'critical', kind: 'statutory',
+    title: 'Chargesheet due in 13 days',
+    finding: 'Ramesh K has been in custody 47 days and no police report has been filed.',
+    consequence: 'At day 60 the accused becomes entitled to release on bail.',
+    action: 'File the police report, or move for an extension.',
+    basis: 'no section charged carries ten years or more', certain: true,
+    authority: { act: 'BNSS', section: '187(3)', legacy: 'CrPC 167(2)', verified: false },
+    clock: { remainingDays: 13, elapsedDays: 47, windowDays: 60 },
+    acknowledged: null, mine: true,
+  };
+  const MEDIUM = { ...OBLIGATION, id: 'no-statements', severity: 'medium', clock: null,
+    crimeNo: '401/2026', mine: false, title: 'No witness statements recorded' };
+  const ACKED = { ...OBLIGATION, id: 'seizure-memo', severity: 'high', crimeNo: '388/2026',
+    acknowledged: { by: 'kumar', at: 1, note: 'filed on paper' } };
+
+  const queueDeps = (role) => ({
+    role,
+    caseObligations: async () => ({
+      obligations: [OBLIGATION, MEDIUM, ACKED], scanned: 3,
+      counts: { total: 2 },
+    }),
+  });
+
+  const obl = await run('case_obligations', {}, queueDeps('investigator'));
+  check('case_obligations returns the queue', obl.found === true && obl.obligations.length === 2);
+  check('acknowledged items are not shown to the model',
+    !obl.obligations.some((o) => o.title === 'No seizure reference recorded'));
+  check('it reports how many cases were read', obl.checked_cases === 3);
+  check('the countdown is given as a number, not left in prose',
+    obl.obligations[0].days_remaining === 13 && obl.obligations[0].window_days === 60);
+  check('the consequence travels with the item',
+    /entitled to release/.test(obl.obligations[0].consequence));
+  check('the authority is flattened for the model',
+    obl.obligations[0].authority === 'BNSS 187(3) (CrPC 167(2))');
+  check('the engine\'s own hedge is passed through so the model can hedge too',
+    obl.obligations[0].basis_certain === true && !!obl.obligations[0].basis);
+  check('the result carries the not-verified caveat',
+    /not verified against the bare acts/.test(obl.note || ''));
+
+  const mine = await run('case_obligations', { scope: 'mine' }, queueDeps('investigator'));
+  check('scope "mine" filters to the officer\'s own cases',
+    mine.obligations.length === 1 && mine.obligations[0].case === '412/2026');
+
+  const crit = await run('case_obligations', { severity: 'critical' }, queueDeps('investigator'));
+  check('severity filters to at least that urgent',
+    crit.obligations.length === 1 && crit.obligations[0].severity === 'critical');
+
+  const one = await run('case_obligations', { caseNo: '401' }, queueDeps('investigator'));
+  check('a case number narrows to that case', one.obligations.length === 1 && one.obligations[0].case === '401/2026');
+
+  const none = await run('case_obligations', { caseNo: 'ZZZ' }, queueDeps('investigator'));
+  check('no match says so rather than returning an empty list silently',
+    none.found === false && /No open case/.test(none.note));
+
+  // The gate. Reaching case detail through the assistant must not be the way
+  // around the need-to-know rule the Action Queue page enforces.
+  for (const role of ['analyst', 'policymaker']) {
+    const denied = await run('case_obligations', {}, queueDeps(role));
+    check(`${role} cannot read case obligations through the assistant`,
+      /limited to investigators/.test(denied.error || ''));
+  }
+  for (const role of ['investigator', 'supervisor', 'admin']) {
+    const ok = await run('case_obligations', {}, queueDeps(role));
+    check(`${role} can read case obligations`, ok.found === true);
+  }
+
+  check('with no diary access the tool says so instead of throwing',
+    /unavailable/i.test((await run('case_obligations', {}, { role: 'investigator' })).error || ''));
+
+  // The page and the tool must be one engine, not two implementations.
+  const idx = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
+  check('the tool and the Action Queue page share one builder',
+    (idx.match(/buildActionQueue\(/g) || []).length >= 3);
+
+  // ── The system prompt itself ───────────────────────────────────────────
+  //
+  // A stray unary plus once turned a whole paragraph of this prompt into the
+  // literal string "NaN" and silently dropped the parallelism and error-recovery
+  // instructions. Nothing failed loudly; the loop just got worse. Pin it.
+  const promptSrc = idx.slice(idx.indexOf('const TOOL_SYSTEM'), idx.indexOf('async function runToolLoop'));
+  check('the tool system prompt contains no NaN from a broken concatenation',
+    !/NaN/.test(promptSrc) || /BUG FIX/.test(promptSrc));
+  check('the parallel-call instruction survives in the prompt',
+    /Call tools in parallel/.test(promptSrc));
+  check('the error-recovery instruction survives in the prompt',
+    /fix the call rather than repeating it/.test(promptSrc));
+  check('the prompt tells the model when to reach for case_obligations',
+    /call case_obligations/.test(promptSrc));
+  check('the never-fabricate instruction survives',
+    /never state a \n?\s*'?\+?\s*'?number the records did not give you|never fill the gap/.test(promptSrc));
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

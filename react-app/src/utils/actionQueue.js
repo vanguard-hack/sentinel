@@ -70,3 +70,55 @@ export function citation(authority) {
   const primary = `${authority.act} ${authority.section}`;
   return authority.legacy ? `${primary} · ${authority.legacy}` : primary;
 }
+
+/**
+ * Roll the queue up by investigating officer — the command view.
+ *
+ * A supervisor is asking a different question from an officer. The officer
+ * needs "what do I do next"; the supervisor needs "who is carrying risk I
+ * should know about". Same obligations, grouped by who holds them and sorted
+ * by the nearest deadline rather than by count — an officer with one case
+ * twelve days from a default-bail release outranks one with nine procedural
+ * gaps and no clock running.
+ */
+export function byOfficer(obligations) {
+  const groups = new Map();
+  for (const o of obligations) {
+    if (o.acknowledged) continue;
+    const key = o.ioName || 'Unassigned';
+    let g = groups.get(key);
+    if (!g) {
+      g = {
+        officer: key, station: o.station || '', total: 0,
+        overdue: 0, critical: 0, high: 0,
+        cases: new Set(), soonest: null, worst: 'medium', items: [],
+      };
+      groups.set(key, g);
+    }
+    g.total += 1;
+    if (o.severity === 'overdue') g.overdue += 1;
+    if (o.severity === 'critical') g.critical += 1;
+    if (o.severity === 'high') g.high += 1;
+    g.cases.add(o.caseMasterId);
+    g.items.push(o);
+    if ((SEVERITY[o.severity]?.rank ?? 9) < (SEVERITY[g.worst]?.rank ?? 9)) g.worst = o.severity;
+    const d = o.clock?.remainingDays;
+    if (Number.isFinite(d) && (g.soonest === null || d < g.soonest)) g.soonest = d;
+  }
+  return [...groups.values()]
+    .map((g) => ({ ...g, cases: g.cases.size }))
+    .sort((a, b) => {
+      // A running clock outranks a pile without one, and the nearest clock wins.
+      const ar = SEVERITY[a.worst]?.rank ?? 9;
+      const br = SEVERITY[b.worst]?.rank ?? 9;
+      if (ar !== br) return ar - br;
+      if (a.soonest !== b.soonest) {
+        if (a.soonest === null) return 1;
+        if (b.soonest === null) return -1;
+        return a.soonest - b.soonest;
+      }
+      return b.total - a.total;
+    });
+}
+
+export const canCommand = (role) => ['admin', 'supervisor'].includes(role);

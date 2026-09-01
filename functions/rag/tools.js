@@ -266,7 +266,129 @@ const DEFINITIONS = [
       required: ['query'],
     },
   },
+  {
+    name: 'case_obligations',
+    description:
+      'What is outstanding or running out of time on the officer\'s own investigation ' +
+      'cases: statutory deadlines (an accused in custody with no chargesheet filed), ' +
+      'evidence that will stop existing (CCTV before the recorder overwrites), evidence ' +
+      'that is inadmissible without paperwork, and procedural gaps. Each item comes back ' +
+      'with what the law does when the clock runs out and how many days are left. Use ' +
+      'this for "what is urgent", "what needs action today", "any deadlines this week", ' +
+      '"which cases are at risk", "what should I do first". This reads the investigation ' +
+      'diaries, NOT the Data Store — for retrieving case records or counting FIRs use ' +
+      'query_records instead.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        scope: {
+          type: 'string',
+          enum: ['mine', 'all'],
+          description: '"mine" for cases this officer is the IO on, "all" for every open case they can see. Default "all".',
+        },
+        severity: {
+          type: 'string',
+          enum: ['overdue', 'critical', 'high', 'any'],
+          description: 'Only return items at least this urgent. Default "any".',
+        },
+        caseNo: {
+          type: 'string',
+          description: 'Restrict to one case by its crime/case number.',
+        },
+      },
+    },
+  },
 ];
+
+// ── Case obligations ───────────────────────────────────────────────────────
+//
+// The Action Queue page and this tool must never diverge: an officer who asks
+// "what's urgent?" in chat and an officer who opens the page are asking the
+// same question and have to get the same answer. So the whole computation
+// lives behind one injected function (index.js's buildActionQueue) and this is
+// only shaping — filter, cap, and turn the record into something a model can
+// read without being handed the full object graph.
+
+const OBLIGATION_CAP = 12;
+const SEVERITY_AT_LEAST = {
+  overdue: ['overdue'],
+  critical: ['overdue', 'critical'],
+  high: ['overdue', 'critical', 'high'],
+  any: null,
+};
+
+async function caseObligationsTool(input, caseObligations, role, access) {
+  const queue = await caseObligations();
+  let items = (queue.obligations || []).filter((o) => !o.acknowledged);
+
+  if (input.scope === 'mine') items = items.filter((o) => o.mine);
+
+  const allowed = SEVERITY_AT_LEAST[String(input.severity || 'any')] ?? null;
+  if (allowed) items = items.filter((o) => allowed.includes(o.severity));
+
+  if (input.caseNo) {
+    const needle = String(input.caseNo).trim().toLowerCase();
+    items = items.filter((o) => String(o.crimeNo || '').toLowerCase().includes(needle));
+  }
+
+  if (!items.length) {
+    return {
+      found: false,
+      note: input.scope === 'mine'
+        ? 'No open case where this officer is the IO has an outstanding obligation on file.'
+        : 'No open case has an outstanding obligation on file.',
+      checked_cases: queue.scanned || 0,
+    };
+  }
+
+  const capped = items.slice(0, OBLIGATION_CAP);
+
+  // Rule 1 of this module: every result passes the clearance filter before it
+  // is returned. The custody obligation names the accused in its finding text,
+  // so the narrative fields go through Tier 2 even though the role gate above
+  // already restricts this tool to clearance-3 roles. Belt and braces, because
+  // the cost of being wrong here is a name in the prompt.
+  const withheld = [];
+  const clean = (text) => {
+    const f = redaction.filterText(String(text || ''), role, access);
+    if (f.redactions && f.redactions.length) withheld.push(...f.redactions);
+    return f.text;
+  };
+
+  return {
+    found: true,
+    total: items.length,
+    showing: capped.length,
+    checked_cases: queue.scanned || 0,
+    obligations: capped.map((o) => ({
+      case: o.crimeNo,
+      case_id: o.caseMasterId,
+      station: o.station || undefined,
+      io: o.ioName || undefined,
+      severity: o.severity,
+      kind: o.kind,
+      title: clean(o.title),
+      finding: clean(o.finding),
+      consequence: clean(o.consequence),
+      action: clean(o.action),
+      // The model is told the number of days AND that it is a countdown, so it
+      // does not have to infer urgency from prose it might read either way.
+      days_remaining: o.clock ? o.clock.remainingDays : undefined,
+      days_elapsed: o.clock ? o.clock.elapsedDays : undefined,
+      window_days: o.clock ? o.clock.windowDays : undefined,
+      authority: o.authority
+        ? `${o.authority.act} ${o.authority.section}${o.authority.legacy ? ` (${o.authority.legacy})` : ''}`
+        : undefined,
+      // Carried so the model can hedge where the engine itself is hedging,
+      // rather than restating an assumed window as a fact.
+      basis: o.basis || undefined,
+      basis_certain: o.certain,
+    })),
+    ...(withheld.length ? { withheld: redaction.describe(withheld) } : {}),
+    _redactions: withheld,
+    note: 'Computed from what is recorded in each case diary. Section references are an operational aid and are not verified against the bare acts.',
+  };
+}
 
 // ── Reference data ─────────────────────────────────────────────────────────
 
@@ -527,7 +649,7 @@ async function queryRecords(app, { zcql: statement, rollup }, role, access) {
  * turn ending.
  */
 async function run(name, input, deps) {
-  const { app, role, ragSearch, digitisedSearch, access } = deps;
+  const { app, role, ragSearch, digitisedSearch, access, caseObligations } = deps;
   try {
     switch (name) {
       case 'lookup_reference':
@@ -584,6 +706,20 @@ async function run(name, input, deps) {
           return { title: h.title, type: h.docType, excerpt: f.text };
         });
         return { found: true, records: out, _hits: hits.slice(0, 6) };
+      }
+
+      case 'case_obligations': {
+        if (typeof caseObligations !== 'function') {
+          return { error: 'Investigation diaries are unavailable.' };
+        }
+        // Same gate as the Action Queue page and the diary itself. An analyst
+        // or policymaker has no need-to-know for an individual case's custody
+        // position, and reaching it through the assistant instead of the page
+        // must not be the way around that.
+        if (!['admin', 'supervisor', 'investigator'].includes(role)) {
+          return { error: 'Case obligations are limited to investigators, supervisors and admin.' };
+        }
+        return await caseObligationsTool(input || {}, caseObligations, role, access);
       }
 
       default:

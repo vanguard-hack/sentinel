@@ -27,7 +27,7 @@ import TopBar from '../components/TopBar';
 import { logAudit } from '../utils/audit';
 import {
   fetchActionQueue, acknowledgeObligation, reopenObligation,
-  SEVERITY, KIND_LABEL, countdown, citation,
+  SEVERITY, KIND_LABEL, countdown, citation, byOfficer, canCommand,
 } from '../utils/actionQueue';
 
 const KIND_ICONS = {
@@ -41,7 +41,7 @@ export default function ActionQueue() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [scope, setScope] = useState('all'); // all | mine
+  const [scope, setScope] = useState('all'); // all | mine | command
   const [acking, setAcking] = useState(null); // obligation key being dismissed
   const [note, setNote] = useState('');
   const [showDone, setShowDone] = useState(false);
@@ -61,6 +61,12 @@ export default function ActionQueue() {
   useEffect(() => { load(); }, [load]);
 
   const keyOf = (o) => `${o.caseMasterId}::${o.id}`;
+
+  const command = canCommand(data?.role);
+  const officers = useMemo(
+    () => (command ? byOfficer(data?.obligations || []) : []),
+    [data, command],
+  );
 
   const { open, done } = useMemo(() => {
     const all = data?.obligations || [];
@@ -127,6 +133,11 @@ export default function ActionQueue() {
           <div className="aq-scope">
             <button type="button" className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>All cases</button>
             <button type="button" className={scope === 'mine' ? 'on' : ''} onClick={() => setScope('mine')}>Mine</button>
+            {command && (
+              <button type="button" className={scope === 'command' ? 'on' : ''} onClick={() => setScope('command')}>
+                By officer
+              </button>
+            )}
           </div>
           <button type="button" className="aq-refresh" onClick={load} disabled={busy} title="Refresh">
             {busy ? <Loader2 size={14} className="aq-spin" /> : <RefreshCw size={14} />}
@@ -144,8 +155,64 @@ export default function ActionQueue() {
         </p>
       )}
 
+      {/* ── Command view ────────────────────────────────────────────────── */}
+      {/* A supervisor is asking a different question: not "what do I do next"
+          but "who is carrying risk I should know about". Ordered by the nearest
+          running clock rather than by volume — one officer twelve days from a
+          default-bail release outranks another with nine procedural gaps and
+          nothing counting down. */}
+      {scope === 'command' && (
+        <div className="aq-cmd">
+          {officers.length === 0 && (
+            <div className="aq-clear">
+              <CheckCircle2 size={22} />
+              <p>No officer is carrying an outstanding obligation.</p>
+            </div>
+          )}
+          {officers.map((g) => {
+            const sev = SEVERITY[g.worst] || SEVERITY.medium;
+            return (
+              <article key={g.officer} className={`aq-officer ${sev.tone}`}>
+                <div className="aq-officer-id">
+                  <h3>{g.officer}</h3>
+                  {g.station && <span>{g.station}</span>}
+                </div>
+                <div className="aq-officer-nums">
+                  <span className="aq-officer-fig"><b>{g.total}</b> obligation{g.total === 1 ? '' : 's'}</span>
+                  <span className="aq-officer-fig"><b>{g.cases}</b> case{g.cases === 1 ? '' : 's'}</span>
+                  {g.overdue > 0 && <span className="aq-pill overdue">{g.overdue} overdue</span>}
+                  {g.critical > 0 && <span className="aq-pill critical">{g.critical} critical</span>}
+                  {g.high > 0 && <span className="aq-pill high">{g.high} high</span>}
+                </div>
+                <div className="aq-officer-clock">
+                  {g.soonest === null ? (
+                    <span className="aq-officer-none">No deadline running</span>
+                  ) : (
+                    <span className={g.soonest <= 0 ? 'over' : ''}>
+                      <CalendarClock size={13} />
+                      {g.soonest <= 0
+                        ? `${Math.abs(g.soonest)} day${Math.abs(g.soonest) === 1 ? '' : 's'} overdue`
+                        : `nearest deadline in ${g.soonest} day${g.soonest === 1 ? '' : 's'}`}
+                    </span>
+                  )}
+                </div>
+                <ul className="aq-officer-cases">
+                  {g.items.slice(0, 3).map((o) => (
+                    <li key={`${o.caseMasterId}-${o.id}`}>
+                      <Link to={`/investigation-diary/${o.caseMasterId}`}>{o.crimeNo}</Link>
+                      <span>{o.title}</span>
+                    </li>
+                  ))}
+                  {g.items.length > 3 && <li className="more">and {g.items.length - 3} more</li>}
+                </ul>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── The queue ───────────────────────────────────────────────────── */}
-      <div className="aq-list">
+      <div className="aq-list" hidden={scope === 'command'}>
         {open.map((o) => {
           const k = keyOf(o);
           const sev = SEVERITY[o.severity] || SEVERITY.medium;
@@ -222,7 +289,7 @@ export default function ActionQueue() {
         })}
       </div>
 
-      {open.length === 0 && data && (
+      {open.length === 0 && data && scope !== 'command' && (
         <div className="aq-clear">
           <CheckCircle2 size={22} />
           <p>
@@ -234,7 +301,7 @@ export default function ActionQueue() {
       )}
 
       {/* ── Acknowledged ────────────────────────────────────────────────── */}
-      {done.length > 0 && (
+      {done.length > 0 && scope !== 'command' && (
         <div className="aq-done">
           <button type="button" className="aq-done-head" onClick={() => setShowDone((v) => !v)}>
             <ChevronDown size={14} className={showDone ? 'open' : ''} />

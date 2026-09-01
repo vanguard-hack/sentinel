@@ -5,7 +5,14 @@
     <link rel="icon" type="image/png" sizes="32x32" href="%PUBLIC_URL%/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="64x64" href="%PUBLIC_URL%/favicon-64.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    <!-- Matches the manifest's theme_color: the browser chrome and the app's
+         own header should not disagree once it is installed. -->
+    <meta name="theme-color" content="#1d4ed8" />
+    <!-- Installed on iOS, where the manifest's display mode is not honoured. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Sentinel" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta
       name="description"
       content="Web site created using create-react-app"
