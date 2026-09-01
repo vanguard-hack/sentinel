@@ -235,7 +235,11 @@ const DEFINITIONS = [
       '  most_connected  — the offenders with the most distinct co-accused\n\n' +
       'A name that matches several people comes back as a list to choose from, not a ' +
       'guess. Results are investigative leads for an officer to verify — being linked ' +
-      'in this graph means sharing a case file, nothing more.',
+      'in this graph means sharing a case file, nothing more.\n\n' +
+      'ring and neighbours also return `edges`. When the officer asks to SEE a gang, a ' +
+      'ring or a network, draw it: map each person to a node {id: person_id, label: ' +
+      'name} and each edge to {source, target}, and append a network-graph component. ' +
+      'Use the edges exactly as returned — never connect two people the graph did not.',
     input_schema: {
       type: 'object',
       properties: {

@@ -275,3 +275,57 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();
+
+// ── The assistant knows the rest of the app, and can draw ─────────────────
+//
+// Two gaps that were the same gap. The GUIDE lane knew the whole platform and
+// had no tools; the TOOL lane had the tools and did not know the platform
+// existed. And nothing in TOOL_SYSTEM said a component block was possible, so
+// every relational answer — the ones only this lane can reach — came back as
+// prose. "Show me the gang ring of X" called traverse_network, got the ring,
+// and described it in a paragraph the renderer could have drawn all along.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
+  const toolSystem = src.slice(src.indexOf('const TOOL_SYSTEM ='), src.indexOf('async function runToolLoop'));
+
+  check('the tool lane is told it may draw', /DRAWING RESULTS/.test(toolSystem));
+  check('  from the shared component vocabulary, not a second copy of it',
+    /AGUI_SHAPES \+/.test(toolSystem));
+  check('  and only from figures the tools returned',
+    /invented data point is worse than an/.test(toolSystem),
+    'a chart is a claim about the records exactly as a sentence is');
+  check('  and never for a single number', /Never draw a single number/.test(toolSystem));
+
+  check('the tool lane is given the platform map', /APP_GUIDE;/.test(toolSystem));
+  check('  and told to answer FIRST and point onward after',
+    /send them on afterwards/.test(toolSystem),
+    'pointing at a screen instead of answering is a worse answer, not a better one');
+  check('  and never to invent a module or a route',
+    /Never name a module or route/.test(toolSystem));
+
+  // The map has to be defined before the prompt that reads it, or the module
+  // throws on load — a const is not hoisted the way a function is.
+  check('the platform map is defined above the prompt that uses it',
+    src.indexOf('const APP_GUIDE') < src.indexOf('const TOOL_SYSTEM'));
+
+  // One vocabulary, shared. Written twice it drifts: a shape added for one lane
+  // is silently unavailable to the other, and nothing fails — the model simply
+  // never proposes it.
+  check('both lanes describe the SAME component vocabulary',
+    (src.match(/AGUI_SHAPES \+/g) || []).length === 2,
+    'the transform pass and the tool loop');
+  const shapes = src.slice(src.indexOf('const AGUI_SHAPES'), src.indexOf('const AGUI_TRANSFORM'));
+  const declared = new Set([...shapes.matchAll(/"type":"([a-z-]+)"/g)].map((m) => m[1]));
+  const rendered = new Set(
+    [...src.slice(src.indexOf('const AGUI_TYPES')).slice(0, 400).matchAll(/'([a-z-]+)'/g)].map((m) => m[1]),
+  );
+  const undrawable = [...declared].filter((t) => !rendered.has(t));
+  check('every shape offered to the model is one the renderer accepts',
+    undrawable.length === 0, undrawable.join(', '));
+
+  check('traverse_network tells the model to draw the ring it fetched',
+    /append a network-graph component/.test(tools.DEFINITIONS.find((t) => t.name === 'traverse_network').description));
+  check('  using the edges as returned',
+    /never connect two people the graph did not/.test(
+      tools.DEFINITIONS.find((t) => t.name === 'traverse_network').description));
+}

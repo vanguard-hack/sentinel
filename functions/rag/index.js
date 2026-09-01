@@ -108,9 +108,14 @@ async function getAccessToken() {
 // documents), so pass 1 sends the query CLEAN, and pass 2 — run only when the
 // answer looks data-shaped — asks the model to transform that answer text into
 // components. Pass 2's retrieval is irrelevant; the data is in the prompt.
-const AGUI_TRANSFORM =
-  'Convert the data in the TEXT below into ONE fenced ```agui code block of JSON ' +
-  '{"components":[...]} where each component is ' +
+// The component vocabulary, in one place.
+//
+// Two lanes describe it to the model — the transform pass and the tool loop —
+// and a vocabulary written twice is one that drifts: a shape added for one lane
+// is silently unavailable to the other, and nothing fails, the model just never
+// proposes it.
+const AGUI_SHAPES =
+  'Each component is ' +
   '{"type":"bar-chart"|"pie-chart","title":s,"data":[{"label":s,"value":n}]} or ' +
   '{"type":"line-chart","title":s,"data":[{"label":s,"value":n}]} (a value over ' +
   'ordered time periods — months, quarters, years) or ' +
@@ -137,6 +142,12 @@ const AGUI_TRANSFORM =
   'names — use when the data is per-district) or ' +
   '{"type":"network-graph","title":s,"nodes":[{"id":s,"label":s,"group":s}],' +
   '"links":[{"source":s,"target":s}]} (use for relationships between people/gangs/entities). ' +
+  '\n';
+
+const AGUI_TRANSFORM =
+  'Convert the data in the TEXT below into ONE fenced ```agui code block of JSON ' +
+  '{"components":[...]} where each component is ' +
+  AGUI_SHAPES +
   'RULE: if the values are per Karnataka district, ALWAYS use geo-map (not bar-chart), ' +
   'with plain district names (e.g. "Bengaluru City", "Kalaburagi" — no DIST suffix). ' +
   'RULE: pick the shape that matches the QUESTION, not the one that is easiest. ' +
@@ -378,6 +389,33 @@ const TOOL_SCHEMA_NOTE =
   'list gets truncated and the answer comes out silently wrong.\n\n' +
   'Data covers 2023-01-01 to 2026-06-30.\n\n';
 
+// The platform, described for the model.
+//
+// Hoisted above TOOL_SYSTEM because both lanes now read it: the guide lane
+// knew the whole platform and had no tools, the tool lane had the tools and
+// did not know the platform existed, and an officer asking "who does X work
+// with, and where can I see the whole network" only ever got whichever half
+// the router happened to pick.
+const APP_GUIDE = `SENTINEL — feature map (module → what it does → route):
+
+Home / Dashboard [/reports]: crime overview — KPI cards, crime trend over time, case-status breakdown, crime-by-category, top districts heat map, station load, accused age profile, top crime types, socio-economic correlation, arrests & surrenders. Filter by Today/Month/Year/5Y or a custom range; export the report as PDF.
+Incidents [/incidents]: live FIR feed — recent cases with station, district, category and status.
+Crime Map [/crime-map]: interactive district-level heat map of Karnataka; drill from state to district to see where crime concentrates.
+AI Analytics [/ai-analytics]: the machine-learning workspace. Tabs:
+  • Crime Patterns [/ai-analytics?tab=patterns]: temporal profiles — incidents by hour of day, day of month, day of week; peak windows; crime-head × daypart heatmap.
+  • Crime Links [/ai-analytics?tab=links]: co-offending network — which offenders commit crimes together; connected offenders and repeat offenders. THIS is the crime/criminal network.
+  • Case Linkage [/ai-analytics?tab=linkage]: serial-offence linkage — finds cases likely committed by the same offender via modus operandi, geography and timing similarity.
+  • Forecasts & Risk [/ai-analytics?tab=forecasts]: crime-volume forecasting (pick a horizon), district risk for next month, repeat-offender risk scores, and anomaly detection.
+  • Financial Trails [/ai-analytics?tab=financial]: money-laundering / financial-crime analysis — screens transactions around economic, cyber and property offenders against AML typologies (structuring/smurfing, layering, fan-in mule hubs, fan-out dispersal, round-tripping, pass-through, high-value cash, hawala/crypto channels, shell/mule accounts). Shows a typology breakdown, a money-flow NETWORK of entities/mule/shell accounts, prioritised risk-scored alerts, and flagged transactions. THIS is the "financial crime network trails".
+Case Files [/case-files]: browse and query the raw FIR data store with column filters and CSV export.
+Investigation Diary [/investigation-diary]: BNSS S.172 case diaries mapped to CCTNS — diary entries, S.161 statements/testimony (typed, recorded with speech-to-text, or uploaded and OCR'd), evidence, persons, a timeline, findings, an AI cited summary and PDF export.
+Report Studio [/report-studio]: draft, edit and file statutory & administrative police reports from prescribed templates — FIR (IIF-1), Case Diary (S.192 BNSS), Arrest/Court Surrender Memo (IIF-3), Charge Sheet / Final Report (IIF-5), UDR/Death Report, Missing Person Report, Property Seizure Memo (IIF-4), Daily Station Report/General Diary, Law & Order Report, Crime Analysis Report, Police Performance Report and Court/Case Status Report. Paged A4 editor with zoom, add-page (continuation/accused/property sheets), autosave to the archive, AI narrative polish, finalize (read-only lock) and PDF download.
+Records [/records]: digitised paper records — officers photograph, scan, drag-drop or bulk-upload documents; Zia OCR extracts the text and an AI pass classifies the document, pulls out key fields and reconstructs any tables. Everything is searchable, and questions about scanned paper are answered from this store.
+Assistant [/assistant]: this chat — ask about data, law, or the platform.
+Personnel Directory [/personnel]: officer directory (rank, unit, district). Sub-pages: Duty Roster [/personnel/roster] (shift schedule), Org Chart [/personnel/org-chart] (command hierarchy).
+Access & Audit [/access]: admin only — assign roles and browse/export the audit trail of who did what, where and when.
+Global search: press Ctrl/⌘-K anywhere to jump to any of the above.`;
+
 const TOOL_SYSTEM =
   'You are Sentinel Assistant, working for a Karnataka police officer. Answer ' +
   'the question by calling the tools available to you, then say what you found.\n\n' +
@@ -398,7 +436,38 @@ const TOOL_SYSTEM =
   'Answer only from what the tools returned. If they returned nothing useful, ' +
   'say so plainly — never fill the gap from general knowledge, and never state a ' +
   'number the records did not give you. Some results note that rows were ' +
-  'withheld for clearance; do not speculate about what they contained.';
+  'withheld for clearance; do not speculate about what they contained.\n\n' +
+
+  // ── Drawing ──────────────────────────────────────────────────────────────
+  // The tool lane could never draw. extractAgui ran on its output, but nothing
+  // in this prompt told the model a component block was possible, so every
+  // relational answer — the ones only this lane can reach — came back as prose.
+  // "Show me the gang ring of X" called traverse_network, got the ring, and
+  // described it in a paragraph. The renderer had been able to draw that graph
+  // the whole time.
+  'DRAWING RESULTS\n' +
+  'After your prose you MAY append ONE fenced ```agui block of JSON ' +
+  '{"components":[...]} to draw what you found. Use it whenever the answer has ' +
+  'shape a picture carries better than a sentence — a ring of people, a trend ' +
+  'over months, a split across districts. Never draw a single number.\n' +
+  AGUI_SHAPES +
+  'Draw ONLY from figures the tools returned. A chart is a claim about the ' +
+  'records exactly as a sentence is, and an invented data point is worse than an ' +
+  'invented sentence because it looks measured.\n\n' +
+
+  // ── The rest of the app ──────────────────────────────────────────────────
+  // The guide lane knew the whole platform and had no tools; this lane had the
+  // tools and did not know the platform existed. An officer asking "who does
+  // Jagdish work with, and where can I see the whole network" was answered by
+  // whichever lane the router picked, and only ever got half.
+  'THE REST OF SENTINEL\n' +
+  'You also know the platform itself, mapped below. When the officer would be ' +
+  'better served by a screen than by your answer — a map to pan, a network to ' +
+  'explore, a form to file — say so in one sentence and name the module and its ' +
+  'route, after answering what you can from the records. Do not send them away ' +
+  'instead of answering; send them on afterwards. Never name a module or route ' +
+  'that is not in this map.\n\n' +
+  APP_GUIDE;
 
 /**
  * Runs the tool loop on Claude. Returns null when it cannot run at all — no
@@ -818,25 +887,6 @@ const CHAT_SYSTEM =
 // The full feature map the assistant uses to answer "what/where/how" questions
 // about the platform itself, with the in-app route for each destination (paths
 // are relative to the /app basename — no leading "/app").
-const APP_GUIDE = `SENTINEL — feature map (module → what it does → route):
-
-Home / Dashboard [/reports]: crime overview — KPI cards, crime trend over time, case-status breakdown, crime-by-category, top districts heat map, station load, accused age profile, top crime types, socio-economic correlation, arrests & surrenders. Filter by Today/Month/Year/5Y or a custom range; export the report as PDF.
-Incidents [/incidents]: live FIR feed — recent cases with station, district, category and status.
-Crime Map [/crime-map]: interactive district-level heat map of Karnataka; drill from state to district to see where crime concentrates.
-AI Analytics [/ai-analytics]: the machine-learning workspace. Tabs:
-  • Crime Patterns [/ai-analytics?tab=patterns]: temporal profiles — incidents by hour of day, day of month, day of week; peak windows; crime-head × daypart heatmap.
-  • Crime Links [/ai-analytics?tab=links]: co-offending network — which offenders commit crimes together; connected offenders and repeat offenders. THIS is the crime/criminal network.
-  • Case Linkage [/ai-analytics?tab=linkage]: serial-offence linkage — finds cases likely committed by the same offender via modus operandi, geography and timing similarity.
-  • Forecasts & Risk [/ai-analytics?tab=forecasts]: crime-volume forecasting (pick a horizon), district risk for next month, repeat-offender risk scores, and anomaly detection.
-  • Financial Trails [/ai-analytics?tab=financial]: money-laundering / financial-crime analysis — screens transactions around economic, cyber and property offenders against AML typologies (structuring/smurfing, layering, fan-in mule hubs, fan-out dispersal, round-tripping, pass-through, high-value cash, hawala/crypto channels, shell/mule accounts). Shows a typology breakdown, a money-flow NETWORK of entities/mule/shell accounts, prioritised risk-scored alerts, and flagged transactions. THIS is the "financial crime network trails".
-Case Files [/case-files]: browse and query the raw FIR data store with column filters and CSV export.
-Investigation Diary [/investigation-diary]: BNSS S.172 case diaries mapped to CCTNS — diary entries, S.161 statements/testimony (typed, recorded with speech-to-text, or uploaded and OCR'd), evidence, persons, a timeline, findings, an AI cited summary and PDF export.
-Report Studio [/report-studio]: draft, edit and file statutory & administrative police reports from prescribed templates — FIR (IIF-1), Case Diary (S.192 BNSS), Arrest/Court Surrender Memo (IIF-3), Charge Sheet / Final Report (IIF-5), UDR/Death Report, Missing Person Report, Property Seizure Memo (IIF-4), Daily Station Report/General Diary, Law & Order Report, Crime Analysis Report, Police Performance Report and Court/Case Status Report. Paged A4 editor with zoom, add-page (continuation/accused/property sheets), autosave to the archive, AI narrative polish, finalize (read-only lock) and PDF download.
-Records [/records]: digitised paper records — officers photograph, scan, drag-drop or bulk-upload documents; Zia OCR extracts the text and an AI pass classifies the document, pulls out key fields and reconstructs any tables. Everything is searchable, and questions about scanned paper are answered from this store.
-Assistant [/assistant]: this chat — ask about data, law, or the platform.
-Personnel Directory [/personnel]: officer directory (rank, unit, district). Sub-pages: Duty Roster [/personnel/roster] (shift schedule), Org Chart [/personnel/org-chart] (command hierarchy).
-Access & Audit [/access]: admin only — assign roles and browse/export the audit trail of who did what, where and when.
-Global search: press Ctrl/⌘-K anywhere to jump to any of the above.`;
 
 const GUIDE_SYSTEM =
   'You are Sentinel Assistant, a guide to the Sentinel police crime-analytics ' +

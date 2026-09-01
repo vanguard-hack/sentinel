@@ -128,6 +128,56 @@ const app = {}; // never touched: the cache is warm
     /single-table|no joins/i.test(def.description));
   check('it declares its operations', def.input_schema.properties.operation.enum.length === 4);
 
-  console.log(`\n${pass} passed, ${fail} failed`);
+  
+// ── Edges, so a ring can be DRAWN and not only described ──────────────────
+//
+// ring() and neighbours() returned people and no links, so an assistant asked
+// to draw a gang had nodes with nothing between them — and the one thing it
+// must never do is invent a connection between two named individuals. The
+// edges now come from the same adjacency the counts are computed from.
+
+{
+  const g = fixture();
+  const asha = net.resolve(g, 'Asha Rao').person;
+
+  const r = net.ring(g, asha);
+  check('a ring carries the links between its members', Array.isArray(r.edges) && r.edges.length > 0);
+  check('  Asha and Bhim are linked', r.edges.some((e) =>
+    [e.source, e.target].sort().join() === 'P1,P2'));
+  check('  and the link names the cases behind it',
+    r.edges.find((e) => [e.source, e.target].sort().join() === 'P1,P2').shared_cases.sort().join() === 'C1,C3',
+    'a link an officer cannot trace to a case file is not a lead');
+  check('  with a weight, so two shared cases outrank one',
+    r.edges.find((e) => [e.source, e.target].sort().join() === 'P1,P2').weight === 2);
+  check('  each pair appears once, not once per direction',
+    r.edges.length === new Set(r.edges.map((e) => [e.source, e.target].sort().join())).size);
+  check('  and the separate ring is not joined to this one',
+    !r.edges.some((e) => ['P4', 'P5'].includes(e.source) || ['P4', 'P5'].includes(e.target)),
+    'two unconnected rings drawn as one would invent a conspiracy');
+  check('  the edge count is reported', r.edge_count === r.edges.length);
+
+  const nb = net.neighbours(g, asha, 2);
+  check('neighbours carries links too', Array.isArray(nb.edges) && nb.edges.length > 0);
+  check('  including the anchor person, or the graph would be drawn detached',
+    nb.edges.some((e) => e.source === 'P1' || e.target === 'P1'));
+
+  // Every edge must join two people the caller was actually given, or the
+  // renderer draws a line to a node that is not there.
+  const ids = new Set([nb.person.person_id, ...nb.people.map((x) => x.person_id)]);
+  check('  and never references a person outside the result',
+    nb.edges.every((e) => ids.has(e.source) && ids.has(e.target)));
+
+  const separate = net.ring(g, net.resolve(g, 'Divya Nair').person);
+  check('a two-person ring has exactly one link', separate.edges.length === 1);
+
+  check('edgesAmong on a single person yields nothing to draw',
+    net.edgesAmong(g, ['P1']).edges.length === 0);
+  check('edgesAmong caps a hairball and says that it did', (() => {
+    const capped = net.edgesAmong(g, ['P1', 'P2', 'P3'], 1);
+    return capped.edges.length === 1 && capped.edges_truncated === true && capped.edge_count > 1;
+  })());
+}
+
+console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

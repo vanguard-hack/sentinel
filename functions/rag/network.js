@@ -161,7 +161,15 @@ function neighbours(g, p, depth) {
     }
   }
   out.sort((a, b) => a.hops - b.hops || b.case_count - a.case_count);
-  return { person: describe(g, p), depth: maxDepth, connected: out.length, people: out.slice(0, 40) };
+  const people = out.slice(0, 40);
+  const shown = [p.id, ...people.map((n) => String(n.person_id ?? n.id))];
+  return {
+    person: describe(g, p),
+    depth: maxDepth,
+    connected: out.length,
+    people,
+    ...edgesAmong(g, shown),
+  };
 }
 
 function path(g, a, b) {
@@ -193,6 +201,37 @@ function path(g, a, b) {
   return { connected: true, degrees_of_separation: steps.length, path: chain.map((id) => describe(g, g.people.get(id))), links: steps };
 }
 
+
+/**
+ * The edges between a set of people, as the renderer wants them.
+ *
+ * ring() and neighbours() returned only PEOPLE, which meant an assistant asked
+ * to DRAW a gang could not: it had the nodes and no links, and the one thing it
+ * must never do is invent the connection between two named individuals. So the
+ * edges come from the graph, with the case that put them there — the same
+ * adjacency the counts are computed from, not a second derivation of it.
+ *
+ * Capped, because a densely connected ring of forty is a hairball no officer
+ * can read, and the cap is reported so nobody mistakes a trimmed picture for
+ * the whole one.
+ */
+function edgesAmong(g, ids, cap = 200) {
+  const inSet = new Set(ids.map(String));
+  const out = [];
+  let total = 0;
+  for (const a of inSet) {
+    for (const [b, cases] of (g.adj.get(a) || new Map())) {
+      // Each undirected pair once.
+      if (!inSet.has(b) || String(a) >= String(b)) continue;
+      total++;
+      if (out.length < cap) {
+        out.push({ source: a, target: b, shared_cases: [...cases].slice(0, 5), weight: cases.size });
+      }
+    }
+  }
+  return { edges: out, edge_count: total, ...(total > out.length ? { edges_truncated: true } : {}) };
+}
+
 function ring(g, p) {
   const members = g.rings.get(g.findRoot(p.id)) || [p.id];
   const cases = new Set();
@@ -209,9 +248,13 @@ function ring(g, p) {
   const ranked = members
     .map((id) => describe(g, g.people.get(id)))
     .sort((x, y) => y.co_accused_count - x.co_accused_count || y.case_count - x.case_count);
+  const shown = ranked.map((m) => String(m.person_id ?? m.id));
   return {
     ring_size: members.length,
     total_cases: cases.size,
+    // Links between the members shown, so the caller can draw the ring rather
+    // than only describe it.
+    ...edgesAmong(g, shown),
     // Most-connected first. Advisory only — degree is a lead, never a finding.
     members: ranked.slice(0, 40),
     dominant_crime_head_ids: top(heads),
@@ -250,4 +293,4 @@ async function run(app, input) {
   return { error: `Unknown operation "${op}". Use neighbours, path, ring or most_connected.` };
 }
 
-module.exports = { run, graph, resolve, neighbours, path, ring, mostConnected, _setCache };
+module.exports = { run, graph, resolve, neighbours, path, ring, mostConnected, edgesAmong, _setCache };
