@@ -1,0 +1,36 @@
+ActCode,SectionCode,SectionDescription,Active
+IPC,302,Murder,true
+IPC,307,Attempt to murder,true
+IPC,304A,Death by negligence,true
+IPC,323,Voluntarily causing hurt,true
+IPC,324,Hurt by dangerous weapons,true
+IPC,341,Wrongful restraint,true
+IPC,354,Assault on woman with intent to outrage modesty,true
+IPC,363,Kidnapping,true
+IPC,376,Rape,true
+IPC,379,Theft,true
+IPC,380,Theft in dwelling house,true
+IPC,392,Robbery,true
+IPC,395,Dacoity,true
+IPC,406,Criminal breach of trust,true
+IPC,420,Cheating,true
+IPC,498A,Cruelty by husband or relatives,true
+IPC,506,Criminal intimidation,true
+IPC,509,Insult to modesty of woman,true
+IPC,147,Rioting,true
+IPC,279,Rash driving on public way,true
+NDPS,20,Possession of cannabis,true
+NDPS,21,Possession of manufactured drugs,true
+NDPS,22,Possession of psychotropic substances,true
+ARMS,25,Possession of illegal arms,true
+IT,66,Computer-related offences,true
+IT,66C,Identity theft,true
+IT,66D,Cheating by personation using computer,true
+IT,67,Obscene material online,true
+POCSO,4,Penetrative sexual assault,true
+POCSO,8,Sexual assault,true
+MV,184,Dangerous driving,true
+EXCISE,32,Illegal sale of liquor,true
+DP,3,Taking dowry,true
+DP,4,Demanding dowry,true
+KPA,87,Gambling in public place,true

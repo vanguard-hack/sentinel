@@ -18,7 +18,90 @@ const check = (name, cond, detail) => {
 
 // The seed CSVs stand in for the Data Store, served through the same paged
 // interface app.zcql() presents. Built once into an in-memory table set.
-const KSP = __dirname + '/../../ksp/fir';
+//
+// WHERE THE DATA COMES FROM
+//
+// The seed CSVs are gitignored — they are ~1 MB of regenerable synthetic
+// records (ksp/fir/generate_fir_dataset.py), and committing bulk data to make a
+// test run is the wrong trade. But this suite reading them directly meant it
+// passed locally and failed on CI with ENOENT, which is worse than either
+// option: a test that only runs on one machine.
+//
+// So: use the real seed when it is there, and generate a fixture when it is
+// not. Nothing below asserts a hardcoded count — every expectation is computed
+// from the same data by sqlite — so both modes assert the same property, that
+// the tool's answer matches SQL's over whatever it was given.
+const TABLE_NAMES = ['CaseMaster', 'Accused', 'Victim', 'ArrestSurrender', 'Unit', 'District'];
+const SEED = __dirname + '/../../ksp/fir';
+const haveSeed = fs.existsSync(`${SEED}/CaseMaster.csv`);
+
+/**
+ * A deterministic stand-in, shaped like the seed and big enough to matter.
+ *
+ * 400 cases with 800 accused and 800 arrests, so a join crosses joinRecords'
+ * 300-row page boundary — the paging is the whole reason this tool exists, and
+ * a fixture that fitted in one page would test everything except the bug.
+ * No randomness: the same fixture every run, on every machine.
+ *
+ * Stations come from masters.json rather than being invented. joinRecords
+ * resolves a district name through masters.json, NOT through the Unit table,
+ * so a fixture that made up its own station ids would have the tool and the
+ * sqlite ground truth reading two different maps — which is exactly what the
+ * first version of this did, and it failed the two district tests while the
+ * tool was behaving correctly.
+ */
+function buildFixture(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  const csv = (name, header, rows) =>
+    fs.writeFileSync(`${dir}/${name}.csv`, [header.join(','), ...rows.map((r) => r.join(','))].join('\n') + '\n');
+
+  const masters = require('./masters.json');
+  const districtId = (name) =>
+    Object.entries(masters.districts).find(([, n]) => String(n).toLowerCase() === name.toLowerCase())[0];
+  const unitsIn = (id) =>
+    Object.entries(masters.units).filter(([, u]) => String(u.district) === String(id)).map(([uid]) => uid);
+
+  // The two districts the tests name, plus their real station ids.
+  const named = ['Bengaluru City', 'Mysuru'].map((n) => ({ name: n, id: districtId(n), units: unitsIn(districtId(n)) }));
+  const stations = named.flatMap((d) => d.units);
+
+  const cases = [];
+  for (let i = 1; i <= 400; i++) {
+    // Spread across the values the tests filter on: major heads 3 (crimes
+    // against women) and 7 (narcotics) both land, as do statuses 1-5.
+    cases.push([i, (i % 8) + 1, (i % 5) + 1, (i % 3) + 1, stations[i % stations.length]]);
+  }
+  csv('CaseMaster', ['CaseMasterID', 'CrimeMajorHeadID', 'CaseStatusID', 'CaseCategoryID', 'PoliceStationID'], cases);
+
+  const accused = [];
+  const victims = [];
+  const arrests = [];
+  for (let i = 1; i <= 400; i++) {
+    accused.push([accused.length + 1, i], [accused.length + 2, i]);
+    victims.push([victims.length + 1, i]);
+    arrests.push([arrests.length + 1, i, 1], [arrests.length + 2, i, 2]);
+  }
+  csv('Accused', ['AccusedID', 'CaseMasterID'], accused);
+  csv('Victim', ['VictimID', 'CaseMasterID'], victims);
+  csv('ArrestSurrender', ['ArrestSurrenderID', 'CaseMasterID', 'ArrestSurrenderTypeID'], arrests);
+
+  // Unit and District mirror masters.json, so the SQL ground truth walks the
+  // same district -> station map the tool does.
+  csv('Unit', ['UnitID', 'DistrictID'], named.flatMap((d) => d.units.map((u) => [u, d.id])));
+  csv('District', ['DistrictID', 'DistrictName'], named.map((d) => [d.id, d.name]));
+}
+
+const KSP = haveSeed
+  ? SEED
+  : (() => {
+    const dir = `${require('os').tmpdir()}/sentinel-jointest`;
+    buildFixture(dir);
+    return dir;
+  })();
+console.log(haveSeed
+  ? '(using the real seed data in ksp/fir)'
+  : '(seed CSVs absent — running against the generated fixture)');
+
 const parse = (f) => {
   const lines = fs.readFileSync(`${KSP}/${f}`, 'utf8').replace(/\r/g, '').trim().split('\n');
   const head = lines[0].split(',');
@@ -27,14 +110,7 @@ const parse = (f) => {
     return Object.fromEntries(head.map((k, i) => [k, v[i]]));
   });
 };
-const TABLES = {
-  CaseMaster: parse('CaseMaster.csv'),
-  Accused: parse('Accused.csv'),
-  Victim: parse('Victim.csv'),
-  ArrestSurrender: parse('ArrestSurrender.csv'),
-  Unit: parse('Unit.csv'),
-  District: parse('District.csv'),
-};
+const TABLES = Object.fromEntries(TABLE_NAMES.map((t) => [t, parse(`${t}.csv`)]));
 
 // A deliberately small ZCQL stand-in: enough to serve what joinRecords emits
 // (SELECT cols FROM T [WHERE simple AND ...] LIMIT off,n) and nothing more.

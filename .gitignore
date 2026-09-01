@@ -15,6 +15,10 @@ Import_*.zip
 # Synthetic dataset artifacts — regenerate with ksp/fir/generate_fir_dataset.py
 ksp/*.csv
 ksp/fir/*.csv
+# ...except the section list. It is reference data, not bulk records (35 rows,
+# 1 KB), and legal.test.js asserts the legal KB covers exactly these sections.
+# A drift detector that cannot run in CI is decoration, so this one ships.
+!ksp/fir/Section.csv
 ksp/rag_docs/
 ksp/import/configs_txt/
 
