@@ -307,3 +307,13 @@ export async function fetchCaseSections(caseMasterId) {
     return '';
   }
 }
+
+/**
+ * Seed a handful of investigation diaries so the Action Queue has statutory
+ * clocks to count on a deployment where nobody has filed one yet.
+ *
+ * Admin only, server-side. It opens diaries on REAL CaseMaster rows, never
+ * touches one that already exists, and stamps everything it writes as seeded —
+ * see handleInvestigationSeed for why each of those matters.
+ */
+export const seedInvestigations = () => post('/server/rag/investigation/seed');

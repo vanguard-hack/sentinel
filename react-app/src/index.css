@@ -8397,3 +8397,5 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   background: var(--bg-2); border: 1px solid var(--border);
   font-size: 11px; line-height: 1.65; color: var(--text-3);
 }
+
+.inv-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

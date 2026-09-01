@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  NotebookPen, Search, X, Plus, AlertTriangle, ChevronRight, ChevronLeft, BookOpen,
+  NotebookPen, Search, X, Plus, AlertTriangle, ChevronRight, ChevronLeft, BookOpen, Sprout,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
+import { useAccess } from '../context/AccessContext';
 import {
   listInvestigations, createInvestigation, searchCases, fetchCaseSections,
-  statusColor, STATUS_OPTIONS,
+  statusColor, STATUS_OPTIONS, seedInvestigations,
 } from '../utils/investigation';
 import { loadPersonnel } from '../utils/personnel';
 import { useTranslation } from 'react-i18next';
@@ -160,6 +161,8 @@ export default function InvestigationDiary() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('All');
   const [showNew, setShowNew] = useState(false);
+  const { role } = useAccess();
+  const [seeding, setSeeding] = useState(false);
   // Cards per page, in multiples of nine — three full rows on the usual
   // three-column grid, so the last row is never ragged.
   // 'auto' means "however many fill the page" — measured below. A number is an
@@ -173,6 +176,25 @@ export default function InvestigationDiary() {
     listInvestigations().then(setCases).catch((e) => setError(e.message));
   }, []);
   useEffect(load, [load]);
+
+  const runSeed = useCallback(async () => {
+    setSeeding(true);
+    setError(null);
+    try {
+      const r = await seedInvestigations();
+      // Report what happened rather than silently refreshing — "seeded 0,
+      // skipped 5" is a useful answer (every candidate already has a diary),
+      // and an unexplained no-op is not.
+      setError(r.seeded
+        ? `Seeded ${r.seeded} demonstration diar${r.seeded === 1 ? 'y' : 'ies'} on real cases. ${r.note}`
+        : r.note || 'Nothing to seed.');
+      load();
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setSeeding(false);
+    }
+  }, [load]);
 
   const shown = useMemo(() => {
     if (!cases) return [];
@@ -236,9 +258,26 @@ export default function InvestigationDiary() {
               <p>Case Diary Statements under Section 172 BNSS — mapped to the CCTNS IIF1–IIF5 forms.</p>
             </div>
           </div>
-          <button type="button" className="aa-btn primary" onClick={() => setShowNew(true)}>
-            <Plus size={15} /> {t('diary.newInvestigation')}
-          </button>
+          <div className="inv-head-actions">
+            {/* Admin-only, and deliberately plain rather than prominent: this is
+                a setup action for a demonstration deployment, not something an
+                officer should reach for. It opens diaries on real cases, never
+                overwrites an existing one, and stamps what it writes. */}
+            {role === 'admin' && (
+              <button
+                type="button"
+                className="aa-btn"
+                onClick={runSeed}
+                disabled={seeding}
+                title="Open a few demonstration diaries on real cases so the Action Queue has deadlines to count"
+              >
+                <Sprout size={15} /> {seeding ? 'Seeding…' : 'Seed demo diaries'}
+              </button>
+            )}
+            <button type="button" className="aa-btn primary" onClick={() => setShowNew(true)}>
+              <Plus size={15} /> {t('diary.newInvestigation')}
+            </button>
+          </div>
         </div>
 
         <div className="aa-toolbar">
