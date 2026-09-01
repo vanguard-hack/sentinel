@@ -309,7 +309,7 @@ export async function transcribeAudio(input, language = 'en') {
 // { text, components } — components are AG-UI-style typed specs (bar-chart,
 // pie-chart, table, cards) rendered by AguiRenderer. Falls back to an
 // explanatory message if the backend isn't reachable/configured yet.
-export async function generateReply(history, vision = [], attachments = [], sessionId = '') {
+export async function generateReply(history, vision = [], attachments = [], sessionId = '', accessReason = '') {
   const lastUser = [...history].reverse().find((m) => m.role === 'user');
   const query = (lastUser?.content || '').trim();
   if (!query) return { text: 'Ask me a question to get started.', components: [] };
@@ -342,6 +342,11 @@ export async function generateReply(history, vision = [], attachments = [], sess
         // memory on it, so continuity no longer depends on the browser
         // remembering to send its history.
         session_id: sessionId,
+        // The officer's stated purpose for reaching victim identity on an
+        // offence against a woman or a child. Sent only when they have typed
+        // one — it is recorded against their badge in the audit trail, so it
+        // must never be inferred or defaulted on their behalf.
+        ...(accessReason ? { access_reason: accessReason } : {}),
         history: shortTerm,
         summary,
         preferred_lang: currentLang(),
@@ -378,7 +383,11 @@ export async function generateReply(history, vision = [], attachments = [], sess
     // The backend's grounding verdict, present only when it has something to
     // say. Carried through so the answer and the warning about it can never
     // be shown apart.
-    return { text, components, sources, source: data.source, grounding: data.grounding || null };
+    return {
+      text, components, sources, source: data.source,
+      grounding: data.grounding || null,
+      protectedAccess: data.protected_access || null,
+    };
   } catch (e) {
     return {
       text:

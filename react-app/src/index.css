@@ -7848,3 +7848,52 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
   line-height: 1.5;
 }
 .as-grounding svg { flex: 0 0 auto; margin-top: 2px; color: #b8863b; }
+
+/* ── Assistant: protected identity, and the reason that unlocks it ─────────
+   Distinct from the grounding strip on purpose. That one says "distrust this";
+   this one says "there is more, and here is how to reach it" — a different
+   instruction deserving a different colour and a control, not just text. */
+.as-protected {
+  margin: 10px 0 2px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--blue-500) 40%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--blue-500) 7%, transparent);
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.as-protected > svg { flex: 0 0 auto; margin-top: 2px; color: var(--blue-500); }
+.as-protected-head { display: flex; align-items: flex-start; gap: 8px; }
+.as-protected-head svg { flex: 0 0 auto; margin-top: 2px; color: var(--blue-500); }
+.as-protected-form { display: flex; gap: 8px; width: 100%; margin-top: 9px; }
+.as-protected-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border-1);
+  border-radius: 7px;
+  background: var(--bg-1);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12.5px;
+}
+.as-protected-input:focus { outline: 2px solid color-mix(in srgb, var(--blue-500) 55%, transparent); outline-offset: -1px; }
+.as-protected-btn {
+  flex: 0 0 auto;
+  padding: 7px 13px;
+  border: 1px solid var(--blue-500);
+  border-radius: 7px;
+  background: var(--blue-500);
+  color: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.as-protected-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.as-protected-btn:disabled { opacity: 0.45; cursor: default; }
+.as-protected-foot { width: 100%; margin: 7px 0 0; color: var(--text-4); font-size: 11.5px; }

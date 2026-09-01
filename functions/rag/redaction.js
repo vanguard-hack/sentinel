@@ -28,6 +28,84 @@ const FIELD_TIERS = {
   BriefFacts: 2,
 };
 
+// ── Coarsening: degrade rather than delete ──────────────────────────────────
+//
+// A coordinate was removed outright below its tier, which answers the privacy
+// question by destroying the analytical one. An analyst asking where thefts
+// cluster has no operational need for the doorstep, but every need for the
+// neighbourhood, and `[redacted]` gives them neither — so the honest map
+// simply stopped working for the roles that live in it.
+//
+// Rounding to one decimal place lands each incident on a ~11 km grid. District
+// and city-scale clustering survives intact; a household does not, because
+// every address within 11 km collapses onto the same point. The rounded value
+// also states its own accuracy — 12.9 does not read as a doorstep the way
+// 12.976543 does.
+//
+// `floor` is the clearance below which a field is still deleted rather than
+// coarsened. An unrecognised caller (clearance 0) is not handed a coarse
+// answer as a consolation prize; they get nothing, as before.
+const COARSEN = {
+  latitude: { floor: 1, precision: 1 },
+  longitude: { floor: 1, precision: 1 },
+};
+
+const coarsen = (value, precision) => {
+  // null, undefined and '' must pass through untouched. Number(null) is 0,
+  // which is finite, so a missing coordinate would round to a real point off
+  // the coast of Africa — a case plotted in the Atlantic is worse than a case
+  // not plotted at all.
+  if (value === null || value === undefined || value === '') return value;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return value;
+  const f = 10 ** precision;
+  return Math.round(n * f) / f;
+};
+
+// ── Protected crimes: identity behind an explicit reason ───────────────────
+//
+// Publishing the identity of a victim of a sexual offence is itself an offence
+// (BNS s.72, formerly IPC s.228A), POCSO s.23 forbids disclosure for a child
+// victim, and Nipun Saxena v. Union of India (2018) extends that to anything
+// from which identity could be worked out. Clearance alone is the wrong
+// control here: the question is not whether an officer COULD see it but
+// whether they have a reason to, on this case, today.
+//
+// So on these categories, victim and complainant identity is withheld from
+// everyone — including admin — until a reason is stated. The reason is not
+// validated, and is not meant to be: it is recorded. What deters misuse is
+// that the access carries a name, a case and a stated purpose into a
+// tamper-evident log, not that a string parser approved it.
+//
+// Matched on the enriched label AND the raw id, because rows reach this filter
+// enriched on the ZCQL path and raw on others. Missing either would open the
+// gap silently.
+const PROTECTED_HEADS = new Set(['Crimes Against Women', 'Crimes Against Children']);
+const PROTECTED_HEAD_IDS = new Set(['3', '4']);
+const PROTECTED_SUBHEADS = new Set([
+  'Rape', 'Molestation', 'Dowry Harassment', 'Child Sexual Assault', 'Child Kidnapping',
+]);
+// Identity of the person the offence was committed against. The accused is
+// deliberately absent: naming a suspect is ordinary investigative work under
+// the existing tiers, and the statutes above protect the victim.
+const PROTECTED_FIELDS = new Set(['VictimName', 'ComplainantName']);
+// Clearance still applies on top — a reason does not promote an analyst.
+const PROTECTED_CLEARANCE = 3;
+
+const PROTECTED_MARK = '[protected — state a reason for access]';
+
+/** Is this row a case whose victim identity the statutes above shield? */
+function isProtected(row) {
+  if (!row || typeof row !== 'object') return false;
+  const head = row.CrimeHead ?? row.CrimeMajorHead;
+  const sub = row.CrimeSubHead ?? row.CrimeMinorHead;
+  return (
+    PROTECTED_HEADS.has(String(head))
+    || PROTECTED_HEAD_IDS.has(String(row.CrimeMajorHeadID))
+    || PROTECTED_SUBHEADS.has(String(sub))
+  );
+}
+
 // Clearance by role. Analysts and policymakers work with aggregates and trends
 // and have no operational need for the identity of a victim or complainant;
 // investigators and above do.
@@ -45,29 +123,103 @@ const REDACTED = '[redacted]';
 
 // ── Tier 1 ──────────────────────────────────────────────────────────────────
 
-// Redact rows before they reach the model. Returns the rows plus a record of
-// which fields were removed and why.
-function filterRows(rows, role) {
+/**
+ * Redact rows before they reach the model.
+ *
+ * `options.reason` is the officer's stated purpose for reaching protected
+ * material. Absent — the normal case — protected identity is withheld and the
+ * caller is told it can be unlocked by saying why. Present, and with the
+ * clearance to match, it is released and the access is reported back for the
+ * audit trail. It is never validated: the deterrent is the record, not a
+ * string check.
+ *
+ * Returns `protectedAccess` whenever protected rows were involved at all, so
+ * the caller writes an audit event for a REFUSED reach as well as a granted
+ * one. An attempt that was blocked is the more interesting of the two.
+ */
+function filterRows(rows, role, options) {
   const clearance = clearanceOf(role);
+  const reason = String((options && options.reason) || '').trim();
   const removed = new Map();
+  const coarsened = new Map();
+  let protectedRows = 0;
+  let protectedFields = 0;
+
   const out = (Array.isArray(rows) ? rows : []).map((row) => {
     if (!row || typeof row !== 'object') return row;
+    const guarded = isProtected(row);
+    if (guarded) protectedRows++;
     const copy = {};
     for (const [k, v] of Object.entries(row)) {
+      // Protected identity outranks the ordinary tier: on these cases even a
+      // cleared officer must say why before the name is released.
+      if (guarded && PROTECTED_FIELDS.has(k)
+          && !(reason && clearance >= PROTECTED_CLEARANCE)) {
+        copy[k] = PROTECTED_MARK;
+        protectedFields++;
+        continue;
+      }
       const tier = FIELD_TIERS[k];
       if (tier !== undefined && clearance < tier) {
-        copy[k] = REDACTED;
-        removed.set(k, (removed.get(k) || 0) + 1);
+        const soft = COARSEN[k];
+        if (soft && clearance >= soft.floor) {
+          copy[k] = coarsen(v, soft.precision);
+          coarsened.set(k, (coarsened.get(k) || 0) + 1);
+        } else {
+          copy[k] = REDACTED;
+          removed.set(k, (removed.get(k) || 0) + 1);
+        }
       } else {
         copy[k] = v;
       }
     }
     return copy;
   });
+
+  const redactions = [
+    ...[...removed.entries()].map(([field, count]) => ({ field, count, tier: FIELD_TIERS[field], action: 'redacted' })),
+    ...[...coarsened.entries()].map(([field, count]) => ({
+      field, count, tier: FIELD_TIERS[field], action: 'coarsened',
+      detail: `rounded to ${COARSEN[field].precision} dp (~11 km)`,
+    })),
+  ];
+  if (protectedFields) {
+    redactions.push({ field: 'protected-identity', count: protectedFields, tier: PROTECTED_CLEARANCE, action: 'withheld' });
+  }
+
   return {
     rows: out,
-    redactions: [...removed.entries()].map(([field, count]) => ({ field, count, tier: FIELD_TIERS[field] })),
+    redactions,
+    ...(protectedRows ? {
+      protectedAccess: {
+        rows: protectedRows,
+        fieldsWithheld: protectedFields,
+        granted: protectedFields === 0 && !!reason,
+        reason: reason || null,
+        cleared: clearance >= PROTECTED_CLEARANCE,
+      },
+    } : {}),
   };
+}
+
+/**
+ * What to tell the officer when protected identity was withheld.
+ *
+ * Two different refusals, and conflating them would waste an officer's time:
+ * one is unlockable by stating a purpose, the other is not unlockable at all
+ * at their clearance and no amount of typing will change it.
+ */
+function protectedNotice(access) {
+  if (!access || !access.fieldsWithheld) return null;
+  if (!access.cleared) {
+    return 'Victim and complainant identity on offences against women and children '
+      + 'is restricted to investigators and above. The case details above are complete '
+      + 'in every other respect.';
+  }
+  return 'Victim and complainant identity is withheld on offences against women and '
+    + 'children (BNS s.72, POCSO s.23). Ask again stating why you need it for this '
+    + 'case — the name will be released and your reason recorded in the audit trail '
+    + 'against your badge.';
 }
 
 // Free-text excerpts (OCR'd scans, document chunks) can't be filtered by field,
@@ -112,6 +264,14 @@ const describe = (redactions) =>
 
 module.exports = {
   FIELD_TIERS,
+  COARSEN,
+  PROTECTED_HEADS,
+  PROTECTED_SUBHEADS,
+  PROTECTED_FIELDS,
+  PROTECTED_CLEARANCE,
+  PROTECTED_MARK,
+  isProtected,
+  protectedNotice,
   ROLE_CLEARANCE,
   clearanceOf,
   filterRows,

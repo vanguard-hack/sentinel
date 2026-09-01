@@ -387,7 +387,7 @@ function stationsInDistrict(name) {
   return stations.length ? { districtId, stations } : { error: `No police stations listed for "${name}".` };
 }
 
-async function joinRecords(app, input, role) {
+async function joinRecords(app, input, role, access) {
   const { where, district, attach, attach_where: attachWhere, count_only: countOnly } = input || {};
   if (attach && !JOINABLE.has(attach)) {
     return { error: `Cannot attach "${attach}". Available: ${[...JOINABLE].join(', ')}.` };
@@ -420,12 +420,17 @@ async function joinRecords(app, input, role) {
 
   if (!attach) {
     const enriched = zcql.enrichRows(baseRows);
-    const filtered = redaction.filterRows(enriched, role);
+    const filtered = redaction.filterRows(enriched, role, access);
     return {
       matched_cases: ids.length,
       ...(countOnly ? {} : { rows: (filtered.rows || enriched).slice(0, MAX_ROWS) }),
       ...(!countOnly && enriched.length > MAX_ROWS ? { note: `${enriched.length} cases matched, showing ${MAX_ROWS}.` } : {}),
       _redactions: filtered.redactions || [],
+      ...(filtered.protectedAccess ? {
+        _protectedAccess: filtered.protectedAccess,
+        ...(filtered.protectedAccess.fieldsWithheld
+          ? { protected_notice: redaction.protectedNotice(filtered.protectedAccess) } : {}),
+      } : {}),
     };
   }
   if (!ids.length) return { matched_cases: 0, attached_count: 0, note: 'No cases matched the filter, so nothing to attach.' };
@@ -445,7 +450,7 @@ async function joinRecords(app, input, role) {
   const hits = attachRows.filter((r) => idSet.has(String(r.CaseMasterID)));
 
   const enriched = zcql.enrichRows(hits);
-  const filtered = redaction.filterRows(enriched, role);
+  const filtered = redaction.filterRows(enriched, role, access);
   const casesWithHit = new Set(hits.map((r) => String(r.CaseMasterID))).size;
 
   return {
@@ -457,10 +462,15 @@ async function joinRecords(app, input, role) {
     ...(!countOnly && hits.length > MAX_ROWS ? { note: `${hits.length} rows matched, showing ${MAX_ROWS}. The counts above are complete.` } : {}),
     ...(filtered.redactions && filtered.redactions.length ? { withheld: redaction.describe(filtered.redactions) } : {}),
     _redactions: filtered.redactions || [],
+    ...(filtered.protectedAccess ? {
+      _protectedAccess: filtered.protectedAccess,
+      ...(filtered.protectedAccess.fieldsWithheld
+        ? { protected_notice: redaction.protectedNotice(filtered.protectedAccess) } : {}),
+    } : {}),
   };
 }
 
-async function queryRecords(app, { zcql: statement, rollup }, role) {
+async function queryRecords(app, { zcql: statement, rollup }, role, access) {
   const verdict = zcql.validateZcql(String(statement || ''));
   if (!verdict.ok) {
     return {
@@ -484,7 +494,7 @@ async function queryRecords(app, { zcql: statement, rollup }, role) {
 
   // Tier 1. The rows are about to become prompt text; this is the last point
   // at which a field the caller cannot see can still be removed.
-  const filtered = redaction.filterRows(flat, role);
+  const filtered = redaction.filterRows(flat, role, access);
   const rows = (filtered.rows || flat).slice(0, MAX_ROWS);
 
   return {
@@ -497,6 +507,11 @@ async function queryRecords(app, { zcql: statement, rollup }, role) {
       ? { withheld: redaction.describe(filtered.redactions) }
       : {}),
     _redactions: filtered.redactions || [],
+    ...(filtered.protectedAccess ? {
+      _protectedAccess: filtered.protectedAccess,
+      ...(filtered.protectedAccess.fieldsWithheld
+        ? { protected_notice: redaction.protectedNotice(filtered.protectedAccess) } : {}),
+    } : {}),
   };
 }
 
@@ -512,14 +527,14 @@ async function queryRecords(app, { zcql: statement, rollup }, role) {
  * turn ending.
  */
 async function run(name, input, deps) {
-  const { app, role, ragSearch, digitisedSearch } = deps;
+  const { app, role, ragSearch, digitisedSearch, access } = deps;
   try {
     switch (name) {
       case 'lookup_reference':
         return lookupReference(input || {});
 
       case 'query_records':
-        return await queryRecords(app, input || {}, role);
+        return await queryRecords(app, input || {}, role, access);
 
       case 'search_knowledge_base': {
         if (typeof ragSearch !== 'function') return { error: 'Knowledge base unavailable.' };
@@ -535,7 +550,7 @@ async function run(name, input, deps) {
         return lookupLaw(input || {});
 
       case 'join_records':
-        return await joinRecords(app, input || {}, role);
+        return await joinRecords(app, input || {}, role, access);
 
       case 'traverse_network': {
         const res = await network.run(app, input || {});
@@ -545,7 +560,7 @@ async function run(name, input, deps) {
         const withheld = [];
         const scrub = (rows) => {
           if (!Array.isArray(rows)) return rows;
-          const f = redaction.filterRows(rows, role);
+          const f = redaction.filterRows(rows, role, access);
           if (f.redactions && f.redactions.length) withheld.push(...f.redactions);
           return (f.rows || rows).slice(0, MAX_ROWS);
         };

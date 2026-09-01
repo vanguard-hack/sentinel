@@ -50,13 +50,22 @@ check('an unknown route name is rejected, not passed through',
   parseRouteReply('{"route":"SQL","confidence":0.9}') === null);
 
 // ── Tier 1: clearance filter ──────────────────────────────────────────────
-const rows = [{ CrimeNo: '42/2026', VictimName: 'A Kumar', AccusedName: 'B Rao', latitude: 12.9, Total: 7 }];
+const rows = [{ CrimeNo: '42/2026', VictimName: 'A Kumar', AccusedName: 'B Rao', latitude: 12.976543, Total: 7 }];
 const asAnalyst = redaction.filterRows(rows, 'analyst');
 const asInvestigator = redaction.filterRows(rows, 'investigator');
 check('an analyst never receives victim identity',
   asAnalyst.rows[0].VictimName === '[redacted]');
+// Coarsened rather than deleted: an analyst has no need for the doorstep and
+// every need for the neighbourhood. Deleting the coordinate answered the
+// privacy question by breaking the map for the roles that live in it.
 check('an analyst never receives a precise location',
-  asAnalyst.rows[0].latitude === '[redacted]');
+  asAnalyst.rows[0].latitude !== 12.976543);
+check('but does receive a usable one — the ~11 km grid cell',
+  asAnalyst.rows[0].latitude === 13);
+check('coarsening is recorded as such, not as a deletion',
+  asAnalyst.redactions.some((r) => r.field === 'latitude' && r.action === 'coarsened'));
+check('a caller with no recognised role still gets nothing',
+  redaction.filterRows(rows, null).rows[0].latitude === '[redacted]');
 check('aggregates survive redaction, so analytics still work',
   asAnalyst.rows[0].Total === 7 && asAnalyst.rows[0].CrimeNo === '42/2026');
 check('an investigator sees the case they are working',

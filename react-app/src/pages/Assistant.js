@@ -4,7 +4,7 @@ import {
   Plus, MessageSquare, Trash2,
   Paperclip, Mic, ArrowUp, X, Shield, FileText, PanelLeft,
   Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, MoreVertical,
-  Star, Pencil, FileDown, CheckSquare, AlertTriangle,
+  Star, Pencil, FileDown, CheckSquare, AlertTriangle, ShieldAlert,
 } from 'lucide-react';
 import {
   loadSessions, saveSessions, makeTitle, newSession, generateReply, uid,
@@ -43,6 +43,65 @@ import { useTranslation } from 'react-i18next';
  * It renders only when there is something to report, so its presence carries
  * meaning. A badge on every answer would be wallpaper within a day.
  */
+/**
+ * Victim identity was withheld — say why you need it.
+ *
+ * Two shapes, because there are two different refusals and telling an officer
+ * to "state a reason" when their clearance is the blocker wastes their time on
+ * a box that cannot help them. `can_unlock` decides which they see.
+ *
+ * The reason is not checked against anything and is not meant to be. What
+ * deters misuse is that the access carries a badge, a case and a stated
+ * purpose into a tamper-evident log — so the box is deliberately free text and
+ * the consequence is stated plainly above it, not buried in a tooltip.
+ */
+function ProtectedAccessPanel({ access, onRequest, busy }) {
+  const [reason, setReason] = useState('');
+  if (!access || !access.notice) return null;
+
+  if (!access.can_unlock) {
+    return (
+      <div className="as-protected">
+        <ShieldAlert size={14} aria-hidden="true" />
+        <span>{access.notice}</span>
+      </div>
+    );
+  }
+
+  const submit = (e) => {
+    e.preventDefault();
+    const r = reason.trim();
+    if (r.length < 10 || busy) return;
+    onRequest(r);
+  };
+
+  return (
+    <div className="as-protected">
+      <div className="as-protected-head">
+        <ShieldAlert size={14} aria-hidden="true" />
+        <span>{access.notice}</span>
+      </div>
+      <form className="as-protected-form" onSubmit={submit}>
+        <input
+          type="text"
+          className="as-protected-input"
+          placeholder="Why do you need the victim's identity on this case?"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          maxLength={300}
+          aria-label="Reason for accessing protected identity"
+        />
+        <button type="submit" className="as-protected-btn" disabled={reason.trim().length < 10 || busy}>
+          {busy ? 'Requesting…' : 'Request access'}
+        </button>
+      </form>
+      <p className="as-protected-foot">
+        Recorded against your badge with this case, permanently, whether or not you act on it.
+      </p>
+    </div>
+  );
+}
+
 function GroundingWarning({ grounding }) {
   if (!grounding || !grounding.warning) return null;
   return (
@@ -145,6 +204,17 @@ export default function Assistant() {
 
   const active = sessions.find((s) => s.id === activeId) || null;
   const messages = useMemo(() => active?.messages || [], [active]);
+
+  // The question that produced a given answer. Re-asking with a stated reason
+  // must repeat the ORIGINAL wording: a re-typed, shortened second version
+  // would not match what the audit trail records as having been asked.
+  const lastUserQuestion = useCallback((assistantId) => {
+    const i = messages.findIndex((m) => m.id === assistantId);
+    for (let j = (i < 0 ? messages.length : i) - 1; j >= 0; j--) {
+      if (messages[j].role === 'user' && messages[j].content) return messages[j].content;
+    }
+    return '';
+  }, [messages]);
   // Normalised once per render of the thread, not once per chip: conversations
   // saved before the unified contract hold plain strings, and every consumer
   // below needs the same shape.
@@ -362,7 +432,7 @@ export default function Assistant() {
     setConfirmBulk(false);
   };
 
-  const send = useCallback(async (override) => {
+  const send = useCallback(async (override, accessReason = '') => {
     const text = (typeof override === 'string' ? override : input).trim();
     if ((!text && attachments.length === 0) || sending) return;
 
@@ -460,7 +530,7 @@ export default function Assistant() {
             .map((r) => (r.status === 'fulfilled' ? r.value : null))
             .filter((d) => d && d.ok)
         : [];
-      const reply = await generateReply(history, digests, docs, sessionId);
+      const reply = await generateReply(history, digests, docs, sessionId, accessReason);
       const botMsg = {
         id: uid(),
         role: 'assistant',
@@ -469,6 +539,7 @@ export default function Assistant() {
         sources: reply.sources,
         source: reply.source,
         grounding: reply.grounding,
+        protectedAccess: reply.protectedAccess,
         ts: Date.now(),
       };
       const fullMessages = [...history, botMsg];
@@ -896,6 +967,17 @@ export default function Assistant() {
                       )}
                       {m.role === 'assistant' && <AguiRenderer components={m.components} />}
                       {m.role === 'assistant' && <GroundingWarning grounding={m.grounding} />}
+                      {m.role === 'assistant' && (
+                        <ProtectedAccessPanel
+                          access={m.protectedAccess}
+                          busy={sending}
+                          // Re-asks the question the officer already asked,
+                          // now carrying their reason. Re-typing it would
+                          // invite a shortened second version that does not
+                          // match what the audit trail says was asked.
+                          onRequest={(reason) => send(lastUserQuestion(m.id), reason)}
+                        />
+                      )}
                       {m.role === 'assistant' && (
                         <SourceCitations
                           sources={sourcesByMessage.get(m.id)}

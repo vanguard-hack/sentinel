@@ -122,8 +122,19 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /i === TOOL_MAX_ITERATIONS - 1 \|\| outOfTime[\s\S]{0,60}\?\s*\{\}/.test(loop));
   check('parallel tool results go back in ONE user message',
     /Promise\.all\([\s\S]{0,900}?messages\.push\(\{ role: 'user', content: results \}\)/.test(loop));
+  // Asserts the PROPERTY, not the literal list: every underscore-prefixed key
+  // this module emits must appear in the loop's strip. Pinning the exact
+  // destructuring meant adding one internal field broke the test while a
+  // forgotten one — the failure that actually matters, because it leaks
+  // bookkeeping into the prompt — would have passed unnoticed.
+  const internalKeys = [...new Set(
+    (require('fs').readFileSync(__dirname + '/tools.js', 'utf8')
+      .match(/^\s*_[a-zA-Z]+:/gm) || []).map((k) => k.trim().replace(':', ''))
+  )];
+  const stripped = loop.match(/const \{([^}]*)\.\.\.clean \}/);
   check('internal bookkeeping is stripped before results reach the model',
-    /const \{ _redactions, _hits, \.\.\.clean \}/.test(loop));
+    !!stripped && internalKeys.every((k) => stripped[1].includes(k)),
+    stripped ? `missing: ${internalKeys.filter((k) => !stripped[1].includes(k)).join(', ')}` : 'no destructure found');
   check('a tool error is marked as one so the model knows to fix it',
     /is_error: true/.test(loop));
   check('the loop never throws — it returns null and the old lanes take over',

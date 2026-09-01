@@ -432,7 +432,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           .join('')
           .trim();
         if (!text) return null;
-        return { text, used, rowSets, scanHits, usedKnowledgeBase, iterations: i + 1 };
+        return { text, used, rowSets, scanHits, usedKnowledgeBase, protectedAccess, iterations: i + 1 };
       }
 
       messages.push({ role: 'assistant', content: res.content });
@@ -442,11 +442,12 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
         calls.map(async (c) => {
           const out = await assistantTools.run(c.name, c.input, deps);
           used.push(`${c.name}${out && out.error ? ':error' : ''}`);
+          if (out && out._protectedAccess) protectedAccess.push(out._protectedAccess);
           if (c.name === 'query_records' && out && Array.isArray(out.rows) && out.rows.length) {
             rowSets.push({ rows: out.rows, query: (c.input && c.input.zcql) || '' });
           }
           // Internal bookkeeping never goes back to the model.
-          const { _redactions, _hits, ...clean } = out || {};
+          const { _redactions, _hits, _protectedAccess, ...clean } = out || {};
           return {
             type: 'tool_result',
             tool_use_id: c.id,
@@ -3782,6 +3783,13 @@ module.exports = async (req, res) => {
     // check by forgetting an argument.
     const evidence = grounding.collector();
     let groundingResult = null; // the verdict, shared with the decision record
+    // Break-glass. The officer's stated purpose for reaching victim or
+    // complainant identity on an offence against a woman or a child. Never
+    // validated — it is recorded. See redaction.js for why the record, rather
+    // than a parser, is the control.
+    const accessReason = String(body.access_reason || '').trim().slice(0, 300);
+    const access = accessReason ? { reason: accessReason } : null;
+    const protectedReaches = []; // every protected reach this turn, granted or not
     // Mirrors `history`, which is declared further down — the slash-command
     // lanes return through respondWith BEFORE that declaration runs, and
     // reading a `let` from its temporal dead zone throws. Those lanes have no
@@ -3877,6 +3885,17 @@ module.exports = async (req, res) => {
             ? `grounding=FLAGGED:${groundingResult.unsupported.map((u) => u.value).join(',') || 'contradiction'}`
             : groundingResult ? 'grounding=ok' : null,
         ].filter(Boolean);
+        const protectedEvents = protectedReaches.map((pa) => ({
+          action: pa.granted ? 'protected-access-granted' : 'protected-access-refused',
+          feature: 'Assistant',
+          path: (pc && pc.current_module) || '/assistant',
+          detail: [
+            `rows=${pa.rows}`,
+            `cleared=${pa.cleared ? 'yes' : 'no'}`,
+            pa.granted ? `reason=${pa.reason}` : 'reason=none stated',
+            pa.granted ? 'identity=released' : `identity=withheld(${pa.fieldsWithheld})`,
+          ].join(' '),
+        }));
         await storeAuditEvents(req, clearanceApp, clearanceBucket, [{
           action: 'assistant-query',
           feature: 'Assistant',
@@ -3884,7 +3903,7 @@ module.exports = async (req, res) => {
           detail: parts.join(' '),
           // The detail column is capped; the array itself is stored whole.
           sources: attribution.forAudit(citedSources),
-        }, ...memoryAudit], callerUser);
+        }, ...protectedEvents, ...memoryAudit], callerUser);
       } catch {
         // Auditing must never take an answer away from the officer.
       }
@@ -3955,6 +3974,11 @@ module.exports = async (req, res) => {
       }
       const groundingWarning = groundingResult ? grounding.warning(groundingResult) : null;
 
+      // Protected identity: say what was withheld and how to reach it, rather
+      // than letting the officer read a case file with silent holes in it.
+      const withheldReach = protectedReaches.find((pa) => pa.fieldsWithheld > 0);
+      const protectedNotice = withheldReach ? redaction.protectedNotice(withheldReach) : null;
+
       // finalAnswer runs the tier-2 guard and writes the decision record, so
       // the citations have to be settled before it is called.
       const answer = await finalAnswer(text, responseLang);
@@ -3979,6 +4003,18 @@ module.exports = async (req, res) => {
         sources: shownSources,
         ...(groundingWarning
           ? { grounding: { warning: groundingWarning, ...groundingResult } }
+          : {}),
+        ...(protectedNotice
+          ? {
+            protected_access: {
+              notice: protectedNotice,
+              // False when the officer's clearance is the blocker — no reason
+              // they can type will change that, and offering the box would be
+              // a dead end dressed as a remedy.
+              can_unlock: !!withheldReach.cleared,
+              reason_given: withheldReach.reason,
+            },
+          }
           : {}),
         detected_lang: lid.lang,
         response_lang: responseLang,
@@ -4414,9 +4450,11 @@ module.exports = async (req, res) => {
           role: callerRole,
           req,
           bucket: clearanceBucket,
+          access,
         });
         if (looped) {
           validatorChecks.push(`tools:${looped.used.join(',')}|iterations=${looped.iterations}`);
+          protectedReaches.push(...(looped.protectedAccess || []));
           const cites = [];
           for (const set of looped.rowSets) {
             evidence.add(set.rows, (set.rows || []).length);
@@ -4569,11 +4607,12 @@ module.exports = async (req, res) => {
             // a caller without clearance never has the data in their context
             // and the model is never shown what it must not repeat.
             {
-              const filtered = redaction.filterRows(flat, await resolveCaller());
+              const filtered = redaction.filterRows(flat, await resolveCaller(), access);
               flat = filtered.rows;
               redactionLog = redactionLog.concat(
                 filtered.redactions.map((r) => ({ ...r, stage: 'pre-retrieval', source: 'zcql' }))
               );
+              if (filtered.protectedAccess) protectedReaches.push(filtered.protectedAccess);
             }
             // The FULL filtered set, not the 20-60 rows the prose prompt gets:
             // an identifier the model saw is supported, and feeding fewer rows
