@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { isIfsc, isPin, lookupIfscMany, lookupPin } from '../utils/publicRefs';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   AlertTriangle, Check, Copy, FileDown, FileText, Pencil, RotateCcw,
@@ -7,6 +8,78 @@ import {
 import TopBar from '../components/TopBar';
 import { getRecord, updateRecord, fetchScanUrl, fetchFileUrl } from '../utils/digitise';
 import { provenanceOf, isMedia, isPaper, sizeOf } from '../utils/provenance';
+
+
+/**
+ * Resolve the reference codes OCR pulled off a scanned page.
+ *
+ * A charge-sheet annexure or a bank statement carries IFSC codes and PIN codes
+ * that mean nothing to an officer reading them as strings. Both resolve through
+ * free public directories that carry no case content — an IFSC is printed on
+ * every cheque book — so this is one of the few outward calls with no clearance
+ * question attached, and it is worth making: "KARB0000123" becomes a branch in
+ * Bangalore, and "587101" becomes Bijapur.
+ *
+ * Renders nothing at all when the page has no codes in it, which is most pages.
+ */
+function ScannedRefs({ text }) {
+  const [refs, setRefs] = useState([]);
+
+  const codes = useMemo(() => {
+    const body = String(text || '');
+    const ifsc = [...new Set((body.toUpperCase().match(/\b[A-Z]{4}0[A-Z0-9]{6}\b/g) || []))]
+      .filter(isIfsc).slice(0, 12);
+    // Bounded by a word boundary on both sides so a six-digit run inside a
+    // longer number — an account, a case number, a phone — is not read as a PIN.
+    const pins = [...new Set((body.match(/(?<![\d-])[1-9]\d{5}(?![\d-])/g) || []))]
+      .filter(isPin).slice(0, 8);
+    return { ifsc, pins };
+  }, [text]);
+
+  useEffect(() => {
+    let alive = true;
+    if (!codes.ifsc.length && !codes.pins.length) { setRefs([]); return undefined; }
+    Promise.all([
+      lookupIfscMany(codes.ifsc),
+      Promise.all(codes.pins.map((p) => lookupPin(p))),
+    ]).then(([banks, pins]) => {
+      if (!alive) return;
+      setRefs([
+        ...[...banks.values()].map((b) => ({
+          key: b.ifsc, code: b.ifsc, kind: 'Bank branch',
+          value: [b.bank, b.branch].filter(Boolean).join(' — '),
+          where: [b.district, b.state].filter(Boolean).join(', '),
+        })),
+        ...pins.filter(Boolean).map((p) => ({
+          key: p.pin, code: p.pin, kind: 'Postal area',
+          value: p.localities.slice(0, 4).join(', '),
+          where: [p.district, p.state].filter(Boolean).join(', '),
+        })),
+      ]);
+    }).catch(() => { /* the panel simply does not appear */ });
+    return () => { alive = false; };
+  }, [codes]);
+
+  if (!refs.length) return null;
+  return (
+    <div className="dg-refs">
+      <h3 className="dg-h3">Codes on this page</h3>
+      <p className="aa-hint">
+        Resolved from public directories. Nothing about this record left Sentinel — only the code
+        itself, which is public reference data.
+      </p>
+      <ul>
+        {refs.map((r) => (
+          <li key={r.key}>
+            <code>{r.code}</code>
+            <span><b>{r.value}</b>{r.where && <em>{r.where}</em>}</span>
+            <span className="dg-ref-kind">{r.kind}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export default function RecordDetail() {
   const { recordId } = useParams();
@@ -197,6 +270,7 @@ export default function RecordDetail() {
 
           <div className="dg-extract">
             {rec.summary && <p className="dg-summary">{rec.summary}</p>}
+            <ScannedRefs text={`${rec.text || ''} ${Object.values(rec.fields || {}).join(' ')}`} />
 
             {!!Object.keys(rec.fields || {}).length && (
               <>

@@ -101,6 +101,41 @@ export const TYPOLOGIES = {
 const CH_NORMAL = ['UPI', 'Bank transfer'];
 const RS = (rnd, lo, hi) => lo + Math.floor(rnd() * (hi - lo));
 
+
+// ── Real branch codes, for synthetic accounts ─────────────────────────────
+//
+// The accounts in this module are invented; the BRANCHES they sit at are not.
+// Each shell or mule account is pinned to a genuine Karnataka IFSC, so
+// resolving it through the public IFSC directory (see utils/publicRefs) turns
+// "SHELL-4821" into "Karnataka Bank, Vidyaranyapura, Bangalore" and the money
+// acquires a geography — which is the question an investigator actually asks
+// about layering: where did it go.
+//
+// Every code below was verified against the live directory rather than
+// guessed, and they are spread across districts on purpose: a laundering chain
+// that never leaves one branch demonstrates nothing.
+//
+// Nothing here makes the transactions real. The generator still synthesises
+// them, the UI still says so, and the only genuine thing on the screen is which
+// branch a code belongs to.
+export const BRANCH_POOL = [
+  'KARB0000123', // Karnataka Bank, Vidyaranyapura, Bangalore
+  'HDFC0000053', // HDFC, Koramangala, Bangalore
+  'ICIC0000002', // ICICI, M G Road, Bangalore
+  'BARB0BANGAL', // Bank of Baroda, K G Road, Bangalore
+  'CNRB0000789', // Canara Bank, Kempegowdanagar, Bangalore
+  'SBIN0000813', // SBI, Bangalore
+  'KARB0000456', // Karnataka Bank, Kodigehalli, Bangalore Rural
+  'SBIN0040650', // SBI, Shirur Park, Hubli-Dharwad
+  'SBIN0040200', // SBI, ADB Hassan
+  'SBIN0040300', // SBI, Bijapur
+  'KARB0000300', // Karnataka Bank, Shimoga
+  'SBIN0040150', // SBI, Kundapura
+  'CNRB0000456', // Canara Bank, Ponnampet
+  'SBIN0040350', // SBI, Honganur, Ramanagara
+  'SBIN0040101', // SBI, Koratagere, Tumkur
+];
+
 // Synthesise a directed transaction graph whose structure embeds real ML
 // typologies, then re-detect those typologies from the graph (so detection is
 // principled, not just echoing the generator).
@@ -118,9 +153,17 @@ export function buildFinancialTrails({ cases, accused }) {
   const entityLabel = new Map();
   const entityKind = new Map(); // person | shell | mule
   byPerson.forEach((agg, p) => { entityLabel.set(p, agg.name); entityKind.set(p, 'person'); });
+  // Which branch each synthetic account sits at. Seeded from the account id, so
+  // the same account is always at the same branch across reloads — a mule that
+  // moves bank every refresh is not evidence of anything.
+  const entityBranch = new Map();
   const acct = (prefix, seed) => {
     const id = `${prefix}-${1000 + (seed % 9000)}`;
-    if (!entityLabel.has(id)) { entityLabel.set(id, id); entityKind.set(id, prefix === 'MULE' ? 'mule' : 'shell'); }
+    if (!entityLabel.has(id)) {
+      entityLabel.set(id, id);
+      entityKind.set(id, prefix === 'MULE' ? 'mule' : 'shell');
+      entityBranch.set(id, BRANCH_POOL[Math.abs(djb2(id)) % BRANCH_POOL.length]);
+    }
     return id;
   };
 
@@ -268,7 +311,15 @@ export function buildFinancialTrails({ cases, accused }) {
   txns.forEach((t) => {
     if (!topSet.has(t.from) && !topSet.has(t.to)) return;
     [t.from, t.to].forEach((e) => {
-      if (!nodes.has(e)) nodes.set(e, { id: e, label: entityLabel.get(e) || e, group: entityKind.get(e) === 'mule' ? 'Mule' : entityKind.get(e) === 'shell' ? 'Shell' : 'Person' });
+      if (!nodes.has(e)) {
+        nodes.set(e, {
+          id: e,
+          label: entityLabel.get(e) || e,
+          group: entityKind.get(e) === 'mule' ? 'Mule' : entityKind.get(e) === 'shell' ? 'Shell' : 'Person',
+          // Only accounts have a branch; a person is not held at one.
+          ifsc: entityBranch.get(e) || null,
+        });
+      }
     });
     links.push({ source: t.from, target: t.to });
   });
@@ -281,7 +332,14 @@ export function buildFinancialTrails({ cases, accused }) {
     value: flagged.reduce((s, t) => s + t.amount, 0),
   };
 
-  return { summary, alerts, typologyCounts, flagged, netSpec: { nodes: [...nodes.values()], links } };
+  // Every branch the money touches, so the caller can resolve them in one pass
+  // rather than a request per node.
+  const branches = [...new Set([...nodes.values()].map((n) => n.ifsc).filter(Boolean))];
+
+  return {
+    summary, alerts, typologyCounts, flagged, branches,
+    netSpec: { nodes: [...nodes.values()], links },
+  };
 }
 
 function buildNarrative(typ, inD, outD) {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { lookupIfscMany } from '../utils/publicRefs';
 import { AlertTriangle, RefreshCw, Landmark, ChevronLeft, ChevronRight } from 'lucide-react';
 import { fetchFinancialData, buildFinancialTrails, formatRs, TYPOLOGIES } from '../utils/financial';
 import NetworkGraph from './NetworkGraph';
@@ -61,7 +62,47 @@ export default function FinancialTrails() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const { summary, alerts, typologyCounts, flagged, netSpec } = data || {};
+  const { summary, alerts, typologyCounts, flagged, netSpec, branches } = data || {};
+
+  // Where the money physically sits.
+  //
+  // The accounts are synthesised; the BRANCHES are real, resolved live through
+  // the public IFSC directory. That directory is keyless and carries nothing
+  // about the case — an IFSC is printed on every cheque book — so this is one of
+  // the few outward calls in Sentinel with no clearance question attached.
+  //
+  // It fails soft in both directions: no network and the accounts read exactly
+  // as they did before, which is how they read today.
+  const [branchInfo, setBranchInfo] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    if (!branches || !branches.length) { setBranchInfo(null); return undefined; }
+    lookupIfscMany(branches)
+      .then((m) => { if (alive) setBranchInfo(m); })
+      .catch(() => { /* the panel simply does not appear */ });
+    return () => { alive = false; };
+  }, [branches]);
+
+  // Which districts the flagged money moved through, most-touched first. This
+  // is the question layering is actually about: a chain that stays in one
+  // branch is a bookkeeping error, one that crosses six districts is a
+  // structure somebody built.
+  const districts = useMemo(() => {
+    if (!branchInfo || !netSpec) return [];
+    const count = new Map();
+    for (const n of netSpec.nodes) {
+      const b = n.ifsc && branchInfo.get(n.ifsc);
+      if (!b || !b.district) continue;
+      const key = b.district.replace(/\b\w/g, (c) => c.toUpperCase());
+      if (!count.has(key)) count.set(key, { district: key, accounts: 0, banks: new Set() });
+      const row = count.get(key);
+      row.accounts += 1;
+      row.banks.add(b.bank);
+    }
+    return [...count.values()]
+      .map((r) => ({ ...r, banks: [...r.banks] }))
+      .sort((a, b) => b.accounts - a.accounts);
+  }, [branchInfo, netSpec]);
 
   // Distinct option lists for the filter dropdowns.
   const channelOpts = useMemo(
@@ -141,6 +182,35 @@ export default function FinancialTrails() {
           </div>
         </div>
       </section>
+
+      {/* Where the money went — real branches behind synthetic accounts */}
+      {districts.length > 1 && (
+        <section id="fin-geography" className="rp-card rp-card-wide">
+          <div className="rp-card-head">
+            <h2>Where the money moved</h2>
+            <span className="rp-card-sub">
+              Branches resolved live from the public IFSC directory. The accounts are synthesised;
+              the branches they sit at are real.
+            </span>
+          </div>
+          <div className="rp-card-body">
+            <p className="aa-hint">
+              {districts.length} districts touched by the flagged accounts. Layering that crosses
+              jurisdictions is the pattern worth a second look — a chain inside one branch is
+              bookkeeping.
+            </p>
+            <ul className="ft-geo">
+              {districts.map((d) => (
+                <li key={d.district}>
+                  <b>{d.district}</b>
+                  <span>{d.accounts} account{d.accounts === 1 ? '' : 's'}</span>
+                  <em>{d.banks.join(', ')}</em>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
 
       {/* Typology breakdown */}
       <section id="fin-typologies" className="rp-card rp-card-wide">
