@@ -53,9 +53,14 @@ export const FSL_STATUSES = ['Not sent', 'Sent — pending', 'Report received'];
 export const TIMELINE_TYPES = ['Arrest', 'Search', 'Remand Application', 'Forensic Request', 'Surrender', 'Court Date', 'Other'];
 export const FINDING_TYPES = ['Observation', 'Working theory', 'Pending action'];
 
+// Six statuses, six colours. Cold and Closed shared grey, which made the two
+// states an officer most needs to tell apart indistinguishable — one means the
+// file is finished and one means it has stalled, which are opposite facts.
+// Cold takes red because that is what the rest of Sentinel already says about
+// it: coldCaseFlag raises it, and the Action Queue carries it as an obligation.
 const STATUS_COLORS = {
   Open: 'blue', 'Under Investigation': 'amber', 'Chargesheet Filed': 'green',
-  Cold: 'grey', Closed: 'grey', Reopened: 'purple',
+  Cold: 'red', Closed: 'grey', Reopened: 'purple',
 };
 export const statusColor = (s) => STATUS_COLORS[s] || 'grey';
 

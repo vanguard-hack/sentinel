@@ -117,3 +117,53 @@ test('every page using the shell puts its content in a page-body', () => {
   }
   expect(offenders).toEqual([]);
 });
+
+// ── Case status colours ───────────────────────────────────────────────────
+//
+// Two defects behind one complaint. The dropdown reused the CHIP classes on a
+// 9px dot, and those set a 16% tint as the background — so every status read as
+// the same pale smudge. And Cold and Closed both mapped to grey, which made the
+// two states an officer most needs to tell apart identical: one says the file
+// is finished, the other says it has stalled.
+import { statusColor, STATUS_OPTIONS } from '../utils/investigation';
+
+test('every case status has its own colour', () => {
+  const used = STATUS_OPTIONS.map(statusColor);
+  expect(new Set(used).size).toBe(STATUS_OPTIONS.length);
+});
+
+test('Cold and Closed are not the same colour', () => {
+  // Opposite facts about a file. Sharing grey made the colour coding a lie.
+  expect(statusColor('Cold')).not.toBe(statusColor('Closed'));
+});
+
+test('Cold is coloured as the problem the rest of the app says it is', () => {
+  // coldCaseFlag raises it and the Action Queue carries it as an obligation.
+  expect(statusColor('Cold')).toBe('red');
+});
+
+test('an unknown status still resolves rather than rendering colourless', () => {
+  expect(statusColor('Nonsense')).toBe('grey');
+  expect(statusColor(undefined)).toBe('grey');
+});
+
+test('the dot takes a solid colour, not the chip tint', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'index.css'), 'utf8');
+  const dot = css.slice(css.indexOf('span.inv-status-dot {'));
+  expect(dot.slice(0, 200)).toMatch(/background:\s*currentColor/);
+});
+
+test('every status colour clears 4.5:1 against white', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'index.css'), 'utf8');
+  const lum = (h) => {
+    const p = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
+  };
+  const weak = [];
+  for (const m of css.matchAll(/\.inv-status-(\w+) \{[^}]*color: (#[0-9a-f]{6})/g)) {
+    const ratio = 1.05 / (lum(m[2]) + 0.05);
+    if (ratio < 4.5) weak.push(`${m[1]} ${m[2]} ${ratio.toFixed(2)}:1`);
+  }
+  expect(weak).toEqual([]);
+});
