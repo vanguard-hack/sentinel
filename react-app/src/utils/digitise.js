@@ -125,7 +125,15 @@ export async function ingestExtracted({ filename, mime, text, tables, sourceKind
 
 export const isPdf = (file) => /pdf/i.test(file.type) || /\.pdf$/i.test(file.name);
 
-export async function uploadScan(file, { batchId = '', caseMasterId = '', appendTo = '' } = {}) {
+// Zia's OCR takes a language and reads the page very differently depending on
+// it. The officer's interface language is the best available guess at what the
+// paper in front of them is written in — a constable working in Kannada is
+// scanning Kannada paperwork — and it costs nothing to say so. English remains
+// the default for anything else.
+const OCR_LANG = { kn: 'kan', hi: 'hin', en: 'eng' };
+export const ocrLangFor = (uiLang) => OCR_LANG[String(uiLang || '').slice(0, 2).toLowerCase()] || 'eng';
+
+export async function uploadScan(file, { batchId = '', caseMasterId = '', appendTo = '', lang = '' } = {}) {
   const blob = await normaliseImage(file);
   const hex = toHex(await blob.arrayBuffer());
   const qs = new URLSearchParams({
@@ -134,6 +142,7 @@ export async function uploadScan(file, { batchId = '', caseMasterId = '', append
     batchId,
     caseMasterId,
     appendTo,
+    lang: ocrLangFor(lang),
   });
   const res = await fetch(`/server/rag/digitise/upload?${qs}`, {
     method: 'POST',

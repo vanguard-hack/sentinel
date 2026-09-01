@@ -3612,9 +3612,16 @@ async function handleDigitiseUpload(req, res) {
   const tmpPath = path.join(os.tmpdir(), `dig-${id}.${ext}`);
   try {
     fs.writeFileSync(tmpPath, buf);
+    // `ocrLang`, not 'eng'.
+    //
+    // The language was being computed from the request and then thrown away —
+    // every scan went to Zia as English, so a Kannada charge sheet came back as
+    // transliterated nonsense in a product whose whole pitch includes Kannada.
+    // Silent, too: OCR "succeeded" and produced text, just not the text on the
+    // page, and the structuring pass downstream dutifully made fields out of it.
     const result = await app.zia().extractOpticalCharacters(
       fs.createReadStream(tmpPath),
-      { modelType: 'OCR', language: 'eng' }
+      { modelType: 'OCR', language: ocrLang }
     );
     text = (result && result.text) || '';
   } catch (e) {

@@ -20,7 +20,7 @@ const fmt = (ts) => (ts
   : '—');
 
 export default function Records() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const confirm = useConfirm();
   const [records, setRecords] = useState(null);
@@ -204,7 +204,12 @@ export default function Records() {
       setQueue((prev) => prev.map((x) => (x.key === item.key ? { ...x, status: 'working' } : x)));
       try {
         // eslint-disable-next-line no-await-in-loop
-        const rec = await uploadScan(item.file, { batchId, appendTo: asOne ? appendTo : '' });
+        const rec = await uploadScan(item.file, {
+          batchId, appendTo: asOne ? appendTo : '',
+          // The officer's own interface language is the best guess at what the
+          // paper says; Zia reads a Kannada page very differently when told so.
+          lang: i18n.resolvedLanguage,
+        });
         if (asOne && !appendTo && rec?.id) appendTo = rec.id;
         setQueue((prev) => prev.map((x) => (x.key === item.key ? { ...x, status: 'done' } : x)));
       } catch (e) {
@@ -213,7 +218,7 @@ export default function Records() {
     }
     logAudit('digitise-batch', 'Records', `${items.length} page(s)`);
     refresh();
-  }, [tray, clearTray, refresh]);
+  }, [tray, clearTray, refresh, i18n.resolvedLanguage]);
 
   const onDrop = (e) => {
     e.preventDefault();
