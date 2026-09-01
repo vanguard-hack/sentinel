@@ -5,6 +5,7 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { parseBlocks } from './richFormat';
+import { readPdfResponse, downloadBase64Pdf, screenClientExport, visibleText } from './exportGate';
 
 // Export the report to PDF by capturing each card / section as its OWN image
 // and flowing them onto A4 pages. A block is never split across a page break —
@@ -12,8 +13,18 @@ import { parseBlocks } from './richFormat';
 // taller than a whole page is scaled down to fit). This avoids both the
 // mid-chart page cuts and the single-giant-canvas failure (browsers cap canvas
 // size, so a very long report rendered in one shot silently fails).
-export async function exportReportPdf(element, filename) {
+export async function exportReportPdf(element, filename, opts = {}) {
   if (!element) throw new Error('nothing to export');
+  // `skipScreen` is set by exportConversationPdf, which has already screened
+  // the same element — screening twice would open two holds for one export.
+  if (!opts.skipScreen) {
+    await screenClientExport({
+      text: visibleText(element),
+      kind: opts.kind || 'dashboard',
+      title: opts.title || filename || 'Dashboard export',
+      approvalId: opts.approvalId,
+    });
+  }
 
   const bg =
     getComputedStyle(document.body).backgroundColor ||
@@ -201,25 +212,21 @@ function buildDiaryHtml(rec) {
   </body></html>`;
 }
 
-export async function exportInvestigationDiaryPdf(rec) {
+export async function exportInvestigationDiaryPdf(rec, approvalId) {
   if (!rec) throw new Error('nothing to export');
   const html = buildDiaryHtml(rec);
   const res = await fetch('/server/rag/report-pdf', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html }),
+    body: JSON.stringify({
+      html,
+      kind: 'case-diary',
+      title: `Case Diary — ${rec.crimeNo || rec.caseMasterId}`,
+      approvalId,
+    }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.pdf) throw new Error(data.error || `PDF export failed (HTTP ${res.status})`);
-  const bin = atob(data.pdf);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `case-diary-${(rec.crimeNo || rec.caseMasterId)}.pdf`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  const data = await readPdfResponse(res);
+  downloadBase64Pdf(data.pdf, `case-diary-${(rec.crimeNo || rec.caseMasterId)}.pdf`);
 }
 
 // ── AI case summary → PDF (server-rendered) ────────────────────────────────
@@ -258,7 +265,7 @@ function mdToHtml(text) {
     .join('');
 }
 
-export async function exportInvestigationSummaryPdf(summary, citations, meta = {}) {
+export async function exportInvestigationSummaryPdf(summary, citations, meta = {}, approvalId) {
   if (!summary || !String(summary).trim()) throw new Error('nothing to export');
   const cites = (citations || [])
     .map((c) => `<li><b>[${esc(c.n)}]</b> ${esc(c.label)} <span class="muted">${pdfDate(c.date)}</span></li>`)
@@ -310,26 +317,31 @@ export async function exportInvestigationSummaryPdf(summary, citations, meta = {
   const res = await fetch('/server/rag/report-pdf', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html }),
+    body: JSON.stringify({
+      html,
+      kind: 'investigation-summary',
+      title: `Investigation Summary — ${meta.crimeNo || meta.caseMasterId || 'Case'}`,
+      approvalId,
+    }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.pdf) throw new Error(data.error || `PDF export failed (HTTP ${res.status})`);
-  const bin = atob(data.pdf);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `investigation-summary-${(meta.crimeNo || meta.caseMasterId || 'case')}.pdf`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  const data = await readPdfResponse(res);
+  downloadBase64Pdf(data.pdf, `investigation-summary-${(meta.crimeNo || meta.caseMasterId || 'case')}.pdf`);
 }
 
 // Export one conversation's transcript with a titled header. Temporarily
 // injects a header into the thread element so the PDF is clearly labelled,
 // then removes it.
-export async function exportConversationPdf(threadEl, title) {
+export async function exportConversationPdf(threadEl, title, approvalId) {
   if (!threadEl) throw new Error('nothing to export');
+  // Screened before rendering rather than after: html2canvas over a long
+  // transcript is slow, and holding an export is not worth making the officer
+  // wait through a rasterisation whose output is then thrown away.
+  await screenClientExport({
+    text: visibleText(threadEl),
+    kind: 'assistant-transcript',
+    title: title || 'Assistant conversation',
+    approvalId,
+  });
   const header = document.createElement('div');
   header.className = 'as-pdf-header';
   const safe = (title || 'Conversation').replace(/[<>&]/g, '');
@@ -341,7 +353,11 @@ export async function exportConversationPdf(threadEl, title) {
   const slug = (title || 'conversation')
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'conversation';
   try {
-    await exportReportPdf(threadEl, `sentinel-${slug}-${new Date().toISOString().slice(0, 10)}.pdf`);
+    await exportReportPdf(
+      threadEl,
+      `sentinel-${slug}-${new Date().toISOString().slice(0, 10)}.pdf`,
+      { skipScreen: true },
+    );
   } finally {
     header.remove();
   }

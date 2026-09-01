@@ -9,6 +9,8 @@ const memory = require('./memory');
 const assistantTools = require('./tools');
 const integrity = require('./integrity');
 const grounding = require('./grounding');
+const exportscreen = require('./exportscreen');
+const exportholds = require('./exportholds');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -1029,8 +1031,18 @@ async function handleTranscribe(req, res) {
 }
 
 // ── PDF report via SmartBrowz ───────────────────────────────────────────────
-// POST /server/rag/report-pdf  { html }  →  { pdf: <base64> }
+// POST /server/rag/report-pdf  { html, kind?, title?, approvalId? }
+//   →  200 { pdf: <base64> }                       cleared, or approval redeemed
+//   →  202 { status: 'pending_approval', ... }     held for a supervisor
+//
 // The browser composes a self-contained HTML report; SmartBrowz renders it.
+//
+// This is where the export sensitivity screen is ENFORCED, and it is enforced
+// here rather than in the client for a reason that matters: Report Studio, the
+// investigation summary and the case diary all already funnel through this one
+// route, so a check here covers every server-rendered export and cannot be
+// stepped around with devtools or a direct API call. A gate that lives in the
+// browser is a suggestion.
 async function handleReportPdf(req, res) {
   const body = JSON.parse((await readBody(req)) || '{}');
   const html = String(body.html || '');
@@ -1038,6 +1050,83 @@ async function handleReportPdf(req, res) {
   if (html.length > 2 * 1024 * 1024) return json(res, 413, { error: 'html too large' });
 
   const app = catalystSDK.initialize(req);
+
+  // Screen FIRST, and only then reach for identity and storage.
+  //
+  // The ordering is the point. screen() is pure and cannot fail, and the
+  // overwhelming majority of exports clear it — a blank FIR, an arrest report,
+  // a district crime summary. Those must reach SmartBrowz having touched no
+  // extra service, so the control adds neither latency nor a new way for a
+  // routine download to break. Resolving the officer's role and opening a
+  // Stratus bucket up front would have made every clean export depend on both,
+  // which is how a safeguard turns into an outage.
+  const verdict = exportscreen.screen(html);
+
+  if (verdict.needsReview) {
+    const bucket = app.stratus().bucket(CONV_BUCKET);
+    const { role, caller } = await myRole(app, bucket);
+    const email = String(caller?.email_id || '').toLowerCase();
+    const name = [caller?.first_name, caller?.last_name].filter(Boolean).join(' ');
+    const fingerprint = exportscreen.fingerprint(html);
+    const kind = String(body.kind || 'report').slice(0, 40);
+    const title = String(body.title || 'Untitled export').slice(0, 160);
+
+    // An approval already in hand: redeem it. Every way this could be abused —
+    // someone else's approval, a document swapped after approval, a second use
+    // of one that already released — is refused inside release().
+    if (body.approvalId) {
+      const rel = await exportholds.release(bucket, String(body.approvalId), { email, fingerprint });
+      if (!rel.ok) {
+        await storeAuditEvents(req, app, bucket, [{
+          action: 'export-refused', feature: 'Export Control', path: '/export',
+          detail: `${title} — ${rel.reason}`,
+        }], caller);
+        return json(res, 403, { error: rel.reason, status: 'refused' });
+      }
+      await storeAuditEvents(req, app, bucket, [{
+        action: 'export-released', feature: 'Export Control', path: '/export',
+        detail: `${title} — approved by ${rel.hold.decidedName || rel.hold.decidedBy}` +
+                (rel.hold.note ? ` (${rel.hold.note})` : ''),
+      }], caller);
+      // fall through and render
+    } else {
+      let hold;
+      try {
+        hold = await exportholds.create(bucket, {
+          email, name, role, kind, title,
+          reasons: verdict.reasons, fingerprint, stats: verdict.stats,
+        });
+      } catch (e) {
+        // Fail CLOSED, and say why. If the request cannot be recorded there is
+        // no queue for a supervisor to act on and no trail of the decision, so
+        // releasing the document anyway would mean the screen quietly stopped
+        // applying at exactly the moment it mattered. The officer gets a
+        // specific message rather than a bare 500, because "try again" is
+        // useless advice when the reason is unknown.
+        console.error('export hold write failed:', e && e.message);
+        return json(res, 503, {
+          status: 'unavailable',
+          error:
+            'This report needs supervisor approval, but the approval queue could not be reached. ' +
+            'Nothing has been exported — please try again shortly.',
+        });
+      }
+      await storeAuditEvents(req, app, bucket, [{
+        action: 'export-held', feature: 'Export Control', path: '/export',
+        detail: `${title} — ${exportscreen.summarise(verdict)}`,
+      }], caller);
+      // 202, not 403: nothing has gone wrong and the officer has done nothing
+      // suspect. The document needs a second signature, which is what
+      // departmental policy would ask for anyway.
+      return json(res, 202, {
+        status: 'pending_approval',
+        approvalId: hold.id,
+        reasons: verdict.reasons,
+        message: 'This report needs supervisor approval before it can leave Sentinel.',
+      });
+    }
+  }
+
   const stream = await app.smartbrowz().convertToPdf(html, {
     pdf_options: { format: 'A4', print_background: true },
   });
@@ -2061,6 +2150,163 @@ async function handleAudit(req, res, action) {
   events.sort((a, b) => (b.ts || 0) - (a.ts || 0));
   return json(res, 200, { events: events.slice(0, 5000), integrity: verdict });
 }
+
+// ── Export control ─────────────────────────────────────────────────────────
+//
+// Clearance governs what an officer may SEE. This governs what may LEAVE, which
+// is a different question and, in practice, the one that produces incidents:
+// every read behind a report can be individually authorised while the assembled
+// document still should not walk out of the building in one file.
+//
+// Three surfaces:
+//   /export/screen   — for the two exports the browser renders itself
+//                      (dashboard and assistant transcript, both html2canvas).
+//                      Server-rendered exports are enforced in handleReportPdf.
+//   /export/pending  — the supervisor's queue.
+//   /export/decide   — approve or reject, from the approver's OWN session.
+//
+// Only supervisors and admins may see or decide. An officer may always read
+// the status of their own request, because otherwise a held export becomes a
+// download that silently never happens.
+const canApproveExports = (role) => ['admin', 'supervisor'].includes(role);
+
+async function handleExport(req, res, action) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  const email = String(caller?.email_id || '').toLowerCase();
+  const name = [caller?.first_name, caller?.last_name].filter(Boolean).join(' ');
+  if (!caller || !email) return json(res, 401, { error: 'Sign in to continue.' });
+
+  // Screen a client-rendered export before the browser builds the file.
+  //
+  // Being honest about what this is: the dashboard and assistant transcripts
+  // are rasterised in the browser by html2canvas, so unlike handleReportPdf
+  // there is no server-side chokepoint the bytes must pass through, and a
+  // determined user could skip the call. It still earns its place — it catches
+  // the accidental export, which is the case this feature is actually for, and
+  // every held request is recorded server-side whether or not the download
+  // proceeds. It is not represented as more than that anywhere in the UI.
+  if (action === 'screen') {
+    const content = String(body.html || body.text || '');
+    if (content.length > 2 * 1024 * 1024) return json(res, 413, { error: 'content too large' });
+    const isHtml = body.text === undefined;
+    const verdict = exportscreen.screen(content, { isHtml });
+    if (!verdict.needsReview) return json(res, 200, { status: 'cleared', reasons: [] });
+
+    const fingerprint = exportscreen.fingerprint(content, { isHtml });
+    const title = String(body.title || 'Untitled export').slice(0, 160);
+
+    if (body.approvalId) {
+      const rel = await exportholds.release(bucket, String(body.approvalId), { email, fingerprint });
+      await storeAuditEvents(req, app, bucket, [{
+        action: rel.ok ? 'export-released' : 'export-refused',
+        feature: 'Export Control', path: '/export',
+        detail: rel.ok
+          ? `${title} — approved by ${rel.hold.decidedName || rel.hold.decidedBy}`
+          : `${title} — ${rel.reason}`,
+      }], caller);
+      return rel.ok
+        ? json(res, 200, { status: 'cleared', reasons: [] })
+        : json(res, 403, { status: 'refused', error: rel.reason });
+    }
+
+    let hold;
+    try {
+      hold = await exportholds.create(bucket, {
+        email, name, role, kind: String(body.kind || 'export').slice(0, 40), title,
+        reasons: verdict.reasons, fingerprint, stats: verdict.stats,
+      });
+    } catch (e) {
+      // Same fail-closed rule as handleReportPdf: a hold that cannot be
+      // recorded is a hold nobody can act on, so the export does not proceed.
+      console.error('export hold write failed:', e && e.message);
+      return json(res, 503, {
+        status: 'unavailable',
+        error: 'This export needs supervisor approval, but the approval queue could not be reached. ' +
+               'Nothing has been exported — please try again shortly.',
+      });
+    }
+    await storeAuditEvents(req, app, bucket, [{
+      action: 'export-held', feature: 'Export Control', path: '/export',
+      detail: `${title} — ${exportscreen.summarise(verdict)}`,
+    }], caller);
+    return json(res, 202, {
+      status: 'pending_approval',
+      approvalId: hold.id,
+      reasons: verdict.reasons,
+      message: 'This export needs supervisor approval before it can leave Sentinel.',
+    });
+  }
+
+  // An officer polling their own held request. Scoped to the caller's own
+  // requests — otherwise this endpoint enumerates who is exporting what.
+  if (action === 'status') {
+    const hold = await exportholds.get(bucket, String(body.approvalId || ''));
+    if (!hold) return json(res, 404, { error: 'No such export request' });
+    if (hold.requestedBy !== email && !canApproveExports(role)) {
+      return json(res, 403, { error: 'Not your export request' });
+    }
+    return json(res, 200, { request: publicHold(hold) });
+  }
+
+  if (!canApproveExports(role)) {
+    return json(res, 403, { error: 'Supervisor or admin access required' });
+  }
+
+  if (action === 'pending') {
+    const status = ['pending', 'approved', 'rejected', 'all'].includes(body.status)
+      ? body.status
+      : 'pending';
+    const items = await exportholds.list(bucket, { status, limit: Number(body.limit) || 100 });
+    return json(res, 200, { requests: items.map(publicHold), role });
+  }
+
+  if (action === 'decide') {
+    try {
+      const rec = await exportholds.decide(bucket, String(body.approvalId || ''), {
+        decision: body.decision === 'approved' ? 'approved' : 'rejected',
+        approverEmail: email,
+        approverName: name,
+        note: body.note,
+      });
+      await storeAuditEvents(req, app, bucket, [{
+        action: rec.decision === 'approved' ? 'export-approved' : 'export-rejected',
+        feature: 'Export Control', path: '/export',
+        detail: `${rec.title} — requested by ${rec.requestedName || rec.requestedBy}` +
+                (rec.note ? ` (${rec.note})` : ''),
+      }], caller);
+      return json(res, 200, { request: publicHold(rec) });
+    } catch (e) {
+      return json(res, e.code || 500, { error: e.message || 'Could not record the decision' });
+    }
+  }
+
+  return json(res, 404, { error: 'unknown export action' });
+}
+
+// The queue view of a hold. The fingerprint is an internal binding value and
+// never leaves the server: publishing it would let a caller confirm whether a
+// given document had been submitted, which is a small leak with no upside.
+const publicHold = (h) => ({
+  id: h.id,
+  status: h.status,
+  kind: h.kind,
+  title: h.title,
+  reasons: h.reasons,
+  stats: h.stats,
+  requestedAt: h.requestedAt,
+  requestedBy: h.requestedBy,
+  requestedName: h.requestedName,
+  requestedRole: h.requestedRole,
+  decidedAt: h.decidedAt,
+  decidedBy: h.decidedBy,
+  decidedName: h.decidedName,
+  decision: h.decision,
+  note: h.note,
+  consumedAt: h.consumedAt,
+});
 
 // ── Investigation Diary (Case Diary under BNSS Section 172) ─────────────────
 // One JSON blob per case (Stratus, no new Data Store table) plus a light
@@ -3727,6 +3973,10 @@ module.exports = async (req, res) => {
     // which silently kill the fetch in the browser.
     if (path.endsWith('/access/record')) return await handleAudit(req, res, 'log');
     if (path.endsWith('/access/records')) return await handleAudit(req, res, 'list');
+    if (path.endsWith('/export/screen')) return await handleExport(req, res, 'screen');
+    if (path.endsWith('/export/pending')) return await handleExport(req, res, 'pending');
+    if (path.endsWith('/export/decide')) return await handleExport(req, res, 'decide');
+    if (path.endsWith('/export/status')) return await handleExport(req, res, 'status');
     if (path.endsWith('/investigation/list')) return await handleInvestigation(req, res, 'list');
     if (path.endsWith('/investigation/get')) return await handleInvestigation(req, res, 'get');
     if (path.endsWith('/investigation/create')) return await handleInvestigation(req, res, 'create');

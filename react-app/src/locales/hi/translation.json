@@ -82,6 +82,9 @@
     "access": {
       "label": "पहुँच एवं अंकेक्षण"
     },
+    "exportApprovals": {
+      "label": "निर्यात अनुमोदन"
+    },
     "dutyRoster": {
       "label": "ड्यूटी रोस्टर"
     },

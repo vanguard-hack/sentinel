@@ -82,6 +82,9 @@
     "access": {
       "label": "ಪ್ರವೇಶ ಮತ್ತು ಲೆಕ್ಕಪರಿಶೋಧನೆ"
     },
+    "exportApprovals": {
+      "label": "ರಫ್ತು ಅನುಮೋದನೆಗಳು"
+    },
     "dutyRoster": {
       "label": "ಕರ್ತವ್ಯ ಪಟ್ಟಿ"
     },

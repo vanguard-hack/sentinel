@@ -7897,3 +7897,180 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 .as-protected-btn:hover:not(:disabled) { filter: brightness(1.08); }
 .as-protected-btn:disabled { opacity: 0.45; cursor: default; }
 .as-protected-foot { width: 100%; margin: 7px 0 0; color: var(--text-4); font-size: 11.5px; }
+
+/* ── Export control: held-export dialog ─────────────────────────────────────
+   Deliberately not styled as an error. Being held is a routine policy step,
+   not a fault, and a red alarm here teaches officers to route around the
+   feature — screenshot the page, or stop using Report Studio altogether. Gold
+   for waiting, green for released, red only for an actual refusal. */
+.xh-scrim {
+  position: fixed; inset: 0; z-index: 420;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 60px 16px 16px;
+  background: rgba(15, 23, 42, .34);
+  animation: cd-fade .12s ease-out;
+}
+.xh-modal {
+  position: relative; width: 100%; max-width: 460px; padding: 16px 17px 14px;
+  background: var(--bg-1); border: 1px solid var(--border-bright);
+  border-top: 3px solid var(--gold); border-radius: 13px;
+  box-shadow: 0 14px 38px rgba(15, 23, 42, .24), 0 1px 4px rgba(15, 23, 42, .1);
+  animation: cd-drop .16s cubic-bezier(.22, 1.15, .4, 1);
+}
+[data-theme="dark"] .xh-modal { box-shadow: 0 14px 38px rgba(0, 0, 0, .6), 0 1px 4px rgba(0, 0, 0, .4); }
+.xh-modal.approved { border-top-color: var(--green); }
+.xh-modal.rejected, .xh-modal.expired { border-top-color: var(--red); }
+
+.xh-close {
+  position: absolute; top: 9px; right: 9px;
+  display: grid; place-items: center; width: 24px; height: 24px;
+  border: 0; border-radius: 7px; background: transparent;
+  color: var(--text-4); cursor: pointer;
+}
+.xh-close:hover { background: var(--bg-3); color: var(--text-2); }
+
+.xh-head { display: flex; align-items: flex-start; gap: 11px; padding-right: 22px; }
+.xh-icon {
+  display: grid; place-items: center; flex: none; width: 30px; height: 30px;
+  border-radius: 9px; color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+}
+.xh-icon.ok { color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); }
+.xh-icon.no { color: var(--red); background: color-mix(in srgb, var(--red) 13%, transparent); }
+.xh-head h3 { margin: 1px 0 0; font-size: 13.5px; font-weight: 700; color: var(--text-0); }
+.xh-sub { margin: 4px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--text-2); }
+
+.xh-reasons { margin: 13px 0 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+.xh-reasons li {
+  padding: 8px 10px; border-radius: 9px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  display: grid; gap: 2px;
+}
+.xh-reasons b { font-size: 11.5px; color: var(--text-0); }
+.xh-why { font-size: 11px; line-height: 1.5; color: var(--text-3); }
+.xh-ev { font-size: 10.5px; color: var(--text-4); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.xh-foot {
+  display: flex; align-items: center; gap: 6px;
+  margin: 12px 0 0; font-size: 11px; color: var(--text-4);
+}
+.xh-spin { animation: xh-rot 1.1s linear infinite; flex: none; }
+@keyframes xh-rot { to { transform: rotate(360deg); } }
+
+.xh-error { margin: 11px 0 0; font-size: 11px; color: var(--red); }
+.xh-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 14px; }
+.xh-btn {
+  padding: 6px 13px; border-radius: 8px; font-size: 11.5px; font-weight: 600;
+  cursor: pointer; border: 1px solid var(--border-bright); background: var(--bg-2); color: var(--text-2);
+}
+.xh-btn:hover:not(:disabled) { background: var(--bg-3); }
+.xh-btn.solid { background: var(--blue-500); border-color: var(--blue-500); color: #fff; }
+.xh-btn.solid:hover:not(:disabled) { background: var(--blue-600); }
+.xh-btn:disabled { opacity: .5; cursor: default; }
+
+/* ── Export control: the supervisor's approval queue ───────────────────── */
+.xa-intro {
+  display: flex; align-items: flex-start; gap: 9px;
+  margin: 0 0 14px; padding: 11px 13px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 11px;
+  color: var(--text-3);
+}
+.xa-intro svg { flex: none; margin-top: 1px; color: var(--blue-500); }
+.xa-intro p { margin: 0; font-size: 11.5px; line-height: 1.6; }
+
+.xa-tabs { display: flex; align-items: center; gap: 6px; margin-bottom: 13px; flex-wrap: wrap; }
+.xa-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border-bright); background: var(--bg-1);
+  color: var(--text-3); font-size: 11.5px; font-weight: 600;
+}
+.xa-tab:hover { background: var(--bg-2); }
+.xa-tab.on { background: var(--blue-500); border-color: var(--blue-500); color: #fff; }
+.xa-count {
+  min-width: 17px; padding: 0 5px; border-radius: 999px;
+  background: rgba(255, 255, 255, .24); font-size: 10.5px; text-align: center;
+}
+.xa-refresh {
+  display: grid; place-items: center; width: 28px; height: 28px; margin-left: auto;
+  border: 1px solid var(--border-bright); border-radius: 8px;
+  background: var(--bg-1); color: var(--text-3); cursor: pointer;
+}
+.xa-refresh:hover { background: var(--bg-2); color: var(--text-1); }
+
+.xa-error {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 12px;
+  padding: 9px 12px; border-radius: 9px; font-size: 11.5px;
+  color: var(--red); background: color-mix(in srgb, var(--red) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red) 22%, transparent);
+}
+.xa-empty {
+  display: grid; place-items: center; gap: 9px;
+  padding: 46px 20px; color: var(--text-4); text-align: center;
+  background: var(--bg-1); border: 1px dashed var(--border-bright); border-radius: 13px;
+}
+.xa-empty p { margin: 0; font-size: 11.5px; max-width: 430px; line-height: 1.6; }
+
+.xa-list { display: grid; gap: 11px; }
+.xa-card {
+  padding: 14px 15px; border-radius: 13px;
+  background: var(--bg-1); border: 1px solid var(--border);
+  border-left: 3px solid var(--gold); box-shadow: var(--shadow-card);
+}
+.xa-card.approved { border-left-color: var(--green); }
+.xa-card.rejected { border-left-color: var(--red); }
+
+.xa-kind {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--text-4);
+}
+.xa-card-head h3 { margin: 5px 0 3px; font-size: 13.5px; font-weight: 700; color: var(--text-0); }
+.xa-who { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; font-size: 11.5px; color: var(--text-2); }
+.xa-role {
+  padding: 1px 7px; border-radius: 999px; font-size: 10px; text-transform: capitalize;
+  background: var(--bg-3); color: var(--text-3);
+}
+.xa-time { color: var(--text-4); font-size: 11px; }
+
+.xa-reasons { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+.xa-reasons li {
+  padding: 9px 11px; border-radius: 9px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  display: grid; gap: 3px;
+}
+.xa-reasons b { font-size: 11.5px; color: var(--text-0); }
+.xa-why { font-size: 11px; line-height: 1.5; color: var(--text-3); }
+.xa-reasons code {
+  justify-self: start; padding: 1px 6px; border-radius: 5px;
+  background: var(--bg-3); color: var(--text-3); font-size: 10.5px;
+}
+
+.xa-reject { margin-top: 12px; display: grid; gap: 6px; }
+.xa-reject label { font-size: 11px; color: var(--text-3); }
+.xa-reject textarea {
+  width: 100%; padding: 8px 10px; border-radius: 9px; resize: vertical;
+  border: 1px solid var(--border-bright); background: var(--bg-2);
+  color: var(--text-1); font: inherit; font-size: 11.5px; line-height: 1.5;
+}
+.xa-reject textarea:focus { outline: none; border-color: var(--blue-500); }
+
+.xa-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 12px; }
+.xa-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 9px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border-bright); background: var(--bg-2); color: var(--text-2);
+}
+.xa-btn:hover:not(:disabled) { background: var(--bg-3); }
+.xa-btn.solid { background: var(--green); border-color: var(--green); color: #fff; }
+.xa-btn.solid:hover:not(:disabled) { filter: brightness(1.07); }
+.xa-btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+.xa-btn.danger:hover:not(:disabled) { background: var(--red-dark); }
+.xa-btn:disabled { opacity: .5; cursor: default; }
+
+.xa-decided {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 7px;
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-3);
+}
+.xa-decided em { color: var(--text-2); font-style: italic; }

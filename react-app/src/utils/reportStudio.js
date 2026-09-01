@@ -2,6 +2,7 @@
 // one blob per report + index) and the print-HTML builder used for the
 // server-rendered A4 PDF download (SmartBrowz via /server/rag/report-pdf).
 import { reportTypeById } from '../data/reportTemplates';
+import { readPdfResponse, downloadBase64Pdf } from './exportGate';
 
 async function post(url, body) {
   const res = await fetch(url, {
@@ -226,27 +227,27 @@ export function buildReportHtml(type, report) {
   </style></head><body>${pagesHtml}</body></html>`;
 }
 
-export async function downloadReportPdf(report) {
+// `approvalId` is passed on the second attempt, after a supervisor has released
+// a held export. The server binds an approval to the exact document it was
+// granted for, so re-editing the report between approval and download is
+// correctly refused rather than silently allowed.
+export async function downloadReportPdf(report, approvalId) {
   const type = reportTypeById(report.typeId);
   if (!type) throw new Error('Unknown report type');
   const html = buildReportHtml(type, report);
   const res = await fetch('/server/rag/report-pdf', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html }),
+    body: JSON.stringify({
+      html,
+      kind: 'report-studio',
+      title: report.title || type.name,
+      approvalId,
+    }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.pdf) throw new Error(data.error || `PDF export failed (HTTP ${res.status})`);
-  const bin = atob(data.pdf);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  const blob = new Blob([bytes], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${(report.title || type.name).replace(/[^\w\d-]+/g, '-').slice(0, 80)}.pdf`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  const data = await readPdfResponse(res);
+  downloadBase64Pdf(
+    data.pdf,
+    `${(report.title || type.name).replace(/[^\w\d-]+/g, '-').slice(0, 80)}.pdf`,
+  );
 }

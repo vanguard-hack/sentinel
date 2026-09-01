@@ -19,6 +19,7 @@ import { listReports } from '../utils/reportStudio';
 import { REPORT_TYPES } from '../data/reportTemplates';
 import { transcribeAudio } from '../utils/assistant';
 import { exportInvestigationDiaryPdf } from '../utils/reportPdf';
+import ExportHoldNotice from '../components/ExportHoldNotice';
 import i18n from '../i18n';
 
 const fmtDate = (ts) => (ts ? new Date(ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
@@ -997,11 +998,15 @@ export default function InvestigationCase() {
   };
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState(null);
-  const exportPdf = async () => {
+  const [hold, setHold] = useState(null); // export held for supervisor approval
+  const exportPdf = async (approvalId) => {
     setExporting(true);
     setExportError(null);
-    try { await exportInvestigationDiaryPdf(rec); }
-    catch (e) { setExportError(e.message); } finally { setExporting(false); }
+    try { await exportInvestigationDiaryPdf(rec, approvalId); }
+    catch (e) {
+      if (e.held) setHold({ approvalId: e.approvalId, reasons: e.reasons });
+      else setExportError(e.message);
+    } finally { setExporting(false); }
   };
 
   if (error) {
@@ -1034,7 +1039,7 @@ export default function InvestigationCase() {
             <p>{rec.caseType || 'Uncategorised'}{rec.sections ? ` · ${rec.sections}` : ''}</p>
           </div>
           <div className="inv-head-actions">
-            <button type="button" className="aa-btn" onClick={exportPdf} disabled={exporting}>
+            <button type="button" className="aa-btn" onClick={() => exportPdf()} disabled={exporting}>
               <FileDown size={14} /> {exporting ? 'Preparing…' : 'Export PDF'}
             </button>
             <StatusPicker status={rec.status} onChange={onStatusChange} />
@@ -1074,6 +1079,14 @@ export default function InvestigationCase() {
         {tab === 'reports' && <ReportsTab caseMasterId={rec.caseMasterId} crimeNo={rec.crimeNo} />}
         {tab === 'summary' && <SummaryTab caseMasterId={rec.caseMasterId} />}
       </div>
+
+      {hold && (
+        <ExportHoldNotice
+          hold={hold}
+          onRetry={(approvalId) => exportPdf(approvalId)}
+          onClose={() => setHold(null)}
+        />
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { REPORT_TYPES, reportTypeById } from '../data/reportTemplates';
 import { listReports, getReport, deleteReport, downloadReportPdf } from '../utils/reportStudio';
 import { logAudit } from '../utils/audit';
+import ExportHoldNotice from '../components/ExportHoldNotice';
 import { useTranslation } from 'react-i18next';
 
 const TYPE_ICONS = {
@@ -31,6 +32,7 @@ export default function ReportStudio() {
   const [q, setQ] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [busyId, setBusyId] = useState(null);
+  const [hold, setHold] = useState(null); // export held for supervisor approval
   // The saved list is a browsing surface, not an archive dump — a station with
   // a few hundred reports should not scroll past all of them to reach the
   // filters underneath.
@@ -73,13 +75,17 @@ export default function ReportStudio() {
     setBusyId(null);
   };
 
-  const download = async (r) => {
+  const download = async (r, approvalId) => {
     setBusyId(r.id);
     try {
       const full = await getReport(r.id);
-      await downloadReportPdf(full);
+      await downloadReportPdf(full, approvalId);
       logAudit('download-report', 'Report Studio', full.title);
-    } catch (e) { setError(e.message); }
+    } catch (e) {
+      // Held is not failed — it gets the explanatory dialog, not the error banner.
+      if (e.held) setHold({ approvalId: e.approvalId, reasons: e.reasons, report: r });
+      else setError(e.message);
+    }
     setBusyId(null);
   };
 
@@ -197,6 +203,14 @@ export default function ReportStudio() {
           </div>
         )}
       </div>
+
+      {hold && (
+        <ExportHoldNotice
+          hold={hold}
+          onRetry={(approvalId) => download(hold.report, approvalId)}
+          onClose={() => setHold(null)}
+        />
+      )}
     </div>
   );
 }

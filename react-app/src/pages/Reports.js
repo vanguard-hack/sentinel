@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { fetchReports, computeReport, trendSeries, earliestTs, TREND_RANGES, customLabel } from '../utils/reports';
 import { exportReportPdf } from '../utils/reportPdf';
+import ExportHoldNotice from '../components/ExportHoldNotice';
 import DateRangeCalendar from '../components/DateRangeCalendar';
 import { BarList, HBarList, Donut, TrendArea, MultiLine, HeatGrid, Funnel, Pyramid } from '../components/Charts';
 import SocioCrimeMap from '../components/SocioCrimeMap';
@@ -97,14 +98,18 @@ export default function Reports() {
     [bundle, trendRange, customRange]
   );
 
-  const exportPdf = useCallback(async () => {
+  const [exportHold, setExportHold] = useState(null);
+  const exportPdf = useCallback(async (approvalId) => {
     if (!data || pdfBusy) return;
     setPdfBusy(true);
     setPdfError(null);
     try {
-      await exportReportPdf(contentRef.current);
+      await exportReportPdf(contentRef.current, undefined, {
+        kind: 'dashboard', title: 'Crime dashboard export', approvalId,
+      });
     } catch (e) {
-      setPdfError(e.message || String(e));
+      if (e.held) setExportHold({ approvalId: e.approvalId, reasons: e.reasons });
+      else setPdfError(e.message || String(e));
     } finally {
       setPdfBusy(false);
     }
@@ -263,7 +268,7 @@ export default function Reports() {
             </div>
             <button
               className="cf-export-btn"
-              onClick={exportPdf}
+              onClick={() => exportPdf()}
               disabled={pdfBusy || loading || !data}
               title={pdfError ? `Last attempt failed: ${pdfError}` : 'Download this report as PDF'}
             >
@@ -552,6 +557,14 @@ export default function Reports() {
           </div>
         )}
       </main>
+
+      {exportHold && (
+        <ExportHoldNotice
+          hold={exportHold}
+          onRetry={(approvalId) => exportPdf(approvalId)}
+          onClose={() => setExportHold(null)}
+        />
+      )}
     </div>
   );
 }

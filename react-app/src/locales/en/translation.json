@@ -82,6 +82,9 @@
     "access": {
       "label": "Access & Audit"
     },
+    "exportApprovals": {
+      "label": "Export Approvals"
+    },
     "dutyRoster": {
       "label": "Duty Roster"
     },
