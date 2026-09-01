@@ -29,7 +29,29 @@ import SourceCitations, { SourceViewer } from '../components/SourceCitations';
 import { normaliseSources } from '../utils/sources';
 import { useAccess } from '../context/AccessContext';
 import { slashQuery, filterCommands, parseCommand, closestCommand } from '../utils/slashCommands';
+
 import { useTranslation } from 'react-i18next';
+
+/**
+ * What in this answer was NOT read from the records.
+ *
+ * Sentinel's citations say where an answer looked; this says where it went
+ * beyond that. The strip sits between the answer and its sources deliberately
+ * — an officer who has just read a crime number should meet the caveat before
+ * they act on it, not after scrolling past the citation chips.
+ *
+ * It renders only when there is something to report, so its presence carries
+ * meaning. A badge on every answer would be wallpaper within a day.
+ */
+function GroundingWarning({ grounding }) {
+  if (!grounding || !grounding.warning) return null;
+  return (
+    <div className="as-grounding" role="status">
+      <AlertTriangle size={14} aria-hidden="true" />
+      <span>{grounding.warning}</span>
+    </div>
+  );
+}
 
 // Short, domain-relevant prompts shown on an empty conversation.
 //
@@ -446,6 +468,7 @@ export default function Assistant() {
         components: reply.components,
         sources: reply.sources,
         source: reply.source,
+        grounding: reply.grounding,
         ts: Date.now(),
       };
       const fullMessages = [...history, botMsg];
@@ -872,6 +895,7 @@ export default function Assistant() {
                         </div>
                       )}
                       {m.role === 'assistant' && <AguiRenderer components={m.components} />}
+                      {m.role === 'assistant' && <GroundingWarning grounding={m.grounding} />}
                       {m.role === 'assistant' && (
                         <SourceCitations
                           sources={sourcesByMessage.get(m.id)}

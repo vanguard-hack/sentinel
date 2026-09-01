@@ -7,6 +7,8 @@ const vision = require('./vision');
 const attribution = require('./sources');
 const memory = require('./memory');
 const assistantTools = require('./tools');
+const integrity = require('./integrity');
+const grounding = require('./grounding');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -1881,7 +1883,13 @@ async function writeAuditEvents(req, app, bucket, events, sessionUser) {
   });
   const day = new Date(now).toISOString().slice(0, 10);
   const key = `${AUDIT_PREFIX}${day}/${now}-${Math.random().toString(36).slice(2, 8)}.json`;
-  await bucket.putObject(key, Buffer.from(JSON.stringify({ events: enriched })));
+  // The fingerprint is computed over exactly what is written, by the writer,
+  // needing no lock and no read of anything else — see integrity.js for why
+  // this log gets per-object hashes plus day seals rather than a row chain.
+  await bucket.putObject(
+    key,
+    Buffer.from(JSON.stringify({ events: enriched, integrity: integrity.sealBlob(enriched) }))
+  );
 
   // Refresh this user's last-active stamp (throttled to ~30s to limit writes).
   if (email) {
@@ -1895,6 +1903,95 @@ async function writeAuditEvents(req, app, bucket, events, sessionUser) {
       console.error('last-active update failed (non-fatal):', e && e.message);
     }
   }
+}
+
+// ── Audit integrity: day seals ─────────────────────────────────────────────
+// A seal is written once per day, after that day is over and its set of audit
+// objects is therefore closed. Sealing is the only part of tamper-evidence
+// that coordinates, and it happens at most once per day rather than on every
+// write — see integrity.js for the reasoning.
+const SEAL_PREFIX = 'audit/seals/';
+const SEAL_HEAD_KEY = 'audit/seals/_head.json';
+const sealKey = (day) => `${SEAL_PREFIX}${day}.json`;
+// Audit keys are bucketed by UTC date (see writeAuditEvents), so "is this day
+// finished" has to be asked in the same calendar the keys were written in.
+const utcDay = (t = Date.now()) => new Date(t).toISOString().slice(0, 10);
+
+async function loadJsonObject(bucket, key) {
+  try {
+    const raw = await streamToString(await bucket.getObject(key));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Every audit object for one day, with its key — the key is what a seal names. */
+async function loadAuditDay(bucket, day, cap = 5000) {
+  const files = [];
+  let token;
+  do {
+    const page = await bucket.listPagedObjects({
+      prefix: `${AUDIT_PREFIX}${day}/`,
+      maxKeys: '200',
+      continuationToken: token,
+    });
+    // listPagedObjects wraps each entry in a StratusObject — the key sits
+    // on .keyDetails, not on the instance itself.
+    const keys = (page?.contents || [])
+      .map((o) => o?.keyDetails?.key || o?.key)
+      .filter(Boolean);
+    const blobs = await Promise.all(keys.map((k) => loadJsonObject(bucket, k)));
+    keys.forEach((k, i) => files.push({ key: k, blob: blobs[i] || {} }));
+    token =
+      page?.truncated === 'true' || page?.truncated === true
+        ? page?.next_continuation_token
+        : undefined;
+  } while (token && files.length < cap);
+  return files;
+}
+
+/**
+ * Seal one finished day, if it is not sealed already.
+ *
+ * Returns the seal (existing or new), or null when the day holds nothing worth
+ * sealing. Two admins opening the page at the same moment could both write a
+ * seal for the same day; the loser is overwritten and its seq is orphaned,
+ * which verify() reports as a gap rather than as tampering. Stratus offers no
+ * compare-and-swap to do better, and a rare duplicate is a far smaller problem
+ * than sealing on the write path would be.
+ */
+async function sealDayIfClosed(bucket, day, files, opts) {
+  if (day >= utcDay()) return null;                      // still open, contents can change
+  // `known` lets a caller that has already read the seal skip a second fetch;
+  // undefined means "not looked yet", null means "looked, none there".
+  const existing = opts && 'known' in opts ? opts.known : await loadJsonObject(bucket, sealKey(day));
+  if (existing) return existing;
+  // Nothing hashed means nothing a seal could attest to. Sealing a day of
+  // pre-integrity objects would record their absence of proof as if it were
+  // proof.
+  const hashable = files.filter((f) => f.blob && f.blob.integrity && f.blob.integrity.events);
+  if (!hashable.length) return null;
+
+  const head = (await loadJsonObject(bucket, SEAL_HEAD_KEY)) || {};
+  const seal = integrity.buildSeal({
+    day,
+    blobs: hashable.map((f) => ({
+      key: f.key,
+      hash: f.blob.integrity.events,
+      count: (f.blob.events || []).length,
+    })),
+    prevSealHash: head.sealHash || integrity.GENESIS,
+    prevDay: head.day || null,
+    seq: Number(head.seq || 0) + 1,
+    sealedAt: new Date().toISOString(),
+  });
+  await bucket.putObject(sealKey(day), Buffer.from(JSON.stringify(seal)));
+  await bucket.putObject(
+    SEAL_HEAD_KEY,
+    Buffer.from(JSON.stringify({ day, seq: seal.seq, sealHash: seal.sealHash, sealedAt: seal.sealedAt }))
+  );
+  return seal;
 }
 
 async function handleAudit(req, res, action) {
@@ -1919,38 +2016,49 @@ async function handleAudit(req, res, action) {
     days.push(new Date(t).toISOString().slice(0, 10));
   }
   const events = [];
+  // Verification rides on the read that was happening anyway: the objects an
+  // admin's date range already loads are exactly the ones to check, so a
+  // tamper check costs no extra fetches.
+  const loaded = [];
   for (const day of days) {
-    let token;
-    do {
-      const page = await bucket.listPagedObjects({
-        prefix: `${AUDIT_PREFIX}${day}/`,
-        maxKeys: '200',
-        continuationToken: token,
-      });
-      // listPagedObjects wraps each entry in a StratusObject — the key sits
-      // on .keyDetails, not on the instance itself.
-      const keys = (page?.contents || [])
-        .map((o) => o?.keyDetails?.key || o?.key)
-        .filter(Boolean);
-      const blobs = await Promise.all(
-        keys.map(async (k) => {
-          try {
-            return JSON.parse((await streamToString(await bucket.getObject(k))) || '{}');
-          } catch {
-            return {};
-          }
-        })
-      );
-      blobs.forEach((b) => Array.isArray(b.events) && events.push(...b.events));
-      token =
-        page?.truncated === 'true' || page?.truncated === true
-          ? page?.next_continuation_token
-          : undefined;
-    } while (token && events.length < 5000);
+    const files = await loadAuditDay(bucket, day, 5000 - events.length);
+    files.forEach((f) => Array.isArray(f.blob?.events) && events.push(...f.blob.events));
+    let seal = await loadJsonObject(bucket, sealKey(day));
+    if (!seal) {
+      try {
+        seal = await sealDayIfClosed(bucket, day, files, { known: null });
+      } catch (e) {
+        // A seal that could not be written is not a reason to withhold the
+        // log. The day stays open and says so.
+        console.error('audit seal failed (non-fatal):', e && e.message);
+      }
+    }
+    loaded.push({ day, blobs: files, seal });
     if (events.length >= 5000) break;
   }
+
+  let verdict;
+  try {
+    const head = await loadJsonObject(bucket, SEAL_HEAD_KEY);
+    verdict = integrity.verify(loaded);
+    verdict = {
+      ...verdict,
+      summary: integrity.summarise(verdict),
+      // The head hash is the single value an admin should copy off-platform.
+      // Internal consistency is all a self-hosted chain can prove; a hash
+      // recorded elsewhere is what makes it evidence against someone who can
+      // rewrite the whole store.
+      headHash: (head && head.sealHash) || verdict.headHash,
+      headDay: (head && head.day) || null,
+    };
+  } catch (e) {
+    // Never let the integrity check take the audit trail away from the admin.
+    console.error('audit verify failed (non-fatal):', e && e.message);
+    verdict = { intact: null, problems: [], days: [], summary: 'Integrity could not be checked.' };
+  }
+
   events.sort((a, b) => (b.ts || 0) - (a.ts || 0));
-  return json(res, 200, { events: events.slice(0, 5000) });
+  return json(res, 200, { events: events.slice(0, 5000), integrity: verdict });
 }
 
 // ── Investigation Diary (Case Diary under BNSS Section 172) ─────────────────
@@ -3668,6 +3776,18 @@ module.exports = async (req, res) => {
     let fanoutRag = null; // in-flight RAG call when the route is BOTH
     let redactionLog = []; // what the clearance filter removed, for the audit record
     let citedSources = []; // unified attribution for this answer, carried into the audit record
+    // Everything retrieved for this answer, in whatever shape the lane that
+    // ran produced it. Fed at the RETRIEVAL points rather than passed to
+    // respondWith, so a new return site cannot silently skip the grounding
+    // check by forgetting an argument.
+    const evidence = grounding.collector();
+    let groundingResult = null; // the verdict, shared with the decision record
+    // Mirrors `history`, which is declared further down — the slash-command
+    // lanes return through respondWith BEFORE that declaration runs, and
+    // reading a `let` from its temporal dead zone throws. Those lanes have no
+    // history to consider anyway; the point is that the grounding check must
+    // not be the thing that breaks them.
+    let turnHistory = [];
     let ragCited = []; // set when a BOTH fan-out contributed knowledge-base prose
     let validatorChecks = []; // what the ZCQL validator verified or refused
     let slashName = null; // set when the query was an explicit /command
@@ -3753,6 +3873,9 @@ module.exports = async (req, res) => {
           validatorChecks.length ? `validator=${validatorChecks.join('|')}` : null,
           redactionLog.length ? `redacted=${redaction.describe(redactionLog)}` : 'redacted=none',
           citedSources.length ? `sources=${attribution.auditLine(citedSources)}` : 'sources=none',
+          groundingResult && !groundingResult.grounded
+            ? `grounding=FLAGGED:${groundingResult.unsupported.map((u) => u.value).join(',') || 'contradiction'}`
+            : groundingResult ? 'grounding=ok' : null,
         ].filter(Boolean);
         await storeAuditEvents(req, clearanceApp, clearanceBucket, [{
           action: 'assistant-query',
@@ -3789,6 +3912,7 @@ module.exports = async (req, res) => {
     // reads as the model's own opinion.
     const ragCitations = (r) => {
       const nodes = (r && r.ok && r.data && r.data.retrieved_nodes) || [];
+      evidence.add(nodes);
       const cited = attribution.fromRagNodes(nodes);
       return cited.length ? cited : attribution.knowledgeBaseFallback();
     };
@@ -3810,6 +3934,27 @@ module.exports = async (req, res) => {
         );
       }
       citedSources = guarded.sources;
+      // Did the answer stay inside what was read? Run on the PRE-localisation
+      // English text, for the same reason isNegative is: the patterns are
+      // written against English, and an identifier survives translation
+      // unchanged anyway. History is included because a follow-up legitimately
+      // refers back to a case named two turns ago.
+      //
+      // Ahead of finalAnswer deliberately: that call writes the decision
+      // record, and a warning the officer sees but the audit trail does not
+      // would be the one part of the answer with no account of itself.
+      try {
+        groundingResult = grounding.check(text, {
+          evidence,
+          question: rawQuery,
+          history: turnHistory,
+        });
+      } catch (e) {
+        // A checker that breaks must not take the answer with it.
+        console.error('grounding check failed (non-fatal):', e && e.message);
+      }
+      const groundingWarning = groundingResult ? grounding.warning(groundingResult) : null;
+
       // finalAnswer runs the tier-2 guard and writes the decision record, so
       // the citations have to be settled before it is called.
       const answer = await finalAnswer(text, responseLang);
@@ -3832,6 +3977,9 @@ module.exports = async (req, res) => {
         badge_id: badgeId(),
         answer,
         sources: shownSources,
+        ...(groundingWarning
+          ? { grounding: { warning: groundingWarning, ...groundingResult } }
+          : {}),
         detected_lang: lid.lang,
         response_lang: responseLang,
         ...payload,
@@ -4147,6 +4295,10 @@ module.exports = async (req, res) => {
         }
       }
     }
+    // History is final here — the server buffer and recalled memory have both
+    // had their say. Mirrored for the grounding check, which runs from a
+    // closure defined above this line.
+    turnHistory = history;
 
     // Expand the question into a self-contained one for better retrieval,
     // using conversation context to resolve pronouns and references
@@ -4183,6 +4335,7 @@ module.exports = async (req, res) => {
     // that genuinely needs the data store, so the digest is carried down as
     // extra context and normal routing runs instead.
     if (attachedContext) {
+      evidence.add(attachedContext);
       const alsoNeedsRecords = deterministicRoute(query);
       if (!alsoNeedsRecords) {
         const seen = await callLLM(
@@ -4266,13 +4419,17 @@ module.exports = async (req, res) => {
           validatorChecks.push(`tools:${looped.used.join(',')}|iterations=${looped.iterations}`);
           const cites = [];
           for (const set of looped.rowSets) {
+            evidence.add(set.rows, (set.rows || []).length);
             cites.push(attribution.fromZcql({
               query: set.query,
               tables: zcql.tablesInQuery(set.query),
               rows: set.rows,
             }));
           }
-          if (looped.scanHits.length) cites.push(attribution.fromDigitised(looped.scanHits));
+          if (looped.scanHits.length) {
+            evidence.add(looped.scanHits);
+            cites.push(attribution.fromDigitised(looped.scanHits));
+          }
           if (looped.usedKnowledgeBase) cites.push(attribution.knowledgeBaseFallback());
           const v = extractAgui(looped.text);
           return await respondWith(v.text || looped.text, {
@@ -4372,6 +4529,7 @@ module.exports = async (req, res) => {
               // might, so consult them before giving up.
               const fromScans = await answerFromDigitised(req, query, await resolveCaller());
               if (fromScans) {
+                evidence.add(fromScans.hits);
                 return await respondWith(fromScans.text, {
                   components: [],
                   source: 'digitised-records',
@@ -4417,6 +4575,10 @@ module.exports = async (req, res) => {
                 filtered.redactions.map((r) => ({ ...r, stage: 'pre-retrieval', source: 'zcql' }))
               );
             }
+            // The FULL filtered set, not the 20-60 rows the prose prompt gets:
+            // an identifier the model saw is supported, and feeding fewer rows
+            // here than it was shown would invent phantom inventions.
+            evidence.add(flat, flat.length);
             const components = zcql.rowsToComponents(flat);
             // When the result is a multi-row list, the table carries the data;
             // the prose must be a SHORT summary and never re-list the rows.
@@ -4552,6 +4714,7 @@ module.exports = async (req, res) => {
         ? await digitisedPromise
         : await answerFromDigitised(req, query, await resolveCaller());
       if (fromScans) {
+        evidence.add(fromScans.hits);
         text = fromScans.text;
         components = [];
         source = 'digitised-records';
@@ -4644,3 +4807,11 @@ module.exports = async (req, res) => {
     return json(res, 500, { error: e.message || String(e) });
   }
 };
+
+// Test seam. The audit-integrity helpers do real Stratus I/O — listing a day,
+// writing a seal, advancing the head pointer — and that wiring is exactly
+// where a mistake would go unnoticed, because the module they call is itself
+// well covered. Exposed on the handler (a function object; Catalyst neither
+// sees nor cares about extra properties) so integrity.test.js can drive them
+// against a fake bucket. Nothing here is reachable over HTTP.
+module.exports._audit = { loadAuditDay, sealDayIfClosed, sealKey, SEAL_HEAD_KEY, AUDIT_PREFIX, utcDay };

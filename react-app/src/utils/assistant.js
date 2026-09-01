@@ -375,7 +375,10 @@ export async function generateReply(history, vision = [], attachments = [], sess
         ? ''
         : 'The RAG service responded but returned no answer text. ' +
           '(It may need documents configured, or the response field differs.)');
-    return { text, components, sources, source: data.source };
+    // The backend's grounding verdict, present only when it has something to
+    // say. Carried through so the answer and the warning about it can never
+    // be shown apart.
+    return { text, components, sources, source: data.source, grounding: data.grounding || null };
   } catch (e) {
     return {
       text:

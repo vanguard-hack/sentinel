@@ -7784,3 +7784,67 @@ tr.lk-flagged .lk-score { color: var(--rp-series, #2a78d6); }
 }
 :root[data-theme="dark"] .inv-queued-notice,
 :root:not([data-theme="light"]) .inv-queued-notice { background: #2c2415; color: #e8cf9a; border-color: #4a3c1e; }
+
+/* ── Audit trail integrity banner ──────────────────────────────────────────
+   Three tones, because there are three honest answers: verified, failed, and
+   "these entries predate tamper-evidence and cannot be checked". The third is
+   deliberately neutral rather than green — a console must not assert an
+   integrity it never established. */
+.aa-integrity {
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  background: var(--bg-2);
+}
+.aa-integrity-good {
+  border-color: color-mix(in srgb, #2e9e5b 35%, transparent);
+  background: color-mix(in srgb, #2e9e5b 7%, transparent);
+}
+.aa-integrity-good .aa-integrity-head strong { color: #2e9e5b; }
+.aa-integrity-bad {
+  border-color: color-mix(in srgb, #d64550 45%, transparent);
+  background: color-mix(in srgb, #d64550 9%, transparent);
+}
+.aa-integrity-bad .aa-integrity-head strong { color: #d64550; }
+.aa-integrity-unknown {
+  border-color: color-mix(in srgb, #b8863b 35%, transparent);
+  background: color-mix(in srgb, #b8863b 7%, transparent);
+}
+.aa-integrity-unknown .aa-integrity-head strong { color: #b8863b; }
+
+.aa-integrity-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.aa-integrity-summary { color: var(--text-4); }
+.aa-integrity-problems { margin: 8px 0 0; padding-left: 18px; color: var(--text-3); }
+.aa-integrity-problems li { margin: 3px 0; }
+.aa-integrity-day { font-weight: 600; }
+.aa-integrity-key { color: var(--text-4); }
+.aa-integrity-head-hash {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 9px; padding-top: 8px;
+  border-top: 1px dashed var(--border-1);
+  color: var(--text-4); font-size: 11.5px;
+}
+.aa-integrity-hint { flex-basis: 100%; color: var(--text-4); }
+.aa-btn-tiny { padding: 2px 8px; font-size: 11px; gap: 4px; }
+
+/* ── Assistant: grounding warning ──────────────────────────────────────────
+   Between the answer and its source chips, so an officer meets the caveat
+   before acting on a number rather than after scrolling past the citations.
+   Shown only when there is something to report — a badge on every answer
+   becomes wallpaper within a day. */
+.as-grounding {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0 2px;
+  padding: 8px 11px;
+  border: 1px solid color-mix(in srgb, #b8863b 42%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, #b8863b 9%, transparent);
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.as-grounding svg { flex: 0 0 auto; margin-top: 2px; color: #b8863b; }

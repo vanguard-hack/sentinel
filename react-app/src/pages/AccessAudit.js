@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ShieldCheck, RefreshCw, Download, FileSpreadsheet, AlertTriangle, Check,
-  Calendar, ChevronDown, ChevronLeft, ChevronRight,
+  Calendar, ChevronDown, ChevronLeft, ChevronRight, HelpCircle,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import DateRangeCalendar from '../components/DateRangeCalendar';
@@ -206,10 +206,80 @@ function RolesTab() {
 
 const AUDIT_PER_PAGE = 20;
 
+/**
+ * Whether this stretch of the trail can still be shown to be unaltered.
+ *
+ * Three states, and the middle one is the point: a range whose entries predate
+ * tamper-evidence is neither verified nor suspect, and painting it green would
+ * be the console asserting something it cannot check. The head hash is offered
+ * for copying because internal consistency is all a self-hosted chain proves —
+ * the same value written down somewhere outside Catalyst is what makes it
+ * evidence against someone who can rewrite the store itself.
+ */
+function IntegrityBanner({ verdict }) {
+  const [copied, setCopied] = useState(false);
+  if (!verdict || verdict.intact === null) return null;
+
+  const failed = verdict.problems && verdict.problems.length > 0;
+  const nothingChecked = !failed && !verdict.eventsVerified;
+  const tone = failed ? 'bad' : nothingChecked ? 'unknown' : 'good';
+
+  const copyHead = async () => {
+    try {
+      await navigator.clipboard.writeText(verdict.headHash);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      logAudit('copy-integrity-head', 'Access & Audit', verdict.headHash.slice(0, 16));
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className={`aa-integrity aa-integrity-${tone}`}>
+      <div className="aa-integrity-head">
+        {failed ? <AlertTriangle size={15} /> : tone === 'good' ? <ShieldCheck size={15} /> : <HelpCircle size={15} />}
+        <strong>
+          {failed ? 'Audit trail integrity: FAILED'
+            : tone === 'good' ? 'Audit trail verified unaltered'
+              : 'Audit trail integrity: not verifiable'}
+        </strong>
+        <span className="aa-integrity-summary">{verdict.summary}</span>
+      </div>
+
+      {failed && (
+        <ul className="aa-integrity-problems">
+          {verdict.problems.slice(0, 8).map((p, i) => (
+            <li key={i}>
+              <span className="aa-integrity-day">{p.day}</span> — {p.detail}
+              {p.key && <span className="aa-mono aa-integrity-key"> {p.key.split('/').pop()}</span>}
+            </li>
+          ))}
+          {verdict.problems.length > 8 && <li>…and {verdict.problems.length - 8} more.</li>}
+        </ul>
+      )}
+
+      {verdict.headHash && (
+        <div className="aa-integrity-head-hash">
+          <span>Chain head{verdict.headDay ? ` (sealed through ${verdict.headDay})` : ''}:</span>
+          <code className="aa-mono">{verdict.headHash.slice(0, 32)}…</code>
+          <button type="button" className="aa-btn aa-btn-tiny" onClick={copyHead}>
+            {copied ? <><Check size={12} /> Copied</> : 'Copy'}
+          </button>
+          <span className="aa-integrity-hint">
+            Keep a copy outside Sentinel — it is what proves this log against someone who can edit the store.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AuditTab() {
   const [from, setFrom] = useState(daysAgo(6));
   const [to, setTo] = useState(daysAgo(0));
   const [events, setEvents] = useState(null);
+  const [verdict, setVerdict] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [fUser, setFUser] = useState('All');
@@ -224,6 +294,7 @@ function AuditTab() {
     try {
       const d = await post('/server/rag/access/records', { from, to });
       setEvents(d.events || []);
+      setVerdict(d.integrity || null);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -320,6 +391,7 @@ function AuditTab() {
 
       {events && (
         <>
+          <IntegrityBanner verdict={verdict} />
           <div className="aa-count">
             {shown.length === events.length
               ? `${events.length} events`
