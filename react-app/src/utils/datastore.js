@@ -218,6 +218,33 @@ export async function fetchPage({ table, page = 1, perPage = 50, column = 'ALL',
 
 // Fetch every row of a table (paginated at the ZCQL per-query cap). Used by
 // the Excel export; `cap` is a safety limit per table.
+
+/**
+ * Page a query to the end, or to a stated bound — and SAY which.
+ *
+ * Three analytics modules each grew their own copy of this loop with a
+ * different ceiling: 6,000 rows in aianalytics, 10,000 in fetchAllRows, 30,000
+ * in crimelinks. At 2,200 cases none of them ever bit. At 30,000 all three do,
+ * and they did it silently: the charts were drawn from a fifth of the data and
+ * captioned as though they were the whole of it.
+ *
+ * A truncated read is not a smaller answer, it is a different one. So the
+ * result carries `truncated` and `cap`, and the caller is expected to say so on
+ * screen rather than quietly present a partial figure as a total.
+ */
+export async function pageQuery(baseSql, table, { cap = 60000, page = 300 } = {}) {
+  const rows = [];
+  let truncated = false;
+  for (let off = 0; off < cap; off += page) {
+    // eslint-disable-next-line no-await-in-loop
+    const got = await runQuery(`${baseSql} LIMIT ${off}, ${page}`, table);
+    rows.push(...got);
+    if (got.length < page) return Object.assign(rows, { truncated: false, cap });
+    if (off + page >= cap) truncated = true;
+  }
+  return Object.assign(rows, { truncated, cap });
+}
+
 export async function fetchAllRows(table, { cap = 10000 } = {}) {
   const out = [];
   const page = 300;

@@ -9,8 +9,14 @@
 #      Regenerate configs against a different bucket with:
 #         CATALYST_BUCKET=<bucket> python3 prepare_import.py
 #
+# LARGE TABLES: the dev environment caps one bulk import at 5,000 rows.
+# prepare_import.py splits anything larger into ../parts/<Table>.partNN.csv and
+# writes a config per part, all targeting the same table. They are imported in
+# filename order, so a run that stops part-way tells you exactly where to
+# resume: ./run_import.sh Accused.part04 Accused.part05 …
+#
 # USAGE:
-#   ./run_import.sh                # dev environment
+#   ./run_import.sh                # dev environment (parts imported in sequence)
 #   ./run_import.sh --production   # production environment (no 5k row cap)
 #   ./run_import.sh victims fir    # only the named tables
 #
@@ -36,11 +42,18 @@ for table in "${TABLES[@]}"; do
   csv="../${table}.csv"
   if [[ ! -f "$cfg" ]]; then echo "SKIP  $table (no config)"; continue; fi
 
+  # A config named "<Table>.partNN" is one slice of a table that exceeded the
+  # dev cap; prepare_import.py wrote the slices and their configs. The CSV for
+  # a part lives in ../parts, not beside the full table.
+  if [[ "$table" == *.part* ]]; then
+    csv="../parts/${table}.csv"
+  fi
+  if [[ ! -f "$csv" ]]; then echo "SKIP  $table (no csv at $csv)"; continue; fi
+
   rows=$(( $(wc -l < "$csv") - 1 ))
   if [[ -z "$PROD_FLAG" && $rows -gt $DEV_LIMIT ]]; then
-    echo "WARN  $table has $rows rows > $DEV_LIMIT dev cap — split it or use --production."
-    echo "      To split:  tail -n +2 $csv | split -l $DEV_LIMIT - ${table}_part_"
-    echo "      then prepend the header to each part and make a config per part."
+    echo "WARN  $table has $rows rows > $DEV_LIMIT dev cap. Re-run prepare_import.py,"
+    echo "      which splits anything oversized into parts automatically."
     fail=1
     continue
   fi

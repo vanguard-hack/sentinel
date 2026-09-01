@@ -495,18 +495,56 @@ function lookupLaw({ operation, section, act, query }) {
 
 const JOINABLE = new Set(['Accused', 'Victim', 'ComplainantDetails', 'ArrestSurrender', 'ChargesheetDetails', 'ActSectionAssociation']);
 const PAGE = 300;   // the Data Store's per-query ceiling
-const MAX_IDS = 5000; // a bounded scan, not a table dump
+// A bounded scan, not a table dump. Raised from 5,000 when the dataset grew to
+// 30,000 cases: "accused in cases under investigation" matches 5,159, so an
+// entirely ordinary question was landing just past the old ceiling. At PAGE=300
+// this is fifty sequential reads, which fits the tool budget; past it the
+// result says it is incomplete rather than quietly rounding down.
+const MAX_IDS = 15000;
 
 async function pageAll(app, sql, cap = MAX_IDS) {
   const out = [];
+  let truncated = false;
   for (let off = 0; off < cap; off += PAGE) {
     // eslint-disable-next-line no-await-in-loop
     const raw = await app.zcql().executeZCQLQuery(`${sql} LIMIT ${off}, ${PAGE}`);
     const rows = zcql.flattenRows(raw || []);
     out.push(...rows);
-    if (rows.length < PAGE) break;
+    if (rows.length < PAGE) return Object.assign(out, { truncated: false });
+    // A full last page at the cap means there was more and we stopped.
+    if (off + PAGE >= cap) truncated = true;
   }
-  return out;
+  return Object.assign(out, { truncated });
+}
+
+/**
+ * Fetch the attached rows for a set of case ids.
+ *
+ * This used to read the whole attached table and match in memory, with a
+ * comment saying the tables were small enough that one scan was simpler and
+ * faster. At 2,200 cases that was true. At 30,000 it is false and it fails
+ * SILENTLY: pageAll stops at MAX_IDS, so ArrestSurrender's 25,000 rows were
+ * read down to the first 5,000 and the tool reported 532 arrests where the
+ * truth was 2,769 — a short count presented as a count, which is precisely the
+ * failure this whole tool was written to prevent.
+ *
+ * Chunked IN clauses instead. The work now scales with the FILTERED set rather
+ * than the table: 3,600 case ids is eighteen queries, where scanning
+ * ArrestSurrender end to end would be eighty-four.
+ */
+const ID_CHUNK = 200;
+
+async function attachedFor(app, attach, attachWhere, ids) {
+  const rows = [];
+  for (let i = 0; i < ids.length; i += ID_CHUNK) {
+    const chunk = ids.slice(i, i + ID_CHUNK).map((v) => `'${String(v).replace(/'/g, "''")}'`);
+    const where = `${attach}.CaseMasterID IN (${chunk.join(',')})`
+      + (attachWhere ? ` AND (${attachWhere})` : '');
+    // eslint-disable-next-line no-await-in-loop
+    const page = await pageAll(app, `SELECT * FROM ${attach} WHERE ${where}`);
+    rows.push(...page);
+  }
+  return rows;
 }
 
 // A district name is not a column on CaseMaster; it reaches cases through
@@ -596,12 +634,17 @@ async function joinRecords(app, input, role, access) {
     return { error: `Base query failed: ${(e && e.message) || e}` };
   }
   const ids = [...new Set(baseRows.map((r) => String(r.CaseMasterID)).filter(Boolean))];
+  // A count that might be short must never be presented as a count.
+  const baseTruncated = baseRows.truncated === true
+    ? { note_incomplete: `More than ${MAX_IDS} cases match this filter; only the first ${MAX_IDS} were counted. Narrow the filter for an exact figure.` }
+    : {};
 
   if (!attach) {
     const enriched = zcql.enrichRows(baseRows);
     const filtered = redaction.filterRows(enriched, role, access);
     return {
       matched_cases: ids.length,
+      ...baseTruncated,
       ...(countOnly ? {} : { rows: (filtered.rows || enriched).slice(0, MAX_ROWS) }),
       ...(!countOnly && enriched.length > MAX_ROWS ? { note: `${enriched.length} cases matched, showing ${MAX_ROWS}.` } : {}),
       _redactions: filtered.redactions || [],
@@ -615,18 +658,12 @@ async function joinRecords(app, input, role, access) {
   if (!ids.length) return { matched_cases: 0, attached_count: 0, note: 'No cases matched the filter, so nothing to attach.' };
 
   // ── 2. the attached rows ─────────────────────────────────────────────────
-  // Read the whole attached table under its own filter and match in memory.
-  // Chunking ids into IN clauses would mean one query per 200 ids; the tables
-  // here are small enough that one scan is both simpler and faster.
-  let attachRows;
+  let hits;
   try {
-    attachRows = await pageAll(app,
-      `SELECT * FROM ${attach}` + (attachWhere ? ` WHERE ${attachWhere}` : ''));
+    hits = await attachedFor(app, attach, attachWhere, ids);
   } catch (e) {
     return { error: `Attached query failed: ${(e && e.message) || e}` };
   }
-  const idSet = new Set(ids);
-  const hits = attachRows.filter((r) => idSet.has(String(r.CaseMasterID)));
 
   const enriched = zcql.enrichRows(hits);
   const filtered = redaction.filterRows(enriched, role, access);
@@ -634,6 +671,7 @@ async function joinRecords(app, input, role, access) {
 
   return {
     matched_cases: ids.length,
+    ...baseTruncated,
     attached_table: attach,
     attached_count: hits.length,
     cases_with_a_match: casesWithHit,
@@ -829,6 +867,7 @@ async function run(name, input, deps) {
 }
 
 module.exports = {
+  MAX_IDS,
   validateFilterFragment,
   DEFINITIONS,
   MAX_ROWS,

@@ -7,18 +7,12 @@
 // decision-support only — real deployment needs STR/CTR feeds (FIU-IND),
 // bank/UPI records, and legal authorisation.
 
-import { runQuery } from './datastore';
+import {pageQuery } from './datastore';
 
-const PAGE = 300;
-async function fetchAll(sql, table) {
-  const out = [];
-  for (let off = 0; off < 20000; off += PAGE) {
-    const rows = await runQuery(`${sql} LIMIT ${off}, ${PAGE}`, table);
-    out.push(...rows);
-    if (rows.length < PAGE) break;
-  }
-  return out;
-}
+// Paging lives in datastore.pageQuery, which reports when it stopped short.
+// Three modules each had their own copy of this loop with a different
+// ceiling, and at 30,000 cases all three silently truncated.
+const fetchAll = (baseSql, table) => pageQuery(baseSql, table, { cap: 60000 });
 
 const djb2 = (s) => {
   let h = 5381;

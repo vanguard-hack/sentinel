@@ -33,3 +33,7 @@ ksp/.geocode-cache.json
 
 # join.test.js scratch db
 ksp/.jointest.db
+
+# Import parts: derived from the CSVs by prepare_import.py, regenerated on demand.
+ksp/fir/parts/
+ksp/.jointest.db

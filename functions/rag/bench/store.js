@@ -5,86 +5,98 @@
  *
  * WHY THIS FILE EXISTS
  *
- * A benchmark whose expected answers are typed into the test file is a
- * benchmark that starts lying the day the data changes. Reseed the Data Store,
- * and "Yelahanka has 14 chain-snatchings" quietly becomes false while the
- * suite still reports green — the worst possible failure for a document whose
- * whole purpose is to be trusted.
+ * A benchmark whose expected answers are typed into the test file starts lying
+ * the day the data changes. Reseed the Data Store and "Yelahanka has 14
+ * chain-snatchings" quietly becomes false while the suite still reports green —
+ * the worst possible failure for a document whose whole purpose is to be
+ * trusted.
  *
- * So nothing here is hardcoded. This module parses the exported snapshot of
- * CaseMaster and answers questions about it directly: how many FIRs match a
- * filter, which district/crime-head pairs have no records at all, what the
- * real Brief Facts prose looks like. The harness asks the store what is true,
- * asks Sentinel the same question, and compares. Re-export the data and every
- * expected value moves with it.
+ * So nothing here is hardcoded. This reads the generator's own CaseMaster.csv —
+ * the exact rows that get imported into the Data Store — and answers questions
+ * about it directly. Re-run the generator and every expected value moves with
+ * it.
  *
- * The snapshot is the same 2,200 rows that were imported into the Data Store,
- * so a count computed here is the count the live table would return.
+ * WHY THE CSV AND NOT AN EXPORT
+ *
+ * It used to parse a text export snapshotted out of the Data Store by hand.
+ * That was one more artefact to keep in step, it had no script that produced
+ * it, and at 30,000 cases it would have been a 22MB file committed to the repo
+ * for no reason. The CSV is the source those rows come from; reading it removes
+ * the copy rather than growing it.
  */
 
 const fs = require('fs');
 const path = require('path');
 
-const EXPORT_PATH = path.join(__dirname, '..', '..', '..', 'datastore_export', 'FIR_data_recent_first.txt');
-
-// Each record is a block of `Label : value` lines under a `--- FIR n ---`
-// header. The labels are padded to a fixed width in the export, hence the
-// loose separator match.
-const FIELD_MAP = {
-  'Registered Date': 'registeredDate',
-  'Case No': 'caseNo',
-  'Police Station': 'station',
-  District: 'district',
-  Category: 'category',
-  Gravity: 'gravity',
-  'Crime Head': 'crimeHeadRaw',
-  Status: 'status',
-  Court: 'court',
-  'Investigating O.': 'io',
-  'Incident Window': 'incidentWindow',
-  'Info Recv at PS': 'infoReceived',
-  Location: 'location',
-  'Brief Facts': 'briefFacts',
-};
+const CSV_PATH = path.join(__dirname, '..', '..', '..', 'ksp', 'fir', 'CaseMaster.csv');
+const MASTERS = require('../masters.json');
 
 let CACHE = null;
 
+/** Minimal RFC-4180 reader: quoted fields, embedded commas and doubled quotes. */
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; } else quoted = false;
+      } else field += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else if (c !== '\r') field += c;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
 function parse() {
   if (CACHE) return CACHE;
-  if (!fs.existsSync(EXPORT_PATH)) {
+  if (!fs.existsSync(CSV_PATH)) {
     CACHE = { rows: [], missing: true };
     return CACHE;
   }
-  const text = fs.readFileSync(EXPORT_PATH, 'utf8');
-  const blocks = text.split(/\n--- FIR \d+\s+\(CrimeNo (\d+)\) ---\n/);
+  const table = parseCsv(fs.readFileSync(CSV_PATH, 'utf8'));
+  const header = table.shift() || [];
+  const at = Object.fromEntries(header.map((h, i) => [h, i]));
+
+  const unitName = (id) => (MASTERS.units[id] || {}).name || String(id);
+  const districtOf = (id) => MASTERS.districts[(MASTERS.units[id] || {}).district] || '';
 
   const rows = [];
-  // split() yields [preamble, crimeNo, body, crimeNo, body, ...]
-  for (let i = 1; i < blocks.length; i += 2) {
-    const crimeNo = blocks[i];
-    const body = blocks[i + 1] || '';
-    const rec = { crimeNo };
-    for (const line of body.split('\n')) {
-      const m = /^([A-Za-z. ]+?)\s*:\s(.*)$/.exec(line);
-      if (!m) continue;
-      const key = FIELD_MAP[m[1].trim()];
-      if (key) rec[key] = m[2].trim();
-    }
-    if (!rec.district) continue;
-
-    // Derived fields, so callers filter on the same shape the app uses.
-    const [head, sub] = String(rec.crimeHeadRaw || '').split(' / ');
-    rec.crimeHead = (head || '').trim();
-    rec.crimeSubHead = (sub || '').trim();
-    rec.year = Number(String(rec.registeredDate || '').slice(0, 4)) || null;
-    rec.month = String(rec.registeredDate || '').slice(0, 7) || null;
-    const loc = /lat\s+(-?[\d.]+),\s*lon\s+(-?[\d.]+)/.exec(rec.location || '');
-    rec.latitude = loc ? Number(loc[1]) : null;
-    rec.longitude = loc ? Number(loc[2]) : null;
-
-    const idm = /\[CaseMasterID (\d+) \| ROWID (\d+)\]/.exec(body);
-    if (idm) { rec.caseMasterId = idm[1]; rec.rowid = idm[2]; }
-    rows.push(rec);
+  for (const r of table) {
+    if (!r || r.length < header.length || !r[at.CaseMasterID]) continue;
+    const station = r[at.PoliceStationID];
+    const registeredDate = r[at.CrimeRegisteredDate] || '';
+    const lat = Number(r[at.latitude]);
+    const lon = Number(r[at.longitude]);
+    rows.push({
+      caseMasterId: r[at.CaseMasterID],
+      crimeNo: r[at.CrimeNo],
+      caseNo: r[at.CaseNo],
+      registeredDate,
+      station: unitName(station),
+      stationId: station,
+      district: districtOf(station),
+      category: MASTERS.categories[r[at.CaseCategoryID]] || '',
+      gravity: MASTERS.gravity[r[at.GravityOffenceID]] || '',
+      crimeHead: MASTERS.crimeHeads[r[at.CrimeMajorHeadID]] || '',
+      crimeSubHead: MASTERS.crimeSubHeads[r[at.CrimeMinorHeadID]] || '',
+      status: MASTERS.statuses[r[at.CaseStatusID]] || '',
+      court: MASTERS.courts[r[at.CourtID]] || '',
+      io: (MASTERS.employees || {})[r[at.PolicePersonID]] || '',
+      incidentWindow: `${r[at.IncidentFromDate]} to ${r[at.IncidentToDate]}`,
+      infoReceived: r[at.InfoReceivedPSDate],
+      briefFacts: r[at.BriefFacts] || '',
+      latitude: Number.isFinite(lat) ? lat : null,
+      longitude: Number.isFinite(lon) ? lon : null,
+      year: Number(String(registeredDate).slice(0, 4)) || null,
+      month: String(registeredDate).slice(0, 7) || null,
+    });
   }
   CACHE = { rows, missing: false };
   return CACHE;
@@ -130,11 +142,24 @@ function distinct(field) {
  * sounds like one an officer would plausibly ask.
  */
 function emptyPair() {
-  const districts = distinct('district').slice(0, 12).map((d) => d.value);
-  const heads = distinct('crimeSubHead').slice(0, 12).map((h) => h.value);
-  for (const district of districts) {
-    for (const crimeSubHead of heads) {
-      if (count({ district, crimeSubHead }) === 0) return { district, crimeSubHead };
+  // Every combination, not the busiest few.
+  //
+  // This searched the top twelve districts against the top twelve crime types,
+  // which found a gap easily at 2,200 cases and found nothing at 30,000 — the
+  // popular combinations are all populated at that size, and the abstention
+  // check silently had nothing to fire at. The gap that does exist is
+  // deliberate (see NO_DATA_GAP in the generator) and sits at rank 12 and rank
+  // 31, so it is only found by sweeping the lot.
+  //
+  // Counted from an index rather than by re-filtering 961 times, because the
+  // naive version was 961 passes over 30,000 rows.
+  const seen = new Set();
+  for (const r of all()) {
+    if (r.district && r.crimeSubHead) seen.add(`${r.district}\u0000${r.crimeSubHead}`);
+  }
+  for (const { value: district } of distinct('district')) {
+    for (const { value: crimeSubHead } of distinct('crimeSubHead')) {
+      if (!seen.has(`${district}\u0000${crimeSubHead}`)) return { district, crimeSubHead };
     }
   }
   return null;
@@ -165,4 +190,4 @@ function stats() {
   };
 }
 
-module.exports = { EXPORT_PATH, all, available, find, count, distinct, emptyPair, populatedPair, stats };
+module.exports = { CSV_PATH, all, available, find, count, distinct, emptyPair, populatedPair, stats };

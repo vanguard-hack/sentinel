@@ -1,11 +1,11 @@
-.# Catalyst Data Store — table schemas
+# Catalyst Data Store — table schemas
 
-_Generated 2026-07-10 20:58 • bucket: `accused`_
+_Generated 2026-09-02 01:33 • bucket: `accused`_
 
 Every table also gets an automatic `ROWID` primary key from Catalyst — you don't add it. Create each table below in the console (Data Store → New Table), then run `run_import.sh`.
 
 
-## `Accused`  (2956 rows)
+## `Accused`  (44246 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -25,7 +25,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | ShortName | varchar | 50 |
 | Active | boolean |  |
 
-## `ActSectionAssociation`  (2535 rows)
+## `ActSectionAssociation`  (34669 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -35,7 +35,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | ActOrderID | int |  |
 | SectionOrderID | int |  |
 
-## `ArrestSurrender`  (1803 rows)
+## `ArrestSurrender`  (25072 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -59,7 +59,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | CaseCategoryID | int |  |
 | LookupValue | varchar | 50 |
 
-## `CaseMaster`  (2200 rows)
+## `CaseMaster`  (30000 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -96,7 +96,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | caste_master_id | int |  |
 | caste_master_name | varchar | 50 |
 
-## `ChargesheetDetails`  (1658 rows)
+## `ChargesheetDetails`  (22482 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -106,7 +106,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | cstype | varchar | 50 |
 | PolicePersonID | int |  |
 
-## `ComplainantDetails`  (2374 rows)
+## `ComplainantDetails`  (32353 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -172,7 +172,24 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | StateID | int |  |
 | Active | boolean |  |
 
-## `Employee`  (744 rows)
+## `Employee.base`  (3224 rows)
+
+| Column | Type | Max length |
+|--------|------|-----------|
+| EmployeeID | int |  |
+| DistrictID | int |  |
+| UnitID | int |  |
+| RankID | int |  |
+| DesignationID | int |  |
+| KGID | varchar | 50 |
+| FirstName | varchar | 50 |
+| EmployeeDOB | datetime |  |
+| GenderID | int |  |
+| BloodGroupID | int |  |
+| PhysicallyChallenged | boolean |  |
+| AppointmentDate | datetime |  |
+
+## `Employee`  (3368 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -203,7 +220,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | OccupationID | int |  |
 | OccupationName | varchar | 50 |
 
-## `Rank`  (9 rows)
+## `Rank`  (12 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -260,7 +277,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | Hierarchy | int |  |
 | Active | boolean |  |
 
-## `Victim`  (1988 rows)
+## `Victim`  (27700 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -270,3 +287,13 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | AgeYear | int |  |
 | GenderID | int |  |
 | VictimPolice | int |  |
+
+## ⚠️ Row-limit warnings
+
+- **Accused**: 44246 rows > 5000 dev-env cap — split into 9 parts, imported in sequence.
+- **ActSectionAssociation**: 34669 rows > 5000 dev-env cap — split into 7 parts, imported in sequence.
+- **ArrestSurrender**: 25072 rows > 5000 dev-env cap — split into 6 parts, imported in sequence.
+- **CaseMaster**: 30000 rows > 5000 dev-env cap — split into 6 parts, imported in sequence.
+- **ChargesheetDetails**: 22482 rows > 5000 dev-env cap — split into 5 parts, imported in sequence.
+- **ComplainantDetails**: 32353 rows > 5000 dev-env cap — split into 7 parts, imported in sequence.
+- **Victim**: 27700 rows > 5000 dev-env cap — split into 6 parts, imported in sequence.

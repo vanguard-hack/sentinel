@@ -99,13 +99,40 @@ class Person:
         self.cases = 0
 
 
-def build_population(n=2600):
+# Karnataka names very often carry a leading initial for the village or the
+# father's name — "K. Manjunath", "B. S. Shivakumar". That is both accurate and
+# what makes a large population possible: 96 first names against 32 surnames is
+# barely 3,000 combinations, and a 35,000-strong offender population would
+# otherwise be almost entirely duplicate names.
+INITIALS = list('ABCDGHJKLMNPRSTVY')
+
+
+def build_population(n):
+    """A distinct offender population, sized against the caseload.
+
+    The size is NOT a constant. It was 2,600 for 2,200 cases — about one person
+    per case, which produced rings a person could actually read. Left at 2,600
+    for 30,000 cases it becomes seventeen cases each, and every offender ends up
+    connected to every other: the run reported ONE network with 2,600 members,
+    which means "show me this person's gang" would have returned the entire
+    criminal population of Karnataka. A co-offending graph that links everyone
+    has told you nothing.
+    """
     people = []
     used_names = set()
     for i in range(n):
         gender = 1 if random.random() < 0.86 else 2   # accused skew male
-        for _ in range(6):
-            nm = f'{random.choice(MALE if gender == 1 else FEMALE)} {random.choice(SURNAME)}'
+        nm = None
+        for attempt in range(8):
+            first = random.choice(MALE if gender == 1 else FEMALE)
+            last = random.choice(SURNAME)
+            # Widen the space as collisions bite, rather than looping forever.
+            if attempt < 2:
+                nm = f'{first} {last}'
+            elif attempt < 5:
+                nm = f'{random.choice(INITIALS)}. {first} {last}'
+            else:
+                nm = f'{random.choice(INITIALS)}. {random.choice(INITIALS)}. {first} {last}'
             if nm not in used_names:
                 break
         used_names.add(nm)
@@ -161,7 +188,10 @@ def build_series(anchor, pool, want, used):
 
 def main():
     cases = read_cases()
-    people = build_population()
+    # Roughly one offender per case, the ratio the 2,200-case dataset had. The
+    # population has to grow with the caseload or the graph collapses into a
+    # single component (see build_population).
+    people = build_population(max(600, int(len(cases) * 1.18)))
     free_people = list(people)
     random.shuffle(free_people)
 

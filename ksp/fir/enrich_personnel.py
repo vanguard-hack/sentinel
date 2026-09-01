@@ -119,9 +119,20 @@ with open(HERE / 'Rank.csv', 'w', newline='') as f:
 # the pristine generator output: Employee.base.csv, snapshotted from
 # Employee.csv on first run. After regenerating the dataset, delete the base
 # file so a fresh snapshot is taken.
+# The generator writes Employee.base.csv; this only ever reads it.
+#
+# It used to snapshot the base itself on first run, with a comment saying to
+# delete the file after regenerating — a manual step, therefore one that gets
+# missed, and silent when it is: the enrichment rebuilds the OLD roster over
+# the new one and the officer count never changes however large the dataset
+# gets. Detecting that by comparing row counts was worse still, because
+# enrichment APPENDS gazetted officers and so always changes the count: the
+# second run treated its own output as pristine and remapped every rank twice,
+# which fails loudly on RANK_REMAP but only on the second run.
 base = HERE / 'Employee.base.csv'
 if not base.exists():
-    base.write_bytes((HERE / 'Employee.csv').read_bytes())
+    raise SystemExit(
+        'Employee.base.csv is missing — run generate_fir_dataset.py first; it writes the base.')
 with open(base, newline='') as f:
     reader = csv.reader(f)
     header = next(reader)
@@ -272,5 +283,5 @@ with open(HERE / 'Employee.csv', 'w', newline='') as f:
     w.writerows(rows)
 
 print(f'Rank.csv: {len(RANKS)} ranks | Employee.csv: {len(rows)} officers '
-      f'({len(rows) - 744} gazetted added), all names unique: '
+      f'({sum(1 for r in rows if int(r[0]) >= 20001)} gazetted added), all names unique: '
       f'{len(used_names) == len(rows)}')

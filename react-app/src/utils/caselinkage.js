@@ -21,19 +21,13 @@
 
 import { assess, applyIsotonic, isotonicSupport } from './calibration';
 
-import { runQuery } from './datastore';
+import {pageQuery } from './datastore';
 
-const CAP = 300;
 
-async function fetchAll(baseSql, table) {
-  const out = [];
-  for (let off = 0; off < 30000; off += CAP) {
-    const rows = await runQuery(`${baseSql} LIMIT ${off}, ${CAP}`, table);
-    out.push(...rows);
-    if (rows.length < CAP) break;
-  }
-  return out;
-}
+// Paging lives in datastore.pageQuery, which reports when it stopped short.
+// Three modules each had their own copy of this loop with a different
+// ceiling, and at 30,000 cases all three silently truncated.
+const fetchAll = (baseSql, table) => pageQuery(baseSql, table, { cap: 60000 });
 
 async function mapOf(table, idCol, cols) {
   const rows = await fetchAll(`SELECT ${[idCol, ...cols].join(', ')} FROM ${table}`, table);

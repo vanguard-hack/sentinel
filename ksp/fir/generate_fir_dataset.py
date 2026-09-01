@@ -109,6 +109,8 @@ write('Unit', ['UnitID', 'UnitName', 'TypeID', 'ParentUnit', 'NationalityID',
                'StateID', 'DistrictID', 'Active'], units)
 ALL_PS = [u for lst in PS_BY_DIST.values() for u in lst]
 PS_DISTRICT = {u[0]: u[6] for u in units if u[2] == 1}
+# DistrictID -> name, for the reserved no-data combination.
+DISTRICTS_BY_ID = {d[0]: d[1] for d in districts}
 
 ranks = [(1, 'Director General of Police', 1), (2, 'Inspector General of Police', 2),
          (3, 'Superintendent of Police', 3), (4, 'Deputy SP', 4), (5, 'Inspector', 5),
@@ -123,12 +125,25 @@ designations = [(1, 'Station House Officer', 1), (2, 'Investigating Officer', 2)
 write('Designation', ['DesignationID', 'DesignationName', 'Active', 'SortOrder'],
       [[i, n, 'true', s] for i, n, s in designations])
 
-# Employees: one SHO + 2 IOs + constables per station.
+# Employees: a station roster.
+#
+# Six per station was enough to give every case an IO and no more. A real
+# Karnataka station carries thirty to sixty, and the thin roster showed: the
+# Action Queue's by-officer view had a handful of names each holding an
+# implausible share of the district's work. STAFF_PER_PS scales it; the ranks
+# below repeat in order, so the shape of the roster (one SHO, several IOs, a
+# tail of constables) is preserved at any size.
+STAFF_PER_PS = int(os.environ.get('STAFF_PER_PS', '6'))
+ROSTER = [(5, 1), (6, 2), (6, 2), (7, 3), (8, 4), (9, 4)]
+
 employees, EMP_BY_PS, eid = [], {}, 10001
 for ps in ALL_PS:
     did = PS_DISTRICT[ps]
     EMP_BY_PS[ps] = []
-    for rank_id, desig in [(5, 1), (6, 2), (6, 2), (7, 3), (8, 4), (9, 4)]:
+    for slot in range(STAFF_PER_PS):
+        # The first slot is always the SHO; the rest cycle through the tail, so
+        # a bigger roster adds investigators and constables, not more SHOs.
+        rank_id, desig = ROSTER[0] if slot == 0 else ROSTER[1 + (slot - 1) % (len(ROSTER) - 1)]
         g = random.choices([1, 2], weights=[80, 20])[0]
         dob = date(1968, 1, 1) + timedelta(days=random.randint(0, 12000))
         appt = dob + timedelta(days=random.randint(21 * 365, 30 * 365))
@@ -138,10 +153,21 @@ for ps in ALL_PS:
         if rank_id in (5, 6):
             EMP_BY_PS[ps].append(eid)
         eid += 1
+# Written twice on purpose. Employee.csv is the working file that
+# enrich_personnel.py rewrites in place; Employee.base.csv is the pristine
+# generator output it reads FROM. The base used to be snapshotted by the
+# enrichment on first run, which meant a regenerated dataset silently kept the
+# old roster until someone remembered to delete it — and an attempt to detect
+# that by comparing row counts was worse, because enrichment appends gazetted
+# officers and so always changes the count: the second run then treated its own
+# output as pristine and remapped every rank twice.
 write('Employee', ['EmployeeID', 'DistrictID', 'UnitID', 'RankID', 'DesignationID',
                    'KGID', 'FirstName', 'EmployeeDOB', 'GenderID', 'BloodGroupID',
                    'PhysicallyChallenged', 'AppointmentDate'], employees)
 
+write('Employee.base', ['EmployeeID', 'DistrictID', 'UnitID', 'RankID', 'DesignationID',
+                        'KGID', 'FirstName', 'EmployeeDOB', 'GenderID', 'BloodGroupID',
+                        'PhysicallyChallenged', 'AppointmentDate'], employees)
 # Courts: District & Sessions + JMFC per district.
 courts, COURT_BY_DIST, cid = [], {}, 601
 for did, dname, _, _, _ in districts:
@@ -266,7 +292,18 @@ chas = [list(x) for x in dict.fromkeys(map(tuple, chas))]
 write('CrimeHeadActSection', ['CrimeHeadID', 'ActCode', 'SectionCode'], chas)
 
 # ── transactional tables ─────────────────────────────────────────────────────
-N_CASES = 2200
+#
+# Volume is configurable because the dataset outgrew its first purpose. 2,200
+# cases demonstrated every feature and made the analytics look thin: a
+# co-offending network over 3,000 accused has few rings worth finding, and a
+# district heat map built from 70 cases per district is mostly noise.
+#
+#   N_CASES=30000 python3 generate_fir_dataset.py
+#
+# The related tables scale with it — roughly 1.5 accused, 1.1 complainants,
+# 0.9 victims, 0.8 arrests, 0.75 chargesheets and 1.15 act-sections per case —
+# so 30,000 cases is about 216,000 rows in total.
+N_CASES = int(os.environ.get('N_CASES', '2200'))
 HEAD_WEIGHTS = {1: 10, 2: 24, 3: 12, 4: 4, 5: 10, 6: 16, 7: 7, 8: 6, 9: 8, 10: 3}
 HEINOUS_SUBS = {101, 102, 204, 301, 401, 402, 902}
 FACT_TMPL = {
@@ -290,6 +327,19 @@ serials = {}
 comp_id = vict_id = acc_id = arr_id = cs_id = 50001
 today = date(2026, 7, 1)
 
+# A deliberate hole in the data.
+#
+# The benchmark checks that the assistant REFUSES a question the records cannot
+# answer, and that check needs a combination with genuinely nothing behind it.
+# At 2,200 cases such gaps occurred naturally; at 30,000 every one of the 961
+# district x sub-head combinations is populated, and the abstention test had
+# nothing left to fire at.
+#
+# So one is reserved: no illegal-arms cases are recorded in Kodagu. It is
+# documented here rather than left as a coincidence, because a planted gap
+# nobody knows about looks exactly like a bug in the generator.
+NO_DATA_GAP = ('Kodagu', 1002)   # (district name, CrimeMinorHeadID for Illegal Arms)
+
 for cm_id in range(1, N_CASES + 1):
     ps = random.choice(ALL_PS)
     did = PS_DISTRICT[ps]
@@ -305,6 +355,12 @@ for cm_id in range(1, N_CASES + 1):
     sub = random.choice(SUBS_BY_HEAD[head])
     if cat == 3:  # UDR — unnatural death
         head, sub = 1, 105
+    # Keep the reserved combination empty (see NO_DATA_GAP). Redrawn rather
+    # than dropped, so the case count stays exactly N_CASES.
+    gap_district, gap_sub = NO_DATA_GAP
+    while DISTRICTS_BY_ID.get(did) == gap_district and sub == gap_sub:
+        head = random.choices(list(HEAD_WEIGHTS), weights=HEAD_WEIGHTS.values())[0]
+        sub = random.choice(SUBS_BY_HEAD[head])
     gravity = 1 if sub in HEINOUS_SUBS else 2
     age_days = (today - reg).days
     if age_days > 540:

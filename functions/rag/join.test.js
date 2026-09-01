@@ -129,6 +129,25 @@ function evalWhere(row, where) {
     throw new Error('test stub cannot evaluate: ' + c);
   });
 }
+// The attach step queries by chunks of case id, so the fake has to answer an
+// IN clause without rescanning the table — 75 chunks against 44,000 accused
+// rows is three million predicate evaluations, and the suite went from seconds
+// to nearly two minutes. A real Data Store has an index on this column; the
+// fake now behaves the same way.
+const BY_CASE = {};
+const byCase = (table) => {
+  if (!BY_CASE[table]) {
+    const idx = new Map();
+    for (const r of TABLES[table] || []) {
+      const k = String(r.CaseMasterID);
+      if (!idx.has(k)) idx.set(k, []);
+      idx.get(k).push(r);
+    }
+    BY_CASE[table] = idx;
+  }
+  return BY_CASE[table];
+};
+
 const app = {
   zcql: () => ({
     executeZCQLQuery: async (q) => {
@@ -136,7 +155,13 @@ const app = {
       const from = q.match(/FROM (\w+)/i)[1];
       const where = q.match(/WHERE (.+?)(?:\s+LIMIT|$)/i);
       let rows = TABLES[from] || [];
-      if (where) rows = rows.filter((r) => evalWhere(r, where[1]));
+      const inClause = where && where[1].match(/^\w+\.CaseMasterID IN \(([^)]*)\)(?:\s+AND\s+\((.+)\))?$/i);
+      if (inClause) {
+        const idx = byCase(from);
+        const ids = inClause[1].split(',').map((v) => v.trim().replace(/^'|'$/g, ''));
+        rows = ids.flatMap((id) => idx.get(id) || []);
+        if (inClause[2]) rows = rows.filter((r) => evalWhere(r, inClause[2]));
+      } else if (where) rows = rows.filter((r) => evalWhere(r, where[1]));
       const off = lim ? Number(lim[1]) : 0;
       const n = lim ? Number(lim[2]) : rows.length;
       return rows.slice(off, off + n).map((r) => ({ [from]: r }));
@@ -236,7 +261,55 @@ function buildDb() {
   check('rollup accepts null, so a model emitting it does not 400 the whole turn',
     Array.isArray(rollup.type) && rollup.type.includes('null'));
 
+
+
+  // ── A short count must say it is short ───────────────────────────────────
+  //
+  // The attach step used to read the whole attached table and match in memory,
+  // on the reasoning that the tables were small. At 2,200 cases that held. At
+  // 30,000 it failed silently: pageAll stopped at the cap, so ArrestSurrender's
+  // 25,000 rows were read down to the first 5,000 and the tool reported 532
+  // arrests where the truth was 2,769 — a short count presented as a count,
+  // which is the exact failure this tool was written to prevent.
+  //
+  // It now chunks by id, so the work scales with the filtered set rather than
+  // the table. Where a filter genuinely exceeds the bound, the result says so.
+  {
+    const wide = await tools.joinRecords(app, {
+      base: 'CaseMaster', attach: 'Accused', count_only: true,
+    }, 'admin');
+    const everyCase = truth('SELECT COUNT(*) FROM CaseMaster');
+    if (everyCase > tools.MAX_IDS) {
+      check('a filter past the bound reports itself incomplete', !!wide.note_incomplete,
+        'a number that might be short must never be presented as a count');
+      check('  and names the bound it hit', /first \d+ were counted/.test(wide.note_incomplete || ''));
+      check('  and says what to do about it', /Narrow the filter/.test(wide.note_incomplete || ''));
+    } else {
+      check('a filter inside the bound carries no incompleteness note', !wide.note_incomplete);
+    }
+    const narrow = await tools.joinRecords(app, {
+      base: 'CaseMaster', where: "CaseMaster.CrimeMinorHeadID = 1002", attach: 'Accused', count_only: true,
+    }, 'admin');
+    check('an ordinary filter is exact and unqualified',
+      !narrow.note_incomplete
+      && narrow.attached_count === truth(`SELECT COUNT(*) FROM Accused WHERE CaseMasterID IN
+           (SELECT CaseMasterID FROM CaseMaster WHERE CrimeMinorHeadID=1002)`),
+      `got ${narrow.attached_count}`);
+    // The attach filter has to survive chunking, or every chunk after the first
+    // would come back unfiltered.
+    const arrestsOnly = await tools.joinRecords(app, {
+      base: 'CaseMaster', where: 'CaseMaster.CrimeMajorHeadID = 7', attach: 'ArrestSurrender',
+      attach_where: 'ArrestSurrender.ArrestSurrenderTypeID = 1', count_only: true,
+    }, 'admin');
+    check('an attach filter is applied to every chunk, not just the first',
+      arrestsOnly.attached_count === truth(`SELECT COUNT(*) FROM ArrestSurrender
+        WHERE ArrestSurrenderTypeID=1 AND CaseMasterID IN
+          (SELECT CaseMasterID FROM CaseMaster WHERE CrimeMajorHeadID=7)`),
+      `got ${arrestsOnly.attached_count}`);
+  }
+
   try { fs.unlinkSync(db); } catch { /* leave it */ }
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();
+

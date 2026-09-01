@@ -167,3 +167,43 @@ test('every status colour clears 4.5:1 against white', () => {
   }
   expect(weak).toEqual([]);
 });
+
+// ── Analytics paging must not truncate silently ───────────────────────────
+//
+// Three modules each grew their own copy of the paging loop with a different
+// ceiling — 6,000 rows in aianalytics, 10,000 in fetchAllRows, 30,000 in
+// crimelinks. At 2,200 cases none ever bit. At 30,000 all three do, and they
+// did it silently: charts drawn from a fifth of the data, captioned as the
+// whole of it. A truncated read is not a smaller answer, it is a different one.
+
+test('no analytics module keeps its own paging loop', () => {
+  const dir = path.join(__dirname, '..', 'utils');
+  const offenders = [];
+  for (const f of ['aianalytics.js', 'crimelinks.js', 'caselinkage.js', 'financial.js']) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    if (/for \(let (page|off|offset) = 0;/.test(src)) offenders.push(f);
+  }
+  expect(offenders).toEqual([]);
+});
+
+test('they all page through the shared helper instead', () => {
+  const dir = path.join(__dirname, '..', 'utils');
+  for (const f of ['aianalytics.js', 'crimelinks.js', 'caselinkage.js', 'financial.js']) {
+    expect(fs.readFileSync(path.join(dir, f), 'utf8')).toMatch(/pageQuery/);
+  }
+});
+
+test('the shared helper reports whether it stopped short', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'utils', 'datastore.js'), 'utf8');
+  const fn = src.slice(src.indexOf('export async function pageQuery'));
+  expect(fn.slice(0, 900)).toMatch(/truncated/);
+  expect(fn.slice(0, 900)).toMatch(/Object\.assign\(rows, \{ truncated/);
+});
+
+test('its ceiling clears the current dataset', () => {
+  // 30,000 cases and 44,000 accused: a ceiling below either would truncate on
+  // an ordinary load rather than only on an extreme one.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'utils', 'datastore.js'), 'utf8');
+  const cap = Number(/cap = (\d+)/.exec(src.slice(src.indexOf('export async function pageQuery')))[1]);
+  expect(cap).toBeGreaterThanOrEqual(50000);
+});

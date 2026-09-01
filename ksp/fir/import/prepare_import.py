@@ -36,6 +36,50 @@ BOOL_VALUES = {"true", "false"}
 INT32_MAX = 2**31 - 1
 
 
+
+PARTS_DIR = os.path.join(KSP_DIR, "parts")
+
+
+def split_large(csv_path, table, limit=DEV_ROW_LIMIT):
+    """Split a CSV into <=limit-row parts, each carrying the header.
+
+    The dev environment caps one bulk import at 5,000 rows. Before this, the
+    runner printed the shell command to split by hand and stopped — which is
+    fine for a 2,200-row table that never needs it, and useless at 30,000 where
+    every fact table does. Six tables would have meant forty-five manual splits
+    and forty-five hand-written configs.
+
+    Parts are numbered from 1 and zero-padded so they import in order. Order
+    matters less than it looks — rows carry their own ids — but a failed run is
+    far easier to resume when part 07 is visibly the one that stopped.
+    """
+    with open(csv_path, newline="") as fh:
+        reader = csv.reader(fh)
+        header = next(reader)
+        rows = list(reader)
+    if len(rows) <= limit:
+        return []
+
+    os.makedirs(PARTS_DIR, exist_ok=True)
+    # Clear this table's old parts, or a regenerated smaller dataset would be
+    # imported alongside the leftovers of a larger one.
+    for stale in os.listdir(PARTS_DIR):
+        if stale.startswith(f"{table}.part") and stale.endswith(".csv"):
+            os.remove(os.path.join(PARTS_DIR, stale))
+
+    parts = []
+    for i in range(0, len(rows), limit):
+        n = i // limit + 1
+        name = f"{table}.part{n:02d}"
+        path = os.path.join(PARTS_DIR, f"{name}.csv")
+        with open(path, "w", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(header)
+            w.writerows(rows[i:i + limit])
+        parts.append((name, path, min(limit, len(rows) - i)))
+    return parts
+
+
 def infer_column(values):
     """Infer a Catalyst column type from a sample of non-empty string values."""
     vals = [v.strip() for v in values if v is not None and v.strip() != ""]
@@ -95,13 +139,28 @@ def main():
         header, schema, rows = profile_csv(path)
 
         # import config (object_key = local path; --config mode uploads it non-interactively)
-        cfg = {
-            "table_identifier": table,
-            "operation": "insert",
-            "object_details": {"bucket_name": BUCKET, "object_key": path},
-        }
-        with open(os.path.join(CFG_DIR, f"{table}.json"), "w") as fh:
-            json.dump(cfg, fh, indent=2)
+        def write_cfg(name, obj_path):
+            with open(os.path.join(CFG_DIR, f"{name}.json"), "w") as fh:
+                json.dump({
+                    "table_identifier": table,   # every part targets the same table
+                    "operation": "insert",
+                    "object_details": {"bucket_name": BUCKET, "object_key": obj_path},
+                }, fh, indent=2)
+
+        # Anything over the cap is split here rather than left to a shell
+        # command in a comment. Note the parts all keep `table_identifier` —
+        # they are slices of one table, not tables of their own.
+        parts = split_large(path, table)
+        if parts:
+            # Remove a previous single-file config, or the whole table would be
+            # imported once in full and once again in pieces.
+            stale = os.path.join(CFG_DIR, f"{table}.json")
+            if os.path.exists(stale):
+                os.remove(stale)
+            for name, part_path, _n in parts:
+                write_cfg(name, part_path)
+        else:
+            write_cfg(table, path)
 
         md.append(f"\n## `{table}`  ({rows} rows)\n")
         md.append("| Column | Type | Max length |")
@@ -112,8 +171,8 @@ def main():
 
         if rows > DEV_ROW_LIMIT:
             warnings.append(
-                f"- **{table}**: {rows} rows > {DEV_ROW_LIMIT} dev-env cap. "
-                f"Split the CSV (see run_import.sh) or import in Production.")
+                f"- **{table}**: {rows} rows > {DEV_ROW_LIMIT} dev-env cap — "
+                f"split into {len(parts)} parts, imported in sequence.")
 
     if warnings:
         md.append("\n## ⚠️ Row-limit warnings\n")

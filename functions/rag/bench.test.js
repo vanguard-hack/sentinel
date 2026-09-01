@@ -37,11 +37,16 @@ const runBench = (args = []) => {
 
 // ── The record store ───────────────────────────────────────────────────────
 
-check('the record snapshot is present', store.available(),
-  `expected a file at ${store.EXPORT_PATH}`);
+check('the record source is present', store.available(),
+  `expected a file at ${store.CSV_PATH}`);
 
 const S = store.stats();
-check('every record in the export parsed', S.rows === 2200, `parsed ${S.rows}`);
+// Asserted against the CSV rather than a literal: the dataset is regenerated
+// at different sizes (N_CASES), and a hardcoded count would fail on every
+// regeneration while telling nobody anything useful.
+const csvRows = fs.readFileSync(store.CSV_PATH, 'utf8').trimEnd().split('\n').length - 1;
+check('every record in the source CSV parsed', S.rows === csvRows, `parsed ${S.rows} of ${csvRows}`);
+check('  and there are enough of them to measure anything', S.rows >= 2000, String(S.rows));
 check('districts were resolved', S.districts === 31, String(S.districts));
 check('crime sub-heads were resolved', S.crimeSubHeads === 31, String(S.crimeSubHeads));
 
@@ -54,8 +59,15 @@ check('the year is derived for date filtering', first.year >= 2023 && first.year
 
 // Counts must agree with a completely independent pass over the file, or the
 // "ground truth is computed" claim is worth nothing.
-const raw = fs.readFileSync(store.EXPORT_PATH, 'utf8');
-const rawMysuru = (raw.match(/^District *: Mysuru$/gm) || []).length;
+// An independent pass over the CSV: count the Mysuru stations from masters and
+// tally rows against them, so the store's own resolution is not both the thing
+// under test and the yardstick.
+const masters = require('./masters.json');
+const mysuruId = Object.entries(masters.districts).find(([, n]) => n === 'Mysuru')[0];
+const mysuruStations = new Set(Object.entries(masters.units)
+  .filter(([, u]) => String(u.district) === String(mysuruId)).map(([id]) => id));
+const raw = fs.readFileSync(store.CSV_PATH, 'utf8').trimEnd().split('\n').slice(1);
+const rawMysuru = raw.filter((l) => mysuruStations.has(l.split(',')[5])).length;
 check('a computed count matches a raw scan of the export',
   store.count({ district: 'Mysuru' }) === rawMysuru,
   `store ${store.count({ district: 'Mysuru' })} vs raw ${rawMysuru}`);
@@ -81,7 +93,7 @@ check('  and its count is what the store reports',
 
 const clean = runBench();
 check('a clean run exits zero', clean.code === 0, `exit ${clean.code}`);
-check('  and reports the dataset it measured', /2200 FIRs/.test(clean.stdout));
+check('  and reports the dataset it measured', new RegExp(`${S.rows} FIRs`).test(clean.stdout), clean.stdout.split('\n')[1]);
 check('  and writes the report', fs.existsSync(path.join(__dirname, '..', '..', 'docs', 'BENCHMARK.md')));
 
 const report = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'BENCHMARK.md'), 'utf8');
