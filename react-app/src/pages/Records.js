@@ -99,7 +99,14 @@ export default function Records() {
       try {
         // eslint-disable-next-line no-await-in-loop
         const { text, tables, kind, note } = await extractText(f, {
-          transcribe: (blob, name) => transcribeAudio(new File([blob], name || 'audio.wav', { type: 'audio/wav' })),
+          // The officer's language, same as the OCR path above. Left off, this
+          // defaulted to English, so a Kannada statement recording filed into
+          // Records came back as plausible Latin nonsense — the identical
+          // failure the OCR language fix addressed, one call site over.
+          transcribe: (blob, name) => transcribeAudio(
+            new File([blob], name || 'audio.wav', { type: 'audio/wav' }),
+            i18n.resolvedLanguage || 'en',
+          ),
           onProgress: (m) => mark({ detail: m }),
         });
         // eslint-disable-next-line no-await-in-loop
@@ -128,7 +135,7 @@ export default function Records() {
       }
     }
     refresh();
-  }, [refresh]);
+  }, [refresh, i18n.resolvedLanguage]);
 
   // Files (and PDF pages) are staged, not uploaded — the officer decides what
   // belongs to which document before anything is filed.
