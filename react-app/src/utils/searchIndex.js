@@ -8,10 +8,32 @@ import {
   NotebookPen, ShieldCheck, UserCircle, TrendingUp, Share2, Fingerprint, ScrollText, Images,
   LineChart, Landmark, CalendarDays, Network, BarChart3, PieChart,
   Activity, Table, Clock, Headset, Building2,
+  ListChecks, FileLock2, Inbox, LayoutGrid,
 } from 'lucide-react';
 
 export const SEARCH_INDEX = [
   // ---- Modules -----------------------------------------------------------
+  // ---- Added after the first release. Every page reachable from the sidebar
+  // ---- belongs here: a module the palette cannot find is a module most
+  // ---- officers never discover, since ⌘K is how people who use this daily
+  // ---- move around it.
+  { id: 'dashboard', feature: 'dashboard', group: 'Pages', Icon: LayoutGrid,
+    title: 'Dashboard', sub: 'Your modules at a glance', to: '/dashboard',
+    keywords: 'dashboard modules tiles home launcher menu everything all features start welcome' },
+  { id: 'action-queue', feature: 'actionQueue', group: 'Pages', Icon: ListChecks,
+    title: 'Action Queue', sub: 'Statutory deadlines across every open case', to: '/action-queue',
+    keywords: 'action queue obligations deadline statutory custody clock bnss 187 default bail overdue due chargesheet pending tasks what needs doing today my cases command supervisor night arrest sunset 43(5) woman magistrate permission' },
+  { id: 'export-approvals', feature: 'exportApprovals', group: 'Pages', Icon: FileLock2,
+    title: 'Export Approvals', sub: 'Held exports awaiting a second signature', to: '/export-approvals',
+    keywords: 'export approvals held hold pending supervisor approve reject sign off review sensitivity screen pocso protected download pdf release withdraw changes revision' },
+  { id: 'assurance', feature: 'assurance', group: 'Pages', Icon: ShieldCheck,
+    title: 'Assurance', sub: 'Prove the safeguards are running', to: '/assurance',
+    keywords: 'assurance self test control safeguard audit integrity hash chain grounding clearance redaction export screen posture proof green red compliance' },
+  { id: 'shared', feature: 'shared', group: 'Pages', Icon: Inbox,
+    title: 'Shared with me', sub: 'Diaries and reports colleagues sent you', to: '/shared',
+    keywords: 'shared with me inbox share sent received colleague officer diary report note forwarded' },
+
+
   { id: 'reports', feature: 'reports', group: 'Pages', Icon: Home,
     title: 'Home', sub: 'Crime overview & trends', to: '/reports',
     keywords: 'home dashboard overview welcome landing start reports kpi summary' },
