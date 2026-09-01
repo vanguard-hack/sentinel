@@ -1,0 +1,275 @@
+{
+  "_meta": {
+    "purpose": "Structured legal reference for the sections that actually appear in this deployment's case data (Section.csv: 35 sections across 10 acts). Scoped that way deliberately — every entry is a provision an officer using Sentinel can actually encounter on a charge sheet.",
+    "provenance": "DRAFTED FOR THIS PROTOTYPE. Not transcribed from the official gazette and not reviewed by a law officer. Every entry carries verified:false and every answer built from this file must repeat that. Before any production use each entry must be checked against the bare Act as published by India Code (https://www.indiacode.nic.in).",
+    "bns_note": "The Bharatiya Nyaya Sanhita, 2023 replaced the Indian Penal Code, 1860 with effect from 1 July 2024. It did NOT replace the special and local laws — NDPS, Arms, IT, POCSO, MV, Excise, Dowry Prohibition and the Karnataka Police Act all continue under their own numbering. Those entries therefore carry bns_equivalent:null, which is a fact about the law, not missing data.",
+    "cutoff": "Offences registered before 1 July 2024 remain charged and tried under the IPC; the BNS applies to offences committed on or after that date.",
+    "schema_version": 1
+  },
+  "sections": [
+    {
+      "act": "IPC", "section": "302", "title": "Murder",
+      "summary": "Punishes culpable homicide amounting to murder as defined in section 300 — an intentional killing, or one done with knowledge that it was so imminently dangerous it would in all probability cause death, where none of the exceptions in section 300 applies.",
+      "punishment": "Death, or imprisonment for life, and fine",
+      "cognizable": true, "bailable": false, "triable_by": "Court of Session",
+      "bns_equivalent": "103(1)", "verified": false
+    },
+    {
+      "act": "IPC", "section": "307", "title": "Attempt to murder",
+      "summary": "Punishes an act done with the intention or knowledge required for murder, in circumstances where the accused would have been guilty of murder had death resulted. The victim surviving does not reduce the offence.",
+      "punishment": "Up to 10 years and fine; if hurt is caused, up to imprisonment for life",
+      "cognizable": true, "bailable": false, "triable_by": "Court of Session",
+      "bns_equivalent": "109", "verified": false
+    },
+    {
+      "act": "IPC", "section": "304A", "title": "Death by negligence",
+      "summary": "Causing the death of a person by a rash or negligent act not amounting to culpable homicide. The common charge in fatal road accidents.",
+      "punishment": "Up to 2 years, or fine, or both",
+      "cognizable": true, "bailable": true, "triable_by": "Magistrate of the first class",
+      "bns_equivalent": "106(1)", "verified": false
+    },
+    {
+      "act": "IPC", "section": "323", "title": "Voluntarily causing hurt",
+      "summary": "Punishes voluntarily causing hurt — bodily pain, disease or infirmity — otherwise than under grave and sudden provocation.",
+      "punishment": "Up to 1 year, or fine up to ₹1,000, or both",
+      "cognizable": false, "bailable": true, "triable_by": "Any Magistrate",
+      "bns_equivalent": "115(2)", "verified": false
+    },
+    {
+      "act": "IPC", "section": "324", "title": "Voluntarily causing hurt by dangerous weapons or means",
+      "summary": "Causing hurt by an instrument for shooting, stabbing or cutting, by fire or a heated substance, by poison or a corrosive, or by an animal.",
+      "punishment": "Up to 3 years, or fine, or both",
+      "cognizable": true, "bailable": false, "triable_by": "Any Magistrate",
+      "bns_equivalent": "118(1)", "verified": false
+    },
+    {
+      "act": "IPC", "section": "341", "title": "Wrongful restraint",
+      "summary": "Voluntarily obstructing a person so as to prevent them proceeding in a direction in which they have a right to proceed.",
+      "punishment": "Up to 1 month, or fine up to ₹500, or both",
+      "cognizable": true, "bailable": true, "triable_by": "Any Magistrate",
+      "bns_equivalent": "126(2)", "verified": false
+    },
+    {
+      "act": "IPC", "section": "354", "title": "Assault or criminal force to woman with intent to outrage her modesty",
+      "summary": "Assault or criminal force against a woman intending to outrage, or knowing it likely to outrage, her modesty.",
+      "punishment": "1 to 5 years and fine",
+      "cognizable": true, "bailable": false, "triable_by": "Any Magistrate",
+      "bns_equivalent": "74", "verified": false
+    },
+    {
+      "act": "IPC", "section": "363", "title": "Kidnapping",
+      "summary": "Punishment for kidnapping from India or from lawful guardianship as defined in sections 359-361.",
+      "punishment": "Up to 7 years and fine",
+      "cognizable": true, "bailable": false, "triable_by": "Magistrate of the first class",
+      "bns_equivalent": "137(2)", "verified": false
+    },
+    {
+      "act": "IPC", "section": "376", "title": "Punishment for rape",
+      "summary": "Punishes rape as defined in section 375, with higher minimum sentences in the aggravated circumstances listed in sub-section (2) — including by a police officer, a public servant, or on a woman under sixteen.",
+      "punishment": "Rigorous imprisonment not less than 10 years, extendable to imprisonment for life, and fine",
+      "cognizable": true, "bailable": false, "triable_by": "Court of Session",
+      "bns_equivalent": "64", "verified": false,
+      "notes": "Identity of the victim must not be disclosed — see IPC 228A / BNS 72."
+    },
+    {
+      "act": "IPC", "section": "379", "title": "Theft",
+      "summary": "Punishment for theft: dishonestly taking movable property out of another's possession without consent.",
+      "punishment": "Up to 3 years, or fine, or both",
+      "cognizable": true, "bailable": false, "triable_by": "Any Magistrate",
+      "bns_equivalent": "303(2)", "verified": false
+    },
+    {
+      "act": "IPC", "section": "380", "title": "Theft in dwelling house",
+      "summary": "Theft committed in any building used as a human dwelling, or for the custody of property.",
+      "punishment": "Up to 7 years and fine",
+      "cognizable": true, "bailable": false, "triable_by": "Any Magistrate",
+      "bns_equivalent": "305", "verified": false
+    },
+    {
+      "act": "IPC", "section": "392", "title": "Robbery",
+      "summary": "Punishment for robbery — theft or extortion aggravated by causing or attempting to cause death, hurt, or wrongful restraint, or fear thereof.",
+      "punishment": "Rigorous imprisonment up to 10 years and fine; up to 14 years if committed on a highway between sunset and sunrise",
+      "cognizable": true, "bailable": false, "triable_by": "Magistrate of the first class",
+      "bns_equivalent": "309(4)", "verified": false
+    },
+    {
+      "act": "IPC", "section": "395", "title": "Dacoity",
+      "summary": "Robbery committed conjointly by five or more persons.",
+      "punishment": "Imprisonment for life, or rigorous imprisonment up to 10 years, and fine",
+      "cognizable": true, "bailable": false, "triable_by": "Court of Session",
+      "bns_equivalent": "310(2)", "verified": false
+    },
+    {
+      "act": "IPC", "section": "406", "title": "Criminal breach of trust",
+      "summary": "Dishonest misappropriation or conversion of property entrusted to the accused, or use of it in violation of the terms of that trust.",
+      "punishment": "Up to 3 years, or fine, or both",
+      "cognizable": true, "bailable": false, "triable_by": "Any Magistrate",
+      "bns_equivalent": "316(2)", "verified": false
+    },
+    {
+      "act": "IPC", "section": "420", "title": "Cheating and dishonestly inducing delivery of property",
+      "summary": "Cheating that dishonestly induces the deceived person to deliver property, or to make, alter or destroy a valuable security. The most commonly invoked cheating provision.",
+      "punishment": "Up to 7 years and fine",
+      "cognizable": true, "bailable": false, "triable_by": "Magistrate of the first class",
+      "bns_equivalent": "318(4)", "verified": false
+    },
+    {
+      "act": "IPC", "section": "498A", "title": "Cruelty by husband or relatives of husband",
+      "summary": "Subjecting a woman to cruelty by her husband or his relatives — conduct likely to drive her to suicide or cause grave injury, or harassment to coerce an unlawful demand for property.",
+      "punishment": "Up to 3 years and fine",
+      "cognizable": true, "bailable": false, "triable_by": "Magistrate of the first class",
+      "bns_equivalent": "85", "verified": false,
+      "notes": "Often charged alongside the Dowry Prohibition Act."
+    },
+    {
+      "act": "IPC", "section": "506", "title": "Criminal intimidation",
+      "summary": "Threatening another with injury to person, reputation or property with intent to cause alarm or to make them do or omit an act.",
+      "punishment": "Up to 2 years, or fine, or both; up to 7 years where the threat is of death or grievous hurt",
+      "cognizable": false, "bailable": true, "triable_by": "Any Magistrate",
+      "bns_equivalent": "351(2)", "verified": false,
+      "notes": "Made cognizable in Karnataka by state amendment — verify the current state notification."
+    },
+    {
+      "act": "IPC", "section": "509", "title": "Word, gesture or act intended to insult the modesty of a woman",
+      "summary": "Uttering a word, making a sound or gesture, or exhibiting an object intending it be seen or heard by a woman so as to insult her modesty, or intruding on her privacy.",
+      "punishment": "Simple imprisonment up to 3 years and fine",
+      "cognizable": true, "bailable": true, "triable_by": "Any Magistrate",
+      "bns_equivalent": "79", "verified": false
+    },
+    {
+      "act": "IPC", "section": "147", "title": "Rioting",
+      "summary": "Punishment for rioting — force or violence used by an unlawful assembly, or by any member of it, in prosecution of the common object.",
+      "punishment": "Up to 2 years, or fine, or both",
+      "cognizable": true, "bailable": true, "triable_by": "Any Magistrate",
+      "bns_equivalent": "191(2)", "verified": false
+    },
+    {
+      "act": "IPC", "section": "279", "title": "Rash driving or riding on a public way",
+      "summary": "Driving or riding on a public way so rashly or negligently as to endanger human life or be likely to cause hurt or injury.",
+      "punishment": "Up to 6 months, or fine up to ₹1,000, or both",
+      "cognizable": true, "bailable": true, "triable_by": "Any Magistrate",
+      "bns_equivalent": "281", "verified": false
+    },
+
+    {
+      "act": "NDPS", "section": "20", "title": "Contravention in relation to cannabis plant and cannabis",
+      "summary": "Production, manufacture, possession, sale, purchase, transport, import or export of cannabis. Punishment scales with quantity — small, more than small but less than commercial, or commercial.",
+      "punishment": "Small quantity: up to 1 year or fine or both. Less than commercial: up to 10 years and fine up to ₹1 lakh. Commercial: 10 to 20 years and fine ₹1-2 lakh",
+      "cognizable": true, "bailable": false, "triable_by": "Special Court under NDPS",
+      "bns_equivalent": null, "verified": false,
+      "notes": "Special law — unaffected by the BNS. Section 37 restricts bail for commercial quantities."
+    },
+    {
+      "act": "NDPS", "section": "21", "title": "Contravention in relation to manufactured drugs and preparations",
+      "summary": "Dealing in manufactured drugs or their preparations in contravention of the Act. Punishment scales with quantity.",
+      "punishment": "Small quantity: up to 1 year or fine or both. Less than commercial: up to 10 years and fine up to ₹1 lakh. Commercial: 10 to 20 years and fine ₹1-2 lakh",
+      "cognizable": true, "bailable": false, "triable_by": "Special Court under NDPS",
+      "bns_equivalent": null, "verified": false,
+      "notes": "Special law — unaffected by the BNS."
+    },
+    {
+      "act": "NDPS", "section": "22", "title": "Contravention in relation to psychotropic substances",
+      "summary": "Dealing in psychotropic substances in contravention of the Act. Punishment scales with quantity.",
+      "punishment": "Small quantity: up to 1 year or fine or both. Less than commercial: up to 10 years and fine up to ₹1 lakh. Commercial: 10 to 20 years and fine ₹1-2 lakh",
+      "cognizable": true, "bailable": false, "triable_by": "Special Court under NDPS",
+      "bns_equivalent": null, "verified": false,
+      "notes": "Special law — unaffected by the BNS."
+    },
+    {
+      "act": "ARMS", "section": "25", "title": "Punishment for certain offences",
+      "summary": "Acquiring, possessing or carrying arms or ammunition in contravention of section 3, and related offences of manufacture, sale and transfer.",
+      "punishment": "Commonly 1 to 3 years and fine; higher terms, and in some cases a minimum of 7 years, for prohibited arms",
+      "cognizable": true, "bailable": false, "triable_by": "Magistrate of the first class / Court of Session depending on the sub-section",
+      "bns_equivalent": null, "verified": false,
+      "notes": "Special law — unaffected by the BNS. The applicable sub-section governs the sentence."
+    },
+    {
+      "act": "IT", "section": "66", "title": "Computer-related offences",
+      "summary": "Dishonestly or fraudulently doing any act referred to in section 43 — unauthorised access, downloading, damage, disruption or denial of access to a computer resource.",
+      "punishment": "Up to 3 years, or fine up to ₹5 lakh, or both",
+      "cognizable": true, "bailable": true, "triable_by": "Magistrate",
+      "bns_equivalent": null, "verified": false,
+      "notes": "Special law — unaffected by the BNS."
+    },
+    {
+      "act": "IT", "section": "66C", "title": "Identity theft",
+      "summary": "Fraudulently or dishonestly using the electronic signature, password or any other unique identification feature of another person.",
+      "punishment": "Up to 3 years and fine up to ₹1 lakh",
+      "cognizable": true, "bailable": true, "triable_by": "Magistrate",
+      "bns_equivalent": null, "verified": false,
+      "notes": "Special law — unaffected by the BNS. Frequently charged with IPC 419/420."
+    },
+    {
+      "act": "IT", "section": "66D", "title": "Cheating by personation by using computer resource",
+      "summary": "Cheating by personation using a communication device or computer resource — the provision behind most online-fraud and impersonation cases.",
+      "punishment": "Up to 3 years and fine up to ₹1 lakh",
+      "cognizable": true, "bailable": true, "triable_by": "Magistrate",
+      "bns_equivalent": null, "verified": false,
+      "notes": "Special law — unaffected by the BNS. Frequently charged with IPC 420 / BNS 318(4)."
+    },
+    {
+      "act": "IT", "section": "67", "title": "Publishing or transmitting obscene material in electronic form",
+      "summary": "Publishing or transmitting material that is lascivious or appeals to the prurient interest in electronic form.",
+      "punishment": "First conviction: up to 3 years and fine up to ₹5 lakh. Subsequent: up to 5 years and fine up to ₹10 lakh",
+      "cognizable": true, "bailable": true, "triable_by": "Magistrate",
+      "bns_equivalent": null, "verified": false,
+      "notes": "Special law — unaffected by the BNS. Sections 67A and 67B cover sexually explicit material and child sexual abuse material respectively."
+    },
+    {
+      "act": "POCSO", "section": "4", "title": "Punishment for penetrative sexual assault",
+      "summary": "Penetrative sexual assault on a child (a person below eighteen years) as defined in section 3.",
+      "punishment": "Rigorous imprisonment not less than 10 years, extendable to imprisonment for life, and fine; not less than 20 years where the child is under sixteen",
+      "cognizable": true, "bailable": false, "triable_by": "Special Court under POCSO",
+      "bns_equivalent": null, "verified": false,
+      "notes": "Special law — unaffected by the BNS. Reporting is mandatory under section 19; the child's identity must not be disclosed (section 23)."
+    },
+    {
+      "act": "POCSO", "section": "8", "title": "Punishment for sexual assault",
+      "summary": "Sexual assault on a child as defined in section 7 — physical contact with sexual intent that is not penetrative.",
+      "punishment": "3 to 5 years and fine",
+      "cognizable": true, "bailable": false, "triable_by": "Special Court under POCSO",
+      "bns_equivalent": null, "verified": false,
+      "notes": "Special law — unaffected by the BNS."
+    },
+    {
+      "act": "MV", "section": "184", "title": "Driving dangerously",
+      "summary": "Driving a motor vehicle at a speed or in a manner dangerous to the public, having regard to all the circumstances — including use of a handheld device while driving.",
+      "punishment": "First offence: up to 1 year, or fine ₹1,000-5,000, or both. Second offence within 3 years: up to 2 years, or fine up to ₹10,000, or both",
+      "cognizable": true, "bailable": true, "triable_by": "Magistrate",
+      "bns_equivalent": null, "verified": false,
+      "notes": "Special law — unaffected by the BNS. Amounts reflect the 2019 amendment; state notifications vary."
+    },
+    {
+      "act": "EXCISE", "section": "32", "title": "Illegal possession or sale of liquor",
+      "summary": "Manufacture, possession, sale or transport of liquor or intoxicants in contravention of the Karnataka Excise Act, 1965 or the rules and licence conditions under it.",
+      "punishment": "As prescribed by the Act and the Karnataka Excise Rules; commonly imprisonment up to 6 months and fine for simple possession offences",
+      "cognizable": true, "bailable": true, "triable_by": "Magistrate",
+      "bns_equivalent": null, "verified": false,
+      "notes": "State law — unaffected by the BNS. Penalties are amended by state notification; verify the current text."
+    },
+    {
+      "act": "DP", "section": "3", "title": "Penalty for giving or taking dowry",
+      "summary": "Giving, taking, or abetting the giving or taking of dowry.",
+      "punishment": "Not less than 5 years and fine not less than ₹15,000 or the value of the dowry, whichever is more",
+      "cognizable": true, "bailable": false, "triable_by": "Magistrate of the first class",
+      "bns_equivalent": null, "verified": false,
+      "notes": "Special law — unaffected by the BNS. Usually charged with IPC 498A / BNS 85."
+    },
+    {
+      "act": "DP", "section": "4", "title": "Penalty for demanding dowry",
+      "summary": "Demanding, directly or indirectly, dowry from the parents or relatives or guardian of a bride or bridegroom.",
+      "punishment": "6 months to 2 years and fine up to ₹10,000",
+      "cognizable": true, "bailable": false, "triable_by": "Magistrate of the first class",
+      "bns_equivalent": null, "verified": false,
+      "notes": "Special law — unaffected by the BNS."
+    },
+    {
+      "act": "KPA", "section": "87", "title": "Gaming in public place",
+      "summary": "Gaming or setting up a common gaming house in a public place, under the Karnataka Police Act, 1963.",
+      "punishment": "As prescribed by the Act; commonly fine, with imprisonment for repeat offences",
+      "cognizable": true, "bailable": true, "triable_by": "Magistrate",
+      "bns_equivalent": null, "verified": false,
+      "notes": "State law — unaffected by the BNS. Karnataka amended its gaming provisions in 2021; verify the current text."
+    }
+  ]
+}

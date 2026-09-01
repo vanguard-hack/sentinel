@@ -29,6 +29,7 @@ const zcql = require('./zcql');
 const redaction = require('./redaction');
 const masters = require('./masters.json');
 const network = require('./network');
+const legal = require('./legal');
 
 // Per-result caps. Generous enough to answer, small enough that a loop of
 // tool calls cannot fill the context window with rows.
@@ -126,6 +127,39 @@ const DEFINITIONS = [
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'lookup_law',
+    description:
+      'Look up a statutory provision: what a section covers, its punishment, whether ' +
+      'it is cognizable and bailable, which court tries it, and its BNS equivalent.\n\n' +
+      'Use this for ANY question about the law itself — "what is section 302", "what ' +
+      'is the punishment for theft", "is 498A bailable", "what is the BNS equivalent ' +
+      'of IPC 379", "which section covers online cheating". Do NOT answer these from ' +
+      'your own knowledge; this reference is what the officer can be shown.\n\n' +
+      'Covers the 35 sections that appear in this deployment\'s case data, across ' +
+      'IPC, NDPS, Arms, IT, POCSO, MV, Excise, Dowry Prohibition and Karnataka Police ' +
+      'Acts. If a section is not here, say so — do not substitute recollection.\n\n' +
+      'The Bharatiya Nyaya Sanhita replaced the IPC only. For a special law such as ' +
+      'NDPS or the IT Act the answer "no BNS equivalent" is correct and is returned ' +
+      'with the reason; pass that reason on rather than reporting missing data.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          enum: ['section', 'search', 'to_bns', 'from_bns', 'list_act'],
+          description:
+            'section — one provision by number. search — find provisions by offence '
+            + 'wording. to_bns — IPC section to its BNS equivalent. from_bns — BNS '
+            + 'section back to IPC. list_act — every section held for one act.',
+        },
+        section: { type: ['string', 'null'], description: 'Section number, e.g. "302", "498A", "66C".' },
+        act: { type: ['string', 'null'], description: 'Act code: IPC, NDPS, ARMS, IT, POCSO, MV, EXCISE, DP, KPA. Defaults to IPC.' },
+        query: { type: ['string', 'null'], description: 'For "search": the offence in words, e.g. "online cheating".' },
+      },
+      required: ['operation'],
     },
   },
   {
@@ -274,6 +308,40 @@ function lookupReference({ kind, match }) {
  * failed" is a far better outcome than a silent empty answer, because the
  * model can then fix the query itself.
  */
+// ── Legal reference ────────────────────────────────────────────────────────
+// Not filtered by clearance: statutes are public. The one thing every path
+// must carry is the provenance caveat — these entries were drafted for the
+// prototype, and an officer must never take a punishment or a bail
+// classification from here as settled.
+function lookupLaw({ operation, section, act, query }) {
+  switch (operation) {
+    case 'section': {
+      const hit = legal.findSection(act, section);
+      if (!hit) {
+        return {
+          found: false,
+          note: `No entry for ${act ? act + ' ' : ''}${section}. This reference covers ${legal.SECTIONS.length} sections across ${legal.acts().join(', ')} — the ones used in this deployment's case data. Do not answer from memory.`,
+        };
+      }
+      if (hit.ambiguous) return { found: false, ambiguous: hit.ambiguous, note: 'That section number exists in more than one act here. Ask which.' };
+      return { found: true, ...legal.present(hit) };
+    }
+    case 'search': {
+      const hits = legal.searchLaw(query || section);
+      if (!hits.length) return { found: false, note: 'No provision in this reference matches that.', disclaimer: legal.DISCLAIMER };
+      return { found: true, matched: hits.length, sections: hits.slice(0, 8).map(legal.present), disclaimer: legal.DISCLAIMER };
+    }
+    case 'to_bns':
+      return { ...legal.mapToBns(section, act), disclaimer: legal.DISCLAIMER };
+    case 'from_bns':
+      return { ...legal.mapFromBns(section), disclaimer: legal.DISCLAIMER };
+    case 'list_act':
+      return { ...legal.listAct(act), disclaimer: legal.DISCLAIMER };
+    default:
+      return { error: `Unknown operation "${operation}". Use section, search, to_bns, from_bns or list_act.` };
+  }
+}
+
 // ── Joining two tables ─────────────────────────────────────────────────────
 //
 // ZCQL has no JOINs, and the documented workaround — query one table, put the
@@ -461,6 +529,11 @@ async function run(name, input, deps) {
         return { found: true, text: f.text, _redactions: f.redactions || [] };
       }
 
+      case 'lookup_law':
+        // No clearance filter: this is published law, not a record about a
+        // person. Nothing here is derived from the Data Store.
+        return lookupLaw(input || {});
+
       case 'join_records':
         return await joinRecords(app, input || {}, role);
 
@@ -514,4 +587,5 @@ module.exports = {
   queryRecords,
   joinRecords,
   stationsInDistrict,
+  lookupLaw,
 };
