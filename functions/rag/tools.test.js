@@ -133,12 +133,17 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /Date\.now\(\) - started > TOOL_BUDGET_MS/.test(loop));
   check('tools are withdrawn on the last turn, which forces an answer',
     /i === TOOL_MAX_ITERATIONS - 1 \|\| outOfTime[\s\S]{0,60}\?\s*\{\}/.test(loop));
-  // The window is a proximity check — the push must follow the gather rather
-  // than appear anywhere in the file — not a length budget. It was 900 and
-  // broke when a comment was added inside the gather, which is the test being
-  // brittle rather than the property being violated.
+  // Ordering, not distance. This was a character-window regex twice, and it
+  // broke twice — both times because a comment was added inside the gather,
+  // which is the test being brittle rather than the property being violated.
+  // The property is that results are gathered once and pushed once, in that
+  // order; how much prose sits between them is nobody's business.
+  const gather = loop.indexOf('const results = await Promise.all(');
+  const pushes = [...loop.matchAll(/messages\.push\(\{ role: 'user', content: results \}\)/g)];
+  check('the parallel results are gathered before they are sent', gather !== -1);
   check('parallel tool results go back in ONE user message',
-    /Promise\.all\([\s\S]{0,1600}?messages\.push\(\{ role: 'user', content: results \}\)/.test(loop));
+    pushes.length === 1 && pushes[0].index > gather,
+    `${pushes.length} push(es), gather at ${gather}`);
   // Asserts the PROPERTY, not the literal list: every underscore-prefixed key
   // this module emits must appear in the loop's strip. Pinning the exact
   // destructuring meant adding one internal field broke the test while a

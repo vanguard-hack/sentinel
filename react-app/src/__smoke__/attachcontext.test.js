@@ -16,8 +16,33 @@ test('documents Records can read are read for the assistant too', () => {
     .forEach((n) => expect(contextKind(file(n))).toBe('document'));
 });
 
-test('audio is transcribed into the composer, not attached', () => {
+// An ATTACHED recording is evidence, not dictation.
+//
+// It used to be transcribed straight into the composer, which made it the
+// officer's own message: it reached the server as the question itself, took the
+// lenient input path meant for officers, and was never fenced as untrusted
+// content — so a seized voice note saying "ignore all previous instructions"
+// was read as though the officer had typed it, while the same sentence in a PDF
+// was correctly fenced. It is now read as context, exactly like a document.
+test('an attached recording is read as context, not treated as the officer speaking', () => {
   expect(contextKind(file('interview.m4a', 'audio/mp4'))).toBe('audio');
+  expect(contextKind(file('voicenote.ogg', 'audio/ogg'))).toBe('audio');
+});
+
+test('and the chip says the recording was transcribed and read', () => {
+  const a = { kind: 'audio', context: { ok: true, text: 'the accused said…' } };
+  expect(contextLabel(a)).toBe('transcribed and read as context');
+});
+
+test('a recording still being transcribed says so', () => {
+  expect(contextLabel({ kind: 'audio', reading: true })).toBe('reading…');
+  expect(contextDetail({ kind: 'audio', reading: true })).toMatch(/transcrib/i);
+});
+
+test('a recording with no speech in it is not silently sent as empty context', () => {
+  const a = { kind: 'audio', context: { ok: false, reason: 'no speech could be recognised' } };
+  expect(contextLabel(a)).toBe('not readable');
+  expect(contextDetail(a)).toMatch(/no speech/);
 });
 
 test('what cannot be read is named as such, with a reason worth reading', () => {

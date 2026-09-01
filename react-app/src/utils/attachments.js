@@ -30,7 +30,7 @@ export const MAX_PDF_PAGES = 30;
 // the moment it is attached rather than after a round trip.
 //   image     — read by the vision pre-parser (OCR + objects)
 //   document  — text extracted here and sent as context
-//   audio     — transcribed straight into the composer, never attached
+//   audio     — transcribed and read as context, exactly like a document
 //   unusable  — nothing can be read from it; it rides along as a filename only
 export function contextKind(file) {
   if (!file) return 'unusable';
@@ -94,7 +94,7 @@ async function pdfText(file, onProgress) {
 
 // Read one attached file into context. Never throws: a file that cannot be
 // read must not stop the officer sending their question.
-export async function readForContext(file, { onProgress } = {}) {
+export async function readForContext(file, { onProgress, transcribe } = {}) {
   const base = { name: file.name, size: file.size, mime: file.type || '' };
   try {
     const kind = detectKind(file);
@@ -116,7 +116,7 @@ export async function readForContext(file, { onProgress } = {}) {
     // and stays behind its own dynamic import inside extractText — so a
     // conversation with no spreadsheet in it never downloads one.
     const { extractText } = await import('./extract');
-    const { text, tables, note } = await extractText(file, { onProgress });
+    const { text, tables, note } = await extractText(file, { onProgress, transcribe });
     if (!String(text || '').trim() && !(tables || []).length) {
       return { ...base, kind, ok: false, reason: 'no readable text in this file' };
     }
@@ -143,10 +143,10 @@ export function contextLabel(a) {
     if (!a.parsed) return 'reading…';
     return a.digest ? 'read as context' : 'not readable';
   }
-  if (a.kind === 'document') {
+  if (a.kind === 'document' || a.kind === 'audio') {
     if (!a.context) return 'not readable';
     if (!a.context.ok) return 'not readable';
-    return 'read as context';
+    return a.kind === 'audio' ? 'transcribed and read as context' : 'read as context';
   }
   return 'not sent as context';
 }
@@ -159,10 +159,10 @@ export function contextDetail(a) {
     if (!a.digest) return 'This image could not be read; it is attached by name only.';
     return 'Read by the vision pre-parser and sent with your question.';
   }
-  if (a.kind === 'document') {
+  if (a.kind === 'document' || a.kind === 'audio') {
     // While a long PDF is being read the per-page progress is more useful than
     // a generic "reading", and it is the only sign the tab has not hung.
-    if (a.reading) return a.detail || 'Reading the document…';
+    if (a.reading) return a.detail || (a.kind === 'audio' ? 'Transcribing the recording…' : 'Reading the document…');
     if (!a.context || !a.context.ok) {
       return `Not sent as context — ${(a.context && a.context.reason) || 'this file could not be read'}.`;
     }

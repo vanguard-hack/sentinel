@@ -485,10 +485,26 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           }
           // Internal bookkeeping never goes back to the model.
           const { _redactions, _hits, _protectedAccess, _threat, ...clean } = out || {};
+          // Every tool result is fenced, not just the two that carry obviously
+          // foreign text.
+          //
+          // search_knowledge_base and search_scanned_records fence their own
+          // passages, which left six tools returning record fields straight
+          // into the loop — and record fields are not system-generated. A
+          // BriefFacts narrative, a person's name, a diary entry: all of them
+          // are prose some human typed, and on a live CCTNS the person who
+          // decides what an FIR says is partly the person who walks in to file
+          // one. Fencing at this single choke point covers all eight tools and
+          // any tool added later, which is the property worth having.
+          const body = JSON.stringify(clean).slice(0, 12_000);
           return {
             type: 'tool_result',
             tool_use_id: c.id,
-            content: JSON.stringify(clean).slice(0, 12_000),
+            // Already fenced inside the tool — nesting a second wrapper adds
+            // tokens and says nothing new.
+            content: /<<<UNTRUSTED_[0-9a-f]{16}>>>/.test(body)
+              ? body
+              : guard.fence(body, `output from the ${c.name} tool, read from police records`),
             ...(out && out.error ? { is_error: true } : {}),
           };
         })
@@ -5080,8 +5096,36 @@ module.exports = async (req, res) => {
             f.redactions.map((r) => ({ ...r, stage: 'pre-retrieval', source: 'memory' }))
           );
         }
+        // Long-term memory is the one injection vector that PERSISTS, and it
+        // lands in the system role — the position a model trusts most.
+        //
+        // The chain is real: a poisoned attachment is fenced on the way in and
+        // is not obeyed, but the assistant's answer still describes it, that
+        // answer enters the turn buffer, and consolidation asks a model to
+        // extract durable "facts" from the transcript. A sentence crafted to
+        // read like a fact about the officer can survive that summarising step
+        // and come back, sessions later, as a system instruction — with the
+        // original document long gone and nothing on screen to explain it.
+        //
+        // So this is the one place the response is to DISCARD rather than
+        // fence. Everywhere else the officer asked to read the thing and
+        // refusing would be its own denial of service; here it is background
+        // context they never requested, so dropping it costs a little recall
+        // and removes the only path by which an injection outlives the request
+        // that carried it.
+        const memScan = guard.scanUntrusted(longTermContext);
+        if (memScan.length) {
+          threatLog = threatLog.concat(memScan.map((x) => ({ ...x, stage: 'memory-recall' })));
+          console.warn('memory recall discarded — injection markers:', guard.summarise(memScan));
+          longTermContext = '';
+        }
         if (longTermContext) {
-          history = [{ role: 'system', content: longTermContext }].concat(history);
+          // Fenced even when clean. It is machine-written prose derived from
+          // older conversations, not a system instruction someone authored.
+          history = [{
+            role: 'system',
+            content: guard.fence(longTermContext, 'notes remembered from this officer\u2019s earlier sessions'),
+          }].concat(history);
         }
       }
     }
@@ -5408,7 +5452,16 @@ module.exports = async (req, res) => {
                     (attachedContext ? attachedContext + '\n\n' : '') +
                     `Question: ${query}\n\nRows (${flat.length}` +
                     `${flat.length === 200 ? ', truncated' : ''}):\n` +
-                    JSON.stringify(flat.slice(0, isList ? 20 : 60)),
+                    // Record text is not the officer's text either. BriefFacts
+                    // is free prose typed at a station, and on a live CCTNS it
+                    // is partly dictated by the person making the complaint —
+                    // so an FIR is something an attacker can get words into by
+                    // walking in and filing one. Cheap to fence, and it closes
+                    // the last unfenced route from stored data to the model.
+                    guard.fence(
+                      JSON.stringify(flat.slice(0, isList ? 20 : 60)),
+                      'rows returned from the case database'
+                    ),
                 },
               ],
               { maxTokens: isList ? 90 : 300, temperature: 0.2, timeoutMs: 12_000, model: GROQ_MODEL_FAST }

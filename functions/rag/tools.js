@@ -510,6 +510,48 @@ function stationsInDistrict(name) {
   return stations.length ? { districtId, stations } : { error: `No police stations listed for "${name}".` };
 }
 
+/**
+ * Is this WHERE fragment safe to compose into a larger query?
+ *
+ * The probe validates a synthetic statement, but the RAW fragment is what gets
+ * composed into the final query — so a fragment can pass inspection in one form
+ * and execute in another. Two shapes did exactly that:
+ *
+ *   "1=1 --"        probe sees `WHERE 1=1` (validateZcql strips comments before
+ *                   inspecting, correctly for its own job) and passes.
+ *                   Composed: `(1=1 --) AND PoliceStationID IN (…) LIMIT 0,300`
+ *                   — the jurisdiction scope and the row cap are both commented
+ *                   out.
+ *   "1=1) OR (1=1"  Composed: `(1=1) OR (1=1) AND …` — OR splits the AND chain
+ *                   and the district filter stops applying.
+ *
+ * Neither could write, join or reach a second table: the forbidden-keyword and
+ * single-statement checks still held, and clearance filtering still ran on
+ * every row returned. What they defeated was the jurisdiction scope and the
+ * bounded scan — quite enough, because the MODEL chooses this fragment, so
+ * anything that can talk the model into a filter can widen its own reach.
+ *
+ * Exported so the tests exercise this function rather than a copy of it.
+ */
+function validateFilterFragment(where) {
+  const text = String(where || '');
+  if (/--|\/\*|\*\//.test(text)) {
+    return { ok: false, error: 'comment markers are not allowed in a filter.' };
+  }
+  let depth = 0;
+  for (const ch of text) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (depth < 0) break;
+  }
+  if (depth !== 0) {
+    return { ok: false, error: 'unbalanced parentheses.', hint: 'Every ( needs a matching ).' };
+  }
+  const probe = zcql.validateZcql(`SELECT CaseMasterID FROM CaseMaster WHERE ${text}`);
+  if (!probe.ok) return { ok: false, error: probe.error, hint: 'One table, no joins or subqueries.' };
+  return { ok: true };
+}
+
 async function joinRecords(app, input, role, access) {
   const { where, district, attach, attach_where: attachWhere, count_only: countOnly } = input || {};
   if (attach && !JOINABLE.has(attach)) {
@@ -519,12 +561,11 @@ async function joinRecords(app, input, role, access) {
   // ── 1. the base rows ─────────────────────────────────────────────────────
   const clauses = [];
   if (where) {
-    // The same validator the direct path uses, on a synthetic statement, so a
-    // filter cannot smuggle in syntax the tool would otherwise never see.
-    const probe = zcql.validateZcql(`SELECT CaseMasterID FROM CaseMaster WHERE ${where}`);
-    if (!probe.ok) return { error: `Filter rejected: ${probe.error}`, hint: 'One table, no joins or subqueries.' };
+    const fragment = validateFilterFragment(where);
+    if (!fragment.ok) return { error: `Filter rejected: ${fragment.error}`, ...(fragment.hint ? { hint: fragment.hint } : {}) };
     clauses.push(`(${where})`);
   }
+
   if (district) {
     const resolved = stationsInDistrict(district);
     if (resolved.error) return { error: resolved.error };
@@ -753,6 +794,7 @@ async function run(name, input, deps) {
 }
 
 module.exports = {
+  validateFilterFragment,
   DEFINITIONS,
   MAX_ROWS,
   run,
