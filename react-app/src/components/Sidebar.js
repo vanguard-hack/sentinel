@@ -5,7 +5,7 @@ import { splitEmail } from '../utils/profile';
 import {
   Shield, Home, AlertTriangle, Map, Brain, Database,
   MessageSquare, Users, ChevronRight, Sun, Moon, LogOut,
-  UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, Headset, Building2, FileLock2, BadgeCheck,
+  UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, Headset, Building2, FileLock2, BadgeCheck, CalendarClock,
   ScrollText, Images, ChevronsUpDown,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +23,7 @@ const NAV = [
   { to: '/ai-analytics', Icon: Brain, key: 'aiAnalytics' },
   { to: '/case-files', Icon: Database, key: 'caseFiles' },
   { to: '/investigation-diary', Icon: NotebookPen, key: 'investigationDiary' },
+  { to: '/action-queue', Icon: CalendarClock, key: 'actionQueue' },
   { to: '/report-studio', Icon: ScrollText, key: 'reportStudio' },
   { to: '/records', Icon: Images, key: 'records' },
   { to: '/custody', Icon: Building2, key: 'custody' },

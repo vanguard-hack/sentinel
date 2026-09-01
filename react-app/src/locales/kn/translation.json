@@ -70,6 +70,9 @@
     "investigationDiary": {
       "label": "ತನಿಖಾ ದಿನಚರಿ"
     },
+    "actionQueue": {
+      "label": "ಕ್ರಮ ಪಟ್ಟಿ"
+    },
     "reportStudio": {
       "label": "ವರದಿ ಸ್ಟುಡಿಯೋ"
     },

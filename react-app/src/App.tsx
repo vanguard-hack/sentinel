@@ -20,6 +20,7 @@ import InvestigationCase from './pages/InvestigationCase';
 import ReportStudio from './pages/ReportStudio';
 import ExportApprovals from './pages/ExportApprovals';
 import Assurance from './pages/Assurance';
+import ActionQueue from './pages/ActionQueue';
 import ReportEditor from './pages/ReportEditor';
 import Records from './pages/Records';
 import RecordDetail from './pages/RecordDetail';
@@ -73,6 +74,7 @@ function AppRoutes() {
                 <Route path="/export-approvals" element={guarded('exportApprovals', <ExportApprovals />)} />
                 <Route path="/assurance" element={guarded('assurance', <Assurance />)} />
                 <Route path="/investigation-diary" element={guarded('investigationDiary', <InvestigationDiary />)} />
+                <Route path="/action-queue" element={guarded('actionQueue', <ActionQueue />)} />
                 <Route path="/investigation-diary/:caseMasterId" element={guarded('investigationDiary', <InvestigationCase />)} />
                 <Route path="/records" element={guarded('records', <Records />)} />
               <Route path="/records/:recordId" element={guarded('records', <RecordDetail />)} />

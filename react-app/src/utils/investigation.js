@@ -84,7 +84,10 @@ export function nextStepSuggestions(rec) {
     out.push({ id: 'first-entry', text: 'No case diary entries filed yet — the first entry is due under Section 172 BNSS.' });
   }
   if (!rec.statements?.length) {
-    out.push({ id: 'statements', text: 'No witness/complainant statements recorded (Section 161 BNSS).' });
+    // 161 is the CrPC section; its BNSS successor is 180. Sentinel's own report
+    // templates already use the paired form ("u/s 180 BNSS (161 CrPC)"), so
+    // this line was the app contradicting itself.
+    out.push({ id: 'statements', text: 'No witness/complainant statements recorded (Section 180 BNSS · 161 CrPC).' });
   }
   if (!rec.persons?.length) {
     out.push({ id: 'persons', text: 'No persons of interest logged — add complainant, witnesses, suspects or accused as they emerge.' });

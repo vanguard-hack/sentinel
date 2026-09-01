@@ -12,6 +12,8 @@ const grounding = require('./grounding');
 const exportscreen = require('./exportscreen');
 const exportholds = require('./exportholds');
 const assurance = require('./assurance');
+const statutory = require('./statutory');
+const legalKb = require('./legal_kb.json');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -2309,6 +2311,141 @@ const publicHold = (h) => ({
   consumedAt: h.consumedAt,
 });
 
+// ── Action queue (statutory obligations across every open case) ────────────
+//
+// The Investigation Diary already lists what is missing from a case. This
+// answers the question that list cannot: of everything missing across every
+// case, what breaks first, and what happens when it does.
+//
+// Reads are capped. The queue is a working surface an officer opens each
+// morning, not an archive report, and loading several hundred full records to
+// render a page an officer scans for thirty seconds is the wrong trade. The
+// cap is applied to the index, which is already newest-first.
+const ACTION_QUEUE_CASE_CAP = 80;
+
+async function handleActionQueue(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+  const email = String(caller?.email_id || '').toLowerCase();
+  const name = [caller?.first_name, caller?.last_name].filter(Boolean).join(' ');
+
+  const index = await loadInvIndex(bucket);
+  // Settled cases carry no live obligation, so they are dropped before the
+  // record fetch rather than after — the cap should be spent on cases that can
+  // still produce an alert.
+  const live = index
+    .filter((c) => !['Chargesheet Filed', 'Closed'].includes(String(c.status)))
+    .slice(0, ACTION_QUEUE_CASE_CAP);
+
+  const records = await Promise.all(
+    live.map(async (c) => {
+      try {
+        const raw = await streamToString(await bucket.getObject(invKey(c.caseMasterId)));
+        return raw ? JSON.parse(raw) : null;
+      } catch {
+        return null; // one unreadable record must not blank the queue
+      }
+    }),
+  );
+
+  const queue = statutory.buildQueue(records.filter(Boolean), legalKb);
+
+  // "Mine" is derived, not stored: there is no case-assignment model in the
+  // record, so ownership is inferred from the IO name or the creator's address.
+  // Reported as a hint for the UI's filter rather than used to withhold
+  // anything — an investigator who can open the diary can already see these
+  // cases, and silently hiding a custody clock because a name did not match
+  // would be the worst possible failure of this feature.
+  const ownership = new Map(
+    records.filter(Boolean).map((r) => [
+      r.caseMasterId,
+      String(r.createdBy || '').toLowerCase() === email
+        || (!!name && String(r.ioName || '').toLowerCase() === name.toLowerCase()),
+    ]),
+  );
+
+  return json(res, 200, {
+    obligations: queue.obligations.map((o) => ({ ...o, mine: ownership.get(o.caseMasterId) === true })),
+    counts: queue.counts,
+    scanned: records.filter(Boolean).length,
+    capped: index.filter((c) => !['Chargesheet Filed', 'Closed'].includes(String(c.status))).length > ACTION_QUEUE_CASE_CAP,
+    role,
+    generatedAt: Date.now(),
+  });
+}
+
+// Acknowledge an obligation as handled off-system, or undo that.
+//
+// This exists because an alert that cannot be dismissed is an alert that gets
+// ignored wholesale. The engine reads the record, not the world: a seizure memo
+// filed on paper and never entered looks identical to one that was never made.
+// Without a way to say "done, off-system", officers would learn to scroll past
+// the whole panel — the single most likely way this feature dies.
+//
+// A reason is required, and the acknowledgement is kept and attributed rather
+// than deleting the obligation, so a supervisor reviewing the queue sees what
+// was waved through and by whom.
+async function handleObligationAck(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+  const caseMasterId = String(body.caseMasterId || '');
+  const obligationId = String(body.obligationId || '');
+  if (!caseMasterId || !obligationId) {
+    return json(res, 400, { error: 'caseMasterId and obligationId are required' });
+  }
+  const undo = body.undo === true;
+  const note = String(body.note || '').trim().slice(0, 300);
+  if (!undo && !note) {
+    return json(res, 400, { error: 'Say what was done — the note is what a supervisor reviews.' });
+  }
+
+  // Serialised per case: two obligations acknowledged at once on the same case
+  // would otherwise be a read-modify-write race, and the later write would drop
+  // the earlier acknowledgement with no error to either officer.
+  const email = String(caller?.email_id || '').toLowerCase();
+  const name = [caller?.first_name, caller?.last_name].filter(Boolean).join(' ');
+
+  // Read-modify-write on the case record, and it races the same way
+  // appendInvestigationEntry already does: two officers acting on the same case
+  // in the same instant can have the later write drop the earlier change.
+  // Stratus offers no compare-and-set to close that, and an in-process lock
+  // would only serialise one container out of however many are warm — which
+  // reads as a guarantee while providing none. So the window is narrowed
+  // instead: the record is re-read immediately before the write and only the
+  // single acknowledgement key is touched, leaving everything else as found.
+  let rec;
+  try {
+    rec = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
+  } catch {
+    rec = null;
+  }
+  if (!rec) return json(res, 404, { error: 'Investigation record not found' });
+
+  const acks = rec.obligationAcks || (rec.obligationAcks = {});
+  if (undo) delete acks[obligationId];
+  else acks[obligationId] = { by: name || email, email, at: Date.now(), note };
+  rec.updatedAt = Date.now();
+  await bucket.putObject(invKey(caseMasterId), Buffer.from(JSON.stringify(rec)));
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: undo ? 'reopen-obligation' : 'acknowledge-obligation',
+    feature: 'Action Queue', path: '/action-queue',
+    detail: `${rec.crimeNo || caseMasterId} · ${obligationId}${note ? ` — ${note}` : ''}`,
+  }], caller);
+
+  return json(res, 200, { ok: true });
+}
+
 // ── Assurance console ──────────────────────────────────────────────────────
 //
 // Runs the control self-test against THIS deployment and reports it alongside
@@ -4033,6 +4170,8 @@ module.exports = async (req, res) => {
     if (path.endsWith('/export/decide')) return await handleExport(req, res, 'decide');
     if (path.endsWith('/export/status')) return await handleExport(req, res, 'status');
     if (path.endsWith('/assurance/selftest')) return await handleAssurance(req, res);
+    if (path.endsWith('/investigation/actions')) return await handleActionQueue(req, res);
+    if (path.endsWith('/investigation/obligation-ack')) return await handleObligationAck(req, res);
     if (path.endsWith('/investigation/list')) return await handleInvestigation(req, res, 'list');
     if (path.endsWith('/investigation/get')) return await handleInvestigation(req, res, 'get');
     if (path.endsWith('/investigation/create')) return await handleInvestigation(req, res, 'create');

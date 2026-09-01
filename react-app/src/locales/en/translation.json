@@ -70,6 +70,9 @@
     "investigationDiary": {
       "label": "Investigation Diary"
     },
+    "actionQueue": {
+      "label": "Action Queue"
+    },
     "reportStudio": {
       "label": "Report Studio"
     },

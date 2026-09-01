@@ -27,6 +27,9 @@ export const FEATURES = [
   { key: 'aiAnalytics', label: 'AI Analytics', path: '/ai-analytics', roles: ['admin', 'supervisor', 'analyst', 'policymaker'] },
   { key: 'caseFiles', label: 'Case Files', path: '/case-files', roles: ['admin', 'supervisor', 'investigator'] },
   { key: 'investigationDiary', label: 'Investigation Diary', path: '/investigation-diary', roles: ['admin', 'supervisor', 'investigator'] },
+  // The action queue reads the same case records as the diary, so it carries
+  // the same need-to-know gate: investigators, supervisors and admin.
+  { key: 'actionQueue', label: 'Action Queue', path: '/action-queue', roles: ['admin', 'supervisor', 'investigator'] },
   { key: 'reportStudio', label: 'Report Studio', path: '/report-studio', roles: ['admin', 'supervisor', 'investigator'] },
   { key: 'records', label: 'Records', path: '/records', roles: ['admin', 'supervisor', 'investigator'] },
   { key: 'custody', label: 'Inmate Registry', path: '/custody', roles: ['admin', 'supervisor', 'investigator', 'policymaker'] },

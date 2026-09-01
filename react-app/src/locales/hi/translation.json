@@ -70,6 +70,9 @@
     "investigationDiary": {
       "label": "अन्वेषण डायरी"
     },
+    "actionQueue": {
+      "label": "कार्य सूची"
+    },
     "reportStudio": {
       "label": "रिपोर्ट स्टूडियो"
     },
