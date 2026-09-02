@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
+import { css } from '../utils/theme';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.heat';
 import { feature } from 'topojson-client';
@@ -336,10 +337,10 @@ export default function CrimeMap() {
     window.addEventListener('resize', onResize);
 
     // ── Styles ──
-    const districtStyle = { color: '#3b82f6', weight: 1,   fillColor: '#1d4ed8', fillOpacity: 0.05 };
+    const districtStyle = { color: css('--primary'), weight: 1, fillColor: css('--primary'), fillOpacity: 0.05 };
     const districtHover = { weight: 2, fillOpacity: 0.20 };
-    const stateOutlineStyle      = { color: '#f59e0b', weight: 4, fill: false, opacity: 1 };
-    const districtHighlightStyle = { color: '#fbbf24', weight: 2.5, fillColor: '#2563eb', fillOpacity: 0.4 };
+    const stateOutlineStyle      = { color: css('--gold'), weight: 4, fill: false, opacity: 1 };
+    const districtHighlightStyle = { color: css('--primary-hover'), weight: 2.5, fillColor: css('--primary'), fillOpacity: 0.4 };
 
     let data = null;
     let districtsLayer = null;
@@ -350,7 +351,7 @@ export default function CrimeMap() {
       const d = feat.properties.district;
       if (current.state === POLICE_STATE) {
         if (districtModeLocal === 'crime') {
-          return { color: '#52525b', weight: 1, fillColor: CRIME.crimeColor(CRIME.CRIME_2025[d]?.ipc), fillOpacity: 0.72 };
+          return { color: css('--hairline-strong'), weight: 1, fillColor: CRIME.crimeColor(CRIME.CRIME_2025[d]?.ipc), fillOpacity: 0.72 };
         }
         const range = H.KARNATAKA_DISTRICTS[d]?.range;
         const color = range ? H.RANGE_COLORS[range] : null;
@@ -434,13 +435,13 @@ export default function CrimeMap() {
     const buildHotspots = () => {
       heatLayer = L.heatLayer(
         points.map((p) => [p.lat, p.lng, p.intensity]),
-        { radius: 22, blur: 18, maxZoom: 11, gradient: { 0.3: '#3b82f6', 0.6: '#f59e0b', 0.9: '#ef4444' } },
+        { radius: 22, blur: 18, maxZoom: 11, gradient: { 0.3: css('--rp-cat-4'), 0.6: css('--gold'), 0.9: css('--red') } },
       );
       clusterLayer = L.markerClusterGroup({ chunkedLoading: true, showCoverageOnHover: false });
       const dot = L.divIcon({ className: 'hotspot-dot', iconSize: [12, 12] });
       points.forEach((p) => {
         L.marker([p.lat, p.lng], { icon: dot })
-          .bindPopup(`<b>Incident #${p.id}</b><br/>${p.category}<br/><span style="color:#64748b">${p.city}</span>`)
+          .bindPopup(`<b>Incident #${p.id}</b><br/>${p.category}<br/><span style="color:var(--text-3)">${p.city}</span>`)
           .addTo(clusterLayer);
       });
     };
@@ -492,7 +493,7 @@ export default function CrimeMap() {
           const p = f.properties;
           const marker = L.circleMarker([lat, lng], {
             renderer: policeRenderer, pane: 'police', radius: 5, weight: 1.5,
-            color: '#ffffff', fillColor: '#06b6d4', fillOpacity: 1,
+            color: css('--bg-1'), fillColor: css('--rp-cat-4'), fillOpacity: 1,
           });
           marker.on('click', () => selectStation(marker, p, lat, lng));
           marker.bindTooltip(p.name, { direction: 'top' });

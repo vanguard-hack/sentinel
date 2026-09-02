@@ -103,11 +103,11 @@ export function TrendArea({ data, height = 230, labelEvery = 1 }) {
         onMouseLeave={() => setActive(null)}
       >
         <defs>
-          {/* BRIX "Line Gradient": #765DFF → #CFCAFF → #FFF, multiply @ 0.33 */}
+          {/* Series fade under the line, from the shared categorical slot 0. */}
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#765DFF" />
-            <stop offset="48.25%" stopColor="#CFCAFF" />
-            <stop offset="100%" stopColor="#FFFFFF" />
+            <stop offset="0%" stopColor="var(--rp-cat-0)" />
+            <stop offset="48.25%" stopColor="var(--rp-cat-0)" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="var(--rp-cat-0)" stopOpacity="0" />
           </linearGradient>
         </defs>
         {[0.25, 0.5, 0.75, 1].map((f) => (
@@ -118,19 +118,19 @@ export function TrendArea({ data, height = 230, labelEvery = 1 }) {
         ))}
         <line x1={padL} x2={w - padR} y1={base} y2={base} className="col-grid col-grid-base" />
         {areaPath && <path d={areaPath} fill={`url(#${gradId})`} className="lc-area" />}
-        {solid.length > 1 && <path d={solidPath} className="lc-line" fill="none" style={{ stroke: '#765DFF' }} />}
-        {dashed.length > 1 && <path d={dashedPath} className="lc-line lc-line-dashed" fill="none" style={{ stroke: '#765DFF' }} />}
+        {solid.length > 1 && <path d={solidPath} className="lc-line" fill="none" style={{ stroke: 'var(--rp-cat-0)' }} />}
+        {dashed.length > 1 && <path d={dashedPath} className="lc-line lc-line-dashed" fill="none" style={{ stroke: 'var(--rp-cat-0)' }} />}
         {/* Data points on the line */}
         {solidXY.map((p, i) => (
-          <circle key={`pt${i}`} cx={p.x} cy={p.y} r="2.6" className="lc-dot" style={{ fill: '#765DFF' }} />
+          <circle key={`pt${i}`} cx={p.x} cy={p.y} r="2.6" className="lc-dot" style={{ fill: 'var(--rp-cat-0)' }} />
         ))}
         {dashedXY.slice(1).map((p, i) => (
-          <circle key={`fpt${i}`} cx={p.x} cy={p.y} r="2.6" className="lc-dot lc-dot-forecast" style={{ stroke: '#765DFF' }} />
+          <circle key={`fpt${i}`} cx={p.x} cy={p.y} r="2.6" className="lc-dot lc-dot-forecast" style={{ stroke: 'var(--rp-cat-0)' }} />
         ))}
         {active != null && (
           <>
             <line x1={x(active)} x2={x(active)} y1={padT} y2={base} className="lc-cursor" />
-            <circle cx={x(active)} cy={y(data[active].value)} r="4.5" className="lc-ring" style={{ stroke: '#765DFF' }} />
+            <circle cx={x(active)} cy={y(data[active].value)} r="4.5" className="lc-ring" style={{ stroke: 'var(--rp-cat-0)' }} />
           </>
         )}
         {data.map((d, i) =>
@@ -156,7 +156,7 @@ export function TrendArea({ data, height = 230, labelEvery = 1 }) {
         <div className="lc-tip" style={tipStyle}>
           <div className="lc-tip-title">{shown.label}{shown.forecast ? ' · projected' : ''}</div>
           <div className="lc-tip-row">
-            <span className="lc-tip-dot" style={{ background: '#765DFF' }} />
+            <span className="lc-tip-dot" style={{ background: 'var(--rp-cat-0)' }} />
             <span className="lc-tip-name">Cases</span>
             <b>{shown.value.toLocaleString()}</b>
           </div>

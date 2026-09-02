@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ZoomControls from './ZoomControls';
+import { css } from '../utils/theme';
 
 // Ring-level map of the whole linkage landscape.
 //
@@ -109,7 +110,9 @@ export default function NetworkOverview({ overview, selected, onSelect }) {
       const x = px(i);
       const y = py(i);
       ctx.globalAlpha = inFocus ? 1 : 0.16;
-      ctx.fillStyle = i === active ? '#4f46e5' : (inFocus && near ? '#818cf8' : '#94a3b8');
+      // Canvas cannot resolve CSS custom properties, so the accent is read
+      // from the stylesheet once per paint rather than hardcoded here.
+      ctx.fillStyle = i === active ? css('--primary') : (inFocus && near ? css('--primary-hover') : css('--text-4'));
       ctx.beginPath();
       ctx.arc(x, y, n.r, 0, Math.PI * 2);
       ctx.fill();
@@ -139,7 +142,7 @@ export default function NetworkOverview({ overview, selected, onSelect }) {
       const lx = px(i);
       const ly = py(i) + n.r + 4 / k;
       ctx.strokeText(n.label, lx, ly);
-      ctx.fillStyle = i === active ? '#4338ca' : 'rgba(38,50,70,0.92)';
+      ctx.fillStyle = i === active ? css('--primary-strong') : css('--bg-4');
       ctx.fillText(n.label, lx, ly);
     });
     ctx.globalAlpha = 1;

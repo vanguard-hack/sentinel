@@ -5,18 +5,23 @@ import React, { useMemo, useState } from 'react';
 // ci } and links carry { source, target, value, ci }. `ci` is a category
 // colour index (-1 = neutral). Ribbon thickness and node height share one
 // scale, so a node's height equals the sum of its ribbons.
-// A wide, varied palette so every node in a layer gets a distinct colour.
-// Ribbons take their source node's colour, so categories, types and outcomes
-// all read as different hues rather than repeating a handful of category tints.
-const PALETTE = [
-  '#4f8cff', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4',
-  '#ec4899', '#84cc16', '#f97316', '#14b8a6', '#a855f7', '#eab308',
-  '#3b82f6', '#f43f5e', '#0ea5e9', '#65a30d', '#d946ef', '#fb7185',
-];
+// Every node in a layer needs a distinct colour, and ribbons take their source
+// node's colour, so a Sankey wants more slots than a bar chart does.
+//
+// This used to be eighteen literal hex values — eighteen chromatic accents in
+// a system that has one. It now cycles the six shared categorical slots and
+// varies opacity across the three passes instead of hue, so the chart stays
+// legible without inventing colours the rest of the app has never heard of.
+const PALETTE = ['var(--rp-cat-0)', 'var(--rp-cat-1)', 'var(--rp-cat-2)',
+                 'var(--rp-cat-3)', 'var(--rp-cat-4)', 'var(--rp-cat-5)'];
 const OTHER = 'var(--text-4)';
 // Offset each layer into the palette so a category and a type in adjacent
-// columns are unlikely to land on the same hue.
-const LAYER_OFFSET = [0, 6, 13];
+// columns are unlikely to land on the same hue. Co-prime with 6 so the two
+// offsets never collapse onto each other.
+const LAYER_OFFSET = [0, 2, 4];
+// Layers also separate by weight — solid, then two lighter passes — so a
+// three-column chart stays readable on six hues instead of eighteen.
+const LAYER_ALPHA = [1, 0.74, 0.5];
 
 const W = 1000;
 const NW = 15;        // node bar width
@@ -50,10 +55,11 @@ export default function Sankey({ spec, height = 460 }) {
       const layerH = heights.reduce((s, h) => s + h, 0) + (layer.length - 1) * GAP;
       let y = PAD_T + (availH - layerH) / 2;
       layer.forEach((n, i) => {
-        const color = /^Other\b/i.test(n.label)
-          ? OTHER
-          : PALETTE[(i + LAYER_OFFSET[L]) % PALETTE.length];
-        nodeMap.set(n.id, { ...n, color, x0: x0For[L], x1: x0For[L] + NW, y0: y, y1: y + heights[i], oOut: 0, oIn: 0 });
+        const slot = (i + LAYER_OFFSET[L]) % PALETTE.length;
+        const isOther = /^Other\b/i.test(n.label);
+        const color = isOther ? OTHER : PALETTE[slot];
+        const alpha = isOther ? 1 : LAYER_ALPHA[L];
+        nodeMap.set(n.id, { ...n, color, alpha, x0: x0For[L], x1: x0For[L] + NW, y0: y, y1: y + heights[i], oOut: 0, oIn: 0 });
         y += heights[i] + GAP;
       });
     });
@@ -120,6 +126,7 @@ export default function Sankey({ spec, height = 460 }) {
         {/* nodes + labels */}
         {nodeList.map((n) => {
           const fill = n.color;
+          const fillOpacity = n.alpha;
           const labelLeft = n.layer === 0;
           return (
             <g
@@ -127,7 +134,7 @@ export default function Sankey({ spec, height = 460 }) {
               onMouseEnter={() => setHover(n.id)}
               onMouseLeave={() => setHover(null)}
             >
-              <rect x={n.x0} y={n.y0} width={NW} height={Math.max(2, n.y1 - n.y0)} rx="2" className="sk-node" style={{ fill }}>
+              <rect x={n.x0} y={n.y0} width={NW} height={Math.max(2, n.y1 - n.y0)} rx="2" className="sk-node" style={{ fill, fillOpacity }}>
                 <title>{`${n.label}: ${n.value.toLocaleString()} (${pct(n.value)})`}</title>
               </rect>
               <text

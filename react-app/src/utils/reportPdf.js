@@ -164,12 +164,12 @@ function buildDiaryHtml(rec) {
     * { box-sizing: border-box; }
     @page { size: A4; margin: 18mm 15mm; }
     body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1a2230; font-size: 11px; line-height: 1.5; }
-    .doc-head { border-bottom: 2px solid #2545a6; padding-bottom: 10px; margin-bottom: 16px; }
-    .brand { font-size: 10px; letter-spacing: .12em; color: #2545a6; font-weight: 700; text-transform: uppercase; }
+    .doc-head { border-bottom: 2px solid #5e6ad2; padding-bottom: 10px; margin-bottom: 16px; }
+    .brand { font-size: 10px; letter-spacing: .12em; color: #5e6ad2; font-weight: 700; text-transform: uppercase; }
     .doc-head h1 { font-size: 19px; margin: 6px 0 2px; }
     .doc-head .sub { color: #5a6473; font-size: 11px; }
     .doc-head .exp { color: #8a93a2; font-size: 9.5px; margin-top: 4px; }
-    h2 { font-size: 12.5px; color: #2545a6; border-bottom: 1px solid #d7dde8; padding-bottom: 4px; margin: 20px 0 10px; page-break-after: avoid; }
+    h2 { font-size: 12.5px; color: #5e6ad2; border-bottom: 1px solid #d7dde8; padding-bottom: 4px; margin: 20px 0 10px; page-break-after: avoid; }
     .idgrid { display: flex; flex-wrap: wrap; gap: 8px 0; }
     .idgrid .cell { width: 33.33%; padding-right: 10px; }
     .idgrid .cell span { display: block; font-size: 8.5px; text-transform: uppercase; letter-spacing: .04em; color: #8a93a2; }
@@ -178,7 +178,7 @@ function buildDiaryHtml(rec) {
     .entry-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
     .entry-head b { font-size: 11.5px; }
     .entry-head > span { color: #8a93a2; font-size: 9.5px; white-space: nowrap; padding-left: 10px; }
-    .tag { background: #eef1f8; color: #2545a6; border-radius: 20px; padding: 1px 7px; font-size: 8.5px; font-weight: 600; }
+    .tag { background: #eef1f8; color: #5e6ad2; border-radius: 20px; padding: 1px 7px; font-size: 8.5px; font-weight: 600; }
     .narr { margin: 2px 0 5px; white-space: pre-wrap; }
     .meta { display: flex; flex-wrap: wrap; gap: 4px 14px; color: #5a6473; font-size: 9.5px; }
     .meta i { color: #8a93a2; font-style: normal; }
@@ -187,7 +187,7 @@ function buildDiaryHtml(rec) {
     th { background: #f5f7fb; color: #5a6473; font-size: 8.5px; text-transform: uppercase; letter-spacing: .04em; }
     .tl-row { display: flex; gap: 9px; padding: 0 0 10px 4px; border-left: 2px solid #d7dde8; margin-left: 3px; position: relative; }
     .tl-row:last-child { border-left-color: transparent; }
-    .tl-dot { position: absolute; left: -5px; top: 3px; width: 8px; height: 8px; border-radius: 50%; background: #2545a6; }
+    .tl-dot { position: absolute; left: -5px; top: 3px; width: 8px; height: 8px; border-radius: 50%; background: #5e6ad2; }
     .tl-row p { margin: 2px 0 0; }
     .muted { color: #8a93a2; font-size: 9.5px; }
     .empty { color: #8a93a2; font-style: italic; }
@@ -275,14 +275,14 @@ export async function exportInvestigationSummaryPdf(summary, citations, meta = {
     * { box-sizing: border-box; }
     @page { size: A4; margin: 18mm 15mm; }
     body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1a2230; font-size: 11px; line-height: 1.6; }
-    .doc-head { border-bottom: 2px solid #2545a6; padding-bottom: 10px; margin-bottom: 16px; }
-    .brand { font-size: 10px; letter-spacing: .12em; color: #2545a6; font-weight: 700; text-transform: uppercase; }
+    .doc-head { border-bottom: 2px solid #5e6ad2; padding-bottom: 10px; margin-bottom: 16px; }
+    .brand { font-size: 10px; letter-spacing: .12em; color: #5e6ad2; font-weight: 700; text-transform: uppercase; }
     .doc-head h1 { font-size: 19px; margin: 6px 0 2px; }
     .doc-head .sub { color: #5a6473; font-size: 11px; }
     .doc-head .exp { color: #8a93a2; font-size: 9.5px; margin-top: 4px; }
     .flag { background: #fff7e6; border: 1px solid #f0d9a8; color: #7a5c17; border-radius: 6px;
             padding: 8px 11px; font-size: 10px; margin-bottom: 16px; }
-    h2 { font-size: 12.5px; color: #2545a6; border-bottom: 1px solid #d7dde8; padding-bottom: 4px;
+    h2 { font-size: 12.5px; color: #5e6ad2; border-bottom: 1px solid #d7dde8; padding-bottom: 4px;
          margin: 20px 0 10px; page-break-after: avoid; }
     h3 { font-size: 11.5px; margin: 14px 0 5px; page-break-after: avoid; }
     .narr { margin: 0 0 9px; }
@@ -291,7 +291,7 @@ export async function exportInvestigationSummaryPdf(summary, citations, meta = {
     blockquote { margin: 0 0 9px; padding-left: 10px; border-left: 3px solid #d7dde8; color: #5a6473; }
     code { background: #f5f7fb; border-radius: 3px; padding: 1px 4px; font-size: 10px; }
     hr { border: 0; border-top: 1px solid #e2e7ef; margin: 12px 0; }
-    .cite { color: #2545a6; font-weight: 700; font-size: 8.5px; }
+    .cite { color: #5e6ad2; font-weight: 700; font-size: 8.5px; }
     .sources { list-style: none; padding: 0; font-size: 10px; }
     .sources li { padding: 4px 0; border-bottom: 1px solid #eef1f6; }
     .muted { color: #8a93a2; }
