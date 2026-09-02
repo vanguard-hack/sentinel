@@ -116,3 +116,11 @@ CSVs under `ksp/` are gitignored — the Python generators are the tracked sourc
 `Accused.PersonID` is a **global** offender id across FIRs, which is what makes the co-offending network and case-linkage features work.
 
 Data Store has no CLI delete; resetting a table has historically required a temporary function endpoint. `ds:import` needs CSVs staged in Stratus and prompts interactively for a bucket unless given `--config`.
+
+## Design system
+Use @DESIGN-linear.app.md as the source of truth for all UI and visual design work.
+When creating or modifying interfaces:
+- follow existing tokens and component patterns
+- preserve the visual principles described in DESIGN.md
+- reuse existing patterns before introducing new ones
+- flag intentional deviations
