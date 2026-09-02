@@ -2047,61 +2047,84 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* ── Home bento ────────────────────────────────────────────────────────────
    Reference: motion.dev/ui/bento-grids.
 
-   A bento needs a KNOWN column count, because a tile's span only means
-   something relative to the whole. So this variant fixes the count per
-   breakpoint and the tiles claim spans against it:
+   Two earlier attempts at this failed the same way, so the rules below are
+   written to make the failure structurally impossible rather than to avoid it
+   by choosing the right numbers.
 
-     hero 2x2 · wide 2x1 · tall 1x2 · default 1x1
+   What went wrong before: rows were a FIXED height and cards were clipped with
+   `overflow: hidden`. Any card whose content did not happen to fit that box
+   was cut off or painted over its neighbour — and the home page holds twelve
+   different chart types, including two Leaflet maps, a Sankey and a heat grid,
+   none of which are the same natural height as a bar list.
 
-   Rows are a fixed height so a span of two really is twice a span of one, and
-   `dense` lets a small tile backfill the hole a wide one leaves. */
+   The three rules that prevent it:
+
+     1. Rows have a MINIMUM height, not a fixed one. `minmax(248px, auto)`
+        keeps the lattice even while letting any row grow for whatever it
+        actually contains. A card can therefore never overflow its row.
+     2. Nothing is clipped and nothing is taken out of flow. A chart that
+        needs more room pushes the row taller instead of hiding under the
+        card below it.
+     3. Headings wrap and are never sacrificed. The chart is what yields.
+
+   Spans, against a known column count — a span only means anything relative
+   to the whole, which is why the count is fixed per breakpoint:
+
+     hero 2x2 · wide 2x1 · tall 1x2 · default 1x1 */
 .rp-bento {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-auto-rows: 232px;
+  grid-auto-rows: minmax(248px, auto);
+  align-items: stretch;
 }
 .rp-bento .rp-card-hero { grid-column: span 2; grid-row: span 2; }
 .rp-bento .rp-card-tall { grid-row: span 2; }
 .rp-bento .rp-card-wide { grid-column: span 2; }
 
-/* Inside the bento a card has a definite height from the grid row, so its
-   body can hand that height down to a chart. */
-/* Nothing may leave a bento tile — the row height is fixed, so an overflowing
-   legend used to paint over the card below. Scoped to the bento: elsewhere a
-   card sizes to its content and clipping it would hide real content. */
-.rp-bento .rp-card { overflow: hidden; }
-
-/* The heading is never what gets sacrificed. It keeps its full height and the
-   chart takes whatever is left, rather than the title being squeezed or
-   clipped to protect the chart's dimensions. */
+/* The heading always fits, always wraps, and is never what shrinks. */
 .rp-bento .rp-card-head { flex: none; }
+.rp-bento .rp-card-head h2 { overflow-wrap: anywhere; hyphens: auto; }
+.rp-bento .rp-card-sub { overflow-wrap: anywhere; }
 
-.rp-bento .rp-card-body { position: relative; flex: 1; min-height: 0; }
-.rp-bento .rp-card-body > .bk-chart {
-  position: absolute;
-  inset: 0;
-  height: auto !important;
-}
-.rp-bento .rp-card-body > .bk-bars {
-  height: 100%;
-  justify-content: space-evenly;
-}
+/* The body takes the rest of the tile and hands that height to its chart. */
+.rp-bento .rp-card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* Charts carry an inline height from their own default prop. Inside a tile
+   the tile decides instead, which is the only way a chart fills a two-row
+   span. These are the only !important rules in the bento and they exist to
+   beat that inline style, not another rule. */
+.rp-bento .rp-card-body > .bk-chart { height: 190px !important; flex: none; }
+.rp-bento .rp-card-hero .rp-card-body > .bk-chart,
+.rp-bento .rp-card-tall .rp-card-body > .bk-chart { height: 438px !important; }
+
+/* Everything that is not one of the vendored charts — rings, bar lists, the
+   Sankey, the maps, the heat grid, the funnel — sizes itself and simply
+   stretches into whatever room is left. */
+.rp-bento .rp-card-body > .rp-bars,
+.rp-bento .rp-card-body > .rp-donut-wrap { flex: 1; min-height: 0; }
+.rp-bento .rp-card-body > .rp-bars { justify-content: space-evenly; }
+
+/* A ring plus a stacked legend wants ~240px; beside its legend it fits a
+   single-row tile and uses width the tile was wasting. Two-row tiles have the
+   height to stack it the usual way. */
+.rp-bento .rp-card-body > .rp-donut-wrap { flex-direction: row; align-items: center; gap: 14px; }
+.rp-bento .rp-card-body > .rp-donut-wrap .rp-legend { flex: 1; min-width: 0; }
+.rp-bento .rp-card-tall .rp-card-body > .rp-donut-wrap,
+.rp-bento .rp-card-hero .rp-card-body > .rp-donut-wrap { flex-direction: column; }
 
 @media (max-width: 1400px) {
   .rp-bento { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 1040px) {
-  .rp-bento { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 224px; }
+  .rp-bento { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rp-bento .rp-card-body > .rp-donut-wrap { flex-direction: column; }
 }
 @media (max-width: 720px) {
-  /* Rows size to content here, so a card has no definite height for an
-     out-of-flow chart to fill. Everything goes back into normal flow. */
   .rp-bento { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
   .rp-bento .rp-card-hero,
   .rp-bento .rp-card-tall,
   .rp-bento .rp-card-wide,
   .rp-bento .rp-card-2 { grid-column: auto; grid-row: auto; }
-  .rp-bento .rp-card-body > .bk-chart { position: relative; inset: auto; }
-  .rp-bento .rp-card-body { min-height: 230px; }
+  .rp-bento .rp-card-body > .bk-chart { height: 220px !important; }
 }
 .rp-card {
   background: var(--bg-1);

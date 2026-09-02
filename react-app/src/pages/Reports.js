@@ -421,7 +421,7 @@ export default function Reports() {
                 <HBarList data={data.byCategory} />
               </Card>
 
-              <Card id="chart-top-districts" title={t('charts.topDistricts')} subtitle={t('charts.topDistrictsSub')} tall>
+              <Card id="chart-top-districts" title={t('charts.topDistricts')} subtitle={t('charts.topDistrictsSub')} hero>
                 <div className="rp-geo-controls">
                   <span>Show top</span>
                   <select className="cf-select pp-perpage" value={topK} onChange={(e) => setTopK(e.target.value)}>
@@ -449,18 +449,14 @@ export default function Reports() {
               <Card
                 id="chart-crime-types"
                 title="Crime flow | category to type to outcome"
-                subtitle="Every FIR flows from its crime category, through its type, to its case status | ribbon width is case volume, colour follows the category"
-                wide
-              >
+                subtitle="Every FIR flows from its crime category, through its type, to its case status | ribbon width is case volume, colour follows the category" hero>
                 <Sankey spec={data.crimeSankey} />
               </Card>
 
               <Card
                 id="chart-socio"
                 title="Socio-economic crime correlation"
-                subtitle="Districts shaded by the chosen indicator; circles sized by registered cases | when dark shading and big circles coincide, the two move together"
-                wide
-              >
+                subtitle="Districts shaded by the chosen indicator; circles sized by registered cases | when dark shading and big circles coincide, the move together" hero>
                 <SocioCrimeMap crimeByDistrict={data.crimeByDistrict} />
               </Card>
             </div>
