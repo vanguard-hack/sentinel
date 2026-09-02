@@ -114,8 +114,16 @@ const pct = (m) => (m.total ? `${((100 * m.pass) / m.total).toFixed(1)}% (${m.pa
 console.log('Sentinel benchmark\n' + '='.repeat(70));
 
 if (!store.available()) {
-  console.error(`\nFATAL: no record snapshot at ${store.EXPORT_PATH}`);
-  console.error('The benchmark computes its ground truth from that file and cannot run without it.');
+  // The dataset is derived, not committed — ksp/fir/*.csv is gitignored. Say
+  // how to produce it rather than only which path was missing: "no such file"
+  // sends someone looking for something deleted, when nothing is lost and one
+  // command rebuilds it byte for byte.
+  console.error(`\nFATAL: no case records at ${store.CSV_PATH}`);
+  console.error('The benchmark computes its ground truth from the generated dataset, which is');
+  console.error('not committed to git. Build it first:\n');
+  console.error('  cd ksp/fir && rm -f Employee.base.csv \\');
+  console.error('    && N_CASES=30000 STAFF_PER_PS=26 python3 generate_fir_dataset.py \\');
+  console.error('    && python3 generate_accused_network.py && python3 enrich_personnel.py\n');
   process.exit(2);
 }
 const S = store.stats();

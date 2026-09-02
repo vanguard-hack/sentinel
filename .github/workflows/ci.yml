@@ -43,6 +43,28 @@ jobs:
         working-directory: functions/rag
         run: node --check index.js
 
+      # The FIR dataset is DERIVED, not committed. ksp/fir/*.csv is gitignored —
+      # 223,000 rows of generated CSV has no business in git — so the runner
+      # rebuilds it. The generator is seeded and produces byte-identical output,
+      # which is what makes this safe: CI measures the same data a developer
+      # has, not something merely similar.
+      #
+      # Added because the benchmark broke when it stopped reading a committed
+      # text export and started reading CaseMaster.csv directly. Locally that
+      # was an improvement — one source of truth instead of two — and in CI the
+      # file simply was not there.
+      - name: Generate the FIR dataset
+        working-directory: ksp/fir
+        env:
+          N_CASES: '30000'
+          STAFF_PER_PS: '26'
+        run: |
+          rm -f Employee.base.csv
+          python3 generate_fir_dataset.py
+          python3 generate_accused_network.py
+          python3 enrich_personnel.py
+          wc -l CaseMaster.csv Accused.csv Employee.csv
+
       - name: Run backend test suites
         working-directory: functions/rag
         # Every *.test.js in the function, so a new suite is picked up without

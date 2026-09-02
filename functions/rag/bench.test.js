@@ -38,7 +38,8 @@ const runBench = (args = []) => {
 // ── The record store ───────────────────────────────────────────────────────
 
 check('the record source is present', store.available(),
-  `expected a file at ${store.CSV_PATH}`);
+  `expected ${store.CSV_PATH} — the dataset is generated, not committed. `
+  + 'Run ksp/fir/generate_fir_dataset.py; the CI workflow has the exact invocation.');
 
 const S = store.stats();
 // Asserted against the CSV rather than a literal: the dataset is regenerated

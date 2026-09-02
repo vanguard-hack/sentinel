@@ -69,9 +69,15 @@ function buildFixture(dir) {
   for (let i = 1; i <= 400; i++) {
     // Spread across the values the tests filter on: major heads 3 (crimes
     // against women) and 7 (narcotics) both land, as do statuses 1-5.
-    cases.push([i, (i % 8) + 1, (i % 5) + 1, (i % 3) + 1, stations[i % stations.length]]);
+    // CrimeMinorHeadID is here because a test filters on it. The fixture has to
+    // carry every column the tests name, or sqlite rejects the query and the
+    // whole fallback dies with an unopenable database rather than a failed
+    // check — which is exactly how it broke.
+    cases.push([i, (i % 8) + 1, (i % 5) + 1, (i % 3) + 1, stations[i % stations.length], 1000 + (i % 4)]);
   }
-  csv('CaseMaster', ['CaseMasterID', 'CrimeMajorHeadID', 'CaseStatusID', 'CaseCategoryID', 'PoliceStationID'], cases);
+  csv('CaseMaster',
+    ['CaseMasterID', 'CrimeMajorHeadID', 'CaseStatusID', 'CaseCategoryID', 'PoliceStationID', 'CrimeMinorHeadID'],
+    cases);
 
   const accused = [];
   const victims = [];
