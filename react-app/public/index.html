@@ -5,6 +5,73 @@
     <link rel="icon" type="image/png" sizes="32x32" href="%PUBLIC_URL%/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="64x64" href="%PUBLIC_URL%/favicon-64.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      Content Security Policy.
+
+      The point of this policy is script-src. Everything else here is tidying;
+      script-src is the control that decides whether an injected string can
+      become running code in a console that holds FIR records. The build emits
+      no inline script — CRA's runtime chunk is a file, not a <script> body —
+      so this can be a real allowlist with no 'unsafe-inline' and no hashes to
+      keep in sync. Adding 'unsafe-inline' here later would quietly undo the
+      only line in this file that is load-bearing.
+
+      Where it is deliberately loose, and why:
+
+      img-src allows any https origin. Mapillary serves street-level imagery
+      from rotating CDN hostnames that are not knowable in advance, so an
+      allowlist would either be wrong today or wrong next month, and a map that
+      silently stops loading photos is a bug nobody reports. Images cannot
+      execute; this is the cheap half of the trade.
+
+      style-src allows 'unsafe-inline' because Leaflet and the chart libraries
+      inject <style> at runtime. Style injection is a defacement and exfil-via-
+      CSS risk, not an execution one, and locking it down would mean hashing
+      third-party stylesheets on every dependency bump.
+
+      NOT expressible here: frame-ancestors, which browsers ignore in a meta
+      tag. Catalyst already sends X-Frame-Options: SAMEORIGIN on every
+      response, so clickjacking is covered by the platform rather than by this
+      file.
+
+      script-src allows map-data-development.zohostratus.in because
+      src/data/hierarchyStore.js imports policeHierarchy.js, crimeData2025.js
+      and stateInfo.js from that bucket AS EXECUTABLE MODULES at runtime. That
+      is worth naming plainly: anything that can write to that bucket can run
+      JavaScript in every signed-in officer's browser, and no policy here can
+      change that — CSP can only say which origin is trusted, not what it
+      serves. The bucket needs a public GetObject rule for reads, so the thing
+      to keep verifying is that its WRITE permissions stay closed. Serving
+      those three files as JSON instead of JS would remove the exposure
+      entirely and let this origin come back out of script-src.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self' https://static.zohocdn.com https://map-data-development.zohostratus.in;
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+        font-src 'self' data: https://fonts.gstatic.com;
+        img-src 'self' data: blob: https:;
+        media-src 'self' blob: data:;
+        connect-src 'self' https://static.zohocdn.com https://*.zohostratus.in
+          https://maps.googleapis.com https://graph.mapillary.com
+          https://nominatim.openstreetmap.org https://api.postalpincode.in
+          https://ifsc.razorpay.com;
+        worker-src 'self' blob:;
+        object-src 'none';
+        base-uri 'self';
+        form-action 'self';
+        frame-src 'none';
+        upgrade-insecure-requests
+      "
+    />
+    <!--
+      The Mapillary token and the Google Street View key travel in query
+      strings, so a full referrer would hand them to every site an officer
+      clicks through to.
+    -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <!-- Matches the manifest's theme_color: the browser chrome and the app's
          own header should not disagree once it is installed. -->
     <meta name="theme-color" content="#1d4ed8" />

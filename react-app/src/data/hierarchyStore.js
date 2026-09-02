@@ -10,9 +10,16 @@
 //   districtInfo.json                                    (JSON)
 const BUCKET = 'https://map-data-development.zohostratus.in/';
 
-// new Function keeps these as NATIVE runtime ESM imports (webpack won't bundle them).
-// eslint-disable-next-line no-new-func
-const nativeImport = new Function('u', 'return import(u)');
+// These have to stay NATIVE runtime ESM imports — the URL is only known at
+// runtime and webpack must not try to resolve or bundle it.
+//
+// This was `new Function('u', 'return import(u)')`, which works but forces
+// script-src to allow 'unsafe-eval' — and 'unsafe-eval' re-opens the single
+// thing the Content Security Policy in public/index.html exists to close, for
+// the whole app, to buy one dynamic import. webpackIgnore is the supported
+// way to say the same thing to webpack 5 (which CRA 5 uses) without handing
+// the page a string-to-code primitive.
+const nativeImport = (u) => import(/* webpackIgnore: true */ u);
 
 // Live stores — populated by refreshAllData().
 export const H = {};
