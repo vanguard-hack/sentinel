@@ -5,7 +5,7 @@ import {
   CalendarClock, Gavel, UserX, Users, ScrollText,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
-import { Donut } from '../components/Charts';
+import Donut from '../components/charts/Ring';
 import { useAccess } from '../context/AccessContext';
 import {
   getRegistry, seedCustody, STATUS, STATUS_ORDER, fmtDate,

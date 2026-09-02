@@ -3,7 +3,8 @@ import { RefreshCw, AlertTriangle, Siren } from 'lucide-react';
 import {
   fetchPredictData, weeklyCounts, holtForecast, districtRisk, offenderRisk, detectAnomalies,
 } from '../utils/predict';
-import { ForecastChart, BarList } from './Charts';
+import { ForecastChart } from './Charts';
+import BarList from './charts/BarColumns';
 
 function Card({ title, subtitle, wide, children }) {
   return (

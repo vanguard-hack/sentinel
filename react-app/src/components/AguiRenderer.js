@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import {
-  HBarList, Donut, TrendArea, MultiLine, HeatGrid, Scatter, Funnel, Pyramid,
-  StackedBars, Sankey,
-} from './Charts';
+import { HeatGrid, Scatter, Funnel, Pyramid, StackedBars, Sankey } from './Charts';
+// Converted to the vendored Bklit set — see components/charts/.
+import TrendArea from './charts/TrendArea';
+import TrendLine from './charts/TrendLine';
+import HBarList from './charts/BarRows';
+import Donut from './charts/Ring';
 import { renderCell, renderInline, normaliseText } from '../utils/richFormat';
 import GeoHeatMap from './GeoHeatMap';
 import NetworkGraph from './NetworkGraph';
@@ -206,14 +208,14 @@ function AguiComponent({ spec }) {
     const data = cleanSeries(spec.data);
     // Two points is a pair of numbers, not a trend, and drawing a line through
     // them invites a reading the data does not support.
-    body = data.length >= 3 ? <TrendArea data={data} labelEvery={Math.ceil(data.length / 8)} /> : null;
+    body = data.length >= 3 ? <TrendArea data={data} height={230} /> : null;
   } else if (spec.type === 'multi-line-chart') {
     const series = cleanSeriesSet(spec.series);
     // Every series must share an x-axis; ragged series would draw lines that
     // silently mean different periods.
     const even = series.length > 0 && series.every((s) => s.points.length === series[0].points.length);
     body = even && series[0].points.length >= 2
-      ? <MultiLine series={series} labelEvery={Math.ceil(series[0].points.length / 8)} />
+      ? <TrendLine series={series} height={250} />
       : null;
   } else if (spec.type === 'stacked-bar-chart') {
     const data = cleanStacks(spec.data);

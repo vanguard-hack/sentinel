@@ -42,3 +42,25 @@ if (typeof URL !== 'undefined') {
 if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function scrollIntoView() {};
 }
+
+// jsdom implements no ResizeObserver. The vendored charts size themselves with
+// visx's ParentSize, which observes its container, so without this every chart
+// in the app throws on mount and takes its whole page's test with it.
+//
+// The stub reports a fixed, plausible size rather than nothing: ParentSize
+// starts at zero width and the charts decline to draw below 10px, so a silent
+// no-op observer would leave every chart rendering an empty box and the tests
+// asserting against it would pass while proving nothing.
+if (typeof global !== 'undefined' && !global.ResizeObserver) {
+  global.ResizeObserver = class ResizeObserver {
+    constructor(callback) { this.callback = callback; }
+
+    observe(target) {
+      this.callback([{ target, contentRect: { width: 800, height: 320 } }], this);
+    }
+
+    unobserve() {}
+
+    disconnect() {}
+  };
+}

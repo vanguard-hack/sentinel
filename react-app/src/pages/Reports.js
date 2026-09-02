@@ -8,7 +8,14 @@ import { fetchReports, computeReport, trendSeries, earliestTs, TREND_RANGES, cus
 import { exportReportPdf } from '../utils/reportPdf';
 import ExportHoldNotice from '../components/ExportHoldNotice';
 import DateRangeCalendar from '../components/DateRangeCalendar';
-import { BarList, HBarList, Donut, TrendArea, MultiLine, HeatGrid, Funnel, Pyramid } from '../components/Charts';
+import { HeatGrid, Funnel, Pyramid } from '../components/Charts';
+// The vendored Bklit chart set. Everything still imported from Charts.js above
+// is a shape Bklit has no equivalent for, or one not yet converted.
+import TrendLine from '../components/charts/TrendLine';
+import TrendArea from '../components/charts/TrendArea';
+import BarList from '../components/charts/BarColumns';
+import HBarList from '../components/charts/BarRows';
+import Donut from '../components/charts/Ring';
 import SocioCrimeMap from '../components/SocioCrimeMap';
 import Sankey from '../components/Sankey';
 import GeoHeatMap from '../components/GeoHeatMap';
@@ -160,9 +167,6 @@ export default function Reports() {
     () => (bundle ? trendSeries(bundle.raw.caseDates, chartWin.from, chartWin.to) : null),
     [bundle, chartWin]
   );
-  const chartLabelEvery = chartData && !chartData.multi
-    ? Math.max(1, Math.ceil(chartData.points.length / 13))
-    : 1;
   const fmtTs = (ts) =>
     new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -406,9 +410,13 @@ export default function Reports() {
               </div>
               <div className="rp-card-body">
                 {chartData?.multi ? (
-                  <MultiLine series={chartData.series} height={340} labelEvery={1} />
+                  <TrendLine
+                    series={chartData.series}
+                    height={340}
+                    ariaLabel={`Crime trend by year, ${fmtTs(chartWin.from)} to ${fmtTs(chartWin.to)}`}
+                  />
                 ) : (
-                  <TrendArea data={chartData?.points || []} labelEvery={chartLabelEvery} height={320} />
+                  <TrendArea data={chartData?.points || []} height={320} ariaLabel="Crime trend" />
                 )}
               </div>
             </section>
@@ -471,16 +479,10 @@ export default function Reports() {
             <h2 className="rp-section-title">Trends</h2>
             <div className="rp-grid">
               <Card id="chart-trend-head" title="Crime trend by head" subtitle="Monthly registrations · top 5 crime heads" wide>
-                <MultiLine
-                  series={data.trendByHead}
-                  labelEvery={Math.max(1, Math.ceil((data.trendByHead[0]?.points.length || 1) / 14))}
-                />
+                <TrendLine series={data.trendByHead} height={250} ariaLabel="Crime trend by head" />
               </Card>
               <Card id="chart-arrests" title="Arrests & surrenders" subtitle="Monthly events by type">
-                <MultiLine
-                  series={data.arrestSeries}
-                  labelEvery={Math.max(1, Math.ceil((data.arrestSeries[0]?.points.length || 1) / 8))}
-                />
+                <TrendLine series={data.arrestSeries} height={250} ariaLabel="Arrests and surrenders" />
               </Card>
               <Card title="Seasonality" subtitle="Registrations by calendar month × crime head" wide>
                 <HeatGrid rows={data.seasonality.rows} cols={data.seasonality.cols} values={data.seasonality.values} />

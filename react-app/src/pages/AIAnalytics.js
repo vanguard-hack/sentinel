@@ -7,7 +7,8 @@ import {
   fetchIncidents, hourlyProfile, dayOfMonthProfile, weekdayProfile,
   peakWindow, monthlySeries, forecastMonths, headDaypartMatrix, DAYPARTS,
 } from '../utils/aianalytics';
-import { TrendArea, BarList } from '../components/Charts';
+import TrendArea from '../components/charts/TrendArea';
+import BarList from '../components/charts/BarColumns';
 import CrimeLinks from '../components/CrimeLinks';
 import CaseLinkage from '../components/CaseLinkage';
 import Forecasts from '../components/Forecasts';
@@ -79,7 +80,6 @@ export default function AIAnalytics() {
       const w = peakWindow(p, 4);
       return {
         data: p,
-        labelEvery: 3,
         chart: 'area',
         peak: `Peak window ${pad2(w.start)}:00–${pad2(w.end)}:00 — ${w.count.toLocaleString()} incidents (${w.share.toFixed(0)}% of total)`,
       };
@@ -89,7 +89,6 @@ export default function AIAnalytics() {
       const w = peakWindow(p, 5);
       return {
         data: p,
-        labelEvery: 5,
         chart: 'area',
         peak: `Busiest stretch: days ${w.start + 1}–${((w.end - 1 + 31) % 31) + 1} of the month — ${w.count.toLocaleString()} incidents (${w.share.toFixed(0)}%)`,
       };
@@ -261,7 +260,7 @@ export default function AIAnalytics() {
                 wide
               >
                 {profile && profile.chart === 'area' ? (
-                  <TrendArea data={profile.data} labelEvery={profile.labelEvery} height={170} />
+                  <TrendArea data={profile.data} height={170} />
                 ) : profile ? (
                   <BarList
                     data={dim === 'dow'

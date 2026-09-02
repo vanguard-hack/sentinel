@@ -1,0 +1,66 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Vendored-chart token bridge
+   ───────────────────────────────────────────────────────────────────────────
+   Bklit UI (MIT, github.com/bklit/bklit-ui) themes its charts through its own
+   --chart-* custom properties. Sentinel themes everything through the token
+   block in index.css.
+
+   Rather than edit the vendored components to name our tokens directly — which
+   would make every future update from upstream a manual merge — this file maps
+   one vocabulary onto the other. Vendored code keeps asking for --chart-grid;
+   it just resolves to our hairline.
+
+   Consequence worth knowing: these charts follow the app's theme automatically,
+   including the light/dark flip, because every value below is an alias rather
+   than a literal.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.bk-chart {
+  --chart-background:        var(--bg-1);
+  --chart-foreground:        var(--text-1);
+  --chart-foreground-muted:  var(--text-3);
+  --chart-grid:              var(--border);
+  --chart-crosshair:         var(--hairline-strong);
+
+  /* Bklit's demo charts name two series explicitly. Ours are N-series, so the
+     component indexes the shared categorical ramp instead and these two are
+     kept only so unmodified upstream components still resolve. */
+  --chart-line-primary:      var(--rp-cat-0);
+  --chart-line-secondary:    var(--rp-cat-1);
+
+  position: relative;
+  width: 100%;
+}
+
+/* The SVG owns the box; the tooltip is positioned against this wrapper. */
+.bk-chart-svg { display: block; width: 100%; overflow: visible; }
+
+.bk-chart-tick {
+  font-size: 10.5px;
+  fill: var(--chart-foreground-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hit area for pointer and keyboard interaction. */
+.bk-chart-surface { fill: transparent; outline: none; }
+.bk-chart:focus-visible .bk-chart-surface,
+.bk-chart-svg:focus-visible .bk-chart-surface {
+  outline: 2px solid var(--primary-ring);
+  outline-offset: 2px;
+}
+
+/* Reduced motion: the draw-in and the spring crosshair are decoration, so both
+   go. The chart still renders complete — it just arrives already drawn. */
+@media (prefers-reduced-motion: reduce) {
+  .bk-chart-grow { transition: none !important; }
+}
+
+/* Horizontal bar rows. The chart stays HTML so the browser can elide long
+   station names, so the hover-dim is CSS rather than an SVG opacity. */
+.bk-bars .rp-bar-row { transition: opacity 0.25s ease, background 0.12s; }
+.bk-bars .rp-bar-row.bk-dim { opacity: 0.4; }
+.bk-bars .rp-bar-fill { transition: width 900ms cubic-bezier(0.85, 0, 0.15, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .bk-bars .rp-bar-fill { transition: none; }
+}
