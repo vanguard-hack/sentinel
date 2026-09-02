@@ -1902,6 +1902,36 @@ const AUDIT_PREFIX = 'audit/logs/';
 const LAST_ACTIVE_KEY = 'access/last-active.json';
 const APP_ROLES = ['investigator', 'analyst', 'supervisor', 'policymaker', 'admin'];
 
+// ── Stratus key confinement ────────────────────────────────────────────────
+//
+// Several routes take an object key from the request body — the client is
+// handing back a key this function gave it earlier (an uploaded scan, a
+// recording). Those routes checked `key.startsWith(PREFIX)` and stopped there,
+// which confines the key only if the store treats keys as opaque strings.
+//
+// That is an assumption about someone else's storage layer, and it is the
+// wrong thing to bet a police evidence store on. If Stratus ever normalises
+// `..` the way a filesystem does, then
+//
+//     investigation/media/../../access/roles.json
+//
+// passes startsWith and walks straight out of the prefix into the role map.
+// The check costs a regex, so there is no reason to depend on the answer:
+// reject traversal, absolute paths, backslashes, NUL and control characters
+// outright, and require the key to sit under the prefix.
+//
+// Returns the key when it is safe, or null when it is not — callers 400.
+function confineKey(key, prefix) {
+  const k = String(key == null ? '' : key);
+  if (!k || k.length > 512) return null;
+  if (!k.startsWith(prefix)) return null;
+  if (k.includes('..') || k.includes('\\') || k.startsWith('/')) return null;
+  // Control characters (NUL included) have no place in a key we generated.
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(k)) return null;
+  return k;
+}
+
 async function loadRolesBlob(bucket) {
   try {
     const parsed = JSON.parse((await streamToString(await bucket.getObject(ROLES_KEY))) || '{}');
@@ -1968,6 +1998,66 @@ async function requireSession(req, res) {
     return null;
   }
   return { app, user, email };
+}
+
+// ── Cross-site request forgery ─────────────────────────────────────────────
+//
+// Every route here is a POST authenticated by the Catalyst session cookie, and
+// the cookie is attached by the browser on any request it decides to send.
+// Nothing in this function previously distinguished a POST the officer's own
+// console made from one that a page on another site made on their behalf. A
+// hostile page an officer visits while signed in could therefore have driven
+// /investigation/delete or /access/save with their clearance.
+//
+// What was actually stopping that: the SameSite attribute on Zoho's session
+// cookie, plus CORS preflight. Both are real, and neither is ours. SameSite
+// defaults to Lax in current browsers, but it is set by the identity provider,
+// not by this code, and preflight is dodged entirely by sending the JSON as
+// Content-Type: text/plain — a "simple" request that needs no preflight, and
+// which readBody/JSON.parse below accept happily because neither looks at the
+// content type. So the protection was a third party's default, one header
+// away from gone.
+//
+// The check: if the request carries an Origin, it must be one of ours. A
+// browser sends Origin on every cross-origin request and on same-origin POSTs,
+// so a forged request from another site always brings one and is refused.
+//
+// A request with NO Origin is allowed through to the session gate. That is
+// deliberate, not an oversight: curl, CI and server-to-server callers omit it,
+// and none of them is the threat here — a CSRF attack runs in a browser, and a
+// browser cannot suppress the header. Authentication is still required either
+// way; this only removes the cross-site path to it.
+//
+// ALLOWED_ORIGINS overrides the default list (comma-separated, scheme + host).
+const APP_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((v) => v.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
+function originAllowed(origin) {
+  if (!origin) return true; // no Origin: not a browser-driven cross-site call
+  const o = String(origin).trim().replace(/\/+$/, '').toLowerCase();
+  if (o === 'null') return false; // sandboxed iframe / opaque origin
+  if (APP_ORIGINS.length) return APP_ORIGINS.some((a) => a.toLowerCase() === o);
+  let host;
+  try {
+    const u = new URL(o);
+    if (u.protocol !== 'https:' && u.hostname !== 'localhost' && u.hostname !== '127.0.0.1') return false;
+    host = u.hostname;
+  } catch {
+    return false;
+  }
+  // The console is served from the project's own Catalyst domain; local
+  // development serves it from localhost. Matched on the parsed hostname, so
+  // "evil-catalystserverless.in.attacker.com" cannot pass on a substring.
+  return (
+    host === 'localhost'
+    || host === '127.0.0.1'
+    || host.endsWith('.catalystserverless.in')
+    || host.endsWith('.catalystserverless.com')
+    || host.endsWith('.zohostratus.in')
+    || host.endsWith('.zohostratus.com')
+  );
 }
 
 // ── IP blocklist ───────────────────────────────────────────────────────────
@@ -4136,8 +4226,8 @@ async function handleDigitiseSourceDone(req, res) {
   }
   const body = JSON.parse((await readBody(req)) || '{}');
   const id = String(body.id || '').slice(0, 64);
-  const key = String(body.key || '');
-  if (!id || !key.startsWith(`${DIG_PREFIX}files/`)) return json(res, 400, { error: 'id and key are required' });
+  const key = confineKey(body.key, `${DIG_PREFIX}files/`);
+  if (!id || !key) return json(res, 400, { error: 'id and key are required' });
 
   let bytes = 0;
   try {
@@ -4204,8 +4294,8 @@ async function handleDigitiseFile(req, res) {
   if (!caller || !canInvestigate(role)) {
     return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
   }
-  const key = String(body.key || '');
-  if (!key.startsWith(`${DIG_PREFIX}files/`)) return json(res, 400, { error: 'invalid key' });
+  const key = confineKey(body.key, `${DIG_PREFIX}files/`);
+  if (!key) return json(res, 400, { error: 'invalid key' });
   try {
     const stream = await bucket.getObject(key);
     const chunks = [];
@@ -4586,8 +4676,8 @@ async function handleMediaUpload(req, res) {
 // never served from a bare, unauthenticated URL.
 async function handleMediaGet(req, res) {
   const body = JSON.parse((await readBody(req)) || '{}');
-  const key = String(body.key || '');
-  if (!key.startsWith(MEDIA_PREFIX)) return json(res, 400, { error: 'invalid key' });
+  const key = confineKey(body.key, MEDIA_PREFIX);
+  if (!key) return json(res, 400, { error: 'invalid key' });
   const app = catalystSDK.initialize(req);
   const bucket = app.stratus().bucket(CONV_BUCKET);
   const caller = await requireInvestigator(app, bucket);
@@ -4886,6 +4976,13 @@ module.exports = async (req, res) => {
     if (ipBlocked(ip)) {
       console.warn('blocked request from', ip);
       return json(res, 403, { error: 'Access denied.' });
+    }
+
+    // Cross-site callers are turned away before the session is even looked up:
+    // a forged request should cost us nothing. See originAllowed above.
+    if (!originAllowed(req.headers && req.headers.origin)) {
+      console.warn('blocked cross-origin request from', req.headers.origin);
+      return json(res, 403, { error: 'Cross-origin requests are not allowed.' });
     }
 
     // One gate, ahead of every route. See requireSession above for why this is
