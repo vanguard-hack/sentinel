@@ -412,7 +412,7 @@ export default function Reports() {
             </section>
 
             {/* Charts */}
-            <div className="rp-grid">
+            <div className="rp-grid rp-bento">
               <Card id="chart-case-status" title={t('charts.caseStatus')} subtitle={t('charts.caseStatusSub')}>
                 <Donut data={data.byStatus} />
               </Card>
@@ -448,8 +448,8 @@ export default function Reports() {
 
               <Card
                 id="chart-crime-types"
-                title="Crime flow — category to type to outcome"
-                subtitle="Every FIR flows from its crime category, through its type, to its case status — ribbon width is case volume, colour follows the category"
+                title="Crime flow | category to type to outcome"
+                subtitle="Every FIR flows from its crime category, through its type, to its case status | ribbon width is case volume, colour follows the category"
                 wide
               >
                 <Sankey spec={data.crimeSankey} />
@@ -458,7 +458,7 @@ export default function Reports() {
               <Card
                 id="chart-socio"
                 title="Socio-economic crime correlation"
-                subtitle="Districts shaded by the chosen indicator; circles sized by registered cases — when dark shading and big circles coincide, the two move together"
+                subtitle="Districts shaded by the chosen indicator; circles sized by registered cases | when dark shading and big circles coincide, the two move together"
                 wide
               >
                 <SocioCrimeMap crimeByDistrict={data.crimeByDistrict} />
@@ -467,7 +467,7 @@ export default function Reports() {
 
             {/* ── Trends ── */}
             <h2 className="rp-section-title">Trends</h2>
-            <div className="rp-grid">
+            <div className="rp-grid rp-bento">
               <Card id="chart-trend-head" title="Crime trend by head" subtitle="Monthly registrations · top 5 crime heads" hero>
                 <TrendLine series={data.trendByHead} height={250} ariaLabel="Crime trend by head" />
               </Card>
@@ -481,7 +481,7 @@ export default function Reports() {
 
             {/* ── Crime composition ── */}
             <h2 className="rp-section-title">Crime composition</h2>
-            <div className="rp-grid">
+            <div className="rp-grid rp-bento">
               <Card title="Heinous vs non-heinous" subtitle="Gravity of registered offences">
                 <Donut data={data.gravitySplit} />
               </Card>
@@ -495,11 +495,11 @@ export default function Reports() {
 
             {/* ── Case lifecycle ── */}
             <h2 className="rp-section-title">Case lifecycle</h2>
-            <div className="rp-grid">
+            <div className="rp-grid rp-bento">
               <Card title="Case status funnel" subtitle="Registered → investigated → chargesheeted → decided">
                 <Funnel data={data.statusFunnel} />
               </Card>
-              <Card title="Pendency ageing" subtitle="Open investigations by age of case — green fresh, red long-pending">
+              <Card title="Pendency ageing" subtitle="Open investigations by age of case | green fresh, red long-pending">
                 <Pyramid data={data.pendencyAgeing} />
               </Card>
               <Card title="Chargesheet filing lag" subtitle="Days from registration to chargesheet" wide>
@@ -512,7 +512,7 @@ export default function Reports() {
 
             {/* ── People & demographics ── */}
             <h2 className="rp-section-title">People & demographics</h2>
-            <div className="rp-grid">
+            <div className="rp-grid rp-bento">
               <Card title="Complainant occupations" subtitle="Who is filing FIRs" tall>
                 <HBarList data={data.complainantOccupations} />
               </Card>
@@ -535,7 +535,7 @@ export default function Reports() {
 
             {/* ── Personnel & workload ── */}
             <h2 className="rp-section-title">Personnel & workload</h2>
-            <div className="rp-grid">
+            <div className="rp-grid rp-bento">
               <Card title="IO caseload" subtitle="Cases per investigating officer (top 8)" tall>
                 <HBarList data={data.ioCaseload} />
               </Card>

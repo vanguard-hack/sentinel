@@ -1583,7 +1583,6 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   background: var(--bg-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -2032,73 +2031,77 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .rp-kpi-sub { font-size: 11px; color: var(--text-4); margin-top: 2px; }
 
 /* ── Chart cards ── */
-/* ── Bento grid ────────────────────────────────────────────────────────────
-   Shaped after motion.dev/ui/bento-grids.
-
-   The old grid was auto-fill at minmax(300px, 1fr). That was fine at 1240px,
-   where it produced four columns. Once the page was allowed to run to the
-   full width of the pane it produced six or seven, and two things broke: a
-   .rp-card-wide spanning 1 / -1 became a 1900px band with a 250px chart
-   floating in it, and every 1-column tile shrank to about 290px whatever the
-   screen. The result read as gaps between charts rather than as a layout.
-
-   A bento needs a KNOWN column count, because a tile's span only means
-   something relative to the whole. So the count is fixed per breakpoint and
-   the tiles claim spans against it:
-
-     ┌───────────────┬───────┬───────┐
-     │               │       │       │   hero  2 × 2
-     │     hero      │  1×1  │  1×1  │   wide  2 × 1
-     │               ├───────┴───────┤   tall  1 × 2
-     │               │     wide      │   std   1 × 1
-     ├───────┬───────┼───────┬───────┤
-     │  1×1  │ tall  │     wide      │
-     └───────┴───────┴───────────────┘
-
-   Rows are a fixed height so a span of 2 is twice a span of 1 and the mosaic
-   interlocks. `dense` lets a 1×1 backfill a hole a 2-wide tile left behind. */
+/* ── Card grid ─────────────────────────────────────────────────────────────
+   Shared by Reports, AI Analytics and Forecasts, so it stays what it always
+   was: a responsive lattice that adapts to whatever width it is given. The
+   home page's bento is a variant of it (.rp-bento below), NOT a change to it —
+   forcing a fixed column count and a fixed row height here reshaped every
+   card on three other pages. */
 .rp-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-auto-rows: 228px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 14px;
   grid-auto-flow: row dense;
 }
 
-/* Tile spans. A card with no modifier is 1 × 1. */
-.rp-card-hero { grid-column: span 2; grid-row: span 2; }
-.rp-card-tall { grid-row: span 2; }
+/* ── Home bento ────────────────────────────────────────────────────────────
+   Reference: motion.dev/ui/bento-grids.
 
-/* Charts fill their tile rather than sitting at a fixed height inside it —
-   the floating-chart-in-a-big-box look was the other half of the gap.
+   A bento needs a KNOWN column count, because a tile's span only means
+   something relative to the whole. So this variant fixes the count per
+   breakpoint and the tiles claim spans against it:
 
-   The chart is taken out of flow to do it. visx's ParentSize sizes its
-   measurement box with height:100%, and a percentage height cannot resolve
-   against a flex item whose height is `auto`: the item has a used height from
-   flex, but not a *definite* one, so the percentage collapses to zero, the
-   chart measures nothing and draws nothing. An absolutely positioned box with
-   top and bottom both pinned does have a definite height. */
-.rp-card-body { position: relative; flex: 1; min-height: 0; }
-.rp-card .bk-chart { position: absolute; inset: 0; height: auto !important; }
+     hero 2x2 · wide 2x1 · tall 1x2 · default 1x1
+
+   Rows are a fixed height so a span of two really is twice a span of one, and
+   `dense` lets a small tile backfill the hole a wide one leaves. */
+.rp-bento {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: 232px;
+}
+.rp-bento .rp-card-hero { grid-column: span 2; grid-row: span 2; }
+.rp-bento .rp-card-tall { grid-row: span 2; }
+.rp-bento .rp-card-wide { grid-column: span 2; }
+
+/* Inside the bento a card has a definite height from the grid row, so its
+   body can hand that height down to a chart. */
+/* Nothing may leave a bento tile — the row height is fixed, so an overflowing
+   legend used to paint over the card below. Scoped to the bento: elsewhere a
+   card sizes to its content and clipping it would hide real content. */
+.rp-bento .rp-card { overflow: hidden; }
+
+/* The heading is never what gets sacrificed. It keeps its full height and the
+   chart takes whatever is left, rather than the title being squeezed or
+   clipped to protect the chart's dimensions. */
+.rp-bento .rp-card-head { flex: none; }
+
+.rp-bento .rp-card-body { position: relative; flex: 1; min-height: 0; }
+.rp-bento .rp-card-body > .bk-chart {
+  position: absolute;
+  inset: 0;
+  height: auto !important;
+}
+.rp-bento .rp-card-body > .bk-bars {
+  height: 100%;
+  justify-content: space-evenly;
+}
 
 @media (max-width: 1400px) {
-  .rp-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .rp-bento { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 1040px) {
-  .rp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 220px; }
+  .rp-bento { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 224px; }
 }
 @media (max-width: 720px) {
-  /* One column: spans collapse, and rows size to their content instead of to
-     a fixed height that a stacked tile no longer needs. */
-  .rp-grid { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
   /* Rows size to content here, so a card has no definite height for an
-     out-of-flow chart to fill. Give the body one. */
-  .rp-card .bk-chart { position: relative; inset: auto; }
-  .rp-card-body { min-height: 220px; }
-  .rp-card-hero, .rp-card-tall, .rp-card-wide, .rp-card-2 {
-    grid-column: auto;
-    grid-row: auto;
-  }
+     out-of-flow chart to fill. Everything goes back into normal flow. */
+  .rp-bento { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
+  .rp-bento .rp-card-hero,
+  .rp-bento .rp-card-tall,
+  .rp-bento .rp-card-wide,
+  .rp-bento .rp-card-2 { grid-column: auto; grid-row: auto; }
+  .rp-bento .rp-card-body > .bk-chart { position: relative; inset: auto; }
+  .rp-bento .rp-card-body { min-height: 230px; }
 }
 .rp-card {
   background: var(--bg-1);
@@ -2163,22 +2166,28 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* ── Donut ── */
 /* Donut: thin centred ring with a static total; legend stacked underneath
    with dotted separators (reference: summary-card style). */
-/* Ring beside its legend rather than above it. Stacked, the pair needs ~240px
-   of height and a 1x1 bento tile has 228px, so the legend was overflowing into
-   the card below. Side by side it fits, and the legend fills width the tile
-   was not using. Narrow tiles stack again below. */
 .rp-donut-wrap {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+/* Only inside a bento tile does the ring sit beside its legend. Stacked, the
+   pair wants ~240px of height and a 1x1 tile has 232px, so the legend used to
+   spill into the card below. Everywhere else the stacked layout is correct and
+   is what Custody and the assistant render. */
+.rp-bento .rp-donut-wrap {
   flex-direction: row;
   align-items: center;
   gap: 14px;
-  padding-top: 4px;
   min-height: 0;
 }
-.rp-donut-wrap .rp-legend { flex: 1; min-width: 0; overflow-y: auto; max-height: 100%; }
+.rp-bento .rp-donut-wrap .rp-legend { flex: 1; min-width: 0; overflow-y: auto; max-height: 100%; }
 @media (max-width: 1040px) {
-  .rp-donut-wrap { flex-direction: column; }
-  .rp-donut-wrap .rp-legend { max-height: none; }
+  .rp-bento .rp-donut-wrap { flex-direction: column; }
+  .rp-bento .rp-donut-wrap .rp-legend { max-height: none; }
 }
 .rp-donut {
   position: relative;
@@ -2796,9 +2805,9 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 }
 
 /* Full-width card inside the reports grid (e.g. Latest FIRs table). */
-/* Was `1 / -1`, i.e. full bleed. In a bento a "wide" tile is two columns —
-   a band across the whole grid is the thing this layout exists to avoid. */
-.rp-card-wide { grid-column: span 2; }
+/* Full bleed in the ordinary .rp-grid, which is what AI Analytics and
+   Forecasts expect. The bento narrows it to two columns for its own tiles. */
+.rp-card-wide { grid-column: 1 / -1; }
 /* 8 KPI tiles wrap into two tidy rows of four. */
 
 /* ── AI Analytics ────────────────────────────────────────────────────────── */
@@ -5285,7 +5294,12 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
    every bar rendered as the same short stub whatever its value, which is a
    chart that has stopped reporting its data. The label now takes a share of
    the tile and yields once the track needs the room. */
-.rp-bar-row { grid-template-columns: minmax(0, 1.35fr) minmax(56px, 1fr) auto; gap: 12px; }
+/* The label column was a flat 200px. That is right in a wide card and fatal
+   in a narrow one: in a ~330px bento tile it left 26px of track, so every bar
+   drew the same short stub whatever its value. `min()` keeps the 200px where
+   there is room and yields once the track needs it, so the wide cards on
+   Forecasts and AI Analytics look exactly as they did. */
+.rp-bar-row { grid-template-columns: minmax(0, min(200px, 42%)) minmax(56px, 1fr) auto; gap: 12px; }
 .rp-bars { gap: 11px; }
 .rp-bar-label { font-size: 12.5px; }
 .rp-bar-track { height: 18px; border-radius: 6px; }
