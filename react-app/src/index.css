@@ -1904,11 +1904,106 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 }
 
 /* ── KPI tiles ── */
+/* ── Stat tiles ────────────────────────────────────────────────────────────
+   Shaped after motion.dev/ui/stats-sections.
+
+   The old row was four fixed columns holding an icon and one number, which on
+   a wide page meant eight tiles of roughly 360px each carrying about 90px of
+   content. The gap was not spacing; it was an empty tile.
+
+   These auto-fit instead, so the row packs to whatever the page is wide, and
+   each tile now carries the figure, its label, a share bar where the figure is
+   a real percentage, and a trend chip where a real delta exists. */
 .rp-kpi-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-  margin-bottom: 20px;
+  /* Four across, so eight tiles form two full rows rather than seven and a
+     stranded one. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+@media (max-width: 1040px) { .rp-kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .rp-kpi-row { grid-template-columns: minmax(0, 1fr); } }
+
+.st-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 15px 15px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  min-width: 0;
+  transition: border-color 0.18s ease;
+}
+.st-tile:hover { border-color: var(--hairline-strong); }
+
+.st-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.st-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: var(--r-chip);
+  background: var(--primary-tint);
+  color: var(--primary);
+}
+.st-label {
+  font-size: var(--fs-caption);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The figure. Tabular so a counting number does not jitter its own width,
+   and tracked in like the rest of the display scale. */
+.st-value {
+  font-size: 28px;
+  font-weight: var(--fw-display);
+  line-height: 1.05;
+  letter-spacing: -0.7px;
+  color: var(--text-0);
+  font-variant-numeric: tabular-nums;
+}
+
+.st-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  font-size: 10.5px;
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+.st-trend-up { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }
+.st-trend-down { background: color-mix(in srgb, var(--green) 14%, transparent); color: var(--green); }
+
+/* Share bar. Only rendered when the figure is a percentage of a real
+   denominator, so this is the same number drawn rather than a second claim. */
+.st-share {
+  height: 3px;
+  border-radius: var(--r-pill);
+  background: var(--bg-3);
+  overflow: hidden;
+  margin-top: 1px;
+}
+.st-share-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--primary);
+  transition: width 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.st-sub { font-size: 11px; color: var(--text-4); }
+
+@media (prefers-reduced-motion: reduce) {
+  .st-share-fill { transition: none; }
 }
 .rp-kpi {
   display: flex;
@@ -1937,20 +2032,79 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .rp-kpi-sub { font-size: 11px; color: var(--text-4); margin-top: 2px; }
 
 /* ── Chart cards ── */
+/* ── Bento grid ────────────────────────────────────────────────────────────
+   Shaped after motion.dev/ui/bento-grids.
+
+   The old grid was auto-fill at minmax(300px, 1fr). That was fine at 1240px,
+   where it produced four columns. Once the page was allowed to run to the
+   full width of the pane it produced six or seven, and two things broke: a
+   .rp-card-wide spanning 1 / -1 became a 1900px band with a 250px chart
+   floating in it, and every 1-column tile shrank to about 290px whatever the
+   screen. The result read as gaps between charts rather than as a layout.
+
+   A bento needs a KNOWN column count, because a tile's span only means
+   something relative to the whole. So the count is fixed per breakpoint and
+   the tiles claim spans against it:
+
+     ┌───────────────┬───────┬───────┐
+     │               │       │       │   hero  2 × 2
+     │     hero      │  1×1  │  1×1  │   wide  2 × 1
+     │               ├───────┴───────┤   tall  1 × 2
+     │               │     wide      │   std   1 × 1
+     ├───────┬───────┼───────┬───────┤
+     │  1×1  │ tall  │     wide      │
+     └───────┴───────┴───────────────┘
+
+   Rows are a fixed height so a span of 2 is twice a span of 1 and the mosaic
+   interlocks. `dense` lets a 1×1 backfill a hole a 2-wide tile left behind. */
 .rp-grid {
   display: grid;
-  /* Compact tiles, three abreast on a typical screen; rows stretch so card
-     edges line up into a clean lattice (reference-dashboard style). */
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: 228px;
   gap: 14px;
-  /* Backfill the 1-col gaps that 2-col cards leave — smaller charts slot into
-     the holes instead of leaving empty space, without shrinking anything. */
   grid-auto-flow: row dense;
+}
+
+/* Tile spans. A card with no modifier is 1 × 1. */
+.rp-card-hero { grid-column: span 2; grid-row: span 2; }
+.rp-card-tall { grid-row: span 2; }
+
+/* Charts fill their tile rather than sitting at a fixed height inside it —
+   the floating-chart-in-a-big-box look was the other half of the gap.
+
+   The chart is taken out of flow to do it. visx's ParentSize sizes its
+   measurement box with height:100%, and a percentage height cannot resolve
+   against a flex item whose height is `auto`: the item has a used height from
+   flex, but not a *definite* one, so the percentage collapses to zero, the
+   chart measures nothing and draws nothing. An absolutely positioned box with
+   top and bottom both pinned does have a definite height. */
+.rp-card-body { position: relative; flex: 1; min-height: 0; }
+.rp-card .bk-chart { position: absolute; inset: 0; height: auto !important; }
+
+@media (max-width: 1400px) {
+  .rp-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 1040px) {
+  .rp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 220px; }
+}
+@media (max-width: 720px) {
+  /* One column: spans collapse, and rows size to their content instead of to
+     a fixed height that a stacked tile no longer needs. */
+  .rp-grid { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
+  /* Rows size to content here, so a card has no definite height for an
+     out-of-flow chart to fill. Give the body one. */
+  .rp-card .bk-chart { position: relative; inset: auto; }
+  .rp-card-body { min-height: 220px; }
+  .rp-card-hero, .rp-card-tall, .rp-card-wide, .rp-card-2 {
+    grid-column: auto;
+    grid-row: auto;
+  }
 }
 .rp-card {
   background: var(--bg-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  overflow: hidden;
 
   padding: 10px 13px 12px;
   min-width: 0;
@@ -2009,12 +2163,22 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* ── Donut ── */
 /* Donut: thin centred ring with a static total; legend stacked underneath
    with dotted separators (reference: summary-card style). */
+/* Ring beside its legend rather than above it. Stacked, the pair needs ~240px
+   of height and a 1x1 bento tile has 228px, so the legend was overflowing into
+   the card below. Side by side it fits, and the legend fills width the tile
+   was not using. Narrow tiles stack again below. */
 .rp-donut-wrap {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   padding-top: 4px;
+  min-height: 0;
+}
+.rp-donut-wrap .rp-legend { flex: 1; min-width: 0; overflow-y: auto; max-height: 100%; }
+@media (max-width: 1040px) {
+  .rp-donut-wrap { flex-direction: column; }
+  .rp-donut-wrap .rp-legend { max-height: none; }
 }
 .rp-donut {
   position: relative;
@@ -2632,7 +2796,9 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 }
 
 /* Full-width card inside the reports grid (e.g. Latest FIRs table). */
-.rp-card-wide { grid-column: 1 / -1; }
+/* Was `1 / -1`, i.e. full bleed. In a bento a "wide" tile is two columns —
+   a band across the whole grid is the thing this layout exists to avoid. */
+.rp-card-wide { grid-column: span 2; }
 /* 8 KPI tiles wrap into two tidy rows of four. */
 
 /* ── AI Analytics ────────────────────────────────────────────────────────── */
@@ -4843,6 +5009,15 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 /* Standalone cards (outside a grid) need their own breathing room. */
 .rp-standalone { margin-bottom: 14px; }
 
+/* The headline chart above the bento. It keeps the full width because it
+   carries the page's range controls and a time series genuinely uses the
+   width — a band is only wrong when what sits in it does not fill it. */
+/* An explicit height, not a min-height, so the chart inside can resolve a
+   percentage against it — and flex:none, because `flex: 1` sets flex-basis to
+   0 and that wins over `height` for a flex item's main size. */
+.rp-headline .rp-card-body { position: relative; flex: none; height: 340px; }
+.rp-headline .bk-chart { position: absolute; inset: 0; height: auto !important; }
+
 .rp-section-title {
   margin: 24px 2px 10px;
   font-size: 13px;
@@ -5103,8 +5278,14 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .rp-card-2 { grid-column: span 2; }
 @media (max-width: 720px) { .rp-card-2 { grid-column: auto; } }
 
-/* Bigger horizontal bars */
-.rp-bar-row { grid-template-columns: 200px 1fr 76px; gap: 12px; }
+/* Bigger horizontal bars.
+
+   The label column used to be a flat 200px, which was fine when a bar list
+   filled a wide card. In a bento tile of ~330px that left 26px for the track:
+   every bar rendered as the same short stub whatever its value, which is a
+   chart that has stopped reporting its data. The label now takes a share of
+   the tile and yields once the track needs the room. */
+.rp-bar-row { grid-template-columns: minmax(0, 1.35fr) minmax(56px, 1fr) auto; gap: 12px; }
 .rp-bars { gap: 11px; }
 .rp-bar-label { font-size: 12.5px; }
 .rp-bar-track { height: 18px; border-radius: 6px; }

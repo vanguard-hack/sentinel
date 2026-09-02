@@ -55,6 +55,17 @@
   .bk-chart-grow { transition: none !important; }
 }
 
+/* A bar list fills the height of its tile rather than clustering at the top.
+   With a fixed row height, a six-row list in a two-row bento tile left a third
+   of the tile empty above and below — which is the gap this layout exists to
+   close. */
+.bk-bars {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+}
+
 /* Horizontal bar rows. The chart stays HTML so the browser can elide long
    station names, so the hover-dim is CSS rather than an SVG opacity. */
 .bk-bars .rp-bar-row { transition: opacity 0.25s ease, background 0.12s; }

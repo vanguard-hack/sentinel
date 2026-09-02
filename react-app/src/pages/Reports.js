@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   RefreshCw, AlertTriangle, CalendarDays, ChevronDown,
   FileText, Users, HeartPulse, PackageCheck, FolderOpen, Gavel,
-  Flame, Siren, TrendingUp, TrendingDown, FileDown,
+  Flame, Siren, FileDown,
 } from 'lucide-react';
 import { fetchReports, computeReport, trendSeries, earliestTs, TREND_RANGES, customLabel } from '../utils/reports';
 import { exportReportPdf } from '../utils/reportPdf';
@@ -16,6 +16,7 @@ import TrendArea from '../components/charts/TrendArea';
 import BarList from '../components/charts/BarColumns';
 import HBarList from '../components/charts/BarRows';
 import Donut from '../components/charts/Ring';
+import StatTile from '../components/charts/StatTile';
 import SocioCrimeMap from '../components/SocioCrimeMap';
 import Sankey from '../components/Sankey';
 import GeoHeatMap from '../components/GeoHeatMap';
@@ -23,28 +24,15 @@ import TopBar from '../components/TopBar';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 
-function Kpi({ Icon, label, value, sub, trend }) {
+function Card({ id, title, subtitle, wide, two, hero, tall, children }) {
+  const span = [
+    hero && 'rp-card-hero',
+    tall && 'rp-card-tall',
+    !hero && wide && 'rp-card-wide',
+    !hero && two && 'rp-card-2',
+  ].filter(Boolean).join(' ');
   return (
-    <div className="rp-kpi">
-      <div className="rp-kpi-icon"><Icon size={18} strokeWidth={1.7} /></div>
-      <div className="rp-kpi-body">
-        <span className="rp-kpi-value">{value}</span>
-        <span className="rp-kpi-label">{label}</span>
-        {sub && (
-          <span className={`rp-kpi-sub ${trend ? `db-trend-${trend}` : ''}`}>
-            {trend === 'up' && <TrendingUp size={11} />}
-            {trend === 'down' && <TrendingDown size={11} />}
-            {sub}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Card({ id, title, subtitle, wide, two, children }) {
-  return (
-    <section id={id} className={`rp-card ${wide ? 'rp-card-wide' : ''} ${two ? 'rp-card-2' : ''}`}>
+    <section id={id} className={`rp-card ${span}`}>
       <div className="rp-card-head">
         <h2>{title}</h2>
         {subtitle && <span className="rp-card-sub">{subtitle}</span>}
@@ -300,52 +288,54 @@ export default function Reports() {
           <div ref={contentRef}>
             {/* KPI tiles */}
             <div className="rp-kpi-row">
-              <Kpi
+              <StatTile
                 Icon={FileText}
                 label="FIRs registered"
-                value={data.kpis.firs.toLocaleString()}
-                sub={
-                  data.kpis.deltaPct == null
-                    ? data.rangeLabel
-                    : `${Math.abs(data.kpis.deltaPct).toFixed(0)}% vs prev period`
-                }
-                trend={data.kpis.deltaPct == null ? null : data.kpis.deltaPct >= 0 ? 'up' : 'down'}
+                value={data.kpis.firs}
+                sub={data.kpis.deltaPct == null ? data.rangeLabel : undefined}
+                trend={data.kpis.deltaPct == null ? null : {
+                  dir: data.kpis.deltaPct >= 0 ? 'up' : 'down',
+                  text: `${Math.abs(data.kpis.deltaPct).toFixed(0)}%`,
+                }}
               />
-              <Kpi
+              <StatTile
                 Icon={FolderOpen}
                 label="Open investigations"
-                value={data.kpis.open.toLocaleString()}
+                value={data.kpis.open}
+                share={data.kpis.openPct}
                 sub={`${data.kpis.openPct.toFixed(1)}% of all cases`}
               />
-              <Kpi
+              <StatTile
                 Icon={Gavel}
                 label="Solved rate"
-                value={`${data.kpis.solvedPct.toFixed(1)}%`}
+                value={data.kpis.solvedPct}
+                format={(v) => `${v.toFixed(1)}%`}
+                share={data.kpis.solvedPct}
                 sub="chargesheeted, on trial or decided"
               />
-              <Kpi
+              <StatTile
                 Icon={Flame}
                 label="Heinous share"
-                value={`${data.kpis.heinousPct.toFixed(1)}%`}
+                value={data.kpis.heinousPct}
+                format={(v) => `${v.toFixed(1)}%`}
+                share={data.kpis.heinousPct}
                 sub="of registered cases"
               />
-              <Kpi Icon={Users} label="Accused on record" value={data.kpis.accused.toLocaleString()} />
-              <Kpi Icon={HeartPulse} label="Victims recorded" value={data.kpis.victims.toLocaleString()} />
-              <Kpi
-                Icon={Siren}
-                label="Arrests & surrenders"
-                value={data.kpis.arrests.toLocaleString()}
-              />
-              <Kpi
+              <StatTile Icon={Users} label="Accused on record" value={data.kpis.accused} />
+              <StatTile Icon={HeartPulse} label="Victims recorded" value={data.kpis.victims} />
+              <StatTile Icon={Siren} label="Arrests & surrenders" value={data.kpis.arrests} />
+              <StatTile
                 Icon={PackageCheck}
                 label="Chargesheet rate"
-                value={`${data.kpis.chargesheetPct.toFixed(1)}%`}
-                sub={`${data.kpis.chargesheets.toLocaleString()} of ${data.kpis.firs.toLocaleString()} cases`}
+                value={data.kpis.chargesheetPct}
+                format={(v) => `${v.toFixed(1)}%`}
+                share={data.kpis.chargesheetPct}
+                sub={`${data.kpis.chargesheets.toLocaleString()} of ${data.kpis.firs.toLocaleString()}`}
               />
             </div>
 
             {/* Crime trend with day/month/year/5-year filter */}
-            <section id="chart-crime-trend" className="rp-card rp-card-wide rp-standalone">
+            <section id="chart-crime-trend" className="rp-card rp-standalone rp-headline">
               <div className="rp-card-head rp-trend-head">
                 <div>
                   <h2>Crime trend</h2>
@@ -427,11 +417,11 @@ export default function Reports() {
                 <Donut data={data.byStatus} />
               </Card>
 
-              <Card id="chart-crime-category" title={t('charts.crimeCategory')} subtitle={t('charts.crimeCategorySub')} two>
+              <Card id="chart-crime-category" title={t('charts.crimeCategory')} subtitle={t('charts.crimeCategorySub')} tall>
                 <HBarList data={data.byCategory} />
               </Card>
 
-              <Card id="chart-top-districts" title={t('charts.topDistricts')} subtitle={t('charts.topDistrictsSub')} two>
+              <Card id="chart-top-districts" title={t('charts.topDistricts')} subtitle={t('charts.topDistrictsSub')} tall>
                 <div className="rp-geo-controls">
                   <span>Show top</span>
                   <select className="cf-select pp-perpage" value={topK} onChange={(e) => setTopK(e.target.value)}>
@@ -448,11 +438,11 @@ export default function Reports() {
                 />
               </Card>
 
-              <Card id="chart-station-load" title="Station load" subtitle="Open investigations by police station (top 8)" two>
+              <Card id="chart-station-load" title="Station load" subtitle="Open investigations by police station (top 8)" tall>
                 <HBarList data={data.openByStation} />
               </Card>
 
-              <Card id="chart-age-profile" title="Accused age profile" two>
+              <Card id="chart-age-profile" title="Accused age profile" wide>
                 <BarList data={data.accusedAges} height={300} />
               </Card>
 
@@ -478,10 +468,10 @@ export default function Reports() {
             {/* ── Trends ── */}
             <h2 className="rp-section-title">Trends</h2>
             <div className="rp-grid">
-              <Card id="chart-trend-head" title="Crime trend by head" subtitle="Monthly registrations · top 5 crime heads" wide>
+              <Card id="chart-trend-head" title="Crime trend by head" subtitle="Monthly registrations · top 5 crime heads" hero>
                 <TrendLine series={data.trendByHead} height={250} ariaLabel="Crime trend by head" />
               </Card>
-              <Card id="chart-arrests" title="Arrests & surrenders" subtitle="Monthly events by type">
+              <Card id="chart-arrests" title="Arrests & surrenders" subtitle="Monthly events by type" wide>
                 <TrendLine series={data.arrestSeries} height={250} ariaLabel="Arrests and surrenders" />
               </Card>
               <Card title="Seasonality" subtitle="Registrations by calendar month × crime head" wide>
@@ -498,7 +488,7 @@ export default function Reports() {
               <Card title="Case category" subtitle="FIR · UDR · PAR · Zero FIR">
                 <Donut data={data.categorySplit} />
               </Card>
-              <Card title="Most-charged sections" subtitle="Top legal sections across charged cases" wide>
+              <Card title="Most-charged sections" subtitle="Top legal sections across charged cases" tall>
                 <HBarList data={data.topSections} />
               </Card>
             </div>
@@ -512,10 +502,10 @@ export default function Reports() {
               <Card title="Pendency ageing" subtitle="Open investigations by age of case — green fresh, red long-pending">
                 <Pyramid data={data.pendencyAgeing} />
               </Card>
-              <Card title="Chargesheet filing lag" subtitle="Days from registration to chargesheet" two>
+              <Card title="Chargesheet filing lag" subtitle="Days from registration to chargesheet" wide>
                 <BarList data={data.csLag} height={300} straightLabels caption={false} />
               </Card>
-              <Card title="Investigation time by head" subtitle="Average days to chargesheet per crime head" two>
+              <Card title="Investigation time by head" subtitle="Average days to chargesheet per crime head" tall>
                 <HBarList data={data.investTimeByHead} suffix=" days" percent={false} />
               </Card>
             </div>
@@ -523,16 +513,16 @@ export default function Reports() {
             {/* ── People & demographics ── */}
             <h2 className="rp-section-title">People & demographics</h2>
             <div className="rp-grid">
-              <Card title="Complainant occupations" subtitle="Who is filing FIRs" two>
+              <Card title="Complainant occupations" subtitle="Who is filing FIRs" tall>
                 <HBarList data={data.complainantOccupations} />
               </Card>
-              <Card title="Complainant age profile" subtitle="Complainants by age band" two>
+              <Card title="Complainant age profile" subtitle="Complainants by age band" wide>
                 <BarList data={data.complainantAges} height={300} />
               </Card>
               <Card title="Accused gender split" subtitle="Accused on record">
                 <Donut data={data.accusedGender} />
               </Card>
-              <Card title="Repeat offenders" subtitle="Distinct FIRs per offender (2+ cases)" two>
+              <Card title="Repeat offenders" subtitle="Distinct FIRs per offender (2+ cases)" tall>
                 <HBarList data={data.repeatOffenders} suffix=" FIRs" percent={false} />
               </Card>
               <Card title="Victim profile" subtitle="Police personnel vs civilian victims">
@@ -546,13 +536,13 @@ export default function Reports() {
             {/* ── Personnel & workload ── */}
             <h2 className="rp-section-title">Personnel & workload</h2>
             <div className="rp-grid">
-              <Card title="IO caseload" subtitle="Cases per investigating officer (top 8)" two>
+              <Card title="IO caseload" subtitle="Cases per investigating officer (top 8)" tall>
                 <HBarList data={data.ioCaseload} />
               </Card>
               <Card title="Rank distribution" subtitle="Force composition by rank">
                 <Donut data={data.rankDistribution} />
               </Card>
-              <Card title="Court load" subtitle="Chargesheets filed per court (top 8)" two>
+              <Card title="Court load" subtitle="Chargesheets filed per court (top 8)" tall>
                 <HBarList data={data.courtLoad} />
               </Card>
             </div>

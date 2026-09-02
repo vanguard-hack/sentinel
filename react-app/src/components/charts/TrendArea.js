@@ -226,10 +226,14 @@ export default function TrendArea({ data, height = 320, ariaLabel = 'Trend over 
   if (!data || !data.length) return <div className="rp-empty">No data</div>;
   return (
     <div className="bk-chart" style={{ height }}>
+      {/* ParentSize reports height as well as width. Taking it lets a chart
+          fill a bento tile that is taller than its default, while a caller
+          that just passes `height` still gets exactly that — the wrapper's
+          own height is what ParentSize ends up measuring. */}
       <ParentSize debounceTime={0}>
-        {({ width }) =>
+        {({ width, height: mh }) =>
           width < 10 ? null : (
-            <Plot width={width} height={height} data={data} ariaLabel={ariaLabel} />
+            <Plot width={width} height={mh || height} data={data} ariaLabel={ariaLabel} />
           )
         }
       </ParentSize>

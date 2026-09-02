@@ -164,12 +164,16 @@ export default function BarColumns({
   if (!data || !data.length) return <div className="rp-empty">No data</div>;
   return (
     <div className="bk-chart" style={{ height }}>
+      {/* ParentSize reports height as well as width. Taking it lets a chart
+          fill a bento tile that is taller than its default, while a caller
+          that just passes `height` still gets exactly that — the wrapper's
+          own height is what ParentSize ends up measuring. */}
       <ParentSize debounceTime={0}>
-        {({ width }) =>
+        {({ width, height: mh }) =>
           width < 10 ? null : (
             <Plot
               width={width}
-              height={height}
+              height={mh || height}
               data={data}
               format={format}
               suffix={suffix}
