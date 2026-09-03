@@ -18,8 +18,6 @@ import AccessAudit from './pages/AccessAudit';
 import InvestigationDiary from './pages/InvestigationDiary';
 import InvestigationCase from './pages/InvestigationCase';
 import ReportStudio from './pages/ReportStudio';
-import ExportApprovals from './pages/ExportApprovals';
-import ExportReview from './pages/ExportReview';
 import SharedWithMe from './pages/SharedWithMe';
 import ActionQueue from './pages/ActionQueue';
 import ReportEditor from './pages/ReportEditor';
@@ -88,8 +86,6 @@ function AppRoutes() {
                 <Route path="/personnel/roster" element={guarded('dutyRoster', <Roster />)} />
                 <Route path="/personnel/org-chart" element={guarded('orgChart', <OrgChart />)} />
                 <Route path="/access" element={guarded('access', <AccessAudit />)} />
-                <Route path="/export-approvals" element={guarded('exportApprovals', <ExportApprovals />)} />
-                <Route path="/export-review/:approvalId" element={guarded('exportApprovals', <ExportReview />)} />
                 <Route path="/shared" element={guarded('shared', <SharedWithMe />)} />
                 <Route path="/investigation-diary" element={guarded('investigationDiary', <InvestigationDiary />)} />
                 <Route path="/action-queue" element={guarded('actionQueue', <ActionQueue />)} />

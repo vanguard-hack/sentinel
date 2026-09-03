@@ -8,7 +8,7 @@ import {
   NotebookPen, ShieldCheck, UserCircle, TrendingUp, Share2, Fingerprint, ScrollText, Images,
   LineChart, Landmark, CalendarDays, Network, BarChart3, PieChart,
   Activity, Table, Clock, Headset, Building2,
-  ListChecks, FileLock2, Inbox, LayoutGrid,
+  ListChecks, Inbox, LayoutGrid,
 } from 'lucide-react';
 
 export const SEARCH_INDEX = [
@@ -23,9 +23,6 @@ export const SEARCH_INDEX = [
   { id: 'action-queue', feature: 'actionQueue', group: 'Pages', Icon: ListChecks,
     title: 'Action Queue', sub: 'Statutory deadlines across every open case', to: '/action-queue',
     keywords: 'action queue obligations deadline statutory custody clock bnss 187 default bail overdue due chargesheet pending tasks what needs doing today my cases command supervisor night arrest sunset 43(5) woman magistrate permission' },
-  { id: 'export-approvals', feature: 'exportApprovals', group: 'Pages', Icon: FileLock2,
-    title: 'Export Approvals', sub: 'Held exports awaiting a second signature', to: '/export-approvals',
-    keywords: 'export approvals held hold pending supervisor approve reject sign off review sensitivity screen pocso protected download pdf release withdraw changes revision' },
   { id: 'shared', feature: 'shared', group: 'Pages', Icon: Inbox,
     title: 'Shared with me', sub: 'Diaries and reports colleagues sent you', to: '/shared',
     keywords: 'shared with me inbox share sent received colleague officer diary report note forwarded' },

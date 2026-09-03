@@ -41,11 +41,6 @@ export const FEATURES = [
   { key: 'profile', label: 'Profile', path: '/profile', roles: ALL },
   { key: 'help', label: 'Help Center', path: '/help', roles: ALL },
   { key: 'access', label: 'Access & Audit', path: '/access', roles: ['admin'] },
-  // Deciding an export is a supervisory act, not an administrative one — the
-  // people who sign off on what leaves a station are supervisors, so this is
-  // NOT admin-only like Access & Audit. Officers never see the queue; they see
-  // their own request's status through the export dialog instead.
-  { key: 'exportApprovals', label: 'Export Approvals', path: '/export-approvals', roles: ['admin', 'supervisor'] },
   { key: 'dashboard', label: 'Dashboard', path: '/dashboard', roles: ALL },
 ];
 

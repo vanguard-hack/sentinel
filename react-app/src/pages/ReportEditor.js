@@ -10,7 +10,6 @@ import { reportTypeById, extraSheetDefs, initSheetValues } from '../data/reportT
 import { getReport, saveReport, newReportId, downloadReportPdf, aiPolish } from '../utils/reportStudio';
 import { listInvestigations, searchCases } from '../utils/investigation';
 import { logAudit } from '../utils/audit';
-import ExportHoldNotice from '../components/ExportHoldNotice';
 import lazyWithReload from '../utils/lazyWithReload';
 
 // The rich-document editor pulls in Tiptap/ProseMirror (~150 kB gzipped), so
@@ -144,8 +143,6 @@ export default function ReportEditor() {
   const [zoom, setZoom] = useState(100);
   const [exporting, setExporting] = useState(false);
   const [sharing, setSharing] = useState(false);
-  // Set when the export screen holds this report for supervisor approval.
-  const [hold, setHold] = useState(null);
   const [aiBusy, setAiBusy] = useState(null); // "uid:fieldId" of narrative being polished
   const [aiUndo, setAiUndo] = useState(null); // { key, prev }
   const confirm = useConfirm();
@@ -313,18 +310,14 @@ export default function ReportEditor() {
     }
   };
 
-  const exportPdf = async (approvalId) => {
+  const exportPdf = async () => {
     try {
       setExporting(true);
       if (dirty) await saveNow();
-      await downloadReportPdf(reportRef.current, approvalId);
+      await downloadReportPdf(reportRef.current);
       logAudit('download-report', 'Report Studio', reportRef.current.title);
     } catch (e) {
-      // A hold is not an error — the officer did nothing wrong and the report
-      // is fine. It gets its own dialog explaining what happens next, rather
-      // than the red banner reserved for things that actually failed.
-      if (e.held) setHold({ approvalId: e.approvalId, reasons: e.reasons });
-      else setError(e.message);
+      setError(e.message);
     } finally {
       setExporting(false);
     }
@@ -519,14 +512,6 @@ export default function ReportEditor() {
           </div>
         </div>
       </div>
-
-      {hold && (
-        <ExportHoldNotice
-          hold={hold}
-          onRetry={(approvalId) => exportPdf(approvalId)}
-          onClose={() => setHold(null)}
-        />
-      )}
     </div>
   );
 }

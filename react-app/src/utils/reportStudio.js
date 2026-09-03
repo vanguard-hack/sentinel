@@ -227,11 +227,7 @@ export function buildReportHtml(type, report) {
   </style></head><body>${pagesHtml}</body></html>`;
 }
 
-// `approvalId` is passed on the second attempt, after a supervisor has released
-// a held export. The server binds an approval to the exact document it was
-// granted for, so re-editing the report between approval and download is
-// correctly refused rather than silently allowed.
-export async function downloadReportPdf(report, approvalId) {
+export async function downloadReportPdf(report) {
   const type = reportTypeById(report.typeId);
   if (!type) throw new Error('Unknown report type');
   const html = buildReportHtml(type, report);
@@ -242,7 +238,6 @@ export async function downloadReportPdf(report, approvalId) {
       html,
       kind: 'report-studio',
       title: report.title || type.name,
-      approvalId,
     }),
   });
   const data = await readPdfResponse(res);

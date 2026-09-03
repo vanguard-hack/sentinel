@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import { fetchReports, computeReport, trendSeries, earliestTs, TREND_RANGES, customLabel } from '../utils/reports';
 import { exportReportPdf } from '../utils/reportPdf';
-import ExportHoldNotice from '../components/ExportHoldNotice';
 import DateRangeCalendar from '../components/DateRangeCalendar';
 import { HeatGrid, Funnel, Pyramid } from '../components/Charts';
 // The vendored Bklit chart set. Everything still imported from Charts.js above
@@ -93,18 +92,14 @@ export default function Reports() {
     [bundle, trendRange, customRange]
   );
 
-  const [exportHold, setExportHold] = useState(null);
-  const exportPdf = useCallback(async (approvalId) => {
+  const exportPdf = useCallback(async () => {
     if (!data || pdfBusy) return;
     setPdfBusy(true);
     setPdfError(null);
     try {
-      await exportReportPdf(contentRef.current, undefined, {
-        kind: 'dashboard', title: 'Crime dashboard export', approvalId,
-      });
+      await exportReportPdf(contentRef.current);
     } catch (e) {
-      if (e.held) setExportHold({ approvalId: e.approvalId, reasons: e.reasons });
-      else setPdfError(e.message || String(e));
+      setPdfError(e.message || String(e));
     } finally {
       setPdfBusy(false);
     }

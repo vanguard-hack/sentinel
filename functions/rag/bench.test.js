@@ -114,7 +114,6 @@ const FAULTS = [
   ['clearance', /Clearance leakage/],
   ['validator', /Unsafe query refusal/],
   ['grounding', /Fabricated record detection/],
-  ['screen', /Export screen recall/],
   ['guard', /Officers wrongly refused/],
 ];
 for (const [fault, expected] of FAULTS) {

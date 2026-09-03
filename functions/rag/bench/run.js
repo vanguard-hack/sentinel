@@ -52,7 +52,6 @@ const redaction = require('../redaction');
 const zcql = require('../zcql');
 const guard = require('../guard');
 const grounding = require('../grounding');
-const exportscreen = require('../exportscreen');
 
 const argv = process.argv.slice(2);
 const argOf = (flag) => {
@@ -77,7 +76,6 @@ const FAULTS = {
   clearance: () => { redaction.filterRows = (rows) => ({ rows, redactions: [] }); },
   validator: () => { zcql.validateZcql = (q) => ({ ok: true, query: q, table: 'CaseMaster', checks: [] }); },
   grounding: () => { grounding.check = () => ({ checked: true, grounded: true, unsupported: [] }); },
-  screen: () => { exportscreen.screen = () => ({ needsReview: false, reasons: [], stats: {} }); },
   guard: () => { guard.scanInput = () => ({ action: 'refuse', findings: [], message: '' }); },
 };
 if (FAULT) {
@@ -267,48 +265,7 @@ for (const f of C.FABRICATIONS) {
     `${f.name}: expected ${f.shouldFlag ? 'flagged' : 'clean'}, got ${flagged ? 'flagged' : 'clean'}`);
 }
 
-// ══ 5. Export sensitivity ══════════════════════════════════════════════════
-//
-// The dataset labels every FIR with its crime head, so the screen can be
-// scored against the data's own classification rather than against a list of
-// examples chosen by whoever wrote the rules. That is the closest thing to
-// independent ground truth in this whole file.
-//
-// The recall set is deliberately narrow: offences whose victim identity is
-// protected by statute (BNS 72, POCSO 23) and whose narrative says so in
-// words. Sub-heads whose sensitivity is arguable are reported separately
-// rather than folded into the headline number.
-
-const SEXUAL_OFFENCE_SUBHEADS = ['Rape', 'Molestation', 'Child Sexual Assault'];
-const recall = metric('export-recall', 'Export screen recall',
-  'FIR narratives for statutorily protected offences held for review', { gate: true });
-const fpScreen = metric('export-false-positive', 'Export screen false positives',
-  'ordinary FIR narratives wrongly held, which trains supervisors to rubber-stamp', { floor: 0.99 });
-
-for (const r of store.all()) {
-  const s = exportscreen.screen(r.briefFacts, { isHtml: false });
-  const isSexual = SEXUAL_OFFENCE_SUBHEADS.includes(r.crimeSubHead);
-  if (isSexual) {
-    recall.check(s.reasons.some((x) => x.category === 'sexual-offence'),
-      `${r.crimeSubHead} FIR ${r.crimeNo} not held: "${String(r.briefFacts).slice(0, 70)}"`);
-  } else {
-    fpScreen.check(!s.needsReview,
-      `${r.crimeSubHead} FIR ${r.crimeNo} held for ${JSON.stringify(s.reasons.map((x) => x.category))}`);
-  }
-}
-
-// Categories the screen does not currently claim, reported so the gap is
-// visible rather than absent. Not a gate: whether these SHOULD be held is a
-// legal judgement, and a benchmark's job is to surface it, not settle it.
-const uncovered = [];
-for (const { value: sub, n } of store.distinct('crimeSubHead')) {
-  if (SEXUAL_OFFENCE_SUBHEADS.includes(sub)) continue;
-  const rows = store.find({ crimeSubHead: sub });
-  const held = rows.filter((r) => exportscreen.screen(r.briefFacts, { isHtml: false }).needsReview).length;
-  if (held === 0 && /Eve Teasing|Obscenity|Child|Dowry/i.test(sub)) uncovered.push({ sub, n });
-}
-
-// ══ 6. End-to-end (opt-in) ═════════════════════════════════════════════════
+// ══ 5. End-to-end (opt-in) ═════════════════════════════════════════════════
 //
 // Everything above runs the real modules but assembles their inputs itself.
 // This section is the only one that asks the deployed assistant a question and
@@ -415,22 +372,13 @@ async function runApi() {
     '  audit trail; the layers that actually hold are clearance filtering (which runs before the',
     '  model sees a row) and the query validator (which does not care whether the model was fooled).',
     '',
-    uncovered.length
-      ? '## Coverage gaps surfaced\n\n'
-        + 'Offence types the export screen currently holds **no** narratives for. Whether they should be\n'
-        + 'held is a legal judgement this benchmark deliberately does not settle — it reports them so\n'
-        + 'the decision is made deliberately rather than by omission.\n\n'
-        + uncovered.map((u) => `- **${u.sub}** — ${u.n} FIRs, none held for review`).join('\n')
-      : null,
-    '',
     failed.length || soft.length
       ? `## Failures\n\n${[...failed, ...soft].map((m) => `### ${m.label} — ${pct(m)}\n\n${m.failures.map((f) => `- ${f}`).join('\n')}`).join('\n\n')}`
       : '_All gates passed._',
     '',
   ]
-    // Only the optional coverage-gaps block collapses to an empty string; the
-    // deliberate blank lines around headings and tables must survive, or the
-    // markdown renders as one run-on paragraph with an unparsed table in it.
+    // The deliberate blank lines around headings and tables must survive, or
+    // the markdown renders as one run-on paragraph with an unparsed table in it.
     .filter((l) => l !== null && l !== undefined)
     .join('\n')
     .replace(/\n{3,}/g, '\n\n');
@@ -447,9 +395,6 @@ async function runApi() {
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, md + '\n');
     console.log(`\nreport → docs/BENCHMARK.md`);
-  }
-  if (uncovered.length) {
-    console.log(`\ncoverage gaps surfaced: ${uncovered.map((u) => `${u.sub} (${u.n})`).join(', ')}`);
   }
   if (failed.length) {
     console.log(`\n${failed.length} GATE(S) FAILED: ${failed.map((m) => m.id).join(', ')}`);

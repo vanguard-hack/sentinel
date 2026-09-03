@@ -24,7 +24,6 @@ import TopBar from '../components/TopBar';
 import i18n from '../i18n';
 import { useAuth } from '../context/AuthContext';
 import { exportConversationPdf } from '../utils/reportPdf';
-import ExportHoldNotice from '../components/ExportHoldNotice';
 import SlashMenu from '../components/SlashMenu';
 import SourceCitations, { SourceViewer } from '../components/SourceCitations';
 import { normaliseSources } from '../utils/sources';
@@ -190,7 +189,6 @@ export default function Assistant() {
   // second source closes the first instead of stacking panels.
   const [citation, setCitation] = useState(null);
   const [exporting, setExporting] = useState(false);
-  const [exportHold, setExportHold] = useState(null); // held for supervisor approval
   const [exportError, setExportError] = useState(null);
   const [menuId, setMenuId] = useState(null); // open kebab menu
   const [renamingId, setRenamingId] = useState(null);
@@ -434,20 +432,19 @@ export default function Assistant() {
   };
 
   // Export one conversation's full transcript to PDF (captures the thread DOM).
-  const exportSession = async (id, approvalId) => {
+  const exportSession = async (id) => {
     setMenuId(null);
     if (id !== activeId) { setActiveId(id); await new Promise((r) => setTimeout(r, 80)); }
     if (!threadRef.current) return;
     const title = sessions.find((s) => s.id === id)?.title || 'Conversation';
     setExporting(true);
     try {
-      await exportConversationPdf(threadRef.current, title, approvalId);
+      await exportConversationPdf(threadRef.current, title);
     } catch (e) {
-      // This used to swallow every failure. A held export that vanishes without
-      // a word is the one outcome this feature must never produce — the officer
-      // waits for a download that is never coming and assumes it worked.
-      if (e?.held) setExportHold({ approvalId: e.approvalId, reasons: e.reasons, sessionId: id });
-      else setExportError(e?.message || 'The transcript could not be exported.');
+      // This used to swallow every failure. An export that vanishes without a
+      // word is the one outcome this must never produce — the officer waits
+      // for a download that is never coming and assumes it worked.
+      setExportError(e?.message || 'The transcript could not be exported.');
     } finally {
       setExporting(false);
     }
@@ -1316,14 +1313,6 @@ export default function Assistant() {
             {exportError}
           </div>
         </div>
-      )}
-
-      {exportHold && (
-        <ExportHoldNotice
-          hold={exportHold}
-          onRetry={(approvalId) => exportSession(exportHold.sessionId, approvalId)}
-          onClose={() => setExportHold(null)}
-        />
       )}
     </div>
   );
