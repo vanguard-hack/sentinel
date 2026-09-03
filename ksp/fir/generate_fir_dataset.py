@@ -15,6 +15,7 @@ Usage: python3 generate_fir_dataset.py
 """
 import csv
 import os
+import math
 import random
 from datetime import date, datetime, timedelta
 
@@ -321,11 +322,100 @@ FACT_TMPL = {
 PLACES = ['Main Road', 'Bus Stand', 'Market Area', 'Railway Station Road', 'Old Town',
           'Industrial Area', 'College Circle', 'Temple Street', 'Ring Road', 'Gandhi Nagar']
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Generative structure for the ML models
+#
+# Everything below exists so a trained model has something real to find. Before
+# it, three things were drawn independently of everything else:
+#
+#   • CrimeRegisteredDate was uniform over the whole window — no trend, no
+#     seasonality, a 5% weekday swing where a real city shows 20-40%.
+#   • CrimeMajorHeadID was a fixed weighted draw, independent of when or where.
+#   • Case outcome came from case AGE alone. Measured on the old data, every
+#     other feature — crime head, gravity, station, category, accused count,
+#     arrests, month — contributed exactly +0.00pp over the 74.9% majority
+#     baseline. A classifier could reach 81% and every point of it was a
+#     restatement of `today - registration_date`.
+#
+# A model trained on that would show an officer station-level and crime-head
+# "risk" that does not exist in the data. So the quantities the models predict
+# are now generated from observable case attributes plus noise.
+#
+# This is authored structure, not discovered structure. The dataset is
+# synthetic, so a model can only ever recover the process written here — the
+# honest claim is "the pipeline works and the model recovers the relationship
+# we defined", never "these are real drivers of Karnataka case outcomes".
+#
+# Deliberately NOT drivers: religion, caste and gender. They exist in the
+# schema because CCTNS records them, and no model in this project may use them
+# as a feature. Making them predictive here would smuggle them into a model
+# through the back door.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Seasonality: property crime climbs through the dry season and festival months,
+# dips in the monsoon. Index by calendar month, 1.0 = average.
+MONTH_FACTOR = {1: 1.02, 2: 0.96, 3: 1.05, 4: 1.10, 5: 1.12, 6: 0.88,
+                7: 0.84, 8: 0.90, 9: 0.97, 10: 1.14, 11: 1.09, 12: 1.06}
+# Weekend brawls and Monday reporting of weekend incidents. 0 = Monday.
+WEEKDAY_FACTOR = {0: 1.08, 1: 0.97, 2: 0.95, 3: 0.96, 4: 1.04, 5: 1.12, 6: 1.06}
+# A slow real rise in registrations across the window (better reporting).
+TREND_PER_YEAR = 0.06
+
+# Crime head by hour of the incident. Burglary and theft are night offences;
+# road accidents cluster at rush hour; cyber-fraud is reported in office hours.
+HEAD_BY_HOUR = {
+    1: {'night': 1.5, 'day': 0.8, 'evening': 1.2},   # offences against person
+    2: {'night': 2.1, 'day': 0.6, 'evening': 1.1},   # property / theft
+    3: {'night': 1.4, 'day': 0.8, 'evening': 1.2},   # crimes against women
+    4: {'night': 0.9, 'day': 1.2, 'evening': 1.0},   # crimes against children
+    5: {'night': 0.5, 'day': 1.6, 'evening': 0.9},   # cheating
+    6: {'night': 0.4, 'day': 1.9, 'evening': 0.8},   # cyber / online fraud
+    7: {'night': 1.7, 'day': 0.7, 'evening': 1.1},   # contraband
+    8: {'night': 1.3, 'day': 0.9, 'evening': 1.0},   # police-initiated
+    9: {'night': 0.8, 'day': 1.3, 'evening': 1.4},   # road incidents
+    10: {'night': 1.0, 'day': 1.0, 'evening': 1.0},  # other
+}
+
+def _hour_band(h):
+    return 'night' if h < 6 or h >= 22 else ('day' if h < 17 else 'evening')
+
+# How solvable a head is before any case detail: contraband and police-initiated
+# cases arrive with the accused already identified; cyber-fraud rarely does.
+HEAD_SOLVABILITY = {1: 0.55, 2: -0.35, 3: 0.40, 4: 0.35, 5: -0.10,
+                    6: -0.80, 7: 1.30, 8: 1.10, 9: 0.60, 10: 0.00}
+
+def _logistic(x):
+    return 1.0 / (1.0 + math.exp(-x))
+
+
 case_rows, complainants, victims, accused_rows = [], [], [], []
 act_assoc, arrests, chargesheets = [], [], []
 serials = {}
 comp_id = vict_id = acc_id = arr_id = cs_id = 50001
 today = date(2026, 7, 1)
+
+# A pool of candidate registration days, each repeated in proportion to its
+# seasonal x weekday x trend weight. Drawing uniformly FROM THIS POOL gives a
+# date distribution with structure a forecaster can actually learn, while
+# keeping the draw itself a single cheap index.
+# A stable per-station workload factor in [0, 1]. Derived from the station id
+# so it is deterministic and identical on every run, and used both as a driver
+# of case outcome and as the reason chargesheets take longer at busy stations.
+PS_LOAD = {}
+for _u in ALL_PS:
+    _h = (hash((_u, 'load')) if False else (_u * 2654435761) % 1000) / 1000.0
+    PS_LOAD[_u] = round(0.15 + 0.70 * _h, 3)
+
+_START = date(2023, 1, 1)
+_SPAN = (today - _START).days
+REG_DAYS = []
+for _i in range(_SPAN + 1):
+    _d = _START + timedelta(days=_i)
+    _w = (MONTH_FACTOR[_d.month]
+          * WEEKDAY_FACTOR[_d.weekday()]
+          * (1.0 + TREND_PER_YEAR * (_i / 365.0)))
+    REG_DAYS.extend([_d] * max(1, int(round(_w * 10))))
+
 
 # A deliberate hole in the data.
 #
@@ -344,14 +434,20 @@ for cm_id in range(1, N_CASES + 1):
     ps = random.choice(ALL_PS)
     did = PS_DISTRICT[ps]
     cat = random.choices([1, 3, 4, 8], weights=[85, 8, 4, 3])[0]
-    reg = date(2023, 1, 1) + timedelta(days=random.randint(0, (today - date(2023, 1, 1)).days))
+    reg = REG_DAYS[random.randrange(len(REG_DAYS))]
     year = reg.year
     key = (ps, cat, year)
     serials[key] = serials.get(key, 0) + 1
     crime_no = f'{cat}{did:04d}{ps:04d}{year}{serials[key]:05d}'
     case_no = crime_no[-9:]
 
-    head = random.choices(list(HEAD_WEIGHTS), weights=HEAD_WEIGHTS.values())[0]
+    # The incident hour is drawn first, because the kind of offence depends on
+    # it: burglary is a night crime, cyber-fraud is reported in office hours.
+    # This is what gives a crime-head classifier something to learn from.
+    inc_hour = random.randrange(24)
+    _band = _hour_band(inc_hour)
+    _hw = [HEAD_WEIGHTS[h] * HEAD_BY_HOUR[h][_band] for h in HEAD_WEIGHTS]
+    head = random.choices(list(HEAD_WEIGHTS), weights=_hw)[0]
     sub = random.choice(SUBS_BY_HEAD[head])
     if cat == 3:  # UDR — unnatural death
         head, sub = 1, 105
@@ -359,19 +455,54 @@ for cm_id in range(1, N_CASES + 1):
     # than dropped, so the case count stays exactly N_CASES.
     gap_district, gap_sub = NO_DATA_GAP
     while DISTRICTS_BY_ID.get(did) == gap_district and sub == gap_sub:
-        head = random.choices(list(HEAD_WEIGHTS), weights=HEAD_WEIGHTS.values())[0]
+        head = random.choices(list(HEAD_WEIGHTS), weights=_hw)[0]
         sub = random.choice(SUBS_BY_HEAD[head])
     gravity = 1 if sub in HEINOUS_SUBS else 2
     age_days = (today - reg).days
-    if age_days > 540:
-        status = random.choices([2, 3, 4, 5, 6, 7], weights=[10, 25, 20, 15, 10, 20])[0]
-    elif age_days > 180:
-        status = random.choices([1, 2, 3, 6, 7], weights=[25, 30, 20, 10, 15])[0]
-    else:
-        status = random.choices([1, 2, 7], weights=[70, 20, 10])[0]
 
-    inc_from = datetime.combine(reg - timedelta(days=random.randint(0, 3)),
-                                datetime.min.time()) + timedelta(minutes=random.randint(0, 1439))
+    # ── Whether this case gets solved ───────────────────────────────────────
+    # A latent solvability score from things an officer can see at
+    # registration, which is the whole point: a model may only use features
+    # that exist when the prediction would actually be made.
+    #
+    #   named accused   the single strongest driver — a case with an
+    #                   identified accused is a different case
+    #   crime head      contraband and police-initiated cases arrive solved;
+    #                   cyber-fraud usually does not
+    #   gravity         heinous offences draw investigative effort
+    #   station load    a station carrying more cases closes a smaller share
+    #
+    # Age still matters, but it now moves the outcome rather than determining
+    # it: an old case has had time to progress, not a guaranteed result.
+    n_named = random.choices([0, 1, 2, 3, 4], weights=[18, 45, 22, 10, 5])[0]
+    ps_load = PS_LOAD[ps]
+    solve = (
+        -0.55
+        + 1.65 * (1 if n_named else 0)
+        + 0.22 * min(n_named, 3)
+        + HEAD_SOLVABILITY[head]
+        + (0.45 if gravity == 1 else 0.0)
+        - 1.30 * ps_load
+        + 0.90 * min(age_days, 540) / 540.0
+        + random.gauss(0, 0.55)
+    )
+    solved = random.random() < _logistic(solve)
+
+    # Status is now a consequence of the outcome, not its cause. A case with no
+    # identified accused and no progress is undetected (7); an unsolved case
+    # still under work is open (1); a solved case moves along the court track.
+    if not solved:
+        status = 7 if n_named == 0 and age_days > 180 else 1
+    elif age_days > 540:
+        status = random.choices([2, 3, 4, 5, 6], weights=[12, 30, 24, 18, 16])[0]
+    elif age_days > 180:
+        status = random.choices([2, 3, 6], weights=[55, 30, 15])[0]
+    else:
+        status = 2
+
+    inc_from = (datetime.combine(reg - timedelta(days=random.randint(0, 3)),
+                                 datetime.min.time())
+                + timedelta(hours=inc_hour, minutes=random.randrange(60)))
     inc_to = inc_from + timedelta(minutes=random.randint(10, 720))
     info = datetime.combine(reg, datetime.min.time()) + timedelta(minutes=random.randint(360, 1380))
     lat0, lon0 = DIST_GEO[did]
@@ -406,8 +537,9 @@ for cm_id in range(1, N_CASES + 1):
                         1 if random.random() < 0.02 else 0])
         vict_id += 1
 
-    # accused (undetected cases have none)
-    n_acc = 0 if status == 7 else random.choices([1, 2, 3, 4], weights=[55, 28, 12, 5])[0]
+    # accused — drawn above as n_named, because whether an accused was
+    # identified is what drives the outcome rather than following from it
+    n_acc = n_named
     case_accused = []
     for i in range(n_acc):
         g = random.choices([1, 2], weights=[88, 12])[0]
@@ -421,9 +553,13 @@ for cm_id in range(1, N_CASES + 1):
     for order, (act, sec) in enumerate(secs[:random.randint(1, len(secs))], start=1):
         act_assoc.append([cm_id, act, sec, order, order])
 
-    # arrests / surrenders for ~60% of accused
+    # arrests / surrenders
+    arrest_made = False
     for a_id in case_accused:
-        if random.random() < 0.6:
+        # Arrest is likelier on the cases that were going to be solved, which
+        # is why arrest-made is a genuine signal rather than a coin flip.
+        if random.random() < (0.78 if solved else 0.28):
+            arrest_made = True
             a_date = reg + timedelta(days=random.randint(0, min(300, max(1, age_days))))
             in_ka = random.random() < 0.95
             a_state = 1 if in_ka else random.choice([s for s, _ in STATES[1:]])
@@ -435,10 +571,21 @@ for cm_id in range(1, N_CASES + 1):
                             'true' if random.random() < 0.02 else 'false'])
             arr_id += 1
 
-    # chargesheet for cases that progressed
-    if status in (2, 3, 4, 5, 6, 7) and (status in (2, 3, 4, 5) or random.random() < 0.7):
-        cs_date = datetime.combine(reg + timedelta(days=random.randint(30, min(400, max(31, age_days)))),
-                                   datetime.min.time()) + timedelta(minutes=random.randint(540, 1020))
+    # ── Chargesheet, and how long it took ───────────────────────────────────
+    # Filed only for solved cases that have had time to reach it. The LAG is
+    # the regression target, and it is generated from case attributes so there
+    # is something to predict: heinous and multi-accused cases take longer, a
+    # loaded station takes longer still, an arrest shortens it.
+    if solved and age_days > 35:
+        lag = (55
+               + 38 * (1 if gravity == 1 else 0)
+               + 14 * min(n_named, 3)
+               + 95 * ps_load
+               - 22 * (1 if arrest_made else 0)
+               + random.gauss(0, 26))
+        lag = int(max(30, min(400, min(lag, max(31, age_days)))))
+        cs_date = (datetime.combine(reg + timedelta(days=lag), datetime.min.time())
+                   + timedelta(minutes=random.randint(540, 1020)))
         cstype = 'A' if status in (2, 3, 4, 5) else ('B' if status == 6 else 'C')
         chargesheets.append([cs_id, cm_id, cs_date.strftime('%Y-%m-%d %H:%M:%S'), cstype, officer])
         cs_id += 1
