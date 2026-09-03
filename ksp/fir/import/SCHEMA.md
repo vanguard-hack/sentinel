@@ -1,11 +1,11 @@
 # Catalyst Data Store — table schemas
 
-_Generated 2026-09-02 01:33 • bucket: `accused`_
+_Generated 2026-09-03 08:51 • bucket: `accused`_
 
 Every table also gets an automatic `ROWID` primary key from Catalyst — you don't add it. Create each table below in the console (Data Store → New Table), then run `run_import.sh`.
 
 
-## `Accused`  (44246 rows)
+## `Accused`  (41921 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -25,7 +25,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | ShortName | varchar | 50 |
 | Active | boolean |  |
 
-## `ActSectionAssociation`  (34669 rows)
+## `ActSectionAssociation`  (34438 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -35,7 +35,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | ActOrderID | int |  |
 | SectionOrderID | int |  |
 
-## `ArrestSurrender`  (25072 rows)
+## `ArrestSurrender`  (28849 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -96,7 +96,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | caste_master_id | int |  |
 | caste_master_name | varchar | 50 |
 
-## `ChargesheetDetails`  (22482 rows)
+## `ChargesheetDetails`  (21787 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -106,7 +106,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | cstype | varchar | 50 |
 | PolicePersonID | int |  |
 
-## `ComplainantDetails`  (32353 rows)
+## `ComplainantDetails`  (32386 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -172,7 +172,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | StateID | int |  |
 | Active | boolean |  |
 
-## `Employee.base`  (3224 rows)
+## `Employee.base`  (744 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -189,7 +189,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | PhysicallyChallenged | boolean |  |
 | AppointmentDate | datetime |  |
 
-## `Employee`  (3368 rows)
+## `Employee`  (744 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -220,7 +220,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | OccupationID | int |  |
 | OccupationName | varchar | 50 |
 
-## `Rank`  (12 rows)
+## `Rank`  (9 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -277,7 +277,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | Hierarchy | int |  |
 | Active | boolean |  |
 
-## `Victim`  (27700 rows)
+## `Victim`  (27648 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -290,10 +290,10 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 
 ## ⚠️ Row-limit warnings
 
-- **Accused**: 44246 rows > 5000 dev-env cap — split into 9 parts, imported in sequence.
-- **ActSectionAssociation**: 34669 rows > 5000 dev-env cap — split into 7 parts, imported in sequence.
-- **ArrestSurrender**: 25072 rows > 5000 dev-env cap — split into 6 parts, imported in sequence.
+- **Accused**: 41921 rows > 5000 dev-env cap — split into 9 parts, imported in sequence.
+- **ActSectionAssociation**: 34438 rows > 5000 dev-env cap — split into 7 parts, imported in sequence.
+- **ArrestSurrender**: 28849 rows > 5000 dev-env cap — split into 6 parts, imported in sequence.
 - **CaseMaster**: 30000 rows > 5000 dev-env cap — split into 6 parts, imported in sequence.
-- **ChargesheetDetails**: 22482 rows > 5000 dev-env cap — split into 5 parts, imported in sequence.
-- **ComplainantDetails**: 32353 rows > 5000 dev-env cap — split into 7 parts, imported in sequence.
-- **Victim**: 27700 rows > 5000 dev-env cap — split into 6 parts, imported in sequence.
+- **ChargesheetDetails**: 21787 rows > 5000 dev-env cap — split into 5 parts, imported in sequence.
+- **ComplainantDetails**: 32386 rows > 5000 dev-env cap — split into 7 parts, imported in sequence.
+- **Victim**: 27648 rows > 5000 dev-env cap — split into 6 parts, imported in sequence.
