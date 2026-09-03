@@ -10,7 +10,6 @@ const assistantTools = require('./tools');
 const integrity = require('./integrity');
 const grounding = require('./grounding');
 const guard = require('./guard');
-const shares = require('./shares');
 const i18n = require('./i18n');
 const statutory = require('./statutory');
 const legalKb = require('./legal_kb.json');
@@ -2292,109 +2291,6 @@ async function handleAudit(req, res, action) {
   return json(res, 200, { events: events.slice(0, 5000), integrity: verdict });
 }
 
-// ── Sharing a diary or a report with a named officer ───────────────────────
-//
-// See shares.js for what this is and is not: Sentinel does not scope diaries or
-// reports by owner, so this routes attention rather than granting access. The
-// wording throughout says "shared with", never "granted access to".
-async function handleShare(req, res, action) {
-  const body = JSON.parse((await readBody(req)) || '{}');
-  const app = catalystSDK.initialize(req);
-  const bucket = app.stratus().bucket(CONV_BUCKET);
-  const { role, caller } = await myRole(app, bucket);
-  const email = String(caller?.email_id || '').toLowerCase();
-  const name = [caller?.first_name, caller?.last_name].filter(Boolean).join(' ');
-  if (!caller || !email) return json(res, 401, { error: 'Sign in to continue.' });
-
-  // Who an officer may send to.
-  //
-  // Deliberately NOT /access/users, which is admin-only and returns account
-  // status, Catalyst role and last-seen time — administration data that has no
-  // business in a share picker. This returns the minimum needed to choose a
-  // colleague: who they are and what they do.
-  if (action === 'directory') {
-    let users = [];
-    try {
-      const [all, roles] = await Promise.all([
-        app.userManagement().getAllUsers(),
-        loadRolesBlob(bucket),
-      ]);
-      users = (all || [])
-        .map((u) => {
-          const e = String(u.email_id || '').toLowerCase();
-          const rec = (roles.users || {})[e] || {};
-          return {
-            email: e,
-            name: [u.first_name, u.last_name].filter(Boolean).join(' ') || e,
-            role: APP_ROLES.includes(rec.role) ? rec.role : (isAdminUser(u) ? 'admin' : 'investigator'),
-          };
-        })
-        // Pending accounts cannot sign in, so offering them would produce a
-        // share that is never read and a sender who thinks it was.
-        .filter((u) => u.email && u.email !== email && u.role !== 'pending')
-        .sort((a, b) => a.name.localeCompare(b.name));
-    } catch (e) {
-      console.error('directory read failed:', e && e.message);
-      return json(res, 503, { error: 'The officer directory could not be read.' });
-    }
-    return json(res, 200, { officers: users, me: { email, name, role } });
-  }
-
-  if (action === 'send') {
-    if (!canInvestigate(role)) {
-      return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
-    }
-    try {
-      const out = await shares.create(bucket, {
-        kind: body.kind, docId: body.docId, title: body.title,
-        from: email, fromName: name,
-        recipients: body.recipients, note: body.note,
-      });
-      await storeAuditEvents(req, app, bucket, [{
-        action: 'share-send', feature: 'Sharing', path: '/shared',
-        detail: `${body.kind} ${body.docId} → ${out.sent.map((r) => r.to).join(', ') || 'nobody'}`
-          + (body.note ? ` (note attached)` : ''),
-      }], caller);
-      return json(res, 200, { sent: out.sent.length, recipients: out.sent.map((r) => r.to), skipped: out.skipped });
-    } catch (e) {
-      return json(res, e.code || 500, { error: e.message || 'Could not share' });
-    }
-  }
-
-  if (action === 'inbox') {
-    const list = await shares.inbox(bucket, email);
-    return json(res, 200, { shares: list, unread: shares.unreadCount(list) });
-  }
-
-  if (action === 'for-doc') {
-    const list = await shares.forDoc(bucket, String(body.kind || ''), String(body.docId || ''));
-    return json(res, 200, { shares: list });
-  }
-
-  if (action === 'read') {
-    try {
-      return json(res, 200, { share: await shares.markRead(bucket, email, String(body.shareId || '')) });
-    } catch (e) {
-      return json(res, e.code || 500, { error: e.message || 'Could not update' });
-    }
-  }
-
-  if (action === 'revoke') {
-    try {
-      const rec = await shares.revoke(bucket, email, String(body.shareId || ''), String(body.recipient || ''));
-      await storeAuditEvents(req, app, bucket, [{
-        action: 'share-revoke', feature: 'Sharing', path: '/shared',
-        detail: `${rec.kind} ${rec.docId} withdrawn from ${rec.to}`,
-      }], caller);
-      return json(res, 200, { share: rec });
-    } catch (e) {
-      return json(res, e.code || 500, { error: e.message || 'Could not withdraw' });
-    }
-  }
-
-  return json(res, 404, { error: 'unknown share action' });
-}
-
 // ── Action queue (statutory obligations across every open case) ────────────
 //
 // The Investigation Diary already lists what is missing from a case. This
@@ -4302,12 +4198,6 @@ module.exports = async (req, res) => {
     // which silently kill the fetch in the browser.
     if (path.endsWith('/access/record')) return await handleAudit(req, res, 'log');
     if (path.endsWith('/access/records')) return await handleAudit(req, res, 'list');
-    if (path.endsWith('/share/directory')) return await handleShare(req, res, 'directory');
-    if (path.endsWith('/share/send')) return await handleShare(req, res, 'send');
-    if (path.endsWith('/share/inbox')) return await handleShare(req, res, 'inbox');
-    if (path.endsWith('/share/for-doc')) return await handleShare(req, res, 'for-doc');
-    if (path.endsWith('/share/read')) return await handleShare(req, res, 'read');
-    if (path.endsWith('/share/revoke')) return await handleShare(req, res, 'revoke');
     if (path.endsWith('/investigation/actions')) return await handleActionQueue(req, res);
     if (path.endsWith('/investigation/purge-seeded')) return await handleInvestigationPurgeSeeded(req, res);
     if (path.endsWith('/investigation/obligation-ack')) return await handleObligationAck(req, res);

@@ -2,9 +2,8 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle, ChevronDown, ChevronUp, FileDown, Link2, Link2Off, Plus,
-  RotateCcw, Save, Search, Sparkles, Trash2, Unlock, X, ZoomIn, ZoomOut, Share2 } from 'lucide-react';
+  RotateCcw, Save, Search, Sparkles, Trash2, Unlock, X, ZoomIn, ZoomOut } from 'lucide-react';
 import TopBar from '../components/TopBar';
-import ShareDialog from '../components/ShareDialog';
 import { useConfirm } from '../components/ConfirmDialog';
 import { reportTypeById, extraSheetDefs, initSheetValues } from '../data/reportTemplates';
 import { getReport, saveReport, newReportId, downloadReportPdf, aiPolish } from '../utils/reportStudio';
@@ -142,7 +141,6 @@ export default function ReportEditor() {
   const [dirty, setDirty] = useState(false);
   const [zoom, setZoom] = useState(100);
   const [exporting, setExporting] = useState(false);
-  const [sharing, setSharing] = useState(false);
   const [aiBusy, setAiBusy] = useState(null); // "uid:fieldId" of narrative being polished
   const [aiUndo, setAiUndo] = useState(null); // { key, prev }
   const confirm = useConfirm();
@@ -375,14 +373,6 @@ export default function ReportEditor() {
     <div className="cf-page">
       <TopBar title={type.name} parent="Report Studio" parentTo="/report-studio" />
       <div className="rb-editor">
-        {sharing && (
-          <ShareDialog
-            kind="report"
-            docId={String(report.id)}
-            title={report.title || type.name}
-            onClose={() => setSharing(false)}
-          />
-        )}
         <div className="rb-toolbar">
           <input
             className="rb-title-input"
@@ -398,9 +388,6 @@ export default function ReportEditor() {
               {saving ? 'Saving…' : dirty ? 'Unsaved edits' : savedAt ? `Saved ${new Date(savedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : ''}
             </span>
           </div>
-          <button type="button" className="aa-btn" onClick={() => setSharing(true)}>
-            <Share2 size={14} /> Share
-          </button>
           <div className="rb-toolbar-spacer" />
           <CaseLink
             report={report}

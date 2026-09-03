@@ -93,10 +93,6 @@
     },
     "directory": {
       "label": "Directory"
-    },
-    "shared": {
-      "label": "Shared with me",
-      "desc": "Diaries and reports colleagues have sent you"
     }
   },
   "common": {

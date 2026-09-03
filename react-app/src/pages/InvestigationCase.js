@@ -4,9 +4,8 @@ import {
   NotebookPen, AlertTriangle, Plus, Sparkles, ListChecks, Users, Fingerprint,
   MessageSquareQuote, Clock, Link2, ChevronDown, ChevronLeft, ChevronRight,
   Mic, Upload, Paperclip, Play, FileText, Pencil, Trash2, FileDown,
-  ScrollText, ExternalLink, CloudOff, Share2 } from 'lucide-react';
+  ScrollText, ExternalLink, CloudOff } from 'lucide-react';
 import TopBar from '../components/TopBar';
-import ShareDialog from '../components/ShareDialog';
 import RichText from '../components/RichText';
 import {
   getInvestigation, setInvestigationStatus, appendInvestigationItem, summarizeInvestigation,
@@ -1003,7 +1002,6 @@ export default function InvestigationCase() {
     setRec(updated);
   };
   const [exporting, setExporting] = useState(false);
-  const [sharing, setSharing] = useState(false);
   const [exportError, setExportError] = useState(null);
   const exportPdf = async () => {
     setExporting(true);
@@ -1043,9 +1041,6 @@ export default function InvestigationCase() {
             <p>{rec.caseType || 'Uncategorised'}{rec.sections ? ` · ${rec.sections}` : ''}</p>
           </div>
           <div className="inv-head-actions">
-            <button type="button" className="aa-btn" onClick={() => setSharing(true)}>
-              <Share2 size={14} /> Share
-            </button>
             <button type="button" className="aa-btn" onClick={() => exportPdf()} disabled={exporting}>
               <FileDown size={14} /> {exporting ? 'Preparing…' : 'Export PDF'}
             </button>
@@ -1053,15 +1048,6 @@ export default function InvestigationCase() {
           </div>
         </div>
         {exportError && <div className="aa-error"><AlertTriangle size={16} /> {exportError}</div>}
-        {sharing && (
-          <ShareDialog
-            kind="diary"
-            docId={String(rec.caseMasterId)}
-            title={`Case Diary — ${rec.crimeNo || rec.caseMasterId}`}
-            onClose={() => setSharing(false)}
-          />
-        )}
-
         <div className="inv-tabbar">
           {TABS.map((t) => (
             <button key={t.key} className={`inv-tab-btn ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>

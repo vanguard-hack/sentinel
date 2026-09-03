@@ -43,9 +43,9 @@ test('delete asks for confirmation via the custom dialog', async () => {
 // ── Every page is findable ────────────────────────────────────────────────
 //
 // ⌘K is how anyone who uses this daily moves around it, so a module missing
-// from the palette is a module most officers never discover. Several pages
-// shipped without entries — Action Queue and Shared with me — which is why
-// this asserts the property rather than naming them.
+// from the palette is a module most officers never discover. The Action Queue
+// shipped without an entry, which is why this asserts the property rather than
+// naming the pages.
 import { SEARCH_INDEX } from '../utils/searchIndex';
 import { FEATURES } from '../utils/access';
 
@@ -70,7 +70,6 @@ test('every search entry names a feature the access layer knows', () => {
 test('the newly added pages are searchable by what an officer would type', () => {
   const find = (q) => SEARCH_INDEX.filter((e) => `${e.title} ${e.keywords}`.toLowerCase().includes(q));
   expect(find('sunset').map((e) => e.to)).toContain('/action-queue');
-  expect(find('shared').map((e) => e.to)).toContain('/shared');
 });
 
 import fs from 'fs';
