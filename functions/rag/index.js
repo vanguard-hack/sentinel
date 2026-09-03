@@ -3390,6 +3390,79 @@ async function reorderInvestigationEntries(bucket, caseMasterId, section, ordere
   return { record: rec };
 }
 
+// ── One-time purge of the demonstration diaries ────────────────────────────
+//
+// TEMPORARY. The seeder is gone, but the diaries it opened on the Development
+// deployment are still there. This removes them and is then removed itself —
+// it exists for one run, not as a capability.
+//
+// The scope is the whole safety argument. It deletes ONLY records carrying
+// `seeded: true`, a stamp nothing but the old seeder ever wrote, so a diary an
+// officer filed is not merely unlikely to be caught by this — it cannot be.
+// The caller does not get to name what is deleted, which is why there is no id
+// parameter to get wrong.
+//
+// It also refuses to delete anything until asked twice: without `confirm`, it
+// reports what it would remove and changes nothing.
+const isSeededRecord = (rec) => !!rec && rec.seeded === true;
+
+async function handleInvestigationPurgeSeeded(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || role !== 'admin') return json(res, 403, { error: 'Admin access required' });
+
+  const index = await loadInvIndex(bucket);
+  const matched = [];
+  const kept = [];
+  for (const c of index) {
+    let rec = null;
+    try {
+      rec = JSON.parse((await streamToString(await bucket.getObject(invKey(c.caseMasterId)))) || 'null');
+    } catch { rec = null; }
+    // An index entry whose blob is missing or unreadable is left alone. This
+    // deletes what it has read and confirmed, never what it has guessed at.
+    if (isSeededRecord(rec)) matched.push({ caseMasterId: String(c.caseMasterId), crimeNo: c.crimeNo || '' });
+    else kept.push(c);
+  }
+
+  if (body.confirm !== true) {
+    return json(res, 200, {
+      dryRun: true, matched: matched.length, cases: matched,
+      note: 'Nothing was deleted. Send { "confirm": true } to remove these.',
+    });
+  }
+  if (!matched.length) return json(res, 200, { deleted: 0, cases: [], note: 'No seeded diaries remain.' });
+
+  const ids = new Set(matched.map((m) => m.caseMasterId));
+  for (const m of matched) {
+    try { await bucket.deleteObject(invKey(m.caseMasterId)); } catch { /* index is cleaned either way */ }
+  }
+  await saveInvIndex(bucket, kept);
+
+  // The person index points names at cases. Leaving it alone would keep the
+  // seeded names surfacing as cross-case "leads" against diaries that no
+  // longer exist, so drop those references and any name left with none.
+  try {
+    const pidx = JSON.parse((await streamToString(await bucket.getObject(INV_PERSON_INDEX_KEY))) || '{}');
+    if (pidx && pidx.people) {
+      for (const name of Object.keys(pidx.people)) {
+        pidx.people[name] = (pidx.people[name] || []).filter((a) => !ids.has(String(a.caseMasterId)));
+        if (!pidx.people[name].length) delete pidx.people[name];
+      }
+      await bucket.putObject(INV_PERSON_INDEX_KEY, Buffer.from(JSON.stringify(pidx)));
+    }
+  } catch { /* the diaries are the record; a stale lead index is not worth failing over */ }
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'purge-seeded-investigations', feature: 'Investigation Diary', path: '/investigation-diary',
+    detail: `${matched.length} demonstration diaries deleted: ${matched.map((m) => m.crimeNo || m.caseMasterId).join(', ')}`,
+  }], caller);
+
+  return json(res, 200, { deleted: matched.length, cases: matched });
+}
+
 async function handleInvestigation(req, res, action) {
   const body = JSON.parse((await readBody(req)) || '{}');
   const app = catalystSDK.initialize(req);
@@ -4832,6 +4905,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/share/revoke')) return await handleShare(req, res, 'revoke');
     if (path.endsWith('/assurance/selftest')) return await handleAssurance(req, res);
     if (path.endsWith('/investigation/actions')) return await handleActionQueue(req, res);
+    if (path.endsWith('/investigation/purge-seeded')) return await handleInvestigationPurgeSeeded(req, res);
     if (path.endsWith('/investigation/obligation-ack')) return await handleObligationAck(req, res);
     if (path.endsWith('/investigation/list')) return await handleInvestigation(req, res, 'list');
     if (path.endsWith('/investigation/get')) return await handleInvestigation(req, res, 'get');
