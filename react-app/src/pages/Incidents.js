@@ -1,11 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Shield, RefreshCw, AlertTriangle, ChevronDown,
+  Shield, RefreshCw, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight,
   MapPin, Clock, User, Users, Gavel, Phone, BadgeCheck, FileText, Search,
 } from 'lucide-react';
 import { fetchIncidents } from '../utils/incidents';
 import TopBar from '../components/TopBar';
 import { useTranslation } from 'react-i18next';
+
+// Ten to a page. An FIR row opens into a full record — complainants, victims,
+// accused, sections, arrests — so a page of forty was a wall an officer had to
+// scroll past rather than a list they could read.
+const PER_PAGE = 10;
 
 const STATUS_TONE = {
   'Under Investigation': 'amber', 'Charge Sheeted': 'blue', 'Pending Trial': 'blue',
@@ -136,6 +141,7 @@ export default function Incidents() {
   const [openId, setOpenId] = useState(null);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('ALL');
+  const [page, setPage] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -159,6 +165,17 @@ export default function Incidents() {
         .join(' ').toLowerCase().includes(needle);
     });
   }, [data, q, status]);
+
+  // A new search starts at the top of its own results, not on page 3 of the
+  // previous ones. `cur` is clamped as well, so a filter that shortens the
+  // list can never leave the pager pointing past the end of it.
+  useEffect(() => { setPage(0); }, [q, status]);
+  const pageCount = Math.max(1, Math.ceil(shown.length / PER_PAGE));
+  const cur = Math.min(page, pageCount - 1);
+  const pageRows = useMemo(
+    () => shown.slice(cur * PER_PAGE, cur * PER_PAGE + PER_PAGE),
+    [shown, cur],
+  );
 
   return (
     <div className="rp-page">
@@ -189,12 +206,32 @@ export default function Incidents() {
         ) : shown.length === 0 ? (
           <div className="cf-state"><FileText size={22} /><p>No matching incidents.</p></div>
         ) : (
-          <div className="inc-list">
-            {shown.map((inc) => (
-              <IncidentRow key={inc.id} inc={inc} open={openId === inc.id}
-                onToggle={() => setOpenId(openId === inc.id ? null : inc.id)} />
-            ))}
-          </div>
+          <>
+            <div className="inc-list">
+              {pageRows.map((inc) => (
+                <IncidentRow key={inc.id} inc={inc} open={openId === inc.id}
+                  onToggle={() => setOpenId(openId === inc.id ? null : inc.id)} />
+              ))}
+            </div>
+
+            {shown.length > PER_PAGE && (
+              <div className="inv-pager rb-pager">
+                <div className="cl-pager-nav" role="group" aria-label="Incident pages">
+                  <button type="button" disabled={cur === 0}
+                    onClick={() => setPage(cur - 1)} aria-label={t('common.prevPage')}>
+                    <ChevronLeft size={15} />
+                  </button>
+                  <button type="button" disabled={cur >= pageCount - 1}
+                    onClick={() => setPage(cur + 1)} aria-label={t('common.nextPage')}>
+                    <ChevronRight size={15} />
+                  </button>
+                </div>
+                <span className="rb-pager-count">
+                  {cur * PER_PAGE + 1}–{Math.min(shown.length, (cur + 1) * PER_PAGE)} of {shown.length}
+                </span>
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>
