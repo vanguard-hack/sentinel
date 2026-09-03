@@ -62,7 +62,7 @@ export default function StatTile({
   return (
     <div className="st-tile">
       <div className="st-head">
-        {Icon && <span className="st-icon"><Icon size={15} strokeWidth={1.8} /></span>}
+        {Icon && <span className="st-icon"><Icon size={17} strokeWidth={1.8} /></span>}
         <span className="st-label">{label}</span>
         {trend && (
           <span className={`st-trend st-trend-${trend.dir}`}>

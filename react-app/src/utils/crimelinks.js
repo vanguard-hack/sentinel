@@ -12,7 +12,7 @@
 //
 // ZCQL has no joins and caps a query at ~300 rows, so everything is paged and
 // stitched client-side (see also utils/incidents.js).
-import {pageQuery } from './datastore';
+import { pageQuery, fetchSharedCases, fetchSharedAccused } from './datastore';
 
 const GENDER = { 1: 'M', 2: 'F', 3: 'T' };
 
@@ -48,8 +48,8 @@ const mode = (arr) => {
 
 export async function fetchCrimeNetwork() {
   const [accused, cases, units, districts, heads, subheads, statuses] = await Promise.all([
-    fetchAll('SELECT CaseMasterID, AccusedName, GenderID, AgeYear, PersonID FROM Accused', 'Accused'),
-    fetchAll('SELECT CaseMasterID, CrimeNo, CrimeRegisteredDate, PoliceStationID, CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, GravityOffenceID FROM CaseMaster', 'CaseMaster'),
+    fetchSharedAccused(),
+    fetchSharedCases(),
     mapOf('Unit', 'UnitID', ['UnitName', 'DistrictID']),
     mapOf('District', 'DistrictID', ['DistrictName']),
     mapOf('CrimeHead', 'CrimeHeadID', ['CrimeGroupName']),
@@ -220,8 +220,50 @@ export async function fetchCrimeNetwork() {
 // and silently drop every edge touching the rest, so the graph disagreed with
 // the "N members · M links" header above it. An investigator comparing the two
 // has no way to tell which is right, so the graph now renders the ring in full.
+// ── Person naming ───────────────────────────────────────────────────────────
+// Accused names in the FIR schema carry a leading initial and sometimes a
+// quoted alias: `D. Puneeth Naik`, `B. Basavaraj Pai "Chief"`. Splitting on the
+// first space therefore yields "D." — which is how every ring in the UI came to
+// be called "D.'s ring", three of them at once, with the actual person hidden
+// behind an initial that identifies nobody.
+//
+// So the initial is skipped rather than treated as a name. A quoted alias is
+// dropped from the formal name but preferred for a RING label, because a ring
+// is known by what its leader is called, not by their record name.
+const ALIAS = /["“]([^"”]+)["”]/;
+const INITIAL = /^[A-Za-z]\.?$/;
+
+function nameParts(full) {
+  const raw = String(full || '').trim();
+  const alias = (ALIAS.exec(raw) || [])[1] || '';
+  const words = raw.replace(ALIAS, ' ').trim().split(/\s+/).filter(Boolean);
+  const named = words.filter((w) => !INITIAL.test(w));
+  return { alias, words: named.length ? named : words };
+}
+
+// "D. Puneeth Naik" -> "Puneeth Naik". The name an officer would read out.
+export function personName(full) {
+  const { words } = nameParts(full);
+  return words.join(' ') || '—';
+}
+
+// "D. Puneeth Naik" -> "Puneeth". For graph nodes, where space is scarce.
+export function personShortName(full) {
+  const { words } = nameParts(full);
+  return words[0] || '—';
+}
+
+// What the ring is called. Prefers the leader's alias when the record carries
+// one, since that is how a network is actually known.
+export function ringName(leader) {
+  const raw = leader && leader.name;
+  if (!raw) return 'Unnamed ring';
+  const { alias } = nameParts(raw);
+  return `${alias || personName(raw)}\u2019s ring`;
+}
+
 export function networkToSpec(net) {
-  const nodes = net.members.map((p) => ({ id: p.pid, label: p.name.split(' ')[0], group: p.district }));
+  const nodes = net.members.map((p) => ({ id: p.pid, label: personShortName(p.name), group: p.district }));
   return { nodes, links: net.edges, trimmed: 0 };
 }
 
@@ -352,7 +394,7 @@ export function buildOverview(networks, { topN = 70 } = {}) {
   const nodes = shown.map((net, i) => ({
     ring: i,
     id: net.id,
-    label: `${String(net.leader?.name || '—').split(' ')[0]}’s ring`,
+    label: ringName(net.leader),
     group: net.district || '—',
     size: net.size,
     crimes: net.caseIds.length,

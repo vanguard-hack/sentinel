@@ -6,24 +6,17 @@
 // fetch the raw per-case rows ONCE, then compute every KPI and chart for the
 // selected window entirely client-side — so changing the range is instant and
 // filters the whole report, not just the trend chart.
-import { runQuery } from './datastore';
+import { pageQuery, fetchSharedCases, fetchSharedAccused } from './datastore';
 
 const labelOf = (v) => {
   if (v === null || v === undefined || v === '') return '—';
   return String(v);
 };
 
-const CAP = 300; // ZCQL rows-per-query cap
-
-async function fetchAll(sql, table) {
-  const out = [];
-  for (let off = 0; off < 40000; off += CAP) {
-    const rows = await runQuery(`${sql} LIMIT ${off}, ${CAP}`, table);
-    out.push(...rows);
-    if (rows.length < CAP) break;
-  }
-  return out;
-}
+// The home bento reads the same tables as the AI Analytics tabs, so it pages
+// through the shared helper and shares their cached scan rather than making
+// its own sequential pass over 30,000 rows.
+const fetchAll = (sql, table) => pageQuery(sql, table, { cap: 60000 });
 
 // Fetch a master table once and return an id → name lookup function.
 async function lookup(table, idCol, nameCol) {
@@ -260,9 +253,9 @@ export async function fetchReports() {
 
   const [caseRows, victimRows, accusedRows, arrestRows, csRows, asaRows, complRows, empRows] =
     await Promise.all([
-      fetchAll('SELECT CaseMasterID, CrimeRegisteredDate, PoliceStationID, CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, GravityOffenceID, CaseCategoryID, PolicePersonID, CourtID FROM CaseMaster', 'CaseMaster'),
+      fetchSharedCases(),
       fetchAll('SELECT CaseMasterID, VictimPolice FROM Victim', 'Victim'),
-      fetchAll('SELECT CaseMasterID, AgeYear, GenderID, PersonID, AccusedName FROM Accused', 'Accused'),
+      fetchSharedAccused(),
       fetchAll('SELECT CaseMasterID, ArrestSurrenderTypeID, ArrestSurrenderDate FROM ArrestSurrender', 'ArrestSurrender'),
       fetchAll('SELECT CaseMasterID, csdate FROM ChargesheetDetails', 'ChargesheetDetails'),
       fetchAll('SELECT CaseMasterID, ActID, SectionID FROM ActSectionAssociation', 'ActSectionAssociation'),

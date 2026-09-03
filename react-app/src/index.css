@@ -1927,8 +1927,11 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .st-tile {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 14px 15px 15px;
+  gap: 8px;
+  /* Roomier than the other cards on purpose: eight tiles across two rows are
+     the first thing on the page, and at the old 14px/28px the figure sat in
+     the top third of a tile that was mostly empty. */
+  padding: 18px 18px 20px;
   background: var(--bg-1);
   border: 1px solid var(--border);
   border-radius: var(--r-card);
@@ -1942,15 +1945,15 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   flex-shrink: 0;
   border-radius: var(--r-chip);
   background: var(--primary-tint);
   color: var(--primary);
 }
 .st-label {
-  font-size: var(--fs-caption);
+  font-size: var(--fs-body);
   color: var(--text-3);
   white-space: nowrap;
   overflow: hidden;
@@ -1960,10 +1963,12 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* The figure. Tabular so a counting number does not jitter its own width,
    and tracked in like the rest of the display scale. */
 .st-value {
-  font-size: 28px;
+  /* display-md. These are the headline figures of the whole product; at 28px
+     they read as captions of the tile rather than its subject. */
+  font-size: 40px;
   font-weight: var(--fw-display);
-  line-height: 1.05;
-  letter-spacing: -0.7px;
+  line-height: 1.12;
+  letter-spacing: -1px;
   color: var(--text-0);
   font-variant-numeric: tabular-nums;
 }

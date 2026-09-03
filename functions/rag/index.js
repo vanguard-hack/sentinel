@@ -2145,7 +2145,7 @@ async function handleForecast(req, res, forceRefresh) {
   } else {
     try {
       const cached = JSON.parse((await streamToString(await bucket.getObject(key))) || 'null');
-      if (cached && cached.origin_week) {
+      if (cached && cached.origin_month) {
         return json(res, 200, { ...cached, cached: true, billedCalls: 0 });
       }
     } catch { /* no cache yet — fall through and build one */ }

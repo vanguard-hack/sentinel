@@ -7,18 +7,12 @@
 // reporting obligations — are DETERMINISTICALLY synthesised (mulberry32 PRNG
 // seeded per person) so the registry is realistic and stable across reloads,
 // consistent with the rest of the demo. Neutral legal terminology throughout.
-import { runQuery } from './datastore';
+import { pageQuery, fetchSharedCases, fetchSharedAccused } from './datastore';
 
-const CAP = 300;
-async function fetchAll(baseSql, table) {
-  const out = [];
-  for (let off = 0; off < 40000; off += CAP) {
-    const rows = await runQuery(`${baseSql} LIMIT ${off}, ${CAP}`, table);
-    out.push(...rows);
-    if (rows.length < CAP) break;
-  }
-  return out;
-}
+// Shares the cached, concurrent pager with the other analytics pages, so the
+// custody registry and the AI Analytics tabs no longer each re-scan the same
+// tables from scratch.
+const fetchAll = (baseSql, table) => pageQuery(baseSql, table, { cap: 60000 });
 
 // ── deterministic synthesis ────────────────────────────────────────────────
 const djb2 = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h >>> 0; };
@@ -108,8 +102,8 @@ const FIRST_ALIAS = ['Babu', 'Anna', 'Chikka', 'Dodda', 'Kariya', 'Guru', 'Raja'
 export async function fetchCustodyData() {
   const [caseRows, accusedRows, arrestRows, unitRows, districtRows, courtRows, headRows, subRows, statusRows] =
     await Promise.all([
-      fetchAll('SELECT CaseMasterID, CrimeNo, CrimeRegisteredDate, IncidentFromDate, PoliceStationID, CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, GravityOffenceID, CourtID FROM CaseMaster', 'CaseMaster'),
-      fetchAll('SELECT AccusedMasterID, CaseMasterID, PersonID, AccusedName, AgeYear, GenderID FROM Accused', 'Accused'),
+      fetchSharedCases(),
+      fetchSharedAccused(),
       fetchAll('SELECT CaseMasterID, AccusedMasterID, ArrestSurrenderTypeID, ArrestSurrenderDate FROM ArrestSurrender', 'ArrestSurrender'),
       fetchAll('SELECT UnitID, UnitName, DistrictID FROM Unit', 'Unit'),
       fetchAll('SELECT DistrictID, DistrictName FROM District', 'District'),

@@ -620,7 +620,10 @@ export function Scatter({ data, xLabel = 'x', yLabel = 'y', height = 200 }) {
 // Forecast chart — historical weekly actuals as a solid line, forecast mean as
 // a dashed line, and the confidence interval as a shaded band. Hover reads out
 // the value (with the CI range on forecast periods).
-export function ForecastChart({ history, forecast, height = 240, labelEvery = 1 }) {
+// `unit` names the time bucket in the caption. The crime-volume forecasts are
+// monthly; anything still passing weekly series keeps the old wording.
+export function ForecastChart({ history, forecast, height = 240, labelEvery = 1,
+  unit = 'weeks' }) {
   const [active, setActive] = useState(null);
   const [wrapRef, mw] = useMeasuredWidth();
   if (!history?.length || !forecast?.points?.length) {
@@ -675,7 +678,7 @@ export function ForecastChart({ history, forecast, height = 240, labelEvery = 1 
           </span>
         ) : (
           <span className="trend-readout-cap">
-            {history.length} weeks history · {forecast.points.length} weeks predicted · shaded = 95% interval
+            {history.length} {unit} history · {forecast.points.length} {unit} predicted · shaded = 95% interval
           </span>
         )}
       </div>

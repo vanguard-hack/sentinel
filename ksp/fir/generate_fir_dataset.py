@@ -113,6 +113,42 @@ PS_DISTRICT = {u[0]: u[6] for u in units if u[2] == 1}
 # DistrictID -> name, for the reserved no-data combination.
 DISTRICTS_BY_ID = {d[0]: d[1] for d in districts}
 
+# ── How much crime each district carries ─────────────────────────────────────
+# Cases used to be spread UNIFORMLY over every station, and that quietly broke
+# each district-level model. Measured across the 31 districts, the spread in
+# annual volume was SMALLER than Poisson noise alone would produce (sd 14.6
+# observed against 17.0 expected if every district were identical): the
+# districts were not merely similar, they were the same series drawn 31 times.
+# A district forecaster had nothing to find, and the risk board was ranking
+# sampling noise.
+#
+# These are relative crime volumes, following population and how urban each
+# district is — Bengaluru City alone carries roughly a fifth of the state's
+# registered crime, while Kodagu is a rounding error beside it. The spread is
+# about 14:1, which is both realistic and comfortably learnable.
+DISTRICT_CRIME_WEIGHT = {
+    'Bengaluru City': 100, 'Belagavi': 30, 'Mysuru': 28, 'Kalaburagi': 24,
+    'Tumakuru': 22, 'Dakshina Kannada': 22, 'Dharwad': 20, 'Ballari': 20,
+    'Vijayapura': 19, 'Shivamogga': 18, 'Bengaluru Rural': 16, 'Mandya': 16,
+    'Hassan': 16, 'Raichur': 15, 'Bagalkote': 15, 'Davanagere': 15,
+    'Bidar': 14, 'Kolar': 13, 'Haveri': 13, 'Chitradurga': 13, 'Koppal': 12,
+    'Chikkamagaluru': 11, 'Udupi': 11, 'Uttara Kannada': 11, 'Ramanagara': 10,
+    'Chikkaballapura': 10, 'Vijayanagara': 10, 'Gadag': 9, 'Yadgir': 9,
+    'Chamarajanagar': 9, 'Kodagu': 7,
+}
+assert set(DISTRICT_CRIME_WEIGHT) == set(DISTRICTS_BY_ID.values()), \
+    'DISTRICT_CRIME_WEIGHT must name every Karnataka district exactly once'
+
+# A station inherits its district's weight; each district has the same number
+# of stations, so this spreads the district total evenly inside it.
+PS_WEIGHTS = [DISTRICT_CRIME_WEIGHT[DISTRICTS_BY_ID[PS_DISTRICT[u]]] for u in ALL_PS]
+
+# Drawn from a SEPARATE stream, deliberately. Weighting the station changes how
+# many random numbers the draw consumes, which would shift every field after it
+# — crime head, hour, dates — and silently invalidate models already trained on
+# them. Its own Random keeps this change confined to WHERE a case happened.
+PS_RNG = random.Random(43)
+
 ranks = [(1, 'Director General of Police', 1), (2, 'Inspector General of Police', 2),
          (3, 'Superintendent of Police', 3), (4, 'Deputy SP', 4), (5, 'Inspector', 5),
          (6, 'Police Sub-Inspector', 6), (7, 'Assistant Sub-Inspector', 7),
@@ -406,15 +442,70 @@ for _u in ALL_PS:
     _h = (hash((_u, 'load')) if False else (_u * 2654435761) % 1000) / 1000.0
     PS_LOAD[_u] = round(0.15 + 0.70 * _h, 3)
 
+# ── Districts do not all peak in the same month ──────────────────────────────
+# Every district used to draw its dates from ONE pool, so all 31 shared a single
+# seasonal shape. Knowing the district then told a forecaster nothing about
+# WHEN — only how big the district was — and a district model could not beat a
+# flat average (+1.8% median over rolling origins).
+#
+# The swing also has to clear the noise to be learnable. A district registering
+# ~25 cases a month carries Poisson noise of about +/-20%, so the global +/-14%
+# seasonal swing was inside the noise. These profiles run nearer +/-35%, which
+# is both realistic for the geography and detectable at district grain.
+DISTRICT_SEASON = {
+    # Coastal: the south-west monsoon shuts activity down from June to August.
+    'coastal': {1: 1.15, 2: 1.18, 3: 1.22, 4: 1.25, 5: 1.10, 6: 0.68,
+                7: 0.62, 8: 0.70, 9: 0.88, 10: 1.05, 11: 1.12, 12: 1.15},
+    # Malnad hill country: monsoon dip, then a tourist and harvest season.
+    'malnad': {1: 1.10, 2: 1.05, 3: 1.00, 4: 1.02, 5: 0.95, 6: 0.72,
+               7: 0.70, 8: 0.78, 9: 0.95, 10: 1.20, 11: 1.28, 12: 1.25},
+    # Northern dry belt: peaks at harvest and through the dry pre-monsoon months.
+    'agrarian_north': {1: 1.05, 2: 1.12, 3: 1.28, 4: 1.32, 5: 1.25, 6: 0.85,
+                       7: 0.72, 8: 0.72, 9: 0.85, 10: 1.02, 11: 1.10, 12: 1.02},
+    # Metro: flatter overall, with festival and year-end peaks.
+    'metro': {1: 1.02, 2: 0.94, 3: 0.98, 4: 1.00, 5: 1.04, 6: 0.94,
+              7: 0.92, 8: 0.98, 9: 1.06, 10: 1.22, 11: 1.18, 12: 1.12},
+    # Southern plains: closest to the statewide average.
+    'plains': dict(MONTH_FACTOR),
+}
+DISTRICT_SEASON_GROUP = {
+    'Dakshina Kannada': 'coastal', 'Udupi': 'coastal', 'Uttara Kannada': 'coastal',
+    'Kodagu': 'malnad', 'Chikkamagaluru': 'malnad', 'Shivamogga': 'malnad',
+    'Hassan': 'malnad',
+    'Kalaburagi': 'agrarian_north', 'Yadgir': 'agrarian_north',
+    'Raichur': 'agrarian_north', 'Koppal': 'agrarian_north',
+    'Ballari': 'agrarian_north', 'Vijayanagara': 'agrarian_north',
+    'Bidar': 'agrarian_north', 'Vijayapura': 'agrarian_north',
+    'Bagalkote': 'agrarian_north', 'Belagavi': 'agrarian_north',
+    'Gadag': 'agrarian_north', 'Haveri': 'agrarian_north', 'Dharwad': 'metro',
+    'Bengaluru City': 'metro', 'Bengaluru Rural': 'metro', 'Mysuru': 'metro',
+}
+# Anything unnamed follows the statewide shape.
+DISTRICT_GROUP_BY_ID = {
+    d: DISTRICT_SEASON_GROUP.get(n, 'plains') for d, n in DISTRICTS_BY_ID.items()
+}
+
 _START = date(2023, 1, 1)
 _SPAN = (today - _START).days
-REG_DAYS = []
-for _i in range(_SPAN + 1):
-    _d = _START + timedelta(days=_i)
-    _w = (MONTH_FACTOR[_d.month]
-          * WEEKDAY_FACTOR[_d.weekday()]
-          * (1.0 + TREND_PER_YEAR * (_i / 365.0)))
-    REG_DAYS.extend([_d] * max(1, int(round(_w * 10))))
+
+def _day_pool(month_factor):
+    """Dates repeated in proportion to season x weekday x trend.
+
+    Drawing uniformly from the pool then yields a date distribution carrying
+    that structure, while the draw itself stays a single cheap index.
+    """
+    pool = []
+    for _i in range(_SPAN + 1):
+        _d = _START + timedelta(days=_i)
+        _w = (month_factor[_d.month]
+              * WEEKDAY_FACTOR[_d.weekday()]
+              * (1.0 + TREND_PER_YEAR * (_i / 365.0)))
+        pool.extend([_d] * max(1, int(round(_w * 10))))
+    return pool
+
+REG_DAYS_BY_GROUP = {g: _day_pool(f) for g, f in DISTRICT_SEASON.items()}
+# Kept for anything still reading the statewide pool.
+REG_DAYS = REG_DAYS_BY_GROUP['plains']
 
 
 # A deliberate hole in the data.
@@ -431,10 +522,11 @@ for _i in range(_SPAN + 1):
 NO_DATA_GAP = ('Kodagu', 1002)   # (district name, CrimeMinorHeadID for Illegal Arms)
 
 for cm_id in range(1, N_CASES + 1):
-    ps = random.choice(ALL_PS)
+    ps = PS_RNG.choices(ALL_PS, weights=PS_WEIGHTS)[0]
     did = PS_DISTRICT[ps]
     cat = random.choices([1, 3, 4, 8], weights=[85, 8, 4, 3])[0]
-    reg = REG_DAYS[random.randrange(len(REG_DAYS))]
+    _pool = REG_DAYS_BY_GROUP[DISTRICT_GROUP_BY_ID[did]]
+    reg = _pool[random.randrange(len(_pool))]
     year = reg.year
     key = (ps, cat, year)
     serials[key] = serials.get(key, 0) + 1

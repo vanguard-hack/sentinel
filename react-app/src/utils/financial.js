@@ -7,7 +7,7 @@
 // decision-support only — real deployment needs STR/CTR feeds (FIU-IND),
 // bank/UPI records, and legal authorisation.
 
-import {pageQuery } from './datastore';
+import { pageQuery, fetchSharedCases, fetchSharedAccused } from './datastore';
 
 // Paging lives in datastore.pageQuery, which reports when it stopped short.
 // Three modules each had their own copy of this loop with a different
@@ -47,8 +47,8 @@ export function formatRs(n) {
 
 export async function fetchFinancialData() {
   const [caseRows, accusedRows, unitRows, districtRows, headRows] = await Promise.all([
-    fetchAll('SELECT CaseMasterID, CrimeNo, CrimeRegisteredDate, PoliceStationID, CrimeMajorHeadID FROM CaseMaster', 'CaseMaster'),
-    fetchAll('SELECT CaseMasterID, PersonID, AccusedName FROM Accused', 'Accused'),
+    fetchSharedCases(),
+    fetchSharedAccused(),
     fetchAll('SELECT UnitID, DistrictID FROM Unit', 'Unit'),
     fetchAll('SELECT DistrictID, DistrictName FROM District', 'District'),
     fetchAll('SELECT CrimeHeadID, CrimeGroupName FROM CrimeHead', 'CrimeHead'),

@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 // Ten to a page. An FIR row opens into a full record — complainants, victims,
 // accused, sections, arrests — so a page of forty was a wall an officer had to
 // scroll past rather than a list they could read.
-const PER_PAGE = 10;
+const PER_PAGE = 12;
 
 const STATUS_TONE = {
   'Under Investigation': 'amber', 'Charge Sheeted': 'blue', 'Pending Trial': 'blue',

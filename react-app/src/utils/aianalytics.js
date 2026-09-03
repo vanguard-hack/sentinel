@@ -3,16 +3,13 @@
 // ZCQL cannot GROUP BY hour/day-of-month, so we page the incident timestamps
 // down once (~2.2k rows, 4 columns) and compute every profile client-side.
 // That also makes the crime-head filter instant — no re-querying.
-import { runQuery, pageQuery } from './datastore';
+import { runQuery, fetchSharedCases } from './datastore';
 
 
 export async function fetchIncidents() {
   // 20 pages of 300 was a 6,000-row ceiling. At 2,200 cases it never bit; at
   // 30,000 it silently drew every chart on the first fifth of the data.
-  const raw = await pageQuery(
-    'SELECT CaseMasterID, IncidentFromDate, CrimeRegisteredDate, CrimeMajorHeadID FROM CaseMaster',
-    'CaseMaster',
-  );
+  const raw = await fetchSharedCases();
   const heads = await runQuery(
     'SELECT CrimeHeadID, CrimeGroupName FROM CrimeHead LIMIT 0, 50',
     'CrimeHead'

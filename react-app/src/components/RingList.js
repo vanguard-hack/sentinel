@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
+import { ringName } from '../utils/crimelinks';
 
 // Virtualised ring list. The explorer previously rendered only the first 40
 // rings; with hundreds of them every ring should be reachable, but mounting a
@@ -38,7 +39,7 @@ export default function RingList({ networks, selectedId, onSelect }) {
             >
               <span className="cl-ring-rank">#{n.rank}</span>
               <span className="cl-ring-main">
-                <span className="cl-ring-name">{String(n.leader?.name || '—').split(' ')[0]}’s ring</span>
+                <span className="cl-ring-name">{ringName(n.leader)}</span>
                 <span className="cl-ring-sub">{n.size} members · {n.district}</span>
               </span>
               <span className="cl-ring-type">{n.topType}</span>

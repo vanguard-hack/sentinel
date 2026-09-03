@@ -24,27 +24,27 @@ function check(name, cond) {
 
 // ── the feature contract ────────────────────────────────────────────────────
 const EXPECTED = [
-  'series', 'horizon', 'month', 'weekofyear', 'quarter',
-  'lag_1', 'lag_2', 'lag_3', 'lag_4', 'lag_8', 'lag_13',
-  'seasonal_lag_52',
-  'roll_mean_4', 'roll_mean_13', 'roll_mean_52', 'roll_std_4',
-  'level_ratio_4_52', 'level_ratio_13_52', 'lag1_vs_season', 'cv_4',
+  'series', 'horizon', 'month', 'quarter',
+  'lag_1', 'lag_2', 'lag_3', 'lag_12', 'seasonal_lag_12',
+  'roll_3', 'roll_6', 'roll_12',
 ];
+const SERIES_COUNT = { firvolume: 1, crimehead: 10, district: 31 };
 
 check('the shipped feature list is exactly the training contract',
   JSON.stringify(FEATURES.features) === JSON.stringify(EXPECTED));
 check('the target column is target_count', FEATURES.target === 'target_count');
-check('both pipelines have feature tables',
-  !!FEATURES.tables.crimehead && !!FEATURES.tables.district);
+check('all three pipelines have feature tables',
+  !!FEATURES.tables.firvolume && !!FEATURES.tables.crimehead && !!FEATURES.tables.district);
+check('the grain is monthly', FEATURES.grain === 'month');
 
 for (const [name, table] of Object.entries(FEATURES.tables)) {
-  check(`${name}: 10 or 31 series`, table.series.length === (name === 'crimehead' ? 10 : 31));
-  check(`${name}: horizon is 13 weeks`, table.horizon === 13);
-  check(`${name}: origin week is an ISO date`, /^\d{4}-\d{2}-\d{2}$/.test(table.origin_week));
+  check(`${name}: expected series count`, table.series.length === SERIES_COUNT[name]);
+  check(`${name}: horizon is 6 months`, table.horizon === 6);
+  check(`${name}: origin month is YYYY-MM`, /^\d{4}-\d{2}$/.test(table.origin_month));
 
   const rows = table.rows[table.series[0]];
   check(`${name}: one feature row per horizon`, rows.length === table.horizon);
-  check(`${name}: horizons run 1..13 in order`,
+  check(`${name}: horizons run 1..6 in order`,
     rows.every((r, i) => r.horizon === i + 1));
 
   // Every row must carry EXACTLY the contract keys — no more, no fewer.
@@ -74,10 +74,10 @@ for (const [name, table] of Object.entries(FEATURES.tables)) {
   // model would be recursive, which is not what it was trained as.
   const first = table.rows[table.series[0]];
   check(`${name}: lags are fixed at the origin across horizons`,
-    first.every((r) => r.lag_1 === first[0].lag_1 && r.roll_mean_4 === first[0].roll_mean_4));
+    first.every((r) => r.lag_1 === first[0].lag_1 && r.roll_3 === first[0].roll_3));
 
-  check(`${name}: history is aligned with its week labels`,
-    table.series.every((s) => table.history[s].length === table.history_weeks.length));
+  check(`${name}: history is aligned with its month labels`,
+    table.series.every((s) => table.history[s].length === table.history_months.length));
 }
 
 // ── response unwrapping ─────────────────────────────────────────────────────
@@ -92,6 +92,9 @@ const SHAPES = [
   ['result object with target', { result: [{ target_count: 19 }] }, 19],
   ['data wrapper', { data: { result: [8] } }, 8],
   ['output key', { output: 5 }, 5],
+  // Observed live from a deployed timeseries pipeline.
+  ['date-keyed timeseries object', { result: { '2026-07-06': 21 } }, 21],
+  ['month-keyed timeseries object', { result: { '2026-07': 19 } }, 19],
 ];
 for (const [label, body, want] of SHAPES) {
   check(`unwraps ${label}`, F.extractPrediction(body).value === want);
@@ -106,18 +109,35 @@ check('zero is a real prediction, not a falsy miss',
 // ── labelling ───────────────────────────────────────────────────────────────
 check('a district key resolves to its name',
   F.labelFor(F.MODELS.district, 'district_4401') === 'Bengaluru City');
+check('the single-series total is labelled for officers',
+  F.labelFor(F.MODELS.firvolume, 'all') === 'All Karnataka');
 check('a crime head key resolves to its name',
   F.labelFor(F.MODELS.crimehead, 'crime_major_head_1') === 'Crimes Against Body');
 check('an unknown key falls back to its id rather than throwing',
   F.labelFor(F.MODELS.district, 'district_9999') === '9999');
 
-// ── week arithmetic ─────────────────────────────────────────────────────────
-check('horizon 1 is the week after the origin',
-  F.weekAfter('2026-06-22', 1) === '2026-06-29');
-check('horizon 13 is 91 days after the origin',
-  F.weekAfter('2026-06-22', 13) === '2026-09-21');
-check('week stepping crosses a year boundary',
-  F.weekAfter('2026-12-28', 1) === '2027-01-04');
+// ── month arithmetic ────────────────────────────────────────────────────────
+check('horizon 1 is the month after the origin',
+  F.monthAfter('2026-06', 1) === '2026-07');
+check('horizon 6 is six months after the origin',
+  F.monthAfter('2026-06', 6) === '2026-12');
+check('month stepping crosses a year boundary',
+  F.monthAfter('2026-11', 3) === '2027-02');
+check('December + 1 rolls to January',
+  F.monthAfter('2026-12', 1) === '2027-01');
+
+// ── prediction bands ────────────────────────────────────────────────────────
+check('a band brackets its prediction', (() => {
+  const b = F.withBand(100, 0.041);
+  return b.lo < 100 && b.hi > 100;
+})());
+check('a band never goes negative', F.withBand(1, 0.5).lo >= 0);
+check('a null prediction has no band', F.withBand(null, 0.1).lo === null);
+check('every model declares a measured relative error',
+  Object.values(F.MODELS).every((m) => typeof m.relMae === 'number' && m.relMae > 0));
+check('every model reports skill against the FLAT-MEAN baseline, not naive',
+  Object.values(F.MODELS).every((m) => typeof m.quality.flatMae === 'number'
+    && typeof m.quality.skillPct === 'number'));
 
 // ── bounded concurrency ─────────────────────────────────────────────────────
 (async () => {

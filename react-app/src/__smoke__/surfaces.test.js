@@ -173,10 +173,15 @@ test('every status colour clears 4.5:1 against white', () => {
 // did it silently: charts drawn from a fifth of the data, captioned as the
 // whole of it. A truncated read is not a smaller answer, it is a different one.
 
+// predict.js and custody.js had their own copies too — and predict's ceiling
+// was 20,000, which silently dropped a third of a 30,000-case dataset.
+const PAGING_MODULES = ['aianalytics.js', 'crimelinks.js', 'caselinkage.js',
+  'financial.js', 'predict.js', 'custody.js', 'reports.js'];
+
 test('no analytics module keeps its own paging loop', () => {
   const dir = path.join(__dirname, '..', 'utils');
   const offenders = [];
-  for (const f of ['aianalytics.js', 'crimelinks.js', 'caselinkage.js', 'financial.js']) {
+  for (const f of PAGING_MODULES) {
     const src = fs.readFileSync(path.join(dir, f), 'utf8');
     if (/for \(let (page|off|offset) = 0;/.test(src)) offenders.push(f);
   }
@@ -184,17 +189,44 @@ test('no analytics module keeps its own paging loop', () => {
 });
 
 test('they all page through the shared helper instead', () => {
+  // Either directly, or through fetchSharedCases/fetchSharedAccused, which are
+  // thin wrappers over it that let separate pages share one cached scan.
   const dir = path.join(__dirname, '..', 'utils');
-  for (const f of ['aianalytics.js', 'crimelinks.js', 'caselinkage.js', 'financial.js']) {
-    expect(fs.readFileSync(path.join(dir, f), 'utf8')).toMatch(/pageQuery/);
+  for (const f of PAGING_MODULES) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    expect(src).toMatch(/pageQuery|fetchShared(Cases|Accused)/);
   }
 });
 
 test('the shared helper reports whether it stopped short', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'utils', 'datastore.js'), 'utf8');
-  const fn = src.slice(src.indexOf('export async function pageQuery'));
-  expect(fn.slice(0, 900)).toMatch(/truncated/);
-  expect(fn.slice(0, 900)).toMatch(/Object\.assign\(rows, \{ truncated/);
+  const start = src.indexOf('export async function pageQuery');
+  const fn = src.slice(start, src.indexOf('\nexport ', start + 40));
+  expect(fn).toMatch(/truncated/);
+  expect(fn).toMatch(/Object\.assign\(rows, \{ truncated/);
+});
+
+// A shared cache turns a local sort into a global reordering, so the callers
+// must derive rather than mutate. This is the cheap half of that contract:
+// the helper has to SAY so, because nothing else can enforce it.
+test('the shared helper states that its result is not to be mutated', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'utils', 'datastore.js'), 'utf8');
+  expect(src).toMatch(/IMMUTABLE/);
+});
+
+test('one scan is shared across the analytics pages', () => {
+  // The point of the shared column lists: six modules asking for six slightly
+  // different SELECTs meant six cache keys and six full scans of the same
+  // 30,000 rows.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'utils', 'datastore.js'), 'utf8');
+  expect(src).toMatch(/export const CASE_COLUMNS/);
+  expect(src).toMatch(/export const ACCUSED_COLUMNS/);
+  // Every column any caller needs must be in the shared list, or that caller
+  // silently reads undefined for it.
+  for (const col of ['CrimeNo', 'IncidentFromDate', 'CaseCategoryID', 'PolicePersonID',
+    'CourtID', 'CrimeMinorHeadID', 'GravityOffenceID']) {
+    expect(src.slice(src.indexOf('CASE_COLUMNS'), src.indexOf('ACCUSED_COLUMNS'))).toContain(col);
+  }
 });
 
 test('its ceiling clears the current dataset', () => {

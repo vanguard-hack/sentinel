@@ -27,21 +27,25 @@ function Card({ title, subtitle, wide, children }) {
    NOT on QuickML's own console metric, which scores a random split and is
    optimistic on a table of lag features. */
 const accuracyNote = (q) => (q
-  ? `QuickML · typical error ±${q.mae} ${q.unit} (${q.mape}% ) · ${q.skillPct}% better than the seasonal baseline`
+  ? `QuickML · monthly · typical error ±${q.mae} ${q.unit} (${q.mape}%) · `
+    + `${q.skillPct}% better than a flat average`
   : 'QuickML');
 
 const TierChip = ({ tier }) => (
   <span className={`fc-tier fc-tier-${tier.toLowerCase()}`}>{tier}</span>
 );
 
+// The models are MONTHLY, so a horizon is a count of months. 30/60/90 days
+// map to 1/2/3; the pipelines return 6, which leaves slack because the dataset
+// ends before today and the first months of the forecast are already history.
 const HORIZONS = [
-  { label: '30 days', weeks: 4 },
-  { label: '60 days', weeks: 9 },
-  { label: '90 days', weeks: 13 },
+  { label: '30 days', months: 1 },
+  { label: '60 days', months: 2 },
+  { label: '90 days', months: 3 },
 ];
 
 // Trim long histories so the forecast horizon stays readable on screen.
-const tail = (series, n = 40) => series.slice(-n);
+const tail = (series, n = 24) => series.slice(-n);
 
 export default function Forecasts() {
   const [data, setData] = useState(null);   // { cases, accused } — risk & anomaly cards
@@ -104,8 +108,8 @@ export default function Forecasts() {
   }, [data]);
 
   /* The three volume charts, straight from the deployed models. `horizon`
-     trims the prediction to 4, 9 or 13 weeks — the models always return all
-     13, so changing the horizon re-slices rather than re-predicting, and costs
+     trims the prediction to 1, 2 or 3 months — the models always return all
+     6, so changing the horizon re-slices rather than re-predicting, and costs
      no extra inference. */
   const charts = useMemo(() => {
     if (!fc) return null;
@@ -115,7 +119,7 @@ export default function Forecasts() {
       return {
         history: tail(c.history),
         fc: c.forecast
-          ? { points: c.forecast.points.slice(0, horizon.weeks) }
+          ? { points: c.forecast.points.slice(0, horizon.months) }
           : null,
       };
     };
@@ -207,10 +211,10 @@ export default function Forecasts() {
           <>
             <Card
               title="FIR volume forecast"
-              subtitle={`Weekly registrations, all Karnataka · ${accuracyNote(fc.total.quality)} · ${fc.total.quality.derivation}`}
+              subtitle={`Monthly registrations, all Karnataka · ${accuracyNote(fc.total.quality)}`}
               wide
             >
-              <ForecastChart history={charts.overall.history} forecast={charts.overall.fc} labelEvery={labelEvery(charts.overall)} />
+              <ForecastChart history={charts.overall.history} forecast={charts.overall.fc} labelEvery={labelEvery(charts.overall)} unit="months" />
             </Card>
 
             <div className="fc-duo">
@@ -219,7 +223,7 @@ export default function Forecasts() {
                   {heads.map((h) => <option key={h.key} value={h.key}>{h.label}</option>)}
                 </select>
                 {charts.byHead
-                  ? <ForecastChart history={charts.byHead.history} forecast={charts.byHead.fc} labelEvery={labelEvery(charts.byHead)} height={300} />
+                  ? <ForecastChart history={charts.byHead.history} forecast={charts.byHead.fc} labelEvery={labelEvery(charts.byHead)} height={300} unit="months" />
                   : <div className="rp-empty">No forecast for this crime head.</div>}
               </Card>
 
@@ -228,7 +232,7 @@ export default function Forecasts() {
                   {districts.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
                 </select>
                 {charts.byDistrict
-                  ? <ForecastChart history={charts.byDistrict.history} forecast={charts.byDistrict.fc} labelEvery={labelEvery(charts.byDistrict)} height={300} />
+                  ? <ForecastChart history={charts.byDistrict.history} forecast={charts.byDistrict.fc} labelEvery={labelEvery(charts.byDistrict)} height={300} unit="months" />
                   : <div className="rp-empty">No forecast for this district.</div>}
               </Card>
             </div>

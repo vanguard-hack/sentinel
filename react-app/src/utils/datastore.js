@@ -219,6 +219,31 @@ export async function fetchPage({ table, page = 1, perPage = 50, column = 'ALL',
 // Fetch every row of a table (paginated at the ZCQL per-query cap). Used by
 // the Excel export; `cap` is a safety limit per table.
 
+/* ── The analytics read cache ────────────────────────────────────────────────
+ *
+ * Every analytics page — the home bento, all five AI Analytics tabs, Custody,
+ * Crime Links — reads the SAME handful of tables in full and derives different
+ * things from them. Each was re-reading all 30,000 cases from scratch on every
+ * mount, so moving between two tabs cost two full table scans and the page sat
+ * on a spinner for ten to fifteen seconds each time.
+ *
+ * The FIR data is read-only in this product: nothing in the app writes to
+ * CaseMaster, Accused or Unit. A read is therefore safe to reuse, and the only
+ * question is for how long.
+ *
+ * `inflight` is the half that matters most for tab-switching. Two components
+ * mounting at once used to issue two identical scans; now the second waits on
+ * the first instead of doubling the load.
+ */
+const CACHE_TTL_MS = 15 * 60 * 1000;
+const queryCache = new Map();   // key -> { at, rows }
+const inflight = new Map();     // key -> Promise<rows>
+
+export function clearQueryCache() {
+  queryCache.clear();
+  inflight.clear();
+}
+
 /**
  * Page a query to the end, or to a stated bound — and SAY which.
  *
@@ -231,19 +256,94 @@ export async function fetchPage({ table, page = 1, perPage = 50, column = 'ALL',
  * A truncated read is not a smaller answer, it is a different one. So the
  * result carries `truncated` and `cap`, and the caller is expected to say so on
  * screen rather than quietly present a partial figure as a total.
+ *
+ * Pages are fetched CONCURRENTLY. 30,000 rows at 300 a page is 100 round
+ * trips; run one after another at ~100ms each that is ten seconds of waiting
+ * for data the server was ready to hand over all at once.
+ *
+ * CALLERS MUST TREAT THE RESULT AS IMMUTABLE. It is shared with every other
+ * caller of the same query, so sorting it in place or writing a field onto a
+ * row would silently reorder or corrupt another page's data. Derive with map
+ * and build new objects; never assign onto a returned row.
  */
-export async function pageQuery(baseSql, table, { cap = 60000, page = 300 } = {}) {
-  const rows = [];
-  let truncated = false;
-  for (let off = 0; off < cap; off += page) {
-    // eslint-disable-next-line no-await-in-loop
-    const got = await runQuery(`${baseSql} LIMIT ${off}, ${page}`, table);
-    rows.push(...got);
-    if (got.length < page) return Object.assign(rows, { truncated: false, cap });
-    if (off + page >= cap) truncated = true;
+export async function pageQuery(baseSql, table, {
+  cap = 60000, page = 300, concurrency = 8, cache = true,
+} = {}) {
+  const key = `${table}|${baseSql}|${cap}|${page}`;
+
+  if (cache) {
+    const hit = queryCache.get(key);
+    if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.rows;
+    const pending = inflight.get(key);
+    if (pending) return pending;
   }
-  return Object.assign(rows, { truncated, cap });
+
+  const run = (async () => {
+    const rows = [];
+    let truncated = false;
+    let done = false;
+
+    for (let start = 0; start < cap && !done; start += page * concurrency) {
+      const offsets = [];
+      for (let i = 0; i < concurrency; i += 1) {
+        const off = start + i * page;
+        if (off >= cap) break;
+        offsets.push(off);
+      }
+      // eslint-disable-next-line no-await-in-loop
+      const batch = await Promise.all(
+        offsets.map((off) => runQuery(`${baseSql} LIMIT ${off}, ${page}`, table))
+      );
+      for (const got of batch) {
+        rows.push(...got);
+        // A short page is the end of the table. Later pages in this same batch
+        // are past it and are discarded rather than appended, which is why the
+        // loop stops here instead of finishing the batch.
+        if (got.length < page) { done = true; break; }
+      }
+      if (!done && start + page * concurrency >= cap) truncated = true;
+    }
+    return Object.assign(rows, { truncated, cap });
+  })();
+
+  if (!cache) return run;
+
+  inflight.set(key, run);
+  try {
+    const rows = await run;
+    queryCache.set(key, { at: Date.now(), rows });
+    return rows;
+  } finally {
+    inflight.delete(key);
+  }
 }
+
+/* ── Shared analytics reads ──────────────────────────────────────────────────
+ *
+ * Six modules — the home bento, four AI Analytics tabs and the custody
+ * registry — each scanned CaseMaster and Accused with a slightly different
+ * column list. Different SQL means a different cache key, so every tab paid
+ * for its own full scan of the same 30,000 rows and the cache never helped
+ * across them.
+ *
+ * These two queries are the UNION of what those callers ask for, so the first
+ * tab to load warms all the others. Extra columns cost little; a second scan
+ * of the whole table costs seconds.
+ *
+ * BriefFacts is deliberately absent. Only case linkage needs it, and it is
+ * free text on every one of 30,000 rows — carrying it here would make five
+ * pages pay for one page's feature. That module keeps its own query.
+ */
+export const CASE_COLUMNS = 'CaseMasterID, CrimeNo, CrimeRegisteredDate, '
+  + 'IncidentFromDate, PoliceStationID, CrimeMajorHeadID, CrimeMinorHeadID, '
+  + 'CaseStatusID, GravityOffenceID, CaseCategoryID, PolicePersonID, CourtID';
+export const ACCUSED_COLUMNS = 'AccusedMasterID, CaseMasterID, PersonID, '
+  + 'AccusedName, AgeYear, GenderID';
+
+export const fetchSharedCases = () =>
+  pageQuery(`SELECT ${CASE_COLUMNS} FROM CaseMaster`, 'CaseMaster', { cap: 60000 });
+export const fetchSharedAccused = () =>
+  pageQuery(`SELECT ${ACCUSED_COLUMNS} FROM Accused`, 'Accused', { cap: 60000 });
 
 export async function fetchAllRows(table, { cap = 10000 } = {}) {
   const out = [];

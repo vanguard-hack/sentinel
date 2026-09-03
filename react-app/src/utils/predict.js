@@ -17,24 +17,20 @@
 // Fairness: no protected attributes (religion/caste/gender) are ever used as
 // features; outputs are decision support for humans, not automated targeting.
 
-import { runQuery } from './datastore';
+import { pageQuery, fetchSharedCases, fetchSharedAccused } from './datastore';
 
-const PAGE = 300;
-
-async function fetchAll(sql, table) {
-  const out = [];
-  for (let off = 0; off < 20000; off += PAGE) {
-    const rows = await runQuery(`${sql} LIMIT ${off}, ${PAGE}`, table);
-    out.push(...rows);
-    if (rows.length < PAGE) break;
-  }
-  return out;
-}
+// Was a private sequential pager capped at 20,000 rows. Two problems: the cap
+// silently dropped a third of a 30,000-case dataset, so every risk score and
+// anomaly on this page was computed from partial data and captioned as a
+// total; and reading a table 300 rows at a time in series is where the ten-
+// second load came from. pageQuery reads concurrently, caps high enough to
+// reach the end, and shares its cache with every other analytics page.
+const fetchAll = (sql, table) => pageQuery(sql, table, { cap: 60000 });
 
 export async function fetchPredictData() {
   const [caseRows, accusedRows, unitRows, districtRows, headRows] = await Promise.all([
-    fetchAll('SELECT CaseMasterID, CrimeRegisteredDate, PoliceStationID, CrimeMajorHeadID, GravityOffenceID FROM CaseMaster', 'CaseMaster'),
-    fetchAll('SELECT CaseMasterID, PersonID, AccusedName FROM Accused', 'Accused'),
+    fetchSharedCases(),
+    fetchSharedAccused(),
     fetchAll('SELECT UnitID, DistrictID FROM Unit', 'Unit'),
     fetchAll('SELECT DistrictID, DistrictName FROM District', 'District'),
     fetchAll('SELECT CrimeHeadID, CrimeGroupName FROM CrimeHead', 'CrimeHead'),
@@ -310,23 +306,29 @@ export async function fetchForecasts() {
 
 // Bundle point -> the shape ForecastChart draws. A horizon whose model call
 // failed arrives as null and is dropped rather than plotted as zero, which
-// would read as "we predict no crime that week".
-const WEEK_MS = 7 * 86400000;
+// would read as "we predict no crime that month".
+//
+// The models forecast MONTHLY, not weekly. Counts carry Poisson noise growing
+// as the square root of the level while the seasonal signal grows with the
+// level, so at ~5 FIRs per district-week the signal sits underneath the noise
+// and every model lost to a flat average. Monthly buckets are what make these
+// forecasts beat a straight line at all.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthLabel = (ym) =>
+  `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(2, 4)}`;
+const monthTs = (ym) => Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, 1);
+
 export function toChartSeries(entry) {
   if (!entry) return null;
   const history = (entry.history || []).map((p) => ({
-    ts: Date.parse(`${p.week}T00:00:00Z`),
-    label: weekLabel(Date.parse(`${p.week}T00:00:00Z`)),
-    value: p.value,
+    ts: monthTs(p.month), label: monthLabel(p.month), value: p.value,
   }));
   const points = (entry.forecast || [])
     .filter((p) => p.value !== null && p.value !== undefined)
     .map((p) => ({
-      ts: Date.parse(`${p.week}T00:00:00Z`),
-      label: weekLabel(Date.parse(`${p.week}T00:00:00Z`)),
-      value: p.value,
-      lo: p.lo,
-      hi: p.hi,
+      ts: monthTs(p.month), label: monthLabel(p.month),
+      value: p.value, lo: p.lo, hi: p.hi,
     }));
-  return { history, forecast: points.length ? { points } : null, WEEK_MS };
+  return { history, forecast: points.length ? { points } : null };
 }
