@@ -285,3 +285,48 @@ export function detectAnomalies(cases, { z = 2, recentWeeks = 4 } = {}) {
   });
   return [...best.values()].sort((a, b) => b.z - a.z);
 }
+
+// ── Live forecasts from the deployed QuickML models ──────────────────────────
+//
+// The three volume charts are NOT computed here. They come from two QuickML
+// regression pipelines (crime head, district) via /server/rag/forecast, which
+// assembles all 41 series plus the force-wide total and caches the bundle —
+// see functions/rag/forecast.js for why it is cached and why the total is a
+// sum of districts rather than a model of its own.
+//
+// Holt smoothing below is still used for the district-risk table's "predicted
+// next 4 weeks" column, which is a ranking aid rather than a published
+// forecast.
+export async function fetchForecasts() {
+  const res = await fetch('/server/rag/forecast', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Forecast service returned HTTP ${res.status}`);
+  return data;
+}
+
+// Bundle point -> the shape ForecastChart draws. A horizon whose model call
+// failed arrives as null and is dropped rather than plotted as zero, which
+// would read as "we predict no crime that week".
+const WEEK_MS = 7 * 86400000;
+export function toChartSeries(entry) {
+  if (!entry) return null;
+  const history = (entry.history || []).map((p) => ({
+    ts: Date.parse(`${p.week}T00:00:00Z`),
+    label: weekLabel(Date.parse(`${p.week}T00:00:00Z`)),
+    value: p.value,
+  }));
+  const points = (entry.forecast || [])
+    .filter((p) => p.value !== null && p.value !== undefined)
+    .map((p) => ({
+      ts: Date.parse(`${p.week}T00:00:00Z`),
+      label: weekLabel(Date.parse(`${p.week}T00:00:00Z`)),
+      value: p.value,
+      lo: p.lo,
+      hi: p.hi,
+    }));
+  return { history, forecast: points.length ? { points } : null, WEEK_MS };
+}

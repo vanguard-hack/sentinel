@@ -106,8 +106,20 @@ def build():
             'n_complainants': complainants.get(cid, 0),
             'n_arrests': arrests.get(cid, 0),
             'arrest_made': 1 if arrests.get(cid, 0) else 0,
-            'accused_age_mean': round(sum(acc_age[cid]) / len(acc_age[cid]), 1) if acc_age[cid] else '',
-            'victim_age_mean': round(sum(vic_age[cid]) / len(vic_age[cid]), 1) if vic_age[cid] else '',
+            # 0, not blank. A case with no accused recorded has no mean age,
+            # and QuickML refuses a dataset with empty cells outright — it
+            # validates before the algorithm ever sees the data, so LightGBM's
+            # native NaN handling never gets a chance to apply.
+            #
+            # Filling these costs nothing, which is worth showing rather than
+            # asserting: the blanks are EXACTLY the rows where n_accused == 0
+            # (5,200 of them, no exceptions) and n_victims == 0 (5,895). Those
+            # counts are their own columns, so the "nobody was identified"
+            # signal — the strongest one in the data, 42.9% charged against
+            # 78.9% — survives intact. Age is simply undefined here, and 0 is
+            # a value no real age takes.
+            'accused_age_mean': round(sum(acc_age[cid]) / len(acc_age[cid]), 1) if acc_age[cid] else 0,
+            'victim_age_mean': round(sum(vic_age[cid]) / len(vic_age[cid]), 1) if vic_age[cid] else 0,
             'station_caseload': ps_total[c['PoliceStationID']],
             'io_caseload': io_total[c['PolicePersonID']],
             'case_age_days': (TODAY - reg).days,

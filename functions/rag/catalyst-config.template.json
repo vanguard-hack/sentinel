@@ -11,7 +11,9 @@
 			"GROQ_API_KEY": "<groq-api-key>",
 			"SUPPORT_EMAIL": "<help-center-recipient-email>",
 			"SMTP_USER": "<gmail-address-for-sending>",
-			"SMTP_PASS": "<gmail-app-password — Google Account > Security > App passwords>"
+			"SMTP_PASS": "<gmail-app-password — Google Account > Security > App passwords>",
+			"QUICKML_KEY_CRIMEHEAD": "<quickml endpoint key — crime-head volume pipeline>",
+			"QUICKML_KEY_DISTRICT": "<quickml endpoint key — district volume pipeline>"
 		}
 	},
 	"execution": {

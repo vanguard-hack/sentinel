@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { RefreshCw, AlertTriangle, Siren } from 'lucide-react';
 import {
-  fetchPredictData, weeklyCounts, holtForecast, districtRisk, offenderRisk, detectAnomalies,
+  fetchPredictData, fetchForecasts, toChartSeries,
+  districtRisk, offenderRisk, detectAnomalies,
 } from '../utils/predict';
 import { ForecastChart } from './Charts';
 import BarList from './charts/BarColumns';
@@ -18,6 +19,17 @@ function Card({ title, subtitle, wide, children }) {
   );
 }
 
+/* What the number on screen is worth, in the card subtitle.
+   `skillPct` is the model's improvement over the better of the two baselines a
+   forecaster has to beat — repeating last week, and repeating the same week
+   last year. A model that cannot beat both is not adding information, so the
+   figure is published rather than buried. Measured on a held-out time split,
+   NOT on QuickML's own console metric, which scores a random split and is
+   optimistic on a table of lag features. */
+const accuracyNote = (q) => (q
+  ? `QuickML · typical error ±${q.mae} ${q.unit} (${q.mape}% ) · ${q.skillPct}% better than the seasonal baseline`
+  : 'QuickML');
+
 const TierChip = ({ tier }) => (
   <span className={`fc-tier fc-tier-${tier.toLowerCase()}`}>{tier}</span>
 );
@@ -32,7 +44,9 @@ const HORIZONS = [
 const tail = (series, n = 40) => series.slice(-n);
 
 export default function Forecasts() {
-  const [data, setData] = useState(null); // { cases, accused }
+  const [data, setData] = useState(null);   // { cases, accused } — risk & anomaly cards
+  const [fc, setFc] = useState(null);       // live QuickML bundle — the three charts
+  const [fcError, setFcError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [horizon, setHorizon] = useState(HORIZONS[1]);
@@ -44,33 +58,37 @@ export default function Forecasts() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      setData(await fetchPredictData());
-    } catch (e) {
-      setError(e.message || String(e));
-    } finally {
-      setLoading(false);
-    }
+    setFcError(null);
+    // The two loads are independent: the risk and anomaly cards are computed
+    // in the browser from case data, while the three volume charts come from
+    // the models. A model outage must not blank the rest of the page, so the
+    // forecast failure is captured rather than thrown.
+    const [caseData, bundle] = await Promise.all([
+      fetchPredictData().catch((e) => { setError(e.message || String(e)); return null; }),
+      fetchForecasts().catch((e) => { setFcError(e.message || String(e)); return null; }),
+    ]);
+    if (caseData) setData(caseData);
+    if (bundle) setFc(bundle);
+    setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const heads = useMemo(
-    () => (data ? [...new Set(data.cases.map((c) => c.head))].sort() : []),
-    [data]
-  );
-  const districts = useMemo(
-    () => (data ? [...new Set(data.cases.map((c) => c.district))].filter((d) => d !== 'Unknown').sort() : []),
-    [data]
-  );
-  useEffect(() => { if (heads.length && !head) setHead(heads[0]); }, [heads, head]);
-  useEffect(() => { if (districts.length && !district) setDistrict(districts[0]); }, [districts, district]);
+  // Options come from the MODEL, not from the case list: a series the model
+  // was never trained on cannot be forecast, so offering it would produce an
+  // empty chart with no explanation.
+  const opts = (table) => (fc && fc[table]
+    ? Object.values(fc[table].series)
+      .map((s) => ({ key: s.key, label: s.label }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+    : []);
+  const heads = useMemo(() => opts('crimehead'), [fc]);        // eslint-disable-line react-hooks/exhaustive-deps
+  const districts = useMemo(() => opts('district'), [fc]);     // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (heads.length && !head) setHead(heads[0].key); }, [heads, head]);
+  useEffect(() => { if (districts.length && !district) setDistrict(districts[0].key); }, [districts, district]);
 
   const model = useMemo(() => {
     if (!data) return null;
     const { cases, accused } = data;
-    const overallSeries = weeklyCounts(cases.map((c) => c.ts));
-    const headSeries = weeklyCounts(cases.filter((c) => c.head === head).map((c) => c.ts));
-    const districtSeries = weeklyCounts(cases.filter((c) => c.district === district).map((c) => c.ts));
     const offenders = offenderRisk(cases, accused);
     const scoreDist = [
       { label: '0–19', value: 0 }, { label: '20–39', value: 0 },
@@ -78,15 +96,35 @@ export default function Forecasts() {
     ];
     offenders.forEach((o) => { scoreDist[Math.min(3, Math.floor(o.score / 20))].value++; });
     return {
-      overall: { history: tail(overallSeries), fc: holtForecast(overallSeries, horizon.weeks) },
-      byHead: { history: tail(headSeries), fc: holtForecast(headSeries, horizon.weeks) },
-      byDistrict: { history: tail(districtSeries), fc: holtForecast(districtSeries, horizon.weeks) },
       risk: districtRisk(cases),
       offenders: offenders.slice(0, 10),
       scoreDist,
       alerts: detectAnomalies(cases),
     };
-  }, [data, head, district, horizon]);
+  }, [data]);
+
+  /* The three volume charts, straight from the deployed models. `horizon`
+     trims the prediction to 4, 9 or 13 weeks — the models always return all
+     13, so changing the horizon re-slices rather than re-predicting, and costs
+     no extra inference. */
+  const charts = useMemo(() => {
+    if (!fc) return null;
+    const cut = (entry) => {
+      const c = toChartSeries(entry);
+      if (!c) return null;
+      return {
+        history: tail(c.history),
+        fc: c.forecast
+          ? { points: c.forecast.points.slice(0, horizon.weeks) }
+          : null,
+      };
+    };
+    return {
+      overall: cut(fc.total),
+      byHead: cut(fc.crimehead && fc.crimehead.series[head]),
+      byDistrict: cut(fc.district && fc.district.series[district]),
+    };
+  }, [fc, head, district, horizon]);
 
   if (error) {
     return (
@@ -152,29 +190,50 @@ export default function Forecasts() {
       </div>
 
       <div className="rp-grid">
-        <Card
-          title="FIR volume forecast"
-          subtitle={`Weekly registrations, all Karnataka · Holt exponential smoothing (α=${model.overall.fc?.alpha ?? '—'}, β=${model.overall.fc?.beta ?? '—'})`}
-          wide
-        >
-          <ForecastChart history={model.overall.history} forecast={model.overall.fc} labelEvery={labelEvery(model.overall)} />
-        </Card>
-
-        <div className="fc-duo">
-          <Card title="Forecast by crime head" subtitle="Weekly registrations for one crime group">
-            <select className="cf-select fc-select" value={head} onChange={(e) => setHead(e.target.value)}>
-              {heads.map((h) => <option key={h} value={h}>{h}</option>)}
-            </select>
-            <ForecastChart history={model.byHead.history} forecast={model.byHead.fc} labelEvery={labelEvery(model.byHead)} height={300} />
+        {fcError && (
+          <Card title="FIR volume forecast" wide>
+            <div className="cf-state cf-error">
+              <AlertTriangle size={22} />
+              <p>
+                The forecasting models are unavailable, so no prediction is shown.
+                <br /><span className="rp-card-sub">{fcError}</span>
+              </p>
+              <button className="cf-retry" onClick={load}>Retry</button>
+            </div>
           </Card>
+        )}
 
-          <Card title="Forecast by district" subtitle="Weekly registrations for one district">
-            <select className="cf-select fc-select" value={district} onChange={(e) => setDistrict(e.target.value)}>
-              {districts.map((d) => <option key={d} value={d}>{d}</option>)}
-            </select>
-            <ForecastChart history={model.byDistrict.history} forecast={model.byDistrict.fc} labelEvery={labelEvery(model.byDistrict)} height={300} />
-          </Card>
-        </div>
+        {charts && (
+          <>
+            <Card
+              title="FIR volume forecast"
+              subtitle={`Weekly registrations, all Karnataka · ${accuracyNote(fc.total.quality)} · ${fc.total.quality.derivation}`}
+              wide
+            >
+              <ForecastChart history={charts.overall.history} forecast={charts.overall.fc} labelEvery={labelEvery(charts.overall)} />
+            </Card>
+
+            <div className="fc-duo">
+              <Card title="Forecast by crime head" subtitle={accuracyNote(fc.crimehead.quality)}>
+                <select className="cf-select fc-select" value={head} onChange={(e) => setHead(e.target.value)}>
+                  {heads.map((h) => <option key={h.key} value={h.key}>{h.label}</option>)}
+                </select>
+                {charts.byHead
+                  ? <ForecastChart history={charts.byHead.history} forecast={charts.byHead.fc} labelEvery={labelEvery(charts.byHead)} height={300} />
+                  : <div className="rp-empty">No forecast for this crime head.</div>}
+              </Card>
+
+              <Card title="Forecast by district" subtitle={accuracyNote(fc.district.quality)}>
+                <select className="cf-select fc-select" value={district} onChange={(e) => setDistrict(e.target.value)}>
+                  {districts.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+                </select>
+                {charts.byDistrict
+                  ? <ForecastChart history={charts.byDistrict.history} forecast={charts.byDistrict.fc} labelEvery={labelEvery(charts.byDistrict)} height={300} />
+                  : <div className="rp-empty">No forecast for this district.</div>}
+              </Card>
+            </div>
+          </>
+        )}
 
         {/* District risk board */}
         <Card

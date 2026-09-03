@@ -65,6 +65,19 @@ jobs:
           python3 enrich_personnel.py
           wc -l CaseMaster.csv Accused.csv Employee.csv
 
+      # forecast_features.json IS committed — the function needs it at runtime
+      # and cannot regenerate it, since ksp/*.csv never ships. That makes it
+      # the one derived artifact that can drift: regenerate the dataset without
+      # re-exporting, and the deployed models get feature rows describing data
+      # they were not trained on. Nothing would error; the forecasts would
+      # quietly be wrong. So the export is re-run and the result must match
+      # what is checked in.
+      - name: Check the forecast feature table matches the dataset
+        run: |
+          python3 ksp/ml/export_forecast_data.py
+          git diff --exit-code -- functions/rag/forecast_features.json \
+            || { echo "::error::forecast_features.json is stale — run ksp/ml/export_forecast_data.py and commit the result"; exit 1; }
+
       - name: Run backend test suites
         working-directory: functions/rag
         # Every *.test.js in the function, so a new suite is picked up without

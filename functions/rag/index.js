@@ -10,6 +10,7 @@ const assistantTools = require('./tools');
 const integrity = require('./integrity');
 const grounding = require('./grounding');
 const guard = require('./guard');
+const forecasting = require('./forecast');
 const i18n = require('./i18n');
 const statutory = require('./statutory');
 const legalKb = require('./legal_kb.json');
@@ -1960,8 +1961,217 @@ function rateLimited(key, max) {
 
 // Routes that cost money per call: Zoho transcription and OCR, SmartBrowz PDF
 // rendering, and every lane that reaches an LLM.
-const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|digitise\/(upload|ingest))$/;
+const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|predict\/[a-z]+|forecast(\/refresh)?|digitise\/(upload|ingest))$/;
 const isAdminUser = (u) => /admin/i.test(u?.role_details?.role_name || '');
+
+/* ── Case prediction (QuickML) ───────────────────────────────────────────────
+   POST /server/rag/predict/chargesheet  { cases: [ {…features}, … ] }
+
+   Serves the trained QuickML models. Three things shape this handler, and none
+   of them is optional.
+
+   COST. QuickML inference is billed per call: 500/month free, then $0.0025.
+   A dashboard that predicted per row on every render would spend the monthly
+   allowance in a single sitting, so callers send a BATCH and the answers are
+   cached by feature-hash. A repeat view of the same case costs nothing.
+
+   TRUST. The model is ~82% accurate, which means roughly one in five of these
+   is wrong. Every response carries the model version and the likelihood, and
+   the UI is expected to show them — a bare "unlikely to be charged" with no
+   confidence and no provenance is exactly the kind of output an officer
+   cannot argue with and should not have to.
+
+   FEATURES. The 21 keys must match the training columns EXACTLY, including
+   case and order-insensitivity of absent keys: QuickML returns null rather
+   than an error when a name does not match, which fails silently. FEATURES
+   below is the contract, and it is checked rather than assumed.
+   ───────────────────────────────────────────────────────────────────────── */
+const QUICKML_PREDICT_URL =
+  process.env.QUICKML_PREDICT_URL ||
+  'https://api.catalyst.zoho.in/quickml/v1/project/49826000000024269/endpoints/predict';
+
+/* Every QuickML model this app serves, in one place.
+
+   `features` is the CONTRACT with the training table. QuickML answers null
+   rather than erroring when a feature name does not match, so a typo here
+   fails silently and looks like a bad model. The lists below are the exact
+   columns ksp/ml/export_training_data.py and export_forecast_data.py write.
+
+   `key` names an env var rather than holding the secret, and each model has
+   its own endpoint key — a leaked key is then one model, not all of them. */
+const QUICKML_MODELS = {
+  chargesheet: {
+    keyEnv: 'QUICKML_KEY_CHARGESHEET',
+    kind: 'classification',
+    features: ['crime_major_head', 'crime_minor_head', 'case_category', 'gravity',
+      'police_station', 'district', 'incident_hour', 'incident_weekday',
+      'reg_month', 'reg_year', 'report_delay_days', 'n_accused', 'n_victims',
+      'n_complainants', 'n_arrests', 'arrest_made', 'accused_age_mean',
+      'victim_age_mean', 'station_caseload', 'io_caseload', 'case_age_days'],
+    // Reported so the UI can say what a prediction is worth. Roughly one in
+    // five is wrong, and a screen that hides that is worse than no model.
+    quality: { accuracy: 0.8187, baseline: 0.726 },
+  },
+  // The two crime-volume FORECAST models used to live here, keyed on a bare
+  // period_date. They no longer do. Forecasting moved to forecast.js, which
+  // serves all 10 crime heads and all 31 districts from two direct
+  // multi-horizon regression pipelines instead of one series per pipeline.
+  // Their endpoint keys were reissued with it, so leaving the old entries
+  // would have pointed a live route at a contract the models no longer speak.
+};
+
+/* A forecast date must land on a period the model was trained on. The weekly
+   models are bucketed to ISO-week Mondays, so a Wednesday would either be
+   rejected or silently interpolated depending on the engine's mood. */
+function snapPeriod(dateStr, grain) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''));
+  if (!m) return null;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  if (Number.isNaN(d.getTime())) return null;
+  if (grain === 'week') {
+    const dow = (d.getUTCDay() + 6) % 7;       // 0 = Monday
+    d.setUTCDate(d.getUTCDate() - dow);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+const predictCache = new Map(); // model|features -> { at, value }
+const PREDICT_TTL_MS = 6 * 60 * 60 * 1000;
+
+async function quickmlPredict(model, features, explain) {
+  const key = process.env[model.keyEnv];
+  if (!key) throw new Error(`${model.keyEnv} is not configured`);
+  const token = await getAccessToken();
+  const r = await fetch(`${QUICKML_PREDICT_URL}${explain ? '?explainModel=true' : ''}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-QUICKML-ENDPOINT-KEY': key,
+      Authorization: `Zoho-oauthtoken ${token}`,
+      'CATALYST-ORG': ORG,
+      Environment: process.env.QUICKML_ENV || 'Development',
+    },
+    body: JSON.stringify({ data: features }),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`quickml ${r.status}: ${JSON.stringify(body).slice(0, 240)}`);
+  return body;
+}
+
+/* POST /server/rag/predict/<model>   { rows: [ {...}, ... ], explain?: bool }
+
+   COST is why this takes a batch and caches. QuickML inference bills per
+   call — 500/month free, then $0.0025 — so a screen that predicted per row on
+   every render would spend the month's allowance in one sitting. Answers are
+   cached by model + feature values; a repeat view costs nothing. */
+async function handlePredict(req, res, modelName) {
+  const model = QUICKML_MODELS[modelName];
+  if (!model) return json(res, 404, { error: `unknown model: ${modelName}` });
+
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const rows = Array.isArray(body.rows) ? body.rows : (Array.isArray(body.cases) ? body.cases : []);
+  if (!rows.length) return json(res, 400, { error: 'rows[] is required' });
+  if (rows.length > 50) return json(res, 400, { error: 'at most 50 rows per call' });
+  const explain = body.explain === true;
+
+  const now = Date.now();
+  const out = [];
+  let billed = 0;
+  for (const row of rows) {
+    const missing = model.features.filter((k) => row[k] === undefined || row[k] === null);
+    if (missing.length) {
+      out.push({ id: row.id ?? null, error: `missing: ${missing.join(', ')}` });
+      continue;
+    }
+    const feats = {};
+    for (const k of model.features) feats[k] = row[k];
+    if (model.kind === 'forecast') {
+      const snapped = snapPeriod(feats.period_date, model.grain);
+      if (!snapped) {
+        out.push({ id: row.id ?? null, error: 'period_date must be YYYY-MM-DD' });
+        continue;
+      }
+      feats.period_date = snapped;
+    }
+    const ck = `${modelName}|${model.features.map((k) => feats[k]).join('|')}`;
+
+    const hit = predictCache.get(ck);
+    if (hit && now - hit.at < PREDICT_TTL_MS && !explain) {
+      out.push({ ...hit.value, id: row.id ?? null, cached: true });
+      continue;
+    }
+    try {
+      const r = await quickmlPredict(model, feats, explain);
+      const raw = Array.isArray(r.result) ? r.result[0] : null;
+      const value = model.kind === 'forecast'
+        ? { predicted: raw === null ? null : Number(raw), period: feats.period_date }
+        : { predicted: raw === null ? null : Number(raw), explanation: explain ? (r.explanation ?? null) : undefined };
+      billed += 1;
+      if (body.debugRaw === true) value.raw = r;
+      if (!explain && body.debugRaw !== true) predictCache.set(ck, { at: now, value });
+      out.push({ ...value, id: row.id ?? null, cached: false });
+    } catch (e) {
+      out.push({ id: row.id ?? null, error: String(e.message).slice(0, 200) });
+    }
+  }
+  return json(res, 200, { model: modelName, kind: model.kind, quality: model.quality,
+    predictions: out, billedCalls: billed });
+}
+
+/* POST /server/rag/forecast            { refresh?: true }
+   POST /server/rag/forecast/refresh
+
+   The Forecasts page in one call: force-wide volume, all 10 crime heads, all
+   31 districts, each with its history and its measured accuracy.
+
+   WHY IT IS CACHED IN STRATUS. A full build is 533 QuickML calls (41 series x
+   13 weeks), billed per call. Rendering that per page view would spend the
+   monthly allowance in a sitting, and an in-memory cache dies with the
+   container. The bundle is keyed by the origin week, so a cached copy is not
+   stale — the dataset ends where it ends, and the forecast from that origin
+   does not move until the data does.
+
+   A refresh re-runs every model call, so it is admin-only. */
+async function handleForecast(req, res, forceRefresh) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const key = forecasting.CACHE_KEY();
+  const refresh = forceRefresh || body.refresh === true;
+
+  if (refresh) {
+    const caller = await requestUser(app);
+    if (!isAdminUser(caller)) return json(res, 403, { error: 'admin only' });
+  } else {
+    try {
+      const cached = JSON.parse((await streamToString(await bucket.getObject(key))) || 'null');
+      if (cached && cached.origin_week) {
+        return json(res, 200, { ...cached, cached: true, billedCalls: 0 });
+      }
+    } catch { /* no cache yet — fall through and build one */ }
+  }
+
+  let bundle;
+  try {
+    bundle = await forecasting.buildBundle(await getAccessToken());
+  } catch (e) {
+    return json(res, 503, {
+      error: `Forecast models unavailable: ${String(e.message).slice(0, 200)}`,
+    });
+  }
+
+  // A bundle where every call failed is a broken endpoint, not a forecast.
+  // Caching it would pin the failure until someone thought to refresh.
+  const anyValue = bundle.total.forecast.some((p) => p.value !== null);
+  if (anyValue) {
+    try {
+      await bucket.putObject(key, Buffer.from(JSON.stringify(bundle), 'utf8'));
+    } catch (e) {
+      console.error('forecast cache write failed (non-fatal):', e && e.message);
+    }
+  }
+  return json(res, anyValue ? 200 : 503, { ...bundle, cached: false });
+}
 
 async function handleAccess(req, res, action) {
   const body = JSON.parse((await readBody(req)) || '{}');
@@ -4182,6 +4392,12 @@ module.exports = async (req, res) => {
     if (path.endsWith('/transcribe')) return await handleTranscribe(req, res);
     if (path.endsWith('/report-pdf')) return await handleReportPdf(req, res);
     if (path.endsWith('/support')) return await handleSupport(req, res);
+    if (path.endsWith('/forecast/refresh')) return await handleForecast(req, res, true);
+    if (path.endsWith('/forecast')) return await handleForecast(req, res, false);
+    {
+      const pm = path.match(/\/predict\/([a-z]+)$/);
+      if (pm) return await handlePredict(req, res, pm[1]);
+    }
     if (path.endsWith('/custody/list')) return await handleCustody(req, res, 'list');
     if (path.endsWith('/custody/save')) return await handleCustody(req, res, 'save');
     if (path.endsWith('/custody/seed')) return await handleCustody(req, res, 'seed');
