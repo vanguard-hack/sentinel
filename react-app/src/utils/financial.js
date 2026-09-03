@@ -7,12 +7,11 @@
 // decision-support only — real deployment needs STR/CTR feeds (FIU-IND),
 // bank/UPI records, and legal authorisation.
 
-import { pageQuery, fetchSharedCases, fetchSharedAccused } from './datastore';
+import { fetchSharedCases, fetchSharedAccused, fetchSnapshotTable } from './datastore';
 
 // Paging lives in datastore.pageQuery, which reports when it stopped short.
 // Three modules each had their own copy of this loop with a different
 // ceiling, and at 30,000 cases all three silently truncated.
-const fetchAll = (baseSql, table) => pageQuery(baseSql, table, { cap: 60000 });
 
 const djb2 = (s) => {
   let h = 5381;
@@ -49,9 +48,9 @@ export async function fetchFinancialData() {
   const [caseRows, accusedRows, unitRows, districtRows, headRows] = await Promise.all([
     fetchSharedCases(),
     fetchSharedAccused(),
-    fetchAll('SELECT UnitID, DistrictID FROM Unit', 'Unit'),
-    fetchAll('SELECT DistrictID, DistrictName FROM District', 'District'),
-    fetchAll('SELECT CrimeHeadID, CrimeGroupName FROM CrimeHead', 'CrimeHead'),
+    fetchSnapshotTable('Unit'),
+    fetchSnapshotTable('District'),
+    fetchSnapshotTable('CrimeHead'),
   ]);
   const unitDistrict = new Map(unitRows.map((u) => [String(u.UnitID), String(u.DistrictID)]));
   const districtName = new Map(districtRows.map((d) => [String(d.DistrictID), d.DistrictName]));

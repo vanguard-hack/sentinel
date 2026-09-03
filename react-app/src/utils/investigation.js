@@ -159,6 +159,12 @@ export const appendInvestigationItem = async (caseMasterId, section, item, label
 };
 export const updateInvestigationItem = (caseMasterId, section, entryId, patch) =>
   post('/server/rag/investigation/update', { caseMasterId, section, entryId, patch }).then((d) => d.record);
+// Delete a WHOLE diary. deleteInvestigationItem removes one entry; there was
+// no way to remove a diary opened against the wrong case, so those stayed on
+// the list permanently.
+export const removeInvestigation = (caseMasterId) =>
+  post('investigation/remove', { caseMasterId });
+
 export const deleteInvestigationItem = (caseMasterId, section, entryId) =>
   post('/server/rag/investigation/delete', { caseMasterId, section, entryId }).then((d) => d.record);
 export const reorderInvestigationItems = (caseMasterId, section, orderedIds) =>

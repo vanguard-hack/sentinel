@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  NotebookPen, Search, X, Plus, AlertTriangle, ChevronRight, ChevronLeft, BookOpen,
+  NotebookPen, Search, X, Plus, AlertTriangle, ChevronRight, ChevronLeft, BookOpen, Trash2,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import {
   listInvestigations, createInvestigation, searchCases, fetchCaseSections,
-  statusColor, STATUS_OPTIONS,
+  removeInvestigation, statusColor, STATUS_OPTIONS,
 } from '../utils/investigation';
 import { loadPersonnel } from '../utils/personnel';
 import { useTranslation } from 'react-i18next';
@@ -168,11 +168,31 @@ export default function InvestigationDiary() {
   const gridRef = useRef(null);
   const [autoFit, setAutoFit] = useState(12);
   const [page, setPage] = useState(0);
+  // A diary is a statutory record, so deletion is confirmed against the crime
+  // number rather than fired straight off the card.
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(() => {
     listInvestigations().then(setCases).catch((e) => setError(e.message));
   }, []);
   useEffect(load, [load]);
+
+  const confirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      await removeInvestigation(pendingDelete.caseMasterId);
+      setCases((cs) => (cs || []).filter(
+        (c) => String(c.caseMasterId) !== String(pendingDelete.caseMasterId)
+      ));
+      setPendingDelete(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setDeleting(false);
+    }
+  }, [pendingDelete]);
 
   const shown = useMemo(() => {
     if (!cases) return [];
@@ -267,11 +287,26 @@ export default function InvestigationDiary() {
           </div>
         )}
 
+        {pendingDelete && (
+          <div className="inv-del-bar" role="alertdialog" aria-label="Confirm diary deletion">
+            <AlertTriangle size={16} />
+            <span>
+              Delete the diary for <strong>{pendingDelete.crimeNo || pendingDelete.caseMasterId}</strong>
+              {' '}and its {pendingDelete.diaryCount || 0} entr{pendingDelete.diaryCount === 1 ? 'y' : 'ies'}? This can’t be undone.
+            </span>
+            <button type="button" className="aa-btn" onClick={() => setPendingDelete(null)} disabled={deleting}>Cancel</button>
+            <button type="button" className="aa-btn danger" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? 'Deleting…' : 'Delete diary'}
+            </button>
+          </div>
+        )}
+
         {shown.length > 0 && (
           <div className={`inv-grid ${perPage === 'auto' ? 'fill' : ''}`} ref={gridRef}>
             {pageCases.map((c) => {
               return (
-                <button key={c.caseMasterId} className="inv-card" onClick={() => navigate(`/investigation-diary/${c.caseMasterId}`)}>
+                <div key={c.caseMasterId} className="inv-card-wrap">
+                <button className="inv-card" onClick={() => navigate(`/investigation-diary/${c.caseMasterId}`)}>
                   <div className="inv-card-top">
                     <span className="inv-card-crime">{c.crimeNo || `Case ${c.caseMasterId}`}</span>
                     <span className={`aa-chip inv-status-${statusColor(c.status)}`}>{c.status}</span>
@@ -286,6 +321,18 @@ export default function InvestigationDiary() {
                     <span>{t('diary.lastUpdated')}: {fmtDay(c.lastDiaryDate) || t('diary.none')}</span>
                   </div>
                 </button>
+                {/* Outside the card button — a button inside a button is
+                    invalid markup and the browser drops one of the two. */}
+                <button
+                  type="button"
+                  className="inv-card-del"
+                  title={`Delete the diary for ${c.crimeNo || c.caseMasterId}`}
+                  aria-label={`Delete the diary for ${c.crimeNo || c.caseMasterId}`}
+                  onClick={() => setPendingDelete(c)}
+                >
+                  <Trash2 size={14} />
+                </button>
+                </div>
               );
             })}
           </div>

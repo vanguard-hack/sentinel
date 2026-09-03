@@ -6,7 +6,7 @@
 // fetch the raw per-case rows ONCE, then compute every KPI and chart for the
 // selected window entirely client-side — so changing the range is instant and
 // filters the whole report, not just the trend chart.
-import { pageQuery, fetchSharedCases, fetchSharedAccused } from './datastore';
+import { fetchSharedCases, fetchSharedAccused, fetchSnapshotTable } from './datastore';
 
 const labelOf = (v) => {
   if (v === null || v === undefined || v === '') return '—';
@@ -16,11 +16,12 @@ const labelOf = (v) => {
 // The home bento reads the same tables as the AI Analytics tabs, so it pages
 // through the shared helper and shares their cached scan rather than making
 // its own sequential pass over 30,000 rows.
-const fetchAll = (sql, table) => pageQuery(sql, table, { cap: 60000 });
 
 // Fetch a master table once and return an id → name lookup function.
+// Master tables come from the analytics snapshot too, so these pages issue no
+// ZCQL from the browser at all — the whole page is a handful of blob reads.
 async function lookup(table, idCol, nameCol) {
-  const rows = await fetchAll(`SELECT ${idCol}, ${nameCol} FROM ${table}`, table);
+  const rows = await fetchSnapshotTable(table);
   const map = new Map(rows.map((r) => [String(r[idCol]), r[nameCol]]));
   return (id) => map.get(String(id)) || labelOf(id);
 }
@@ -254,13 +255,13 @@ export async function fetchReports() {
   const [caseRows, victimRows, accusedRows, arrestRows, csRows, asaRows, complRows, empRows] =
     await Promise.all([
       fetchSharedCases(),
-      fetchAll('SELECT CaseMasterID, VictimPolice FROM Victim', 'Victim'),
+      fetchSnapshotTable('Victim'),
       fetchSharedAccused(),
-      fetchAll('SELECT CaseMasterID, ArrestSurrenderTypeID, ArrestSurrenderDate FROM ArrestSurrender', 'ArrestSurrender'),
-      fetchAll('SELECT CaseMasterID, csdate FROM ChargesheetDetails', 'ChargesheetDetails'),
-      fetchAll('SELECT CaseMasterID, ActID, SectionID FROM ActSectionAssociation', 'ActSectionAssociation'),
-      fetchAll('SELECT CaseMasterID, AgeYear, GenderID, OccupationID FROM ComplainantDetails', 'ComplainantDetails'),
-      fetchAll('SELECT EmployeeID, FirstName, RankID, UnitID FROM Employee', 'Employee'),
+      fetchSnapshotTable('ArrestSurrender'),
+      fetchSnapshotTable('ChargesheetDetails'),
+      fetchSnapshotTable('ActSectionAssociation'),
+      fetchSnapshotTable('ComplainantDetails'),
+      fetchSnapshotTable('Employee'),
     ]);
 
   const day = (v) => String(v || '').slice(0, 10);

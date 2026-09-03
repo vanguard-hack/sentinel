@@ -12,17 +12,18 @@
 //
 // ZCQL has no joins and caps a query at ~300 rows, so everything is paged and
 // stitched client-side (see also utils/incidents.js).
-import { pageQuery, fetchSharedCases, fetchSharedAccused } from './datastore';
+import { fetchSharedCases, fetchSharedAccused, fetchSnapshotTable } from './datastore';
 
 const GENDER = { 1: 'M', 2: 'F', 3: 'T' };
 
 // Paging lives in datastore.pageQuery, which reports when it stopped short.
 // Three modules each had their own copy of this loop with a different
 // ceiling, and at 30,000 cases all three silently truncated.
-const fetchAll = (baseSql, table) => pageQuery(baseSql, table, { cap: 60000 });
 
-async function mapOf(table, idCol, cols) {
-  const rows = await fetchAll(`SELECT ${[idCol, ...cols].join(', ')} FROM ${table}`, table);
+// Master tables come from the analytics snapshot too, so these pages issue no
+// ZCQL from the browser at all — the whole page is a handful of blob reads.
+async function mapOf(table, idCol) {
+  const rows = await fetchSnapshotTable(table);
   const m = new Map();
   rows.forEach((r) => m.set(String(r[idCol]), r));
   return m;
@@ -317,8 +318,24 @@ function buildRingLinks(nets) {
     districtHub.set(district, sorted[0]);
     sorted.slice(1).forEach((i) => links.push({ a: sorted[0], b: i, kind: 'district', label: district }));
   });
+  /* Rings are disjoint by construction — a ring IS a connected component of
+     co-offending, so no offender belongs to two. The links between rings here
+     are editorial: "same district", "same dominant crime type".
+
+     This chain used to run across EVERY crime type, joining every district hub
+     to every other. Since most types occur in most districts, that welded all
+     31 district clusters into one blob and the graph said nothing: everything
+     was connected to everything, which is the same as no structure at all.
+
+     A district hub now only joins the chain for the type that is ITS OWN
+     dominant type. Districts sharing a dominant offence form one cluster,
+     districts that do not stay separate — so the picture is several genuinely
+     disjoint networks, and a link means the two rings actually have that
+     offence in common. */
   byType.forEach((idxs, type) => {
-    const hubs = [...new Set(idxs.map((i) => districtHub.get(nets[i].district || '—')).filter((h) => h != null))];
+    const hubs = [...new Set(idxs
+      .map((i) => districtHub.get(nets[i].district || '—'))
+      .filter((h) => h != null && (nets[h].topType || '—') === type))];
     for (let i = 1; i < hubs.length; i++) links.push({ a: hubs[i - 1], b: hubs[i], kind: 'type', label: type });
   });
   return links;

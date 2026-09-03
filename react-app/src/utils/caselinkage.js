@@ -21,16 +21,17 @@
 
 import { assess, applyIsotonic, isotonicSupport } from './calibration';
 
-import {pageQuery } from './datastore';
+import { fetchSnapshotTable } from './datastore';
 
 
 // Paging lives in datastore.pageQuery, which reports when it stopped short.
 // Three modules each had their own copy of this loop with a different
 // ceiling, and at 30,000 cases all three silently truncated.
-const fetchAll = (baseSql, table) => pageQuery(baseSql, table, { cap: 60000 });
 
-async function mapOf(table, idCol, cols) {
-  const rows = await fetchAll(`SELECT ${[idCol, ...cols].join(', ')} FROM ${table}`, table);
+// Master tables come from the analytics snapshot too, so these pages issue no
+// ZCQL from the browser at all — the whole page is a handful of blob reads.
+async function mapOf(table, idCol) {
+  const rows = await fetchSnapshotTable(table);
   const m = new Map();
   rows.forEach((r) => m.set(String(r[idCol]), r));
   return m;
@@ -151,22 +152,32 @@ export function aucBand(auc) {
 }
 
 export async function fetchLinkageData() {
-  const [cases, accused, victims, units, districts, heads, subheads, statuses] =
+  const [baseCases, accused, victims, extra, units, districts, heads, subheads, statuses] =
     await Promise.all([
-      fetchAll(
-        'SELECT CaseMasterID, CrimeNo, CrimeRegisteredDate, IncidentFromDate, PoliceStationID, ' +
-          'CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, GravityOffenceID, latitude, longitude, BriefFacts ' +
-          'FROM CaseMaster',
-        'CaseMaster'
-      ),
-      fetchAll('SELECT CaseMasterID, PersonID, AccusedName FROM Accused', 'Accused'),
-      fetchAll('SELECT CaseMasterID, AgeYear, GenderID FROM Victim', 'Victim'),
+      fetchSnapshotTable('CaseMaster'),
+      fetchSnapshotTable('Accused'),
+      fetchSnapshotTable('Victim'),
+      // Coordinates and BriefFacts live in their own snapshot entry: 4 MB that
+      // only this tab needs, kept out of the payload every other page fetches.
+      fetchSnapshotTable('CaseLinkageExtra'),
       mapOf('Unit', 'UnitID', ['UnitName', 'DistrictID']),
       mapOf('District', 'DistrictID', ['DistrictName']),
       mapOf('CrimeHead', 'CrimeHeadID', ['CrimeGroupName']),
       mapOf('CrimeSubHead', 'CrimeSubHeadID', ['CrimeHeadName']),
       mapOf('CaseStatusMaster', 'CaseStatusID', ['CaseStatusName']),
     ]);
+
+  // Merge the linkage-only columns onto the case rows the rest of this module
+  // already expects, so nothing downstream has to know they arrived separately.
+  //
+  // Built as NEW objects rather than written onto the snapshot rows: those rows
+  // are the shared cached copy every other analytics page reads, and writing a
+  // field onto them here would leak this tab's data into all of them.
+  const extraByCase = new Map(extra.map((e) => [String(e.CaseMasterID), e]));
+  const cases = baseCases.map((c) => {
+    const e = extraByCase.get(String(c.CaseMasterID));
+    return e ? { ...c, latitude: e.latitude, longitude: e.longitude, BriefFacts: e.BriefFacts } : c;
+  });
 
   // First victim per case → target-selection features (gender + age band).
   const GENDER = { 1: 'male', 2: 'female', 3: 'transgender' };

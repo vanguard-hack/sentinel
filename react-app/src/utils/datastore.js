@@ -242,6 +242,7 @@ const inflight = new Map();     // key -> Promise<rows>
 export function clearQueryCache() {
   queryCache.clear();
   inflight.clear();
+  snapshots.clear();
 }
 
 /**
@@ -340,10 +341,56 @@ export const CASE_COLUMNS = 'CaseMasterID, CrimeNo, CrimeRegisteredDate, '
 export const ACCUSED_COLUMNS = 'AccusedMasterID, CaseMasterID, PersonID, '
   + 'AccusedName, AgeYear, GenderID';
 
-export const fetchSharedCases = () =>
-  pageQuery(`SELECT ${CASE_COLUMNS} FROM CaseMaster`, 'CaseMaster', { cap: 60000 });
-export const fetchSharedAccused = () =>
-  pageQuery(`SELECT ${ACCUSED_COLUMNS} FROM Accused`, 'Accused', { cap: 60000 });
+/* ── The analytics snapshot ──────────────────────────────────────────────────
+ *
+ * Paging from the browser is what made these pages slow, and no amount of
+ * caching fixed the FIRST load: ZCQL returns 300 rows a query, so the home page
+ * alone needed 437 round trips before it could draw anything.
+ *
+ * Those reads now happen inside the datacentre and each table arrives as ONE
+ * response (functions/rag/analytics.js), encoded columnar so the payload
+ * carries data rather than the same twelve JSON keys repeated 30,000 times.
+ * A page requests only the tables it uses, in parallel.
+ *
+ * The map holds PROMISES, not results, on purpose: several panels mount at once
+ * on these pages, and holding the in-flight request makes them share one fetch
+ * instead of racing to start four.
+ */
+const snapshots = new Map();   // table -> Promise<row objects>
+
+export function clearSnapshot() { snapshots.clear(); }
+
+function snapshotTable(name) {
+  if (snapshots.has(name)) return snapshots.get(name);
+  const p = (async () => {
+    const res = await fetch('/server/rag/analytics/snapshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table: name }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.error || `Analytics data unavailable (HTTP ${res.status})`);
+    }
+    const { cols, rows } = await res.json();
+    // Columnar -> the row objects every analytics module already expects, so
+    // this changed how the data arrives and nothing about how it is used.
+    return rows.map((r) => {
+      const o = {};
+      for (let i = 0; i < cols.length; i += 1) o[cols[i]] = r[i];
+      return o;
+    });
+  })();
+  // A failure must not be remembered as the answer, or the page stays broken
+  // until a reload.
+  p.catch(() => snapshots.delete(name));
+  snapshots.set(name, p);
+  return p;
+}
+
+export const fetchSharedCases = () => snapshotTable('CaseMaster');
+export const fetchSharedAccused = () => snapshotTable('Accused');
+export const fetchSnapshotTable = (name) => snapshotTable(name);
 
 export async function fetchAllRows(table, { cap = 10000 } = {}) {
   const out = [];

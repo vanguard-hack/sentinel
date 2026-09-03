@@ -11,6 +11,7 @@ const integrity = require('./integrity');
 const grounding = require('./grounding');
 const guard = require('./guard');
 const forecasting = require('./forecast');
+const analytics = require('./analytics');
 const i18n = require('./i18n');
 const statutory = require('./statutory');
 const legalKb = require('./legal_kb.json');
@@ -2132,6 +2133,64 @@ async function handlePredict(req, res, modelName) {
    does not move until the data does.
 
    A refresh re-runs every model call, so it is admin-only. */
+/* POST /server/rag/analytics/snapshot   { table, rebuild?: true }
+
+   One analytics table, columnar, in one response — so the browser stops paging
+   30,000-row tables 300 rows at a time. See analytics.js for the arithmetic
+   that made this necessary.
+
+   Cached per table in Stratus and served as a blob read; only the first caller
+   after a deploy pays to build it. `rebuild` re-reads the table and is
+   admin-only. */
+async function handleAnalyticsSnapshot(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const table = String(body.table || '');
+  if (!analytics.specOf(table)) {
+    return json(res, 400, {
+      error: `unknown table: ${table || '(none)'}`,
+      known: Object.keys(analytics.TABLES),
+    });
+  }
+
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const key = analytics.SNAPSHOT_KEY(table);
+
+  if (body.rebuild === true) {
+    const caller = await requestUser(app);
+    if (!isAdminUser(caller)) return json(res, 403, { error: 'admin only' });
+  } else {
+    try {
+      const cached = await streamToString(await bucket.getObject(key));
+      if (cached) {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('X-Snapshot', 'cached');
+        res.write(cached);
+        return res.end();
+      }
+    } catch { /* not built yet — fall through and build it */ }
+  }
+
+  let snap;
+  try {
+    snap = await analytics.buildTable(app, table);
+  } catch (e) {
+    return json(res, 503, {
+      error: `snapshot build failed for ${table}: ${String(e.message).slice(0, 200)}`,
+    });
+  }
+  const text = JSON.stringify(snap);
+  try {
+    await bucket.putObject(key, Buffer.from(text, 'utf8'));
+  } catch (e) {
+    console.error('snapshot cache write failed (non-fatal):', e && e.message);
+  }
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('X-Snapshot', 'built');
+  res.write(text);
+  return res.end();
+}
+
 async function handleForecast(req, res, forceRefresh) {
   const body = JSON.parse((await readBody(req)) || '{}');
   const app = catalystSDK.initialize(req);
@@ -2982,6 +3041,65 @@ async function handleInvestigationPurgeSeeded(req, res) {
   }], caller);
 
   return json(res, 200, { deleted: matched.length, cases: matched });
+}
+
+/* POST /server/rag/investigation/remove   { caseMasterId }
+
+   Delete a WHOLE case diary, not one entry.
+   `/investigation/delete` removes a single diary entry, so a diary opened by
+   mistake — a wrong case number, a test record — could never be got rid of and
+   sat on the list forever. This removes the record, its index entry, and the
+   cross-case name references that would otherwise keep surfacing it as a lead
+   against a diary that no longer exists.
+
+   Restricted to an admin or the officer who opened it: a diary is a statutory
+   record under BNSS S.172, and one investigator must not be able to erase
+   another's. */
+async function handleInvestigationRemove(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller) return json(res, 401, { error: 'Sign in to continue.' });
+
+  const caseMasterId = String(body.caseMasterId || '').trim();
+  if (!caseMasterId) return json(res, 400, { error: 'caseMasterId is required' });
+
+  let rec = null;
+  try {
+    rec = JSON.parse((await streamToString(await bucket.getObject(invKey(caseMasterId)))) || 'null');
+  } catch { rec = null; }
+  if (!rec) return json(res, 404, { error: 'No diary for that case.' });
+
+  const mine = String(rec.createdBy || '').toLowerCase()
+    === String(caller.email_id || '').toLowerCase();
+  if (role !== 'admin' && !mine) {
+    return json(res, 403, { error: 'Only an admin or the officer who opened this diary can delete it.' });
+  }
+
+  try { await bucket.deleteObject(invKey(caseMasterId)); } catch { /* index is cleaned either way */ }
+
+  const index = await loadInvIndex(bucket);
+  await saveInvIndex(bucket, index.filter((c) => String(c.caseMasterId) !== caseMasterId));
+
+  try {
+    const pidx = JSON.parse((await streamToString(await bucket.getObject(INV_PERSON_INDEX_KEY))) || '{}');
+    if (pidx && pidx.people) {
+      for (const name of Object.keys(pidx.people)) {
+        pidx.people[name] = (pidx.people[name] || [])
+          .filter((a) => String(a.caseMasterId) !== caseMasterId);
+        if (!pidx.people[name].length) delete pidx.people[name];
+      }
+      await bucket.putObject(INV_PERSON_INDEX_KEY, Buffer.from(JSON.stringify(pidx)));
+    }
+  } catch { /* a stale lead index is not worth failing the delete over */ }
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'delete-investigation', feature: 'Investigation Diary', path: '/investigation-diary',
+    detail: rec.crimeNo || caseMasterId,
+  }], caller);
+
+  return json(res, 200, { ok: true, caseMasterId, crimeNo: rec.crimeNo || '' });
 }
 
 async function handleInvestigation(req, res, action) {
@@ -4392,6 +4510,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/transcribe')) return await handleTranscribe(req, res);
     if (path.endsWith('/report-pdf')) return await handleReportPdf(req, res);
     if (path.endsWith('/support')) return await handleSupport(req, res);
+    if (path.endsWith('/analytics/snapshot')) return await handleAnalyticsSnapshot(req, res);
     if (path.endsWith('/forecast/refresh')) return await handleForecast(req, res, true);
     if (path.endsWith('/forecast')) return await handleForecast(req, res, false);
     {
@@ -4416,6 +4535,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/access/records')) return await handleAudit(req, res, 'list');
     if (path.endsWith('/investigation/actions')) return await handleActionQueue(req, res);
     if (path.endsWith('/investigation/purge-seeded')) return await handleInvestigationPurgeSeeded(req, res);
+    if (path.endsWith('/investigation/remove')) return await handleInvestigationRemove(req, res);
     if (path.endsWith('/investigation/obligation-ack')) return await handleObligationAck(req, res);
     if (path.endsWith('/investigation/list')) return await handleInvestigation(req, res, 'list');
     if (path.endsWith('/investigation/get')) return await handleInvestigation(req, res, 'get');

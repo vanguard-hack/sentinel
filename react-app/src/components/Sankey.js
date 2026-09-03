@@ -31,7 +31,33 @@ const PAD_B = 14;
 const PAD_L = 170;    // room for category labels (left)
 const PAD_R = 158;    // room for outcome labels (right)
 
+/* Draw to the tile's REAL height instead of a fixed 460.
+ *
+ * The viewBox was a fixed 1000x460 scaled by width, so in a two-row bento tile
+ * the diagram stopped a third of the way up the card and left the rest empty.
+ * Stretching it with preserveAspectRatio="none" would have filled the tile and
+ * squashed every label with it — text does not survive a non-uniform scale.
+ * Measuring instead keeps the ribbons and the type undistorted and simply
+ * gives the drawing the room the tile actually has. */
+function useMeasuredHeight(initial) {
+  const ref = React.useRef(null);
+  const [h, setH] = React.useState(initial);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver((entries) => {
+      const ch = entries[0]?.contentRect?.height;
+      // Below ~260 the labels collide; the tile scrolls rather than lying.
+      if (ch) setH(Math.max(260, Math.round(ch)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, h];
+}
+
 export default function Sankey({ spec, height = 460 }) {
+  const [wrapRef, drawH] = useMeasuredHeight(height);
   const [hover, setHover] = useState(null); // node id or link idx
   const layout = useMemo(() => {
     const nodes = spec?.nodes || [];
@@ -43,7 +69,7 @@ export default function Sankey({ spec, height = 460 }) {
     );
     const total = layers[0].reduce((s, n) => s + n.value, 0) || 1;
     const maxCount = Math.max(1, ...layers.map((l) => l.length));
-    const availH = height - PAD_T - PAD_B;
+    const availH = drawH - PAD_T - PAD_B;
     const scale = (availH - (maxCount - 1) * GAP) / total;
 
     const midX0 = PAD_L + (W - PAD_L - PAD_R - NW) / 2;
@@ -87,7 +113,7 @@ export default function Sankey({ spec, height = 460 }) {
     });
 
     return { nodeList: [...nodeMap.values()], nodeMap, links: placed, total };
-  }, [spec, height]);
+  }, [spec, drawH]);
 
   if (!layout) return <div className="rp-empty">No data</div>;
   const { nodeList, nodeMap, links, total } = layout;
@@ -105,8 +131,8 @@ export default function Sankey({ spec, height = 460 }) {
   const pct = (v) => `${((v / total) * 100).toFixed(1)}%`;
 
   return (
-    <div className="sk-wrap">
-      <svg viewBox={`0 0 ${W} ${height}`} className="sk-svg" role="img" aria-label="Crime category to type to outcome flow">
+    <div className="sk-wrap" ref={wrapRef}>
+      <svg viewBox={`0 0 ${W} ${drawH}`} className="sk-svg" role="img" aria-label="Crime category to type to outcome flow">
         {/* ribbons */}
         {links.map((l, i) => {
           const dim = hover != null && hover !== l.source && hover !== l.target && hover !== `l${i}`;

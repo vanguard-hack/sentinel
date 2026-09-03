@@ -7,12 +7,11 @@
 // reporting obligations — are DETERMINISTICALLY synthesised (mulberry32 PRNG
 // seeded per person) so the registry is realistic and stable across reloads,
 // consistent with the rest of the demo. Neutral legal terminology throughout.
-import { pageQuery, fetchSharedCases, fetchSharedAccused } from './datastore';
+import { fetchSharedCases, fetchSharedAccused, fetchSnapshotTable } from './datastore';
 
 // Shares the cached, concurrent pager with the other analytics pages, so the
 // custody registry and the AI Analytics tabs no longer each re-scan the same
 // tables from scratch.
-const fetchAll = (baseSql, table) => pageQuery(baseSql, table, { cap: 60000 });
 
 // ── deterministic synthesis ────────────────────────────────────────────────
 const djb2 = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h >>> 0; };
@@ -104,13 +103,13 @@ export async function fetchCustodyData() {
     await Promise.all([
       fetchSharedCases(),
       fetchSharedAccused(),
-      fetchAll('SELECT CaseMasterID, AccusedMasterID, ArrestSurrenderTypeID, ArrestSurrenderDate FROM ArrestSurrender', 'ArrestSurrender'),
-      fetchAll('SELECT UnitID, UnitName, DistrictID FROM Unit', 'Unit'),
-      fetchAll('SELECT DistrictID, DistrictName FROM District', 'District'),
-      fetchAll('SELECT CourtID, CourtName FROM Court', 'Court'),
-      fetchAll('SELECT CrimeHeadID, CrimeGroupName FROM CrimeHead', 'CrimeHead'),
-      fetchAll('SELECT CrimeSubHeadID, CrimeHeadName FROM CrimeSubHead', 'CrimeSubHead'),
-      fetchAll('SELECT CaseStatusID, CaseStatusName FROM CaseStatusMaster', 'CaseStatusMaster'),
+      fetchSnapshotTable('ArrestSurrender'),
+      fetchSnapshotTable('Unit'),
+      fetchSnapshotTable('District'),
+      fetchSnapshotTable('Court'),
+      fetchSnapshotTable('CrimeHead'),
+      fetchSnapshotTable('CrimeSubHead'),
+      fetchSnapshotTable('CaseStatusMaster'),
     ]);
   return { caseRows, accusedRows, arrestRows, unitRows, districtRows, courtRows, headRows, subRows, statusRows };
 }

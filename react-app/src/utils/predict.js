@@ -17,7 +17,7 @@
 // Fairness: no protected attributes (religion/caste/gender) are ever used as
 // features; outputs are decision support for humans, not automated targeting.
 
-import { pageQuery, fetchSharedCases, fetchSharedAccused } from './datastore';
+import { fetchSharedCases, fetchSharedAccused, fetchSnapshotTable } from './datastore';
 
 // Was a private sequential pager capped at 20,000 rows. Two problems: the cap
 // silently dropped a third of a 30,000-case dataset, so every risk score and
@@ -25,15 +25,14 @@ import { pageQuery, fetchSharedCases, fetchSharedAccused } from './datastore';
 // total; and reading a table 300 rows at a time in series is where the ten-
 // second load came from. pageQuery reads concurrently, caps high enough to
 // reach the end, and shares its cache with every other analytics page.
-const fetchAll = (sql, table) => pageQuery(sql, table, { cap: 60000 });
 
 export async function fetchPredictData() {
   const [caseRows, accusedRows, unitRows, districtRows, headRows] = await Promise.all([
     fetchSharedCases(),
     fetchSharedAccused(),
-    fetchAll('SELECT UnitID, DistrictID FROM Unit', 'Unit'),
-    fetchAll('SELECT DistrictID, DistrictName FROM District', 'District'),
-    fetchAll('SELECT CrimeHeadID, CrimeGroupName FROM CrimeHead', 'CrimeHead'),
+    fetchSnapshotTable('Unit'),
+    fetchSnapshotTable('District'),
+    fetchSnapshotTable('CrimeHead'),
   ]);
 
   const unitDistrict = new Map(unitRows.map((u) => [String(u.UnitID), String(u.DistrictID)]));

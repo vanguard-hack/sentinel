@@ -278,9 +278,12 @@ export default function NetworkGraph({ spec, initialZoom = 1 }) {
   const dim = (i) => focus != null && i !== focus && !neighbours.has(i);
   void tick; // re-render trigger
 
-  // Labels stay hidden until they matter: zoomed in, a hub, or in focus.
-  const labelOn = (n, i) =>
-    focus === i || neighbours.has(i) || view.k >= 1.6 || n.deg >= 4;
+  // ONE label at a time: the node under the cursor, or the one pinned by a
+  // click. Labelling every hub and every neighbour, and everything at all once
+  // zoomed past 1.6, meant the graph opened as a wall of overlapping names with
+  // the structure hidden behind its own text. `focus` is already
+  // selection-else-hover, so this is exactly "the node I am pointing at".
+  const labelOn = (n, i) => focus === i;
 
   const { k, tx, ty } = view;
 
