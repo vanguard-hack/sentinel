@@ -5,7 +5,7 @@ import { splitEmail } from '../utils/profile';
 import {
   Shield, Home, AlertTriangle, Map, Brain, Database,
   MessageSquare, Users, ChevronRight, Sun, Moon, LogOut,
-  UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, Headset, Building2, FileLock2, BadgeCheck, CalendarClock,
+  UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, Headset, Building2, FileLock2, CalendarClock,
   ScrollText, Images, ChevronsUpDown, Inbox } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccess } from '../context/AccessContext';
@@ -37,7 +37,6 @@ const NAV = [
     ],
   },
   { to: '/export-approvals', Icon: FileLock2, key: 'exportApprovals' },
-  { to: '/assurance', Icon: BadgeCheck, key: 'assurance' },
   { to: '/access', Icon: ShieldCheck, key: 'access' },
 ];
 

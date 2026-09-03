@@ -43,9 +43,9 @@ test('delete asks for confirmation via the custom dialog', async () => {
 // ── Every page is findable ────────────────────────────────────────────────
 //
 // ⌘K is how anyone who uses this daily moves around it, so a module missing
-// from the palette is a module most officers never discover. Four pages
-// shipped without entries — Action Queue, Export Approvals, Assurance and
-// Shared with me — which is why this asserts the property rather than the four.
+// from the palette is a module most officers never discover. Several pages
+// shipped without entries — Action Queue, Export Approvals and Shared with me
+// — which is why this asserts the property rather than naming them.
 import { SEARCH_INDEX } from '../utils/searchIndex';
 import { FEATURES } from '../utils/access';
 
@@ -71,7 +71,6 @@ test('the newly added pages are searchable by what an officer would type', () =>
   const find = (q) => SEARCH_INDEX.filter((e) => `${e.title} ${e.keywords}`.toLowerCase().includes(q));
   expect(find('sunset').map((e) => e.to)).toContain('/action-queue');
   expect(find('approve').map((e) => e.to)).toContain('/export-approvals');
-  expect(find('self test').map((e) => e.to)).toContain('/assurance');
   expect(find('shared').map((e) => e.to)).toContain('/shared');
 });
 

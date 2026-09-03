@@ -21,7 +21,6 @@ import ReportStudio from './pages/ReportStudio';
 import ExportApprovals from './pages/ExportApprovals';
 import ExportReview from './pages/ExportReview';
 import SharedWithMe from './pages/SharedWithMe';
-import Assurance from './pages/Assurance';
 import ActionQueue from './pages/ActionQueue';
 import ReportEditor from './pages/ReportEditor';
 import Records from './pages/Records';
@@ -92,7 +91,6 @@ function AppRoutes() {
                 <Route path="/export-approvals" element={guarded('exportApprovals', <ExportApprovals />)} />
                 <Route path="/export-review/:approvalId" element={guarded('exportApprovals', <ExportReview />)} />
                 <Route path="/shared" element={guarded('shared', <SharedWithMe />)} />
-                <Route path="/assurance" element={guarded('assurance', <Assurance />)} />
                 <Route path="/investigation-diary" element={guarded('investigationDiary', <InvestigationDiary />)} />
                 <Route path="/action-queue" element={guarded('actionQueue', <ActionQueue />)} />
                 <Route path="/investigation-diary/:caseMasterId" element={guarded('investigationDiary', <InvestigationCase />)} />

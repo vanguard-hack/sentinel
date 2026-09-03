@@ -85,7 +85,6 @@ These are the ones worth reading before touching answer generation:
 - `grounding.js` — did the answer stay inside what was read.
 - `sources.js` — the unified `sources` contract and single response exit (`respondWith`).
 - `integrity.js` — tamper-evidence for the audit trail (per-day seals).
-- `assurance.js` — runtime self-test proving the controls are live in the deployed environment, surfaced at `/assurance`.
 
 ### Frontend
 
