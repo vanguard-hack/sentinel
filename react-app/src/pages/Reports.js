@@ -406,16 +406,30 @@ export default function Reports() {
               </div>
             </section>
 
-            {/* Charts */}
+            {/* ── The bento ───────────────────────────────────────────────
+                ONE grid, not six. The page used to be six section-headed
+                grids, and a heading is a wall: a card could only ever be
+                placed among its own section's cards, so every section ended
+                on a ragged row and the page read as a column of half-empty
+                shelves.
+
+                With the walls gone the whole page is one lattice and the
+                cards are ordered into BANDS that each fill the four columns
+                exactly:
+
+                  hero + tall + tall            2 rows   ██████░░░░
+                  hero + wide over wide         2 rows
+                  hero + wide + one + one       2 rows
+                  tall + tall + wide over wide  2 rows
+                  tall + tall + four ones       2 rows
+                  wide + one + one              1 row
+
+                Every span is 1 or 2 columns wide, so the same bands re-pack
+                without holes when the grid drops to two columns, and to one
+                on a phone. The order below IS the layout — moving a card
+                between bands breaks the tiling, so keep the band comments. */}
             <div className="rp-grid rp-bento">
-              <Card id="chart-case-status" title={t('charts.caseStatus')} subtitle={t('charts.caseStatusSub')}>
-                <Donut data={data.byStatus} />
-              </Card>
-
-              <Card id="chart-crime-category" title={t('charts.crimeCategory')} subtitle={t('charts.crimeCategorySub')} tall>
-                <HBarList data={data.byCategory} />
-              </Card>
-
+              {/* Band 1 — the map, flanked by two ranked lists. */}
               <Card id="chart-top-districts" title={t('charts.topDistricts')} subtitle={t('charts.topDistrictsSub')} hero>
                 <div className="rp-geo-controls">
                   <span>Show top</span>
@@ -432,89 +446,93 @@ export default function Reports() {
                   }}
                 />
               </Card>
-
+              <Card id="chart-crime-category" title={t('charts.crimeCategory')} subtitle={t('charts.crimeCategorySub')} tall>
+                <HBarList data={data.byCategory} />
+              </Card>
               <Card id="chart-station-load" title="Station load" subtitle="Open investigations by police station (top 8)" tall>
                 <HBarList data={data.openByStation} />
               </Card>
 
-              <Card id="chart-age-profile" title="Accused age profile" wide>
-                <BarList data={data.accusedAges} height={300} />
-              </Card>
-
+              {/* Band 2 — the flow, with two time series stacked beside it. */}
               <Card
                 id="chart-crime-types"
-                title="Crime flow | category to type to outcome"
-                subtitle="Every FIR flows from its crime category, through its type, to its case status | ribbon width is case volume, colour follows the category" hero>
+                title="Crime flow"
+                subtitle="Category → type → outcome · ribbon width is case volume" hero>
                 <Sankey spec={data.crimeSankey} />
               </Card>
-
-              <Card
-                id="chart-socio"
-                title="Socio-economic crime correlation"
-                subtitle="Districts shaded by the chosen indicator; circles sized by registered cases | when dark shading and big circles coincide, the move together" hero>
-                <SocioCrimeMap crimeByDistrict={data.crimeByDistrict} />
-              </Card>
-            </div>
-
-            {/* ── Trends ── */}
-            <h2 className="rp-section-title">Trends</h2>
-            <div className="rp-grid rp-bento">
-              <Card id="chart-trend-head" title="Crime trend by head" subtitle="Monthly registrations · top 5 crime heads" hero>
-                <TrendLine series={data.trendByHead} height={250} ariaLabel="Crime trend by head" />
+              <Card id="chart-age-profile" title="Accused age profile" subtitle="Accused on record by age band" wide>
+                <BarList data={data.accusedAges} height={300} />
               </Card>
               <Card id="chart-arrests" title="Arrests & surrenders" subtitle="Monthly events by type" wide>
                 <TrendLine series={data.arrestSeries} height={250} ariaLabel="Arrests and surrenders" />
               </Card>
+
+              {/* Band 3 — the second map, then the seasonality strip over two rings. */}
+              <Card
+                id="chart-socio"
+                title="Socio-economic correlation"
+                subtitle="Districts shaded by indicator, circles sized by cases" hero>
+                <SocioCrimeMap crimeByDistrict={data.crimeByDistrict} />
+              </Card>
               <Card title="Seasonality" subtitle="Registrations by calendar month × crime head" wide>
                 <HeatGrid rows={data.seasonality.rows} cols={data.seasonality.cols} values={data.seasonality.values} />
               </Card>
-            </div>
-
-            {/* ── Crime composition ── */}
-            <h2 className="rp-section-title">Crime composition</h2>
-            <div className="rp-grid rp-bento">
+              <Card id="chart-case-status" title={t('charts.caseStatus')} subtitle={t('charts.caseStatusSub')}>
+                <Donut data={data.byStatus} />
+              </Card>
               <Card title="Heinous vs non-heinous" subtitle="Gravity of registered offences">
                 <Donut data={data.gravitySplit} />
               </Card>
-              <Card title="Case category" subtitle="FIR · UDR · PAR · Zero FIR">
-                <Donut data={data.categorySplit} />
+
+              {/* Band 4 — the trend, flanked by two legal lists. */}
+              <Card id="chart-trend-head" title="Crime trend by head" subtitle="Monthly registrations · top 5 crime heads" hero>
+                <TrendLine series={data.trendByHead} height={250} ariaLabel="Crime trend by head" />
               </Card>
               <Card title="Most-charged sections" subtitle="Top legal sections across charged cases" tall>
                 <HBarList data={data.topSections} />
               </Card>
-            </div>
-
-            {/* ── Case lifecycle ── */}
-            <h2 className="rp-section-title">Case lifecycle</h2>
-            <div className="rp-grid rp-bento">
-              <Card title="Case status funnel" subtitle="Registered → investigated → chargesheeted → decided">
-                <Funnel data={data.statusFunnel} />
-              </Card>
-              <Card title="Pendency ageing" subtitle="Open investigations by age of case | green fresh, red long-pending">
-                <Pyramid data={data.pendencyAgeing} />
-              </Card>
-              <Card title="Chargesheet filing lag" subtitle="Days from registration to chargesheet" wide>
-                <BarList data={data.csLag} height={300} straightLabels caption={false} />
-              </Card>
               <Card title="Investigation time by head" subtitle="Average days to chargesheet per crime head" tall>
                 <HBarList data={data.investTimeByHead} suffix=" days" percent={false} />
               </Card>
-            </div>
 
-            {/* ── People & demographics ── */}
-            <h2 className="rp-section-title">People & demographics</h2>
-            <div className="rp-grid rp-bento">
+              {/* Band 5 — two lists about people, two distributions beside them. */}
               <Card title="Complainant occupations" subtitle="Who is filing FIRs" tall>
                 <HBarList data={data.complainantOccupations} />
+              </Card>
+              <Card title="Repeat offenders" subtitle="Distinct FIRs per offender (2+ cases)" tall>
+                <HBarList data={data.repeatOffenders} suffix=" FIRs" percent={false} />
               </Card>
               <Card title="Complainant age profile" subtitle="Complainants by age band" wide>
                 <BarList data={data.complainantAges} height={300} />
               </Card>
+              <Card title="Chargesheet filing lag" subtitle="Days from registration to chargesheet" wide>
+                <BarList data={data.csLag} height={300} straightLabels caption={false} />
+              </Card>
+
+              {/* Band 6 — two workload lists, and the four small shapes. */}
+              <Card title="IO caseload" subtitle="Cases per investigating officer (top 8)" tall>
+                <HBarList data={data.ioCaseload} />
+              </Card>
+              <Card title="Court load" subtitle="Chargesheets filed per court (top 8)" tall>
+                <HBarList data={data.courtLoad} />
+              </Card>
+              <Card title="Case category" subtitle="FIR · UDR · PAR · Zero FIR">
+                <Donut data={data.categorySplit} />
+              </Card>
+              <Card title="Case status funnel" subtitle="Registered → chargesheeted → decided">
+                <Funnel data={data.statusFunnel} />
+              </Card>
+              <Card title="Pendency ageing" subtitle="Open cases by age · green fresh, red long-pending">
+                <Pyramid data={data.pendencyAgeing} />
+              </Card>
               <Card title="Accused gender split" subtitle="Accused on record">
                 <Donut data={data.accusedGender} />
               </Card>
-              <Card title="Repeat offenders" subtitle="Distinct FIRs per offender (2+ cases)" tall>
-                <HBarList data={data.repeatOffenders} suffix=" FIRs" percent={false} />
+
+              {/* Band 7 — the closing row. Rank distribution takes the wide
+                  slot because its legend is a twelve-rank ladder. */}
+              <Card title="Rank distribution" subtitle="Force composition by rank" wide>
+                <Donut data={data.rankDistribution} />
               </Card>
               <Card title="Victim profile" subtitle="Police personnel vs civilian victims">
                 <Donut data={data.victimPoliceSplit} />
@@ -523,31 +541,9 @@ export default function Reports() {
                 <Donut data={data.arrestOutcome} />
               </Card>
             </div>
-
-            {/* ── Personnel & workload ── */}
-            <h2 className="rp-section-title">Personnel & workload</h2>
-            <div className="rp-grid rp-bento">
-              <Card title="IO caseload" subtitle="Cases per investigating officer (top 8)" tall>
-                <HBarList data={data.ioCaseload} />
-              </Card>
-              <Card title="Rank distribution" subtitle="Force composition by rank">
-                <Donut data={data.rankDistribution} />
-              </Card>
-              <Card title="Court load" subtitle="Chargesheets filed per court (top 8)" tall>
-                <HBarList data={data.courtLoad} />
-              </Card>
-            </div>
           </div>
         )}
       </main>
-
-      {exportHold && (
-        <ExportHoldNotice
-          hold={exportHold}
-          onRetry={(approvalId) => exportPdf(approvalId)}
-          onClose={() => setExportHold(null)}
-        />
-      )}
     </div>
   );
 }

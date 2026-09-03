@@ -2047,30 +2047,26 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* ── Home bento ────────────────────────────────────────────────────────────
    Reference: motion.dev/ui/bento-grids.
 
-   Two earlier attempts at this failed the same way, so the rules below are
-   written to make the failure structurally impossible rather than to avoid it
-   by choosing the right numbers.
+   The page is ONE lattice. It used to be six grids separated by section
+   headings, and a heading is a wall: a card could only be placed among its
+   own section's cards, so every section ended on a ragged row. Reports.js now
+   orders every card into bands that each fill the four columns exactly — the
+   band comments there are the layout, and this file only has to make the
+   spans and the contents behave.
 
-   What went wrong before: rows were a FIXED height and cards were clipped with
-   `overflow: hidden`. Any card whose content did not happen to fit that box
-   was cut off or painted over its neighbour — and the home page holds twelve
-   different chart types, including two Leaflet maps, a Sankey and a heat grid,
-   none of which are the same natural height as a bar list.
+   Two properties are load-bearing:
 
-   The three rules that prevent it:
+     1. Every span is one or two columns WIDE (hero and wide are 2, tall and
+        the default are 1). That is what lets the same source order re-pack
+        without holes when the grid drops to two columns — and it is why there
+        is no three-column step: at three, a 2+1+1 band leaves a gap.
+     2. Rows have a MINIMUM height, not a fixed one. `minmax(248px, auto)`
+        keeps the lattice even while letting a row grow for whatever it
+        actually holds, so a card can never overflow its row. Cards are
+        clipped as a last resort, which means an unexpectedly tall chart
+        loses its own bottom edge rather than painting over its neighbour.
 
-     1. Rows have a MINIMUM height, not a fixed one. `minmax(248px, auto)`
-        keeps the lattice even while letting any row grow for whatever it
-        actually contains. A card can therefore never overflow its row.
-     2. Nothing is clipped and nothing is taken out of flow. A chart that
-        needs more room pushes the row taller instead of hiding under the
-        card below it.
-     3. Headings wrap and are never sacrificed. The chart is what yields.
-
-   Spans, against a known column count — a span only means anything relative
-   to the whole, which is why the count is fixed per breakpoint:
-
-     hero 2x2 · wide 2x1 · tall 1x2 · default 1x1 */
+   Spans: hero 2x2 · wide 2x1 · tall 1x2 · default 1x1. */
 .rp-bento {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-auto-rows: minmax(248px, auto);
@@ -2080,43 +2076,63 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .rp-bento .rp-card-tall { grid-row: span 2; }
 .rp-bento .rp-card-wide { grid-column: span 2; }
 
-/* The heading always fits, always wraps, and is never what shrinks. */
-.rp-bento .rp-card-head { flex: none; }
+/* The heading always fits and is never what shrinks — but it is also never
+   allowed to eat the tile. The name wraps in full; the subtitle is a caption,
+   so it gets two lines and then stops. A four-line subtitle on a one-row tile
+   would leave the chart forty pixels of room. */
+.rp-bento .rp-card-head { flex: none; margin-bottom: 8px; }
 .rp-bento .rp-card-head h2 { overflow-wrap: anywhere; hyphens: auto; }
-.rp-bento .rp-card-sub { overflow-wrap: anywhere; }
+.rp-bento .rp-card-sub {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; overflow-wrap: anywhere;
+}
+.rp-bento .rp-card-hero .rp-card-sub { -webkit-line-clamp: 3; }
 
 /* The body takes the rest of the tile and hands that height to its chart. */
 .rp-bento .rp-card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
-/* Charts carry an inline height from their own default prop. Inside a tile
-   the tile decides instead, which is the only way a chart fills a two-row
-   span. These are the only !important rules in the bento and they exist to
-   beat that inline style, not another rule. */
-.rp-bento .rp-card-body > .bk-chart { height: 190px !important; flex: none; }
-.rp-bento .rp-card-hero .rp-card-body > .bk-chart,
-.rp-bento .rp-card-tall .rp-card-body > .bk-chart { height: 438px !important; }
+/* Charts carry an inline height from their own default prop, sized for the
+   old fixed-height cards. Inside a tile the TILE decides: the chart is a flex
+   child that takes whatever the head left, and the measured-size charts
+   (ParentSize) re-read that box and redraw at it. `height: auto` is what
+   beats the inline style — these are the only !important rules in the bento
+   and they exist to beat that inline style, not another rule. */
+.rp-bento .rp-card-body > .bk-chart {
+  flex: 1 1 0;
+  min-height: 150px;
+  height: auto !important;
+}
 
 /* Everything that is not one of the vendored charts — rings, bar lists, the
-   Sankey, the maps, the heat grid, the funnel — sizes itself and simply
-   stretches into whatever room is left. */
+   Sankey, the maps, the heat grid, the funnel — stretches into whatever room
+   is left rather than standing at its natural height in a taller tile. */
 .rp-bento .rp-card-body > .rp-bars,
-.rp-bento .rp-card-body > .rp-donut-wrap { flex: 1; min-height: 0; }
-.rp-bento .rp-card-body > .rp-bars { justify-content: space-evenly; }
+.rp-bento .rp-card-body > .rp-donut-wrap,
+.rp-bento .rp-card-body > .rp-heat,
+.rp-bento .rp-card-body > .rp-funnel,
+.rp-bento .rp-card-body > .sk-wrap,
+.rp-bento .rp-card-body > .geo-map,
+.rp-bento .rp-card-body > .scm { flex: 1; min-height: 0; }
+.rp-bento .rp-card-body > .rp-bars,
+.rp-bento .rp-card-body > .rp-funnel { justify-content: space-evenly; }
 
-/* A ring plus a stacked legend wants ~240px; beside its legend it fits a
-   single-row tile and uses width the tile was wasting. Two-row tiles have the
-   height to stack it the usual way. */
-.rp-bento .rp-card-body > .rp-donut-wrap { flex-direction: row; align-items: center; gap: 14px; }
-.rp-bento .rp-card-body > .rp-donut-wrap .rp-legend { flex: 1; min-width: 0; }
-.rp-bento .rp-card-tall .rp-card-body > .rp-donut-wrap,
-.rp-bento .rp-card-hero .rp-card-body > .rp-donut-wrap { flex-direction: column; }
+/* The three hand-rolled SVGs (district map, socio map, Sankey) are drawn to a
+   viewBox and sized by WIDTH, so in a tile whose height the grid chose they
+   would otherwise run past the bottom. Capping the height makes the browser
+   letterbox them inside the tile instead — the whole drawing stays visible
+   and simply gets smaller, which is the right failure for a map. */
+.rp-bento .rp-card-body .geo-svg,
+.rp-bento .rp-card-body .scm-svg,
+.rp-bento .rp-card-body .sk-svg { max-height: 100%; }
+.rp-bento .rp-card-body > .geo-map,
+.rp-bento .rp-card-body .scm-body { align-items: stretch; }
 
-@media (max-width: 1400px) {
-  .rp-bento { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-@media (max-width: 1040px) {
+/* Four columns to two, with no three-column step: at three columns a
+   hero+tall+tall band leaves the fourth cell of nothing, which is the exact
+   raggedness this layout exists to remove. Every span is 1 or 2 wide, so at
+   two columns the same bands re-pack solid. */
+@media (max-width: 1180px) {
   .rp-bento { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .rp-bento .rp-card-body > .rp-donut-wrap { flex-direction: column; }
 }
 @media (max-width: 720px) {
   .rp-bento { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
@@ -2124,7 +2140,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   .rp-bento .rp-card-tall,
   .rp-bento .rp-card-wide,
   .rp-bento .rp-card-2 { grid-column: auto; grid-row: auto; }
-  .rp-bento .rp-card-body > .bk-chart { height: 220px !important; }
+  .rp-bento .rp-card-body > .bk-chart { min-height: 220px; }
 }
 .rp-card {
   background: var(--bg-1);
@@ -2208,7 +2224,11 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   min-height: 0;
 }
 .rp-bento .rp-donut-wrap .rp-legend { flex: 1; min-width: 0; overflow-y: auto; max-height: 100%; }
-@media (max-width: 1040px) {
+/* A two-row tile has the height to stack the pair the usual way, and stacked
+   is the better read when there is room for it. */
+.rp-bento .rp-card-tall .rp-donut-wrap,
+.rp-bento .rp-card-hero .rp-donut-wrap { flex-direction: column; }
+@media (max-width: 1180px) {
   .rp-bento .rp-donut-wrap { flex-direction: column; }
   .rp-bento .rp-donut-wrap .rp-legend { max-height: none; }
 }
