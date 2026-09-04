@@ -12,8 +12,10 @@
 			"SUPPORT_EMAIL": "<help-center-recipient-email>",
 			"SMTP_USER": "<gmail-address-for-sending>",
 			"SMTP_PASS": "<gmail-app-password — Google Account > Security > App passwords>",
-			"QUICKML_KEY_CRIMEHEAD": "<quickml endpoint key — crime-head volume pipeline>",
-			"QUICKML_KEY_DISTRICT": "<quickml endpoint key — district volume pipeline>"
+			"QUICKML_KEY_CHARGESHEET": "<quickml endpoint key — chargesheet-likelihood classifier>",
+			"QUICKML_KEY_FIRVOLUME": "<quickml endpoint key — force-wide monthly volume pipeline>",
+			"QUICKML_KEY_CRIMEHEAD": "<quickml endpoint key — monthly volume by crime head>",
+			"QUICKML_KEY_DISTRICT": "<quickml endpoint key — monthly volume by district>"
 		}
 	},
 	"execution": {

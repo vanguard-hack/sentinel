@@ -299,6 +299,14 @@ jobs:
             || (echo "::error::GROQ_API_KEY is missing after deploy — the console env vars were cleared." && exit 1)
           echo "$body" | grep -q '"rag":true' \
             || echo "::warning::RAG credentials are not set — knowledge-base answers will fail."
+          # The three forecast models. A missing key does not crash anything —
+          # the lane reports an error into its own chart and the rest of the
+          # page renders — so without this it would go unnoticed until someone
+          # opened Forecasts and found one of the three panels empty.
+          for m in firvolume crimehead district; do
+            echo "$body" | grep -q "\"$m\":true" \
+              || echo "::warning::QUICKML_KEY_${m^^} is not set — that forecast panel will report an error."
+          done
 
       - name: Verify the API rejects anonymous callers
         env:

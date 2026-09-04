@@ -4490,6 +4490,18 @@ module.exports = async (req, res) => {
           order: PROVIDER_ORDER,
         },
         rag: !!(process.env.RAG_REFRESH_TOKEN || process.env.RAG_ACCESS_TOKEN),
+        /* Which QuickML endpoints have a key, as booleans — never the keys.
+           These live only in the Catalyst console (CI strips env_variables so
+           a deploy cannot overwrite them), which makes "did the console value
+           actually land?" a question nobody could answer without a session.
+           A forecast model with no key does not crash: the lane just reports
+           an error into a chart, so it needs saying out loud somewhere. */
+        models: {
+          firvolume: !!process.env.QUICKML_KEY_FIRVOLUME,
+          crimehead: !!process.env.QUICKML_KEY_CRIMEHEAD,
+          district: !!process.env.QUICKML_KEY_DISTRICT,
+          chargesheet: !!process.env.QUICKML_KEY_CHARGESHEET,
+        },
       });
     }
 
