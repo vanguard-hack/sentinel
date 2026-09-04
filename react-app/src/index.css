@@ -2074,7 +2074,11 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    Spans: hero 2x2 · wide 2x1 · tall 1x2 · default 1x1. */
 .rp-bento {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-auto-rows: minmax(248px, auto);
+  /* A hero spans two of these, so this number is what decides how much room
+     the Sankey and the socio map actually get: 248 gave them a ~420px body,
+     and the map — which is limited by height, not width — could not fill it.
+     Rows still grow past this when their content needs it. */
+  grid-auto-rows: minmax(280px, auto);
   align-items: stretch;
 }
 .rp-bento .rp-card-hero { grid-column: span 2; grid-row: span 2; }
@@ -2141,9 +2145,16 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .rp-bento .rp-card-body > .sk-wrap { display: flex; }
 /* min-width forced a scrollbar inside a tile that is already wide enough. */
 .rp-bento .rp-card-body .sk-svg { min-width: 0; }
-.rp-bento .rp-card-body .scm-body { height: 100%; }
+/* flex, not height:100%. The map sits under its own indicator picker inside a
+   flex column, so 100% of the parent is the whole tile and the controls row
+   pushes that much over the edge. */
+.rp-bento .rp-card-body .scm-body { flex: 1; min-height: 0; }
 .rp-bento .rp-card-body > .geo-map,
 .rp-bento .rp-card-body .scm-body { align-items: stretch; }
+/* The measured cell the projection is refitted to. Without min-height:0 a grid
+   item floors at its content's height, so the box reports the drawing's own
+   size back to it and the map can never grow into the tile. */
+.rp-bento .rp-card-body .scm-map { height: 100%; min-height: 0; }
 
 /* Four columns to two, with no three-column step: at three columns a
    hero+tall+tall band leaves the fourth cell of nothing, which is the exact
@@ -3196,7 +3207,14 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .scm-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .scm-label { font-size: 0.8rem; color: var(--text-3); }
 .scm-hint { font-size: 0.75rem; color: var(--text-4); font-style: italic; }
-.scm-body { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(220px, 1fr); gap: 18px; align-items: start; }
+/* Karnataka is TALLER than it is wide — roughly 7 degrees of latitude against
+   4.6 of longitude — so the drawing is limited by the cell's height, and any
+   column width past about two-thirds of that height is slack the map centres
+   itself in rather than grows into. Widening this column does not make the map
+   bigger; the tile getting taller does (see grid-auto-rows). So the split stays
+   near where it was and the readout keeps a column it can be read in. */
+.scm-body { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(200px, 1fr); gap: 18px; align-items: start; }
+.scm-map { min-width: 0; min-height: 0; display: flex; }
 .scm-svg { width: 100%; height: auto; display: block; }
 .scm-shape {
   fill: var(--rp-series);

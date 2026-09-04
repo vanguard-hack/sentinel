@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { geoMercator, geoPath } from 'd3-geo';
 import { feature } from 'topojson-client';
 import { SOCIO, TOPO_NAME } from '../data/socioeconomic';
+import useMeasuredBox from './useMeasuredBox';
 
 // Socio-economic × crime correlation map for Karnataka.
 // Reading it is deliberately simple: districts are SHADED by the selected
@@ -44,10 +45,16 @@ function describe(r, label) {
   return `${strength[0].toUpperCase() + strength.slice(1)} ${r > 0 ? 'positive' : 'negative'} link: districts with higher ${label.toLowerCase()} tend to report ${dir} cases per lakh people.`;
 }
 
-const W = 460;
-const H = 430;
+// Starting size only. The projection is refitted to whatever the tile turns
+// out to be — see useMeasuredBox for why a fixed viewBox drew Karnataka
+// letterboxed in the middle of its own card.
+const W0 = 460;
+const H0 = 430;
 
 export default function SocioCrimeMap({ crimeByDistrict }) {
+  const [mapRef, box] = useMeasuredBox(W0, H0);
+  const W = Math.max(300, box.w);
+  const H = Math.max(280, box.h);
   const [geo, setGeo] = useState(null);
   const [geoError, setGeoError] = useState(null);
   const [indicator, setIndicator] = useState('unemployment_rate');
@@ -118,7 +125,14 @@ export default function SocioCrimeMap({ crimeByDistrict }) {
     const projection = geoMercator().fitExtent([[8, 8], [W - 8, H - 8]], geo);
     const p = geoPath(projection);
     return { path: p, centroid: (f) => p.centroid(f) };
-  }, [geo]);
+  }, [geo, W, H]);
+
+  /* Circles are drawn in the same units as the map, so on a bigger tile a
+     fixed 4-18px radius reads as a smaller mark against a larger state. They
+     grow with the square root of the area — the same relationship the radii
+     already use for case counts — so a district's bubble keeps its share of
+     the map at every tile size. */
+  const rk = Math.max(0.85, Math.min(1.8, Math.sqrt((W * H) / (W0 * H0))));
 
   if (geoError) return <div className="rp-empty">Map unavailable: {geoError}</div>;
   if (!geo || !crimeByDistrict?.length) return <div className="rp-empty">Loading map…</div>;
@@ -143,6 +157,7 @@ export default function SocioCrimeMap({ crimeByDistrict }) {
       </div>
 
       <div className="scm-body">
+        <div className="scm-map" ref={mapRef}>
         <svg viewBox={`0 0 ${W} ${H}`} className="scm-svg" role="img"
              onMouseLeave={() => setHover(null)}>
           {geo.features.map((f) => {
@@ -168,13 +183,14 @@ export default function SocioCrimeMap({ crimeByDistrict }) {
                 key={f.properties.district}
                 cx={cx}
                 cy={cy}
-                r={4 + 14 * Math.sqrt(agg.cases / maxCases)}
+                r={(4 + 14 * Math.sqrt(agg.cases / maxCases)) * rk}
                 className="scm-bubble"
                 pointerEvents="none"
               />
             );
           })}
         </svg>
+        </div>
 
         <div className="scm-side">
           {hover ? (

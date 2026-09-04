@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import useMeasuredBox from './useMeasuredBox';
 
 // Self-contained 3-layer Sankey (no external lib). Consumes { nodes, links }
 // from utils/reports.buildCrimeSankey: nodes carry { id, label, layer, value,
@@ -23,41 +24,29 @@ const LAYER_OFFSET = [0, 2, 4];
 // three-column chart stays readable on six hues instead of eighteen.
 const LAYER_ALPHA = [1, 0.74, 0.5];
 
-const W = 1000;
 const NW = 15;        // node bar width
 const GAP = 7;        // vertical gap between nodes in a layer
 const PAD_T = 14;
 const PAD_B = 14;
-const PAD_L = 170;    // room for category labels (left)
-const PAD_R = 158;    // room for outcome labels (right)
 
-/* Draw to the tile's REAL height instead of a fixed 460.
+/* Label gutters are a SHARE of the drawing, not a constant.
  *
- * The viewBox was a fixed 1000x460 scaled by width, so in a two-row bento tile
- * the diagram stopped a third of the way up the card and left the rest empty.
- * Stretching it with preserveAspectRatio="none" would have filled the tile and
- * squashed every label with it — text does not survive a non-uniform scale.
- * Measuring instead keeps the ribbons and the type undistorted and simply
- * gives the drawing the room the tile actually has. */
-function useMeasuredHeight(initial) {
-  const ref = React.useRef(null);
-  const [h, setH] = React.useState(initial);
-  React.useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver((entries) => {
-      const ch = entries[0]?.contentRect?.height;
-      // Below ~260 the labels collide; the tile scrolls rather than lying.
-      if (ch) setH(Math.max(260, Math.round(ch)));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, h];
-}
+ * 170 and 158 were units of a 1000-wide viewBox — about a sixth and a seventh
+ * of it — and read as such only because the whole thing was scaled to the
+ * tile. Drawn at 1:1 those become 170 and 158 real pixels, which is right on a
+ * 900px hero and eats half the chart on a 480px phone. Proportional with a
+ * floor keeps the ribbons the widest thing on the card at every size, and the
+ * floor is what the longest crime-head label actually needs at 12px. */
+const clamp = (lo, v, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
 
-export default function Sankey({ spec, height = 460 }) {
-  const [wrapRef, drawH] = useMeasuredHeight(height);
+export default function Sankey({ spec, width = 1000, height = 460 }) {
+  const [wrapRef, box] = useMeasuredBox(width, height);
+  // Below these the labels collide with each other and with the ribbons; the
+  // wrapper scrolls rather than drawing something that cannot be read.
+  const W = Math.max(520, box.w);
+  const drawH = Math.max(260, box.h);
+  const PAD_L = clamp(92, W * 0.175, 210);
+  const PAD_R = clamp(84, W * 0.155, 195);
   const [hover, setHover] = useState(null); // node id or link idx
   const layout = useMemo(() => {
     const nodes = spec?.nodes || [];
@@ -113,7 +102,7 @@ export default function Sankey({ spec, height = 460 }) {
     });
 
     return { nodeList: [...nodeMap.values()], nodeMap, links: placed, total };
-  }, [spec, drawH]);
+  }, [spec, W, drawH, PAD_L, PAD_R]);
 
   if (!layout) return <div className="rp-empty">No data</div>;
   const { nodeList, nodeMap, links, total } = layout;
