@@ -4,6 +4,7 @@
 // down once (~2.2k rows, 4 columns) and compute every profile client-side.
 // That also makes the crime-head filter instant — no re-querying.
 import { runQuery, fetchSharedCases } from './datastore';
+import { derived, invalidate } from './derived';
 
 
 export async function fetchIncidents() {
@@ -146,3 +147,10 @@ export function headDaypartMatrix(rows, headNames) {
     }))
     .sort((a, b) => b.total - a.total);
 }
+
+
+/* Held for the session — the incident coding is pure and the tab is one of five
+   that get switched between. */
+export const INCIDENTS_KEY = 'aiIncidents';
+export const getIncidents = () => derived(INCIDENTS_KEY, fetchIncidents);
+export function refreshIncidents() { invalidate(INCIDENTS_KEY); }

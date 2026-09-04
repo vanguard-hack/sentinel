@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { lookupIfscMany } from '../utils/publicRefs';
 import { AlertTriangle, RefreshCw, Landmark, ChevronLeft, ChevronRight } from 'lucide-react';
-import { fetchFinancialData, buildFinancialTrails, formatRs, TYPOLOGIES } from '../utils/financial';
-import NetworkGraph from './NetworkGraph';
+import { getFinancialTrails, refreshFinancialTrails, formatRs, TYPOLOGIES } from '../utils/financial';
+import MoneyFlowMap from './MoneyFlowMap';
 
 const Tier = ({ t }) => <span className={`fc-tier fc-tier-${t.toLowerCase()}`}>{t}</span>;
 const ALERTS_PER_PAGE = 8;
@@ -49,11 +49,16 @@ export default function FinancialTrails() {
   const [tReason, setTReason] = useState('');
   const [tPage, setTPage] = useState(1);
 
-  const load = useCallback(async () => {
+  /* Mounting reads the cached model; only the Rebuild button pays for it
+     again. The ledger is synthesised from a fixed seed, so a rebuild returns
+     the same numbers — this is a cache of a pure function, not of a snapshot
+     that might have moved on. */
+  const load = useCallback(async (rebuild = false) => {
+    if (rebuild) refreshFinancialTrails();
     setLoading(true);
     setError(null);
     try {
-      setData(buildFinancialTrails(await fetchFinancialData()));
+      setData(await getFinancialTrails());
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -62,7 +67,9 @@ export default function FinancialTrails() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const { summary, alerts, typologyCounts, flagged, netSpec, branches } = data || {};
+  const { summary, alerts, typologyCounts, flagged, moneyMap, branches } = data || {};
+  // Which node the map has pinned. Focus is a highlight, not a re-layout.
+  const [mapSel, setMapSel] = useState(null);
 
   // Where the money physically sits.
   //
@@ -88,12 +95,16 @@ export default function FinancialTrails() {
   // branch is a bookkeeping error, one that crosses six districts is a
   // structure somebody built.
   const districts = useMemo(() => {
-    if (!branchInfo || !netSpec) return [];
+    if (!branchInfo || !moneyMap) return [];
     const count = new Map();
-    for (const n of netSpec.nodes) {
+    for (const n of moneyMap.nodes) {
       const b = n.ifsc && branchInfo.get(n.ifsc);
       if (!b || !b.district) continue;
-      const key = b.district.replace(/\b\w/g, (c) => c.toUpperCase());
+      // The IFSC directory returns districts in caps ("BANGALORE"). Upper-casing
+      // the first letter of each word does nothing to a string that is already
+      // upper-case, which is why they were still shouting on screen; lower-case
+      // first, then title-case.
+      const key = b.district.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
       if (!count.has(key)) count.set(key, { district: key, accounts: 0, banks: new Set() });
       const row = count.get(key);
       row.accounts += 1;
@@ -102,7 +113,7 @@ export default function FinancialTrails() {
     return [...count.values()]
       .map((r) => ({ ...r, banks: [...r.banks] }))
       .sort((a, b) => b.accounts - a.accounts);
-  }, [branchInfo, netSpec]);
+  }, [branchInfo, moneyMap]);
 
   // Distinct option lists for the filter dropdowns.
   const channelOpts = useMemo(
@@ -170,7 +181,7 @@ export default function FinancialTrails() {
               standard AML typologies — demo, analyst decision-support only
             </span>
           </div>
-          <button className="cf-icon-btn" onClick={load} title="Rebuild"><RefreshCw size={15} /></button>
+          <button className="cf-icon-btn" onClick={() => load(true)} title="Rebuild"><RefreshCw size={15} /></button>
         </div>
         <div className="rp-card-body">
           <div className="cl-kpi-row">
@@ -238,11 +249,13 @@ export default function FinancialTrails() {
       <section id="fin-network" className="rp-card rp-card-wide">
         <div className="rp-card-head">
           <h2>Money-flow network</h2>
-          <span className="rp-card-sub">Entities of interest linked to counterparties, mule and shell accounts by flagged transfers</span>
+          <span className="rp-card-sub">
+            {moneyMap.nodes.length} accounts · {moneyMap.links.length} counterparty links · node size is the value that passed through it · hover or click to trace a chain
+          </span>
         </div>
         <div className="rp-card-body">
-          {netSpec.nodes.length
-            ? <NetworkGraph spec={netSpec} initialZoom={0.8} />
+          {moneyMap.nodes.length
+            ? <MoneyFlowMap map={moneyMap} selected={mapSel} onSelect={setMapSel} />
             : <div className="rp-empty">No suspicious money-flow network detected.</div>}
         </div>
       </section>

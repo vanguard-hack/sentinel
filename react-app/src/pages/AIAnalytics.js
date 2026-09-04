@@ -4,7 +4,7 @@ import {
   Brain, TrendingUp, TrendingDown, Lightbulb, Activity, Share2, LineChart, Fingerprint, Landmark,
 } from 'lucide-react';
 import {
-  fetchIncidents, hourlyProfile, dayOfMonthProfile, weekdayProfile,
+  getIncidents, refreshIncidents, hourlyProfile, dayOfMonthProfile, weekdayProfile,
   peakWindow, monthlySeries, forecastMonths, headDaypartMatrix, DAYPARTS,
 } from '../utils/aianalytics';
 import TrendArea from '../components/charts/TrendArea';
@@ -27,6 +27,13 @@ function Card({ title, subtitle, wide, children }) {
     </section>
   );
 }
+
+/* A kept-but-hidden tab.
+   Declared at module scope on purpose: a component defined inside the page
+   body is a NEW component type on every render, so React would unmount and
+   remount the whole tab each time — which is exactly the cost this is here to
+   avoid. */
+const Pane = ({ hidden, children }) => <div hidden={hidden}>{children}</div>;
 
 const DIMENSIONS = [
   { key: 'hour', label: 'Hour of day' },
@@ -53,11 +60,12 @@ export default function AIAnalytics() {
     }
   }, [search]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (rebuild = false) => {
+    if (rebuild) refreshIncidents();
     setLoading(true);
     setError(null);
     try {
-      setData(await fetchIncidents());
+      setData(await getIncidents());
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -155,10 +163,23 @@ export default function AIAnalytics() {
     ? Object.entries(data.headNames).sort((a, b) => Number(a[0]) - Number(b[0]))
     : [];
 
+  /* Tabs are mounted on first visit and then KEPT, hidden rather than
+     unmounted.
+     Unmounting threw away every filter, every page position and every derived
+     view the officer had set up, and made coming back cost a full rebuild —
+     the models are cached now, but a remount still re-renders thousands of
+     table rows and re-fits a canvas. Mounting lazily is what keeps the first
+     paint cheap: an unvisited tab costs nothing at all.
+     `hidden` is a real attribute, so a hidden tab is out of the accessibility
+     tree and out of tab order — it is not merely painted over. */
+  const [visited, setVisited] = useState(() => new Set(['patterns']));
+  useEffect(() => { setVisited((v) => (v.has(view) ? v : new Set(v).add(view))); }, [view]);
+  const pane = (tab, node) => (visited.has(tab) ? <Pane hidden={view !== tab}>{node}</Pane> : null);
+
   return (
     <div className="rp-page">
       <TopBar title="AI Analytics" subtitle="Temporal patterns & criminal networks">
-        <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
+        <button className="cf-icon-btn" onClick={() => load(true)} title="Refresh" disabled={loading}>
           <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
         </button>
       </TopBar>
@@ -202,15 +223,12 @@ export default function AIAnalytics() {
           </button>
         </div>
 
-        {view === 'financial' ? (
-          <FinancialTrails />
-        ) : view === 'forecasts' ? (
-          <Forecasts />
-        ) : view === 'links' ? (
-          <CrimeLinks />
-        ) : view === 'linkage' ? (
-          <CaseLinkage />
-        ) : error ? (
+        {pane('financial', <FinancialTrails />)}
+        {pane('forecasts', <Forecasts />)}
+        {pane('links', <CrimeLinks />)}
+        {pane('linkage', <CaseLinkage />)}
+
+        {view !== 'patterns' ? null : error ? (
           <div className="cf-state cf-error">
             <AlertTriangle size={22} />
             <p>{error}</p>

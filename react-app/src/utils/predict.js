@@ -18,6 +18,7 @@
 // features; outputs are decision support for humans, not automated targeting.
 
 import { fetchSharedCases, fetchSharedAccused, fetchSnapshotTable } from './datastore';
+import { derived, invalidate } from './derived';
 
 // Was a private sequential pager capped at 20,000 rows. Two problems: the cap
 // silently dropped a third of a 30,000-case dataset, so every risk score and
@@ -339,4 +340,23 @@ export function toChartSeries(entry) {
       value: p.value, lo: p.lo, hi: p.hi,
     }));
   return { history, forecast: points.length ? { points } : null };
+}
+
+
+/* The Forecasts tab's two reads, held for the session.
+ *
+ * `fetchForecasts` is the one that mattered. It is a round trip through the rag
+ * function to a Stratus blob, and it was made afresh on every visit to the tab —
+ * a cold container away from several seconds, for a bundle keyed by the origin
+ * month that cannot change while the page is open.
+ */
+export const PREDICT_KEY = 'predictData';
+export const FORECAST_KEY = 'forecastBundle';
+
+export const getPredictData = () => derived(PREDICT_KEY, fetchPredictData);
+export const getForecasts = () => derived(FORECAST_KEY, fetchForecasts);
+
+export function refreshPredict() {
+  invalidate(PREDICT_KEY);
+  invalidate(FORECAST_KEY);
 }

@@ -3,7 +3,7 @@ import {
   Share2, AlertTriangle, Crown, Shuffle, Repeat, Users, MapPin, Network, RefreshCw,
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
-import { fetchCrimeNetwork, buildOverview } from '../utils/crimelinks';
+import { getCrimeLinks, refreshCrimeLinks } from '../utils/crimelinks';
 import NetworkOverview from './NetworkOverview';
 import RingList from './RingList';
 import { useTranslation } from 'react-i18next';
@@ -88,11 +88,14 @@ export default function CrimeLinks() {
   // Index of the selected ring within the map, so a sidebar pick highlights it
   // there instead of swapping in a second graph.
 
-  const load = useCallback(async () => {
+  /* `rebuild` is what the button does; mounting just reads the model, which
+     after the first visit is already built and arrives on the next microtask —
+     no spinner, no recomputation. */
+  const load = useCallback(async (rebuild = false) => {
+    if (rebuild) refreshCrimeLinks();
     setLoading(true); setError(null);
     try {
-      const d = await fetchCrimeNetwork();
-      setData(d);
+      setData(await getCrimeLinks({ topN: 100 }));
       // Deliberately no default selection — the overview is the landing view.
     } catch (e) {
       setError(e.message || String(e));
@@ -107,14 +110,13 @@ export default function CrimeLinks() {
     [data, sel]
   );
 
-  // Laid out once per dataset, not per render — see buildOverview. Only the
-  // most significant rings are drawn: the long tail of three-member rings
-  // added nodes without adding readable structure. The list still carries
+  // Laid out once per DATASET, not per render and not per mount: the layout is
+  // part of the cached model now (getCrimeLinks), so returning to this tab
+  // redraws the map an officer has already learned rather than rebuilding it.
+  // Only the most significant rings are drawn — the long tail of three-member
+  // rings added nodes without adding readable structure. The list still carries
   // every ring, and selecting one off-map still shows its members and crimes.
-  const overview = useMemo(
-    () => (data ? buildOverview(data.networks, { topN: 100 }) : null),
-    [data]
-  );
+  const overview = data ? data.overview : null;
 
   // The selected ring's position in the map.
   const focusIdx = useMemo(() => {
@@ -168,7 +170,7 @@ export default function CrimeLinks() {
             <h2><Share2 size={16} /> {t('crimeLinks.title')}</h2>
             <span className="rp-card-sub">{t('crimeLinks.subtitle')}</span>
           </div>
-          <button className="cf-icon-btn" onClick={load} title="Rebuild network"><RefreshCw size={15} /></button>
+          <button className="cf-icon-btn" onClick={() => load(true)} title="Rebuild network"><RefreshCw size={15} /></button>
         </div>
         <div className="rp-card-body">
           <div className="cl-kpi-row">

@@ -8,6 +8,8 @@
 // bank/UPI records, and legal authorisation.
 
 import { fetchSharedCases, fetchSharedAccused, fetchSnapshotTable } from './datastore';
+import { seededRandom, layoutForce, normaliseLayout, components } from './graphLayout';
+import { derived, invalidate } from './derived';
 
 // Paging lives in datastore.pageQuery, which reports when it stopped short.
 // Three modules each had their own copy of this loop with a different
@@ -296,26 +298,59 @@ export function buildFinancialTrails({ cases, accused }) {
   }).filter((t) => t.flagged).sort((a, b) => b.amount - a.amount);
 
   // Money-flow network: top alert entities + their linked accounts.
+  //
+  // Laid out HERE, once, by the same seeded force layout the crime-network map
+  // uses (utils/graphLayout) — see buildMoneyMap. It used to ship a bare node
+  // and edge list to a live SVG simulation in the browser, which re-rendered
+  // the whole React tree on each of a couple of hundred frames before settling
+  // and started again on every drag. Same picture, one paint.
   const top = alerts.slice(0, 14);
   const topSet = new Set(top.map((a) => a.person));
-  const nodes = new Map();
-  const links = [];
-  top.forEach((a) => nodes.set(a.person, { id: a.person, label: a.name, group: a.tier }));
+  const entities = new Map();
+  const flows = new Map();   // "from|to" -> { from, to, value, count }
+  const tierOf = new Map(top.map((a) => [a.person, a.tier]));
+  const valueOf = new Map(top.map((a) => [a.person, a.value]));
+
+  const entity = (id) => {
+    if (!entities.has(id)) {
+      const kind = entityKind.get(id);
+      entities.set(id, {
+        id,
+        label: entityLabel.get(id) || id,
+        // An entity of interest is grouped by its risk tier; the accounts the
+        // money runs through are grouped by what kind of account they are.
+        // That is the distinction an analyst reads the map for.
+        kind: topSet.has(id) ? 'Entity' : kind === 'mule' ? 'Mule' : kind === 'shell' ? 'Shell' : 'Counterparty',
+        tier: tierOf.get(id) || null,
+        // Only accounts have a branch; a person is not held at one.
+        ifsc: entityBranch.get(id) || null,
+        value: valueOf.get(id) || 0,
+        inCount: 0,
+        outCount: 0,
+      });
+    }
+    return entities.get(id);
+  };
+  top.forEach((a) => entity(a.person));
   txns.forEach((t) => {
     if (!topSet.has(t.from) && !topSet.has(t.to)) return;
-    [t.from, t.to].forEach((e) => {
-      if (!nodes.has(e)) {
-        nodes.set(e, {
-          id: e,
-          label: entityLabel.get(e) || e,
-          group: entityKind.get(e) === 'mule' ? 'Mule' : entityKind.get(e) === 'shell' ? 'Shell' : 'Person',
-          // Only accounts have a branch; a person is not held at one.
-          ifsc: entityBranch.get(e) || null,
-        });
-      }
-    });
-    links.push({ source: t.from, target: t.to });
+    const a = entity(t.from);
+    const b = entity(t.to);
+    a.outCount += 1;
+    b.inCount += 1;
+    a.value += t.amount;
+    b.value += t.amount;
+    // One edge per PAIR, not per transfer. Twelve transfers between the same
+    // two accounts is one relationship drawn twelve times on top of itself —
+    // the weight is what carries "how much", not the number of lines.
+    const key = `${t.from}|${t.to}`;
+    const f = flows.get(key);
+    if (f) { f.value += t.amount; f.count += 1; } else {
+      flows.set(key, { from: t.from, to: t.to, value: t.amount, count: 1 });
+    }
   });
+  const nodes = entities;
+  const links = [...flows.values()];
 
   const summary = {
     txns: txns.length,
@@ -331,7 +366,7 @@ export function buildFinancialTrails({ cases, accused }) {
 
   return {
     summary, alerts, typologyCounts, flagged, branches,
-    netSpec: { nodes: [...nodes.values()], links },
+    moneyMap: buildMoneyMap([...nodes.values()], links),
   };
 }
 
@@ -349,3 +384,57 @@ function buildNarrative(typ, inD, outD) {
   const s = parts.length ? parts.join('; ') : 'flagged transactions';
   return s.charAt(0).toUpperCase() + s.slice(1) + '.';
 }
+
+/* ── The money map ───────────────────────────────────────────────────────────
+ *
+ * The same treatment as the crime-network map: one seeded force layout run
+ * once here, a node sized by the value that passes through it, and an edge per
+ * counterparty PAIR rather than per transfer.
+ *
+ * Sizing by value rather than by degree is the one deliberate difference from
+ * the ring map. Degree answers "who talks to the most accounts", which on a
+ * laundering graph is a property of the typology that generated it; value
+ * answers "where is the money", which is the question the tab exists for.
+ * Both are square-rooted so one very large chain does not flatten the rest.
+ */
+export function buildMoneyMap(entityList, flows) {
+  const index = new Map(entityList.map((e, i) => [e.id, i]));
+  const maxValue = Math.max(1, ...entityList.map((e) => e.value || 0));
+  const nodes = entityList.map((e) => ({
+    ...e,
+    // 9..30px, the same readable band the ring map lands in.
+    r: 9 + Math.sqrt((e.value || 0) / maxValue) * 21,
+    x: 0,
+    y: 0,
+  }));
+  const links = flows
+    .map((f) => ({ s: index.get(f.from), t: index.get(f.to), value: f.value, count: f.count }))
+    .filter((l) => l.s != null && l.t != null && l.s !== l.t);
+
+  layoutForce(nodes, links, seededRandom(0x9C71));
+  const { clusters } = components(nodes, links);
+  normaliseLayout(nodes);
+
+  return {
+    nodes,
+    links,
+    clusters,
+    entities: nodes.filter((n) => n.kind === 'Entity').length,
+    accounts: nodes.filter((n) => n.kind === 'Mule' || n.kind === 'Shell').length,
+  };
+}
+
+
+/* The whole Financial Trails model, built once per session.
+ *
+ * The transaction ledger is synthesised from a seeded PRNG and every detector
+ * downstream of it is pure, so rebuilding it produces a byte-identical result —
+ * which makes a quarter-second of work on every visit to the tab pure waste.
+ */
+export const FINANCIAL_KEY = 'financialTrails';
+
+export function getFinancialTrails() {
+  return derived(FINANCIAL_KEY, async () => buildFinancialTrails(await fetchFinancialData()));
+}
+
+export function refreshFinancialTrails() { invalidate(FINANCIAL_KEY); }

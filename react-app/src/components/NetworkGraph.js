@@ -56,12 +56,24 @@ export default function NetworkGraph({ spec, initialZoom = 1 }) {
 
   sim.current = model;
 
-  // Run the force simulation for a fixed number of frames, then stop (static).
+  /* Run the force simulation for a fixed number of frames, then stop (static).
+   *
+   * Dragging is read from a REF, not from the dependency list. It used to be a
+   * dependency, so picking up a node tore down the effect and started all 220
+   * frames again from wherever the layout had got to — the graph visibly
+   * re-scrambled itself the moment you touched it, and did it again on release.
+   *
+   * (The analytics money map no longer comes through here at all; it draws to a
+   * canvas from a layout computed once — see GraphCanvas. What is left on this
+   * component is the assistant's small ad-hoc graphs.) */
+  const dragRef = useRef(null);
+  dragRef.current = drag;
   useEffect(() => {
     let frame = 0;
     let raf;
     const step = () => {
       const { nodes, links } = sim.current;
+      const drag = dragRef.current;
       if (!nodes.length) return;
       // repulsion
       for (let i = 0; i < nodes.length; i++) {
@@ -105,7 +117,7 @@ export default function NetworkGraph({ spec, initialZoom = 1 }) {
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [model, drag]);
+  }, [model]);
 
   const color = (g) => `var(${CAT[model.groups.indexOf(g) % CAT.length]})`;
 

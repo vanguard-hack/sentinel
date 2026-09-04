@@ -6265,6 +6265,57 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   background: var(--blue-glow); border-radius: 9999px; padding: 1px 9px; flex-shrink: 0;
 }
 .ft-typo-desc { display: block; margin-top: 4px; font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
+
+/* Financial trails: "Where the money moved".
+   This list shipped with no rule of its own, so it fell back to a browser
+   default <ul>: bullets, and district / count / bank runs collapsed into one
+   unbroken line ("BANGALORE45 accountsICICI Bank, ..."). It is a table of
+   three facts per district, so it is laid out as one. */
+.ft-geo {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.ft-geo li {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.1fr) auto minmax(0, 2fr);
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-1);
+}
+.ft-geo li:first-child { border-top: 0; }
+.ft-geo b {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-0);
+}
+/* The count is the number being compared down the column, so it is the one
+   thing here that gets a chip. */
+.ft-geo li > span {
+  justify-self: start;
+  padding: 1px 9px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--blue-500);
+  background: var(--blue-glow);
+  white-space: nowrap;
+}
+.ft-geo em {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.45;
+}
+@media (max-width: 620px) {
+  .ft-geo li { grid-template-columns: 1fr auto; }
+  .ft-geo em { grid-column: 1 / -1; }
+}
 .fc-table td.ft-narrative {
   font-size: 12px;
   color: var(--text-2);
@@ -7514,6 +7565,18 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 }
 .net-ov-tip strong { font-size: 12.5px; color: var(--text-0); }
 .net-ov-tip span { font-size: 11px; color: var(--text-3); }
+
+/* Key for a map whose colour carries a category (the money map). The ring map
+   passes no legend and gets none — there, colour means only focus. */
+.net-ov-legend {
+  position: absolute; left: 12px; bottom: 12px; z-index: 6; pointer-events: none;
+  display: flex; flex-wrap: wrap; gap: 4px 14px;
+  padding: 6px 11px; background: var(--bg-1);
+  border: 1px solid var(--border); border-radius: 8px;
+  font-size: 11px; color: var(--text-3);
+}
+.net-ov-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.net-ov-legend i { width: 9px; height: 9px; border-radius: 9999px; }
 
 /* Fills the column (which stretches to the graph's height) rather than taking
    a fixed height, so no dead space is left under the last visible ring. */

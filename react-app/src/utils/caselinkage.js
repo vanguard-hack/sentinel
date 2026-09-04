@@ -22,6 +22,7 @@
 import { assess, applyIsotonic, isotonicSupport } from './calibration';
 
 import { fetchSnapshotTable } from './datastore';
+import { derived, invalidate } from './derived';
 
 
 // Paging lives in datastore.pageQuery, which reports when it stopped short.
@@ -118,6 +119,25 @@ export function scorePair(a, b) {
   const score =
     WEIGHTS.behaviour * j + WEIGHTS.spatial * sSpatial + WEIGHTS.temporal * sTemporal;
   return { score, j, sSpatial, sTemporal, km, days };
+}
+
+/* The same arithmetic, returning only the number.
+ *
+ * Validation calls this 3.6 million times and reads nothing but `.score`, so
+ * scorePair's breakdown object was 3.6 million allocations thrown away
+ * immediately. Identical formula, identical value — this exists purely so the
+ * measurement does not have to allocate to produce it. The UI still uses
+ * scorePair, because the UI shows the breakdown. */
+export function pairScore(a, b) {
+  const j = jaccard(a.features, b.features);
+  const km =
+    Number.isFinite(a.lat) && Number.isFinite(b.lat)
+      ? haversineKm(a.lat, a.lon, b.lat, b.lon)
+      : null;
+  const days = a.ts && b.ts ? Math.abs(a.ts - b.ts) / 86400000 : null;
+  const sSpatial = km == null ? 0 : Math.exp(-km / KM_TAU);
+  const sTemporal = days == null ? 0 : Math.exp(-days / DAY_TAU);
+  return WEIGHTS.behaviour * j + WEIGHTS.spatial * sSpatial + WEIGHTS.temporal * sTemporal;
 }
 
 // AUC via the Mann-Whitney rank statistic (ties get average ranks) — the
@@ -256,7 +276,18 @@ export async function fetchLinkageData() {
 // (deterministically sampled) unlinked pairs, plus the ranked-list measure the
 // literature reports — how often a true linked crime appears in the top 10
 // candidates for an index offence that belongs to a known series.
-export function validate(data, { pairCap = 4000, hitSample = 120 } = {}) {
+/* The hit-rate half of this is 120 index cases scored against every one of
+ * 30,000 candidates — 3.6 million comparisons, and five seconds of unbroken
+ * main-thread work at the deployed data size. Run straight from render, that
+ * was five seconds in which the tab did not paint, scroll or answer a click:
+ * the page did not look slow, it looked broken.
+ *
+ * So the body is a GENERATOR that yields between index cases. `validate` drains
+ * it in one go and behaves exactly as it always did; `validateAsync` drains it
+ * in ~12ms slices, handing the browser back between them, which is what the UI
+ * uses. The arithmetic is identical either way — this changes when the work
+ * happens, never what it computes. */
+function* validateSteps(data, { pairCap = 4000, hitSample = 120 } = {}) {
   const { cases, byId, linkedPairs } = data;
   const n = cases.length;
   if (!n || !linkedPairs.size) return { auc: null, hitRate: null, linkedPairs: 0, seriesCases: 0 };
@@ -266,7 +297,7 @@ export function validate(data, { pairCap = 4000, hitSample = 120 } = {}) {
   linkedPairs.forEach((key) => {
     if (linkedScores.length >= pairCap) return;
     const [a, b] = key.split('|');
-    linkedScores.push(scorePair(byId.get(a), byId.get(b)).score);
+    linkedScores.push(pairScore(byId.get(a), byId.get(b)));
     seen.push(key);
   });
 
@@ -283,7 +314,7 @@ export function validate(data, { pairCap = 4000, hitSample = 120 } = {}) {
     const b = cases[j];
     const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
     if (linkedPairs.has(key)) continue;
-    unlinkedScores.push(scorePair(a, b).score);
+    unlinkedScores.push(pairScore(a, b));
   }
   const auc = rocAuc(linkedScores, unlinkedScores);
 
@@ -298,15 +329,29 @@ export function validate(data, { pairCap = 4000, hitSample = 120 } = {}) {
   const step = Math.max(1, Math.floor(seriesCases.length / hitSample));
   let hits = 0;
   let tried = 0;
+  const topN = [];   // reused across index cases; ≤10 entries
   for (let s = 0; s < seriesCases.length && tried < hitSample; s += step) {
+    yield;
     const idx = byId.get(seriesCases[s]);
     const mates = seriesMates.get(idx.id);
-    const top = cases
-      .filter((c) => c.id !== idx.id)
-      .map((c) => ({ id: c.id, score: scorePair(idx, c).score }))
-      .sort((x, y) => y.score - x.score)
-      .slice(0, 10);
-    if (top.some((t) => mates.has(t.id))) hits++;
+    // Streaming top-10 instead of scoring all 30,000 into an array and
+    // sorting it. Array.sort is stable, so a full sort keeps the earlier
+    // candidate among equal scores; displacing only on a STRICTLY higher score
+    // while scanning in the same order keeps exactly the same ten. Same answer,
+    // without 60,000 throwaway objects per index case.
+    for (let c = 0; c < cases.length; c++) {
+      const cand = cases[c];
+      if (cand.id === idx.id) continue;
+      const sc = pairScore(idx, cand);
+      if (topN.length < 10) {
+        insertTop(topN, cand.id, sc);
+      } else if (sc > topN[topN.length - 1].score) {
+        topN.pop();
+        insertTop(topN, cand.id, sc);
+      }
+    }
+    if (topN.some((t) => mates.has(t.id))) hits++;
+    topN.length = 0;
     tried++;
   }
 
@@ -316,6 +361,46 @@ export function validate(data, { pairCap = 4000, hitSample = 120 } = {}) {
     linkedPairs: linkedPairs.size,
     seriesCases: seriesCases.length,
   };
+}
+
+/* Insert into a descending top-list, AFTER every entry with a score at least
+   as high — which is what a stable descending sort does with ties. */
+function insertTop(list, id, score) {
+  let i = list.length;
+  while (i > 0 && list[i - 1].score < score) i--;
+  list.splice(i, 0, { id, score });
+}
+
+const EMPTY_VALIDATION = { auc: null, hitRate: null, linkedPairs: 0, seriesCases: 0 };
+
+/** Blocking validation. Unchanged in what it returns; used by the tests. */
+export function validate(data, opts) {
+  const it = validateSteps(data, opts);
+  let r = it.next();
+  while (!r.done) r = it.next();
+  return r.value || EMPTY_VALIDATION;
+}
+
+/* Yielding to the browser. `scheduler.yield` resumes at the front of the queue
+   where it exists, so the page stays responsive without the work being pushed
+   to the back behind every pending timer. setTimeout is the fallback. */
+const breathe = () => {
+  const sched = typeof window !== 'undefined' ? window.scheduler : null;
+  return sched && typeof sched.yield === 'function'
+    ? sched.yield()
+    : new Promise((r) => { setTimeout(r, 0); });
+};
+
+/** The same validation, in slices, so the page keeps painting while it runs. */
+export async function validateAsync(data, opts, { sliceMs = 12 } = {}) {
+  const it = validateSteps(data, opts);
+  let r = it.next();
+  let t0 = Date.now();
+  while (!r.done) {
+    if (Date.now() - t0 >= sliceMs) { await breathe(); t0 = Date.now(); }
+    r = it.next();
+  }
+  return r.value || EMPTY_VALIDATION;
 }
 
 /**
@@ -464,4 +549,34 @@ export function defaultIndexCase(data) {
   const arr = [...best].map((id) => data.byId.get(id)).filter(Boolean);
   arr.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   return arr[0]?.id || data.cases[0]?.id || null;
+}
+
+
+/* Case Linkage, built once per session, in two pieces on purpose.
+ *
+ * The coded case set and the calibration are fast; the validation is not — it
+ * is 120 index cases scored against all 30,000, and it used to run inside a
+ * render, freezing the tab for five seconds before anything appeared. Splitting
+ * it means the page can draw the ranking immediately and fill the validation
+ * KPIs in when they land, rather than making the officer wait for a metric to
+ * read a candidate list.
+ */
+export const LINKAGE_KEY = 'caseLinkage';
+export const LINKAGE_VALIDATION_KEY = 'caseLinkageValidation';
+
+export function getLinkageData() {
+  return derived(LINKAGE_KEY, async () => {
+    const data = await fetchLinkageData();
+    return { ...data, calibration: calibrateLinkage(data) };
+  });
+}
+
+/** The slow half, yielded in slices so the page keeps painting while it runs. */
+export function getLinkageValidation(data) {
+  return derived(LINKAGE_VALIDATION_KEY, () => validateAsync(data));
+}
+
+export function refreshLinkage() {
+  invalidate(LINKAGE_KEY);
+  invalidate(LINKAGE_VALIDATION_KEY);
 }

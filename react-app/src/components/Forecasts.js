@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { RefreshCw, AlertTriangle, Siren } from 'lucide-react';
 import {
-  fetchPredictData, fetchForecasts, toChartSeries,
+  getPredictData, getForecasts, refreshPredict, toChartSeries,
   districtRisk, offenderRisk, detectAnomalies,
 } from '../utils/predict';
 import { ForecastChart } from './Charts';
@@ -59,7 +59,13 @@ export default function Forecasts() {
   const [riskPage, setRiskPage] = useState(1);
   const RISK_PER_PAGE = 8;
 
-  const load = useCallback(async () => {
+  /* Both reads are held for the session (utils/predict). The forecast bundle
+     especially: it is a round trip through the rag function to a Stratus blob,
+     keyed by the origin month, and re-fetching it on every visit to this tab
+     was seconds of waiting for a number that cannot have changed. Refresh is
+     the way to force it. */
+  const load = useCallback(async (rebuild = false) => {
+    if (rebuild) refreshPredict();
     setLoading(true);
     setError(null);
     setFcError(null);
@@ -68,8 +74,8 @@ export default function Forecasts() {
     // the models. A model outage must not blank the rest of the page, so the
     // forecast failure is captured rather than thrown.
     const [caseData, bundle] = await Promise.all([
-      fetchPredictData().catch((e) => { setError(e.message || String(e)); return null; }),
-      fetchForecasts().catch((e) => { setFcError(e.message || String(e)); return null; }),
+      getPredictData().catch((e) => { setError(e.message || String(e)); return null; }),
+      getForecasts().catch((e) => { setFcError(e.message || String(e)); return null; }),
     ]);
     if (caseData) setData(caseData);
     if (bundle) setFc(bundle);
@@ -186,7 +192,7 @@ export default function Forecasts() {
         >
           {HORIZONS.map((h) => <option key={h.label} value={h.label}>{h.label}</option>)}
         </select>
-        <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
+        <button className="cf-icon-btn" onClick={() => load(true)} title="Refresh" disabled={loading}>
           <RefreshCw size={15} />
         </button>
       </div>

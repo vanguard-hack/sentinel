@@ -13,6 +13,8 @@
 // ZCQL has no joins and caps a query at ~300 rows, so everything is paged and
 // stitched client-side (see also utils/incidents.js).
 import { fetchSharedCases, fetchSharedAccused, fetchSnapshotTable } from './datastore';
+import { seededRandom, layoutForce, normaliseLayout, components } from './graphLayout';
+import { derived, invalidate } from './derived';
 
 const GENDER = { 1: 'M', 2: 'F', 3: 'T' };
 
@@ -287,16 +289,6 @@ export function networkToSpec(net) {
 // have made the picture connected by asserting relationships the records do
 // not support.
 
-function seededRandom(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6D2B79F5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 // Rings sharing operating ground or crime type. Within a district rings hang
 // off the district's largest; district hubs are then bridged where they share
 // a primary crime type, which pulls most rings into a few components while
@@ -341,67 +333,6 @@ function buildRingLinks(nets) {
   return links;
 }
 
-// Force-directed layout, run once here rather than in the browser on every
-// load. Repulsion is O(n²), which is fine for a few hundred rings and keeps
-// the code readable; springs pull linked rings together and a weak pull to the
-// centre stops disconnected rings drifting away.
-function layoutForce(nodes, links, rnd, iterations = 420) {
-  const n = nodes.length;
-  if (!n) return;
-  nodes.forEach((nd, i) => {
-    const a = (i / n) * Math.PI * 2 + rnd() * 0.6;
-    const r = 120 + rnd() * 260;
-    nd.x = Math.cos(a) * r;
-    nd.y = Math.sin(a) * r;
-    nd.vx = 0;
-    nd.vy = 0;
-  });
-
-  const deg = nodes.map(() => 0);
-  links.forEach((l) => { deg[l.s] += 1; deg[l.t] += 1; });
-
-  for (let it = 0; it < iterations; it++) {
-    const cool = 1 - it / iterations;
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        let dx = nodes[j].x - nodes[i].x;
-        let dy = nodes[j].y - nodes[i].y;
-        let d2 = dx * dx + dy * dy;
-        if (d2 < 0.01) { dx = (rnd() - 0.5) * 0.5; dy = (rnd() - 0.5) * 0.5; d2 = 0.25; }
-        // Bigger rings push harder, so they claim the space their label needs.
-        const push = (3200 + (nodes[i].r + nodes[j].r) * 210) / d2;
-        const d = Math.sqrt(d2);
-        const fx = (dx / d) * push;
-        const fy = (dy / d) * push;
-        nodes[i].vx -= fx; nodes[i].vy -= fy;
-        nodes[j].vx += fx; nodes[j].vy += fy;
-      }
-    }
-    links.forEach((l) => {
-      const a = nodes[l.s];
-      const b = nodes[l.t];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const d = Math.hypot(dx, dy) || 1;
-      const rest = 110 + a.r + b.r;
-      const f = (d - rest) * 0.012;
-      const fx = (dx / d) * f;
-      const fy = (dy / d) * f;
-      a.vx += fx; a.vy += fy;
-      b.vx -= fx; b.vy -= fy;
-    });
-    nodes.forEach((nd) => {
-      // Weak centring, weaker for well-connected rings so hubs stay central.
-      nd.vx += -nd.x * 0.0016 * (1 + 1 / (1 + deg[nodes.indexOf(nd)] || 1)) * 0;
-      nd.vx += -nd.x * 0.0018;
-      nd.vy += -nd.y * 0.0018;
-      nd.vx *= 0.86; nd.vy *= 0.86;
-      nd.x += nd.vx * cool;
-      nd.y += nd.vy * cool;
-    });
-  }
-}
-
 export function buildOverview(networks, { topN = 70 } = {}) {
   const rnd = seededRandom(0x5E27);
   // networks arrive sorted largest-first, so the top slice is the most
@@ -428,34 +359,39 @@ export function buildOverview(networks, { topN = 70 } = {}) {
   layoutForce(nodes, ringLinks, rnd);
 
   // Connected groups, for the header.
-  const parent = nodes.map((_, i) => i);
-  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
-  ringLinks.forEach((l) => { const a = find(l.s); const b = find(l.t); if (a !== b) parent[a] = b; });
-  const groups = new Set(nodes.map((_, i) => find(i)));
-  const linked = new Set();
-  ringLinks.forEach((l) => { linked.add(l.s); linked.add(l.t); });
+  const { clusters, linked } = components(nodes, ringLinks);
 
   // Normalise into a 0..1000 box so the renderer can fit any dataset.
-  const xs = nodes.map((n) => n.x);
-  const ys = nodes.map((n) => n.y);
-  const minX = Math.min(...xs, 0);
-  const maxX = Math.max(...xs, 1);
-  const minY = Math.min(...ys, 0);
-  const maxY = Math.max(...ys, 1);
-  const span = Math.max(maxX - minX, maxY - minY) || 1;
-  const scale = 900 / span;
-  nodes.forEach((n) => {
-    n.x = (n.x - minX) * scale + 50;
-    n.y = (n.y - minY) * scale + 50;
-    n.r *= Math.max(0.6, Math.min(1.6, scale));
-  });
+  normaliseLayout(nodes);
 
   return {
     nodes,
     links: ringLinks,
     shown: nodes.length,
     total: networks.length,
-    clusters: groups.size,
+    clusters,
     isolated: nodes.length - linked.size,
   };
 }
+
+
+/* The whole Crime Links model, built once per session.
+ *
+ * The network build and the ring-map layout together are the best part of half
+ * a second of straight-line work, and the tab was paying it again on every
+ * visit because switching tabs unmounts the component. The FIR data is
+ * read-only and both steps are pure, so the second visit is now a resolved
+ * promise. The map layout lives in here rather than in a component useMemo for
+ * the same reason: a useMemo dies with the component that holds it.
+ */
+export const CRIME_LINKS_KEY = 'crimeLinks';
+
+export function getCrimeLinks({ topN = 100 } = {}) {
+  return derived(CRIME_LINKS_KEY, async () => {
+    const data = await fetchCrimeNetwork();
+    return { ...data, overview: buildOverview(data.networks, { topN }) };
+  });
+}
+
+/** What the Rebuild button does — drop the model so the next read rebuilds it. */
+export function refreshCrimeLinks() { invalidate(CRIME_LINKS_KEY); }

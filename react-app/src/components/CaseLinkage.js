@@ -4,7 +4,8 @@ import {
   ShieldCheck, SlidersHorizontal, Ruler,
 } from 'lucide-react';
 import {
-  fetchLinkageData, validate, rankCandidates, defaultIndexCase, aucBand, calibrateLinkage,
+  getLinkageData, getLinkageValidation, refreshLinkage,
+  rankCandidates, defaultIndexCase, aucBand,
 } from '../utils/caselinkage';
 
 function Kpi({ value, label }) {
@@ -63,10 +64,14 @@ export default function CaseLinkage() {
   const [unsolvedOnly, setUnsolvedOnly] = useState(false);
   const [threshold, setThreshold] = useState(45);
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
+  // The validation metrics arrive after the page does — see below.
+  const [val, setVal] = useState(null);
+
+  const load = useCallback(async (rebuild = false) => {
+    if (rebuild) refreshLinkage();
+    setLoading(true); setError(null); setVal(null);
     try {
-      const d = await fetchLinkageData();
+      const d = await getLinkageData();
       setData(d);
       setIndexId(defaultIndexCase(d));
     } catch (e) {
@@ -77,10 +82,28 @@ export default function CaseLinkage() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const val = useMemo(() => (data ? validate(data) : null), [data]);
+  /* Validation runs AFTER the page is on screen, not inside a render.
+     It scores 120 index cases against all 30,000 — five seconds of unbroken
+     main-thread work at the deployed size, and it used to sit in a useMemo,
+     so the tab painted nothing at all until it finished. Clicking Case linkage
+     did not look slow, it looked dead.
+     Now the candidate list draws immediately and the four validation KPIs fill
+     in when the measurement lands, in slices that hand the browser back
+     between them. It is cached for the session, so this is a one-time cost —
+     a second visit has the numbers already. */
+  useEffect(() => {
+    if (!data) return undefined;
+    let alive = true;
+    getLinkageValidation(data)
+      .then((v) => { if (alive) setVal(v); })
+      .catch(() => { if (alive) setVal(null); });
+    return () => { alive = false; };
+  }, [data]);
+
   // Calibration is the other half of validate(): validate asks whether the
-  // model RANKS well, this asks whether its numbers mean what they say.
-  const cal = useMemo(() => (data ? calibrateLinkage(data) : null), [data]);
+  // model RANKS well, this asks whether its numbers mean what they say. It is
+  // cheap (~60ms) and part of the cached model.
+  const cal = data ? data.calibration : null;
 
   const matches = useMemo(() => {
     if (!data) return [];
@@ -145,19 +168,21 @@ export default function CaseLinkage() {
               behavioural similarity (Jaccard), inter-crime distance and temporal proximity
             </span>
           </div>
-          <button className="cf-icon-btn" onClick={load} title="Reload"><RefreshCw size={15} /></button>
+          <button className="cf-icon-btn" onClick={() => load(true)} title="Reload"><RefreshCw size={15} /></button>
         </div>
         <div className="rp-card-body">
           <div className="cl-kpi-row">
             <Kpi value={data.cases.length.toLocaleString()} label="Cases coded" />
-            <Kpi value={val.linkedPairs.toLocaleString()} label="Ground-truth linked pairs" />
-            <Kpi value={val.seriesCases.toLocaleString()} label="Cases in known series" />
+            {/* Four measured figures, not four blanks: until the measurement
+                lands they say so, so a dash is never mistaken for a result. */}
+            <Kpi value={val ? val.linkedPairs.toLocaleString() : '…'} label="Ground-truth linked pairs" />
+            <Kpi value={val ? val.seriesCases.toLocaleString() : '…'} label="Cases in known series" />
             <Kpi
-              value={val.auc == null ? '—' : val.auc.toFixed(2)}
-              label={`ROC AUC — ${aucBand(val.auc)}`}
+              value={!val ? '…' : val.auc == null ? '—' : val.auc.toFixed(2)}
+              label={val ? `ROC AUC — ${aucBand(val.auc)}` : 'ROC AUC — measuring…'}
             />
             <Kpi
-              value={val.hitRate == null ? '—' : pct(val.hitRate)}
+              value={!val ? '…' : val.hitRate == null ? '—' : pct(val.hitRate)}
               label="True link in top-10 candidates"
             />
           </div>
