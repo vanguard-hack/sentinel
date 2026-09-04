@@ -139,3 +139,4 @@ test('focusing does not move anything — layout depends only on the data', () =
   const b = buildOverview(nets).nodes.map((n) => [Math.round(n.x), Math.round(n.y), Math.round(n.r)]);
   expect(a).toEqual(b);
 });
+

@@ -23,6 +23,7 @@ import { assess, applyIsotonic, isotonicSupport } from './calibration';
 
 import { fetchSnapshotTable } from './datastore';
 import { derived, invalidate } from './derived';
+import { afterPaint, breathe } from './idle';
 
 
 // Paging lives in datastore.pageQuery, which reports when it stopped short.
@@ -381,16 +382,6 @@ export function validate(data, opts) {
   return r.value || EMPTY_VALIDATION;
 }
 
-/* Yielding to the browser. `scheduler.yield` resumes at the front of the queue
-   where it exists, so the page stays responsive without the work being pushed
-   to the back behind every pending timer. setTimeout is the fallback. */
-const breathe = () => {
-  const sched = typeof window !== 'undefined' ? window.scheduler : null;
-  return sched && typeof sched.yield === 'function'
-    ? sched.yield()
-    : new Promise((r) => { setTimeout(r, 0); });
-};
-
 /** The same validation, in slices, so the page keeps painting while it runs. */
 export async function validateAsync(data, opts, { sliceMs = 12 } = {}) {
   const it = validateSteps(data, opts);
@@ -566,6 +557,7 @@ export const LINKAGE_VALIDATION_KEY = 'caseLinkageValidation';
 
 export function getLinkageData() {
   return derived(LINKAGE_KEY, async () => {
+    await afterPaint();          // spinner first, then the build
     const data = await fetchLinkageData();
     return { ...data, calibration: calibrateLinkage(data) };
   });

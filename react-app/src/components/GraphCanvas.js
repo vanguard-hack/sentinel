@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ZoomControls from './ZoomControls';
+import { css } from '../utils/theme';
 
 /* The graph map renderer.
  *
@@ -149,12 +150,19 @@ export default function GraphCanvas({
     ctx.textBaseline = 'top';
     const fontPx = Math.max(8, Math.min(13, 11 / k));
     ctx.font = `${fontPx}px Inter, system-ui, sans-serif`;
+    /* The halo is the CARD's surface, read from the stylesheet — it used to be
+       a hardcoded white, which is a white outline around white-ish text on a
+       dark canvas. It exists to hold the label off the edges and links behind
+       it, so it has to be whatever the map is actually sitting on. */
+    const halo = css('--bg-1');
     nodes.forEach((n, i) => {
       const inFocus = near ? near.has(i) : true;
       if (!labelAlways(n) && k < 1.5 && i !== active && i !== hover && !(near && inFocus)) return;
-      ctx.globalAlpha = inFocus ? 1 : 0.14;
+      // Out-of-focus labels recede, but not to the point of being ghosts: the
+      // whole complaint about this map was that its text could not be read.
+      ctx.globalAlpha = inFocus ? 1 : 0.35;
       ctx.lineWidth = 3 / k;
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.strokeStyle = halo;
       const lx = px(i);
       const ly = py(i) + n.r + 4 / k;
       ctx.strokeText(n.label, lx, ly);

@@ -15,6 +15,8 @@
  * that rearranged itself between two visits would be unreadable as a map.
  */
 
+import { breathe } from './idle';
+
 export function seededRandom(seed) {
   let a = seed >>> 0;
   return () => {
@@ -35,6 +37,30 @@ export function seededRandom(seed) {
  * Mutates `nodes` in place: each gains x/y/vx/vy.
  */
 export function layoutForce(nodes, links, rnd, iterations = 420) {
+  const run = layoutSteps(nodes, links, rnd, iterations);
+  let r = run.next();
+  while (!r.done) r = run.next();
+}
+
+/**
+ * The same layout, yielded in ~10ms slices.
+ *
+ * 420 iterations of an O(n²) repulsion over a few hundred nodes is a sixth of a
+ * second in one unbroken block — enough that a click on the tab appeared to do
+ * nothing at all until the map arrived. The arithmetic is identical; only the
+ * scheduling differs, and the seed makes the result the same either way.
+ */
+export async function layoutForceAsync(nodes, links, rnd, iterations = 420, { sliceMs = 10 } = {}) {
+  const run = layoutSteps(nodes, links, rnd, iterations);
+  let r = run.next();
+  let t0 = Date.now();
+  while (!r.done) {
+    if (Date.now() - t0 >= sliceMs) { await breathe(); t0 = Date.now(); }
+    r = run.next();
+  }
+}
+
+function* layoutSteps(nodes, links, rnd, iterations) {
   const n = nodes.length;
   if (!n) return;
   nodes.forEach((nd, i) => {
@@ -47,6 +73,7 @@ export function layoutForce(nodes, links, rnd, iterations = 420) {
   });
 
   for (let it = 0; it < iterations; it++) {
+    yield;
     const cool = 1 - it / iterations;
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {

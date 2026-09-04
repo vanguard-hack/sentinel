@@ -10,6 +10,7 @@
 import { fetchSharedCases, fetchSharedAccused, fetchSnapshotTable } from './datastore';
 import { seededRandom, layoutForce, normaliseLayout, components } from './graphLayout';
 import { derived, invalidate } from './derived';
+import { afterPaint } from './idle';
 
 // Paging lives in datastore.pageQuery, which reports when it stopped short.
 // Three modules each had their own copy of this loop with a different
@@ -434,7 +435,10 @@ export function buildMoneyMap(entityList, flows) {
 export const FINANCIAL_KEY = 'financialTrails';
 
 export function getFinancialTrails() {
-  return derived(FINANCIAL_KEY, async () => buildFinancialTrails(await fetchFinancialData()));
+  return derived(FINANCIAL_KEY, async () => {
+    await afterPaint();          // spinner first, then the build
+    return buildFinancialTrails(await fetchFinancialData());
+  });
 }
 
 export function refreshFinancialTrails() { invalidate(FINANCIAL_KEY); }

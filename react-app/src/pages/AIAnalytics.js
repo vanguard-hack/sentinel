@@ -15,6 +15,11 @@ import Forecasts from '../components/Forecasts';
 import FinancialTrails from '../components/FinancialTrails';
 import TopBar from '../components/TopBar';
 import { useLocation } from 'react-router-dom';
+import { warmInBackground } from '../utils/idle';
+import { getCrimeLinks } from '../utils/crimelinks';
+import { getFinancialTrails } from '../utils/financial';
+import { getLinkageData } from '../utils/caselinkage';
+import { getPredictData, getForecasts } from '../utils/predict';
 
 function Card({ title, subtitle, wide, children }) {
   return (
@@ -74,6 +79,25 @@ export default function AIAnalytics() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  /* Build the other four tabs while the officer reads this one.
+   *
+   * Caching made a SECOND visit free, but the first click on a tab still paid
+   * for its model — a fetch of tables this page has not touched, then a
+   * few hundred milliseconds of derivation. Crime links was the worst of it,
+   * and the one that felt broken.
+   *
+   * These run one at a time and only when the browser is idle, so they never
+   * compete with what is on screen; each is the same cached build the tab
+   * itself would trigger, so a click that lands mid-warm joins the work in
+   * flight rather than starting it again. Cancelled on leaving the page. */
+  useEffect(() => warmInBackground([
+    () => getCrimeLinks({ topN: 100 }),
+    () => getFinancialTrails(),
+    () => getForecasts(),
+    () => getPredictData(),
+    () => getLinkageData(),
+  ]), []);
 
   const filtered = useMemo(() => {
     if (!data) return [];

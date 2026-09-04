@@ -13,8 +13,9 @@
 // ZCQL has no joins and caps a query at ~300 rows, so everything is paged and
 // stitched client-side (see also utils/incidents.js).
 import { fetchSharedCases, fetchSharedAccused, fetchSnapshotTable } from './datastore';
-import { seededRandom, layoutForce, normaliseLayout, components } from './graphLayout';
+import { seededRandom, layoutForce, layoutForceAsync, normaliseLayout, components } from './graphLayout';
 import { derived, invalidate } from './derived';
+import { afterPaint, breathe } from './idle';
 
 const GENDER = { 1: 'M', 2: 'F', 3: 'T' };
 
@@ -147,16 +148,32 @@ export async function fetchCrimeNetwork() {
     (comps.get(r) || comps.set(r, []).get(r)).push(p.pid);
   });
 
+  /* Edges bucketed by the ring they belong to, in ONE pass.
+   *
+   * This used to rescan the whole edge list once per ring and split every key
+   * string again each time — 536 rings x every co-offending edge, with a
+   * String.split allocating two strings on each. It is the single most
+   * expensive thing on this tab and it grew quadratically with the data.
+   *
+   * A ring IS a connected component, so both ends of an edge are always in the
+   * same one: the component root of either end names its bucket, and no
+   * membership test is needed at all. */
+  const edgesByRing = new Map();
+  edgeW.forEach((w, key) => {
+    const bar = key.indexOf('|');
+    const a = key.slice(0, bar);
+    const b = key.slice(bar + 1);
+    const root = dsu.find(a);
+    const list = edgesByRing.get(root);
+    const edge = { source: a, target: b, weight: w };
+    if (list) list.push(edge); else edgesByRing.set(root, [edge]);
+  });
+
   // Build network objects for components with ≥3 members (a "ring").
   const networks = [];
-  comps.forEach((members) => {
+  comps.forEach((members, root) => {
     if (members.length < 3) return;
-    const memberSet = new Set(members);
-    const edges = [];
-    edgeW.forEach((w, key) => {
-      const [a, b] = key.split('|');
-      if (memberSet.has(a) && memberSet.has(b)) edges.push({ source: a, target: b, weight: w });
-    });
+    const edges = edgesByRing.get(root) || [];
     const caseIds = new Set();
     const districtsArr = [];
     const typesArr = [];
@@ -171,7 +188,7 @@ export async function fetchCrimeNetwork() {
       .sort((a, b) => b.degree - a.degree || b.caseCount - a.caseCount);
     const dates = [...caseIds].map((c) => caseById.get(c)?.date).filter(Boolean).sort();
     networks.push({
-      id: dsu.find(members[0]),
+      id: root,
       size: members.length,
       members: memberObjs,
       edges,
@@ -333,7 +350,10 @@ function buildRingLinks(nets) {
   return links;
 }
 
-export function buildOverview(networks, { topN = 70 } = {}) {
+/* The ring map, in two halves so the layout can be run either way: blocking
+   (buildOverview, what the tests use) or yielded (buildOverviewAsync, what the
+   tab uses). Both produce the same map from the same seed. */
+function overviewInput(networks, topN) {
   const rnd = seededRandom(0x5E27);
   // networks arrive sorted largest-first, so the top slice is the most
   // significant rings — the rest stay reachable from the sidebar.
@@ -356,8 +376,10 @@ export function buildOverview(networks, { topN = 70 } = {}) {
     .filter((l) => l.a < nodes.length && l.b < nodes.length)
     .map((l) => ({ s: l.a, t: l.b, kind: l.kind, label: l.label }));
 
-  layoutForce(nodes, ringLinks, rnd);
+  return { nodes, ringLinks, rnd };
+}
 
+function overviewOutput(networks, nodes, ringLinks) {
   // Connected groups, for the header.
   const { clusters, linked } = components(nodes, ringLinks);
 
@@ -374,6 +396,18 @@ export function buildOverview(networks, { topN = 70 } = {}) {
   };
 }
 
+export function buildOverview(networks, { topN = 70 } = {}) {
+  const { nodes, ringLinks, rnd } = overviewInput(networks, topN);
+  layoutForce(nodes, ringLinks, rnd);
+  return overviewOutput(networks, nodes, ringLinks);
+}
+
+export async function buildOverviewAsync(networks, { topN = 70 } = {}) {
+  const { nodes, ringLinks, rnd } = overviewInput(networks, topN);
+  await layoutForceAsync(nodes, ringLinks, rnd);
+  return overviewOutput(networks, nodes, ringLinks);
+}
+
 
 /* The whole Crime Links model, built once per session.
  *
@@ -388,8 +422,14 @@ export const CRIME_LINKS_KEY = 'crimeLinks';
 
 export function getCrimeLinks({ topN = 100 } = {}) {
   return derived(CRIME_LINKS_KEY, async () => {
+    // Let whatever was just committed reach the screen before the build starts.
+    // Without this the whole thing runs in a microtask after the click and the
+    // spinner the component mounted with never gets painted — which is what
+    // made clicking this tab feel like nothing had happened.
+    await afterPaint();
     const data = await fetchCrimeNetwork();
-    return { ...data, overview: buildOverview(data.networks, { topN }) };
+    await breathe();
+    return { ...data, overview: await buildOverviewAsync(data.networks, { topN }) };
   });
 }
 

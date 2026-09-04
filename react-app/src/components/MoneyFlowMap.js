@@ -26,7 +26,8 @@ export default function MoneyFlowMap({ map, selected, onSelect }) {
   const { nodes, links } = map;
 
   const colorOf = useCallback((n, { active, inFocus, hasFocus, text }) => {
-    if (text) return active ? css('--primary-strong') : css('--bg-4');
+    // Body ink, not a surface token — see the note in NetworkOverview.
+    if (text) return active ? css('--blue-600') : css('--text-1');
     const kind = KINDS.find((k) => k.key === n.kind) || KINDS[3];
     // Out of focus the map recedes to one neutral, exactly as the ring map
     // does — colour identifies, focus is what the eye follows.

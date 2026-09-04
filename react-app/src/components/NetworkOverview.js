@@ -21,7 +21,12 @@ export default function NetworkOverview({ overview, selected, onSelect }) {
   // Canvas cannot resolve CSS custom properties, so the accent is read from
   // the stylesheet per paint rather than hardcoded.
   const colorOf = useCallback((n, { active, inFocus, hasFocus, text }) => {
-    if (text) return active ? css('--primary-strong') : css('--bg-4');
+    /* Ring names were drawn in --bg-4: a SURFACE token, painted as text. On
+       the light theme that is #e3e5e8 on white and on the dark theme #26282d
+       on near-black — invisible in both, which is exactly how it looked. Body
+       ink reads on either, and --blue-600 is the accent pair that darkens on
+       light and lightens on dark for the focused ring. */
+    if (text) return active ? css('--blue-600') : css('--text-1');
     if (active) return css('--primary');
     return inFocus && hasFocus ? css('--primary-hover') : css('--text-4');
   }, []);
