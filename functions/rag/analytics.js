@@ -118,14 +118,70 @@ const PAGE = 300;
 /* ZCQL wraps every row under its table name. */
 const unwrap = (row, table) => (row && row[table] ? row[table] : row);
 
+const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
+const causeOf = (e) => (e && (e.message || e.description || e.code)) || String(e);
+
+/* Concurrent page reads, and what goes wrong with them.
+ *
+ * A snapshot build is the heaviest thing this function does to the Data Store:
+ * ArrestSurrender alone is 96 queries, and a cold home page starts a build for
+ * eight tables at once. Fired at full width that is ~100 queries in flight
+ * against a Development datastore, and some of them come back refused —
+ * throttled, or the connection dropped. There is nothing wrong with the query;
+ * the same offset succeeds a moment later.
+ *
+ * The first version treated a refused page as fatal, which is right in the
+ * sense that a silently short table is worse than an error, and wrong in that
+ * one unlucky page threw away the other 95 and left the home page showing
+ * "page read failed" with a Retry button. Both are avoidable: RETRY the page,
+ * with a widening backoff so a throttled store is given room rather than hit
+ * harder, and only give up — loudly, with the real reason attached — once a
+ * page has genuinely failed several times over.
+ *
+ * WAVE is the width. It is not a throughput dial: 8 concurrent already runs a
+ * table in a dozen round trips, and pushing it higher mostly buys more
+ * throttling, which the retries then have to pay for. */
+const WAVE = 8;
+const RETRIES = 4;
+
+/* Retrying has to be bounded in TIME as well as in tries, because the two run
+   out differently. A badly throttled table could spend four backoffs on every
+   one of a dozen waves and still be reading when the function's own clock
+   stops it — and a killed invocation tells the browser nothing at all. Giving
+   up first, with a reason, is strictly better: the client retries the build a
+   few seconds later against a store that has had a moment to breathe. */
+const BUDGET_MS = 25000;
+
+async function readPage(app, table, select, off, deadline) {
+  let last;
+  for (let attempt = 0; attempt <= RETRIES; attempt += 1) {
+    try {
+      /* eslint-disable no-await-in-loop */
+      return await app.zcql()
+        .executeZCQLQuery(`SELECT ${select} FROM ${table} LIMIT ${off}, ${PAGE}`);
+    } catch (e) {
+      last = e;
+      if (attempt >= RETRIES || Date.now() > deadline) break;
+      // Jittered, so eight pages refused in the same wave do not all come back
+      // at the same instant and refuse each other again.
+      await sleep(200 * 2 ** attempt + Math.floor(Math.random() * 250));
+      /* eslint-enable no-await-in-loop */
+    }
+  }
+  // Carry the store's own words. The previous message said only "page read
+  // failed", which is how a throttle and a dropped column looked identical.
+  throw new Error(`${table} rows ${off}-${off + PAGE} after ${RETRIES + 1} tries: ${causeOf(last)}`);
+}
+
 /* Read one table to the end.
  *
  * Pages are issued in waves rather than one after another. Inside the
- * datacentre a query is fast but not free, and 148 of them in series is still
- * seconds; twelve at a time turns that into a dozen waves. */
-async function readTable(app, table, cols, { wave = 12, cap = 120000 } = {}) {
+ * datacentre a query is fast but not free, and 96 of them in series is still
+ * seconds; eight at a time turns that into a dozen waves. */
+async function readTable(app, table, cols, { wave = WAVE, cap = 120000, budgetMs = BUDGET_MS } = {}) {
   const out = [];
   const select = cols.join(', ');
+  const deadline = Date.now() + budgetMs;
   let done = false;
 
   for (let start = 0; start < cap && !done; start += PAGE * wave) {
@@ -135,19 +191,16 @@ async function readTable(app, table, cols, { wave = 12, cap = 120000 } = {}) {
       if (off < cap) offsets.push(off);
     }
     /* eslint-disable no-await-in-loop */
-    const pages = await Promise.all(offsets.map((off) => app.zcql()
-      .executeZCQLQuery(`SELECT ${select} FROM ${table} LIMIT ${off}, ${PAGE}`)
-      .catch(() => null)));
+    const pages = await Promise.all(offsets.map((off) => readPage(app, table, select, off, deadline)));
     /* eslint-enable no-await-in-loop */
 
     for (const page of pages) {
-      // A failed page is not an empty one. Treating it as the end of the table
-      // would silently truncate the snapshot and every chart drawn from it.
-      if (page === null) throw new Error(`${table}: page read failed`);
       for (const r of page) {
         const row = unwrap(r, table);
         out.push(cols.map((c) => (row[c] === undefined || row[c] === null ? null : row[c])));
       }
+      // A short page is the end of the table. Later pages in this wave are past
+      // it, so they are dropped rather than appended.
       if (page.length < PAGE) { done = true; break; }
     }
   }
@@ -174,5 +227,5 @@ async function buildTable(app, key) {
 
 module.exports = {
   SNAPSHOT_VERSION, SNAPSHOT_KEY, TABLES, TABLE_ROLES,
-  specOf, rolesFor, buildTable, readTable,
+  specOf, rolesFor, buildTable, readTable, readPage, WAVE, RETRIES, BUDGET_MS,
 };

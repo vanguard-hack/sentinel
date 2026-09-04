@@ -360,18 +360,42 @@ const snapshots = new Map();   // table -> Promise<row objects>
 
 export function clearSnapshot() { snapshots.clear(); }
 
-function snapshotTable(name) {
-  if (snapshots.has(name)) return snapshots.get(name);
-  const p = (async () => {
+/* Building a snapshot the first time reads a whole table out of the Data
+ * Store, and that read can be refused under load. The server already retries
+ * the individual page; this retries the BUILD, because the two failures are
+ * different. A refused page is a moment's throttling. A refused build means
+ * this table has no cached copy yet and the officer is the one paying to make
+ * it — the worst possible moment to hand them an error and a Retry button.
+ *
+ * Only 5xx is retried. A 400 (unknown table) or 403 (clearance) is an answer,
+ * not a hiccup, and asking again would just be slower. */
+const SNAPSHOT_TRIES = 3;
+const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
+
+async function fetchSnapshot(name) {
+  let last;
+  for (let attempt = 0; attempt < SNAPSHOT_TRIES; attempt += 1) {
+    // eslint-disable-next-line no-await-in-loop
     const res = await fetch('/server/rag/analytics/snapshot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ table: name }),
     });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      throw new Error(d.error || `Analytics data unavailable (HTTP ${res.status})`);
-    }
+    if (res.ok) return res;
+    // eslint-disable-next-line no-await-in-loop
+    const d = await res.json().catch(() => ({}));
+    last = new Error(d.error || `Analytics data unavailable (HTTP ${res.status})`);
+    if (res.status < 500) throw last;
+    // eslint-disable-next-line no-await-in-loop
+    if (attempt < SNAPSHOT_TRIES - 1) await wait(1200 * (attempt + 1));
+  }
+  throw last;
+}
+
+function snapshotTable(name) {
+  if (snapshots.has(name)) return snapshots.get(name);
+  const p = (async () => {
+    const res = await fetchSnapshot(name);
     const { cols, rows } = await res.json();
     // Columnar -> the row objects every analytics module already expects, so
     // this changed how the data arrives and nothing about how it is used.

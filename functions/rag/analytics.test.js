@@ -106,14 +106,55 @@ if (fs.existsSync(UTILS)) {
   );
   check('a short page ends the read', short.length === 307);
 
-  let threw = false;
+  // The failure the home page actually hit. A Development datastore refuses
+  // pages under load — eight tables building at once is ~100 queries in
+  // flight — and the first version treated one refusal as the end of the
+  // build, so 95 good pages were thrown away and the officer got
+  // "page read failed" where the bento should be.
+  let attempts = 0;
+  const flaky = await A.readTable(
+    fakeApp(async (q) => {
+      if (/LIMIT 600,/.test(q)) {
+        attempts += 1;
+        if (attempts <= 2) throw new Error('R00004: too many concurrent requests');
+      }
+      return /LIMIT 2400,/.test(q) ? pageOf(11) : pageOf(300);
+    }),
+    'CaseMaster', ['CaseMasterID']
+  );
+  check('a page refused twice is retried, not treated as the end of the table',
+    flaky.length === 8 * 300 + 11 && attempts === 3);
+
+  let threw = null;
   try {
     await A.readTable(
-      fakeApp(async (q) => { if (/LIMIT 600,/.test(q)) throw new Error('boom'); return pageOf(300); }),
+      fakeApp(async (q) => { if (/LIMIT 600,/.test(q)) throw new Error('R00004: refused'); return pageOf(300); }),
       'CaseMaster', ['CaseMasterID']
     );
-  } catch { threw = true; }
-  check('a failed page throws rather than silently truncating', threw);
+  } catch (e) { threw = e; }
+  check('a page that never recovers still throws rather than silently truncating', !!threw);
+  // "page read failed" was all the old message said, which is how a throttle
+  // and a dropped column looked identical from the browser. The message must
+  // name the table, the rows, and the store's own reason.
+  check('the failure carries the store\'s own reason, not just "failed"',
+    threw && /CaseMaster/.test(threw.message) && /600/.test(threw.message)
+      && /R00004: refused/.test(threw.message));
+  check('the failure says how many tries it took',
+    threw && new RegExp(`${A.RETRIES + 1} tries`).test(threw.message));
+
+  // Retrying is bounded in time as well as in tries: past the budget the build
+  // gives up at once instead of sleeping its way into being killed by the
+  // function's own clock, which would tell the browser nothing at all.
+  const t0 = Date.now();
+  let budgeted = null;
+  try {
+    await A.readTable(
+      fakeApp(async () => { throw new Error('R00004: refused'); }),
+      'CaseMaster', ['CaseMasterID'], { budgetMs: 0 }
+    );
+  } catch (e) { budgeted = e; }
+  check('past the budget the build gives up rather than sleeping through it',
+    !!budgeted && Date.now() - t0 < 500);
 
   const missing = await A.readTable(
     fakeApp(async () => [{ CaseMaster: { CaseMasterID: 1 } }]),
@@ -121,6 +162,37 @@ if (fs.existsSync(UTILS)) {
   );
   check('an absent column becomes null, keeping every row the same width',
     missing[0].length === 2 && missing[0][1] === null);
+
+  /* The spec must name columns that EXIST.
+   *
+   * A wrong column name is not a slow failure: every page of that table is
+   * rejected, so the build dies on its first wave and the page that reads it
+   * shows an error instead of a chart. SCHEMA.md is generated from the same
+   * dataset the Data Store is imported from, so it is the one place in the
+   * repo that can answer whether a column is real. */
+  const fs = require('fs');
+  const path = require('path');
+  const mdPath = path.join(__dirname, '..', '..', 'ksp', 'fir', 'import', 'SCHEMA.md');
+  if (fs.existsSync(mdPath)) {
+    const schema = {};
+    let cur = null;
+    for (const line of fs.readFileSync(mdPath, 'utf8').split('\n')) {
+      const h = line.match(/^##\s+`([A-Za-z_]+)`/);
+      if (h) { cur = h[1]; schema[cur] = new Set(); continue; }
+      if (/^##/.test(line)) { cur = null; continue; }
+      if (!cur) continue;
+      const c = line.match(/^\|\s*([A-Za-z_][A-Za-z0-9_]*)\s*\|/);
+      if (c && c[1] !== 'Column') schema[cur].add(c[1]);
+    }
+    check('SCHEMA.md parsed', Object.keys(schema).length > 20);
+    for (const key of Object.keys(A.TABLES)) {
+      const { from, cols } = A.specOf(key);
+      const cols_ = schema[from];
+      const bad = cols_ ? cols.filter((c) => !cols_.has(c)) : ['<no such table>'];
+      check(`${key}: every column exists in ${from}${bad.length ? ` (missing ${bad.join(', ')})` : ''}`,
+        bad.length === 0);
+    }
+  }
 
   console.log(`\n${pass} passed, ${fail} failed.`);
   if (fail) process.exit(1);
