@@ -13,6 +13,8 @@ const AuthContext = createContext(null);
 // the SDK can't confirm (e.g. region mismatch) doesn't cause an infinite redirect.
 const REDIRECT_GUARD = 'sentinel_auth_redirected';
 const USER_CACHE_KEY  = 'sentinel_user';
+// How long local housekeeping may delay the end of the session.
+const WIPE_BUDGET_MS = 2500;
 
 // navigator.onLine only reports whether a network INTERFACE exists — a machine
 // with Wi-Fi off but any VPN, virtual or ethernet adapter still says "online".
@@ -36,9 +38,24 @@ const canReachNetwork = async () => {
   }
 };
 
+/* Every storage access here is wrapped, and not out of habit.
+ *
+ * localStorage and sessionStorage THROW rather than return null when the
+ * browser has blocked site data — a locked-down station build, a privacy mode,
+ * an enterprise policy. The profile cache was already guarded; the redirect
+ * guard was not, so on such a machine the auth check threw partway through, the
+ * splash screen never settled, and the officer could not reach the app at all,
+ * let alone the Sign out button inside it.
+ *
+ * A guard that cannot be persisted is a guard that does not hold — the cost is
+ * one extra bounce to the login page, which is the right way to fail. */
 const readCache  = () => { try { const s = localStorage.getItem(USER_CACHE_KEY); return s ? JSON.parse(s) : null; } catch { return null; } };
-const writeCache = (u)  => { try { localStorage.setItem(USER_CACHE_KEY, JSON.stringify(u)); } catch {} };
-const clearCache = ()   => { try { localStorage.removeItem(USER_CACHE_KEY); } catch {} };
+const writeCache = (u)  => { try { localStorage.setItem(USER_CACHE_KEY, JSON.stringify(u)); } catch { /* storage blocked */ } };
+const clearCache = ()   => { try { localStorage.removeItem(USER_CACHE_KEY); } catch { /* storage blocked */ } };
+
+const readGuard  = () => { try { return sessionStorage.getItem(REDIRECT_GUARD); } catch { return null; } };
+const setGuard   = () => { try { sessionStorage.setItem(REDIRECT_GUARD, '1'); } catch { /* storage blocked */ } };
+const clearGuard = () => { try { sessionStorage.removeItem(REDIRECT_GUARD); } catch { /* storage blocked */ } };
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -75,7 +92,7 @@ export function AuthProvider({ children }) {
       if (cancelled) return;
 
       if (currentUser) {
-        sessionStorage.removeItem(REDIRECT_GUARD);
+        clearGuard();
         writeCache(currentUser); // persist profile so a slow SDK never loses the name
         setUser(currentUser);
         settle();
@@ -103,8 +120,8 @@ export function AuthProvider({ children }) {
 
       if (cancelled) return;
 
-      if (!sessionStorage.getItem(REDIRECT_GUARD)) {
-        sessionStorage.setItem(REDIRECT_GUARD, '1');
+      if (!readGuard()) {
+        setGuard();
         // The redirect navigates away, so the splash below is correct — until
         // it isn't. If the connection dies between the probe and this call the
         // navigation never happens, and without this the officer is left on
@@ -143,7 +160,14 @@ export function AuthProvider({ children }) {
     // Queued work is the officer's own and has not reached the server yet, so
     // signing out would destroy it. Warn before that happens rather than after.
     let pending = 0;
-    try { pending = await pendingCount(); } catch { /* no queue */ }
+    try {
+      // Also bounded: a queue read that never answers must not hold the officer
+      // on a page they have asked to leave.
+      pending = await Promise.race([
+        pendingCount(),
+        new Promise((r) => { setTimeout(() => r(0), WIPE_BUDGET_MS); }),
+      ]);
+    } catch { /* no queue */ }
     if (pending > 0) {
       const word = pending === 1 ? 'change' : 'changes';
       // The native dialog, deliberately. AuthProvider wraps ConfirmProvider in
@@ -159,12 +183,22 @@ export function AuthProvider({ children }) {
       if (!ok) return;
     }
     setSigningOut(true); // immediate feedback — the SDK call below then navigates away
-    sessionStorage.removeItem(REDIRECT_GUARD);
+    clearGuard();
     clearCache();
-    // A station terminal is shared. Nothing of this officer's may outlive their
-    // session: cached shell, reference data and any queued write all go.
-    await wipeOfflineData();
-    catalystSignOut(); // SDK clears the session cookie and navigates to login itself
+    /* A station terminal is shared. Nothing of this officer's may outlive their
+       session: cached shell, reference data and any queued write all go.
+       BOUNDED, and deliberately so. Ending the session is what signing out
+       means, and the only thing that ends it is the SDK call below. Clearing
+       local data is housekeeping on the way there, so it gets a fixed budget
+       and then the session goes regardless — this used to be an unbounded
+       await, which meant one wedged IndexedDB request was enough for the Sign
+       out button to do nothing at all. The service worker is told to wipe as
+       well, and finishes that on its own after the page is gone. */
+    await Promise.race([
+      wipeOfflineData().catch(() => { /* best effort */ }),
+      new Promise((r) => { setTimeout(r, WIPE_BUDGET_MS); }),
+    ]);
+    catalystSignOut(); // SDK clears the session cookie and redirects itself
   }, []);
 
   return (

@@ -17,17 +17,47 @@ const QUEUE_STORE = 'writes';
 const DB_VERSION = 1;
 
 // ── IndexedDB, minimal ──────────────────────────────────────────────────────
+/* Opening the queue database.
+ *
+ * `onsuccess` and `onerror` are not the only two outcomes. An open that needs
+ * an upgrade while another tab holds the database fires `onblocked` and then
+ * sits there — no success, no error — and a station terminal is exactly where
+ * a second tab is likely to be open. Storage that is disabled outright can be
+ * as quiet.
+ *
+ * That mattered more than a queue read: sign-out awaited this on its way to
+ * clearing the session, so a promise that never settled meant clicking Sign
+ * out did nothing at all. Every path now settles, and a failure to open is
+ * reported as a failure rather than as a wait. */
+const OPEN_TIMEOUT_MS = 3000;
+
 function openDb() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(QUEUE_DB, DB_VERSION);
+    let settled = false;
+    const done = (fn, v) => { if (!settled) { settled = true; fn(v); } };
+    let req;
+    try {
+      req = indexedDB.open(QUEUE_DB, DB_VERSION);
+    } catch (e) {
+      reject(e);            // storage denied outright
+      return;
+    }
+    const timer = setTimeout(
+      () => done(reject, new Error('IndexedDB did not open')),
+      OPEN_TIMEOUT_MS
+    );
+    const finish = (fn, v) => { clearTimeout(timer); done(fn, v); };
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(QUEUE_STORE)) {
         db.createObjectStore(QUEUE_STORE, { keyPath: 'id', autoIncrement: true });
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => finish(resolve, req.result);
+    req.onerror = () => finish(reject, req.error || new Error('IndexedDB open failed'));
+    // Another tab is holding the old version open. It may close in a moment, so
+    // the timeout above is what decides — this just names the reason.
+    req.onblocked = () => finish(reject, new Error('IndexedDB blocked by another tab'));
   });
 }
 
