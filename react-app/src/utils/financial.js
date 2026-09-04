@@ -8,9 +8,9 @@
 // bank/UPI records, and legal authorisation.
 
 import { fetchSharedCases, fetchSharedAccused, fetchSnapshotTable } from './datastore';
-import { seededRandom, layoutForce, normaliseLayout, components } from './graphLayout';
+import { seededRandom, layoutForce, layoutForceAsync, normaliseLayout, components } from './graphLayout';
 import { derived, invalidate } from './derived';
-import { afterPaint } from './idle';
+import { afterPaint, breathe } from './idle';
 
 // Paging lives in datastore.pageQuery, which reports when it stopped short.
 // Three modules each had their own copy of this loop with a different
@@ -153,8 +153,40 @@ export function buildFinancialTrails({ cases, accused }) {
   // the same account is always at the same branch across reloads — a mule that
   // moves bank every refresh is not evidence of anything.
   const entityBranch = new Map();
-  const acct = (prefix, seed) => {
-    const id = `${prefix}-${1000 + (seed % 9000)}`;
+
+  /* ── The account pool ──────────────────────────────────────────────────
+   *
+   * Laundering infrastructure is SHARED and it is UNEVEN. The same mule
+   * receives from several different people; the same shell fronts for more
+   * than one racket; and a handful of accounts carry far more traffic than
+   * the rest, because setting one up costs effort and whoever has one uses
+   * it again.
+   *
+   * The first version of this drew each account id from 9,000 slots keyed on
+   * the person, so two entities almost never touched the same account. The
+   * result was a picture of N identical disconnected stars — a perfectly
+   * regular shape that told an analyst nothing, because the thing worth
+   * seeing on a money graph is precisely where two chains MEET.
+   *
+   * So the pool is bounded (it scales with the number of entities, not with
+   * the number of draws) and the index is drawn with a power law: r^2.2 puts
+   * most draws on the low indices, so a few accounts become hubs and the rest
+   * trail off. That is the degree distribution these networks actually have.
+   * The draw is still a pure function of the seed, so the same dataset always
+   * produces the same accounts. */
+  /* Sized so an account serves a HANDFUL of people, not forty. The pool grows
+     with the number of entities rather than being capped, because a fixed cap
+     turns every mule into a hub the moment the dataset is large — which is its
+     own kind of unreal, and made the round-trip search explode. */
+  const POOL = {
+    MULE: Math.max(12, Math.round(byPerson.size * 0.45)),
+    SHELL: Math.max(10, Math.round(byPerson.size * 0.32)),
+  };
+  const draw = (prefix, seed) => {
+    const size = POOL[prefix];
+    const r = (seed >>> 0) / 4294967296;
+    const idx = Math.min(size - 1, Math.floor(size * (r ** 2.2)));
+    const id = `${prefix}-${1000 + idx}`;
     if (!entityLabel.has(id)) {
       entityLabel.set(id, id);
       entityKind.set(id, prefix === 'MULE' ? 'mule' : 'shell');
@@ -163,8 +195,30 @@ export function buildFinancialTrails({ cases, accused }) {
     return id;
   };
 
+  /* An account that is not one of `taken`.
+   *
+   * Concentrating draws on a small set of hubs is the point, but it made two
+   * consecutive draws land on the same account often enough to matter, and the
+   * results were nonsense: a layering chain whose next hop was the account it
+   * was already at (a transfer from MULE-1146 to MULE-1146), and a fan-in from
+   * "many accounts" that was the same account four times. Neither is a
+   * transaction anybody could act on, and the first was silently dropped by the
+   * map, which is why the layering chains never appeared on it.
+   *
+   * The seed is bumped and redrawn — deterministic, and bounded so a pool
+   * smaller than the request cannot spin. */
+  const acct = (prefix, seed, ...taken) => {
+    const avoid = new Set(taken.filter(Boolean));
+    let id = draw(prefix, seed);
+    for (let n = 1; n <= 12 && avoid.has(id); n += 1) {
+      id = draw(prefix, djb2(`${prefix}:${seed}:${n}`));
+    }
+    return id;
+  };
+
   const txns = [];
   const add = (from, to, amount, channel, ts, c) => {
+    if (from === to) return;   // never a real movement of money
     txns.push({ id: 'FT' + txns.length, from, to, amount: Math.round(amount), channel, ts, caseId: c.id, crimeNo: c.crimeNo, head: c.head });
   };
 
@@ -179,7 +233,12 @@ export function buildFinancialTrails({ cases, accused }) {
 
     if (profile === 'structurer') {
       const n = 4 + Math.floor(rnd() * 5);
-      for (let i = 0; i < n; i++) add(person, acct('SHELL', djb2(person + i)), THRESHOLD - 1 - RS(rnd, 0, 9000), pick(rnd, ['UPI', 'Bank transfer', 'Cash']), base + i * RS(rnd, 1, 4) * 86400000, c0);
+      const used = [];
+      for (let i = 0; i < n; i++) {
+        const to = acct('SHELL', djb2(person + i), ...used);
+        used.push(to);
+        add(person, to, THRESHOLD - 1 - RS(rnd, 0, 9000), pick(rnd, ['UPI', 'Bank transfer', 'Cash']), base + i * RS(rnd, 1, 4) * 86400000, c0);
+      }
     } else if (profile === 'layerer') {
       // rapid chain through mules, occasionally looping back (round-trip)
       const hops = 4 + Math.floor(rnd() * 4);
@@ -187,7 +246,9 @@ export function buildFinancialTrails({ cases, accused }) {
       let cur = person;
       const t0 = base;
       for (let i = 0; i < hops; i++) {
-        const next = i === hops - 1 && rnd() < 0.5 ? person : acct('MULE', djb2(person + 'h' + i));
+        const next = i === hops - 1 && rnd() < 0.5
+          ? person
+          : acct('MULE', djb2(person + 'h' + i), cur);
         add(cur, next, amount, pick(rnd, [...CH_NORMAL, 'Crypto', 'Hawala']), t0 + i * RS(rnd, 3, 20) * 3600000, c0);
         amount *= 0.9 + rnd() * 0.08;
         cur = next;
@@ -195,21 +256,74 @@ export function buildFinancialTrails({ cases, accused }) {
     } else if (profile === 'collector') {
       const n = 4 + Math.floor(rnd() * 5); // fan-in
       let total = 0;
-      for (let i = 0; i < n; i++) { const amt = RS(rnd, 20000, 120000); total += amt; add(acct('MULE', djb2(person + 'c' + i)), person, amt, pick(rnd, CHANNELS), base + i * RS(rnd, 0, 3) * 86400000, c0); }
+      const from = [];
+      for (let i = 0; i < n; i++) {
+        const src = acct('MULE', djb2(person + 'c' + i), ...from);
+        from.push(src);
+        const amt = RS(rnd, 20000, 120000);
+        total += amt;
+        add(src, person, amt, pick(rnd, CHANNELS), base + i * RS(rnd, 0, 3) * 86400000, c0);
+      }
       add(person, acct('SHELL', djb2(person + 'out')), total * (0.85 + rnd() * 0.1), pick(rnd, ['Hawala', 'Cash', 'Bank transfer']), base + 6 * 86400000, c0);
     } else if (profile === 'distributor') {
       const inAmt = RS(rnd, 2000000, 8000000); // fan-out
       add(acct('SHELL', djb2(person + 'src')), person, inAmt, pick(rnd, ['Hawala', 'Bank transfer']), base, c0);
       const n = 4 + Math.floor(rnd() * 5);
-      for (let i = 0; i < n; i++) add(person, acct('MULE', djb2(person + 'd' + i)), inAmt / n * (0.8 + rnd() * 0.3), pick(rnd, CHANNELS), base + (1 + i) * RS(rnd, 0, 2) * 86400000, c0);
+      const out = [];
+      for (let i = 0; i < n; i++) {
+        const to = acct('MULE', djb2(person + 'd' + i), ...out);
+        out.push(to);
+        add(person, to, inAmt / n * (0.8 + rnd() * 0.3), pick(rnd, CHANNELS), base + (1 + i) * RS(rnd, 0, 2) * 86400000, c0);
+      }
     } else if (profile === 'passthrough') {
       const amt = RS(rnd, 500000, 3000000);
       const via = acct('MULE', djb2(person + 'p'));
       add(via, person, amt, pick(rnd, CHANNELS), base, c0);
-      add(person, acct('SHELL', djb2(person + 'p2')), amt * (0.96 + rnd() * 0.03), pick(rnd, ['Hawala', 'Crypto', 'Bank transfer']), base + RS(rnd, 2, 40) * 3600000, c0);
+      add(person, acct('SHELL', djb2(person + 'p2'), via), amt * (0.96 + rnd() * 0.03), pick(rnd, ['Hawala', 'Crypto', 'Bank transfer']), base + RS(rnd, 2, 40) * 3600000, c0);
     } else {
       const n = 2 + Math.floor(rnd() * 3);
-      for (let i = 0; i < n; i++) add(person, acct('SHELL', djb2(person + 'o' + i)), RS(rnd, 5000, 90000), pick(rnd, CHANNELS), base + i * RS(rnd, 2, 15) * 86400000, c0);
+      const seen = [];
+      for (let i = 0; i < n; i++) {
+        const to = acct('SHELL', djb2(person + 'o' + i), ...seen);
+        seen.push(to);
+        add(person, to, RS(rnd, 5000, 90000), pick(rnd, CHANNELS), base + i * RS(rnd, 2, 15) * 86400000, c0);
+      }
+    }
+  });
+
+  /* ── Co-accused transfers ──────────────────────────────────────────────
+   *
+   * People named in the SAME FIR paying each other directly. This is the one
+   * link in the ledger that is not invented from a profile: the pairing comes
+   * out of the case records, so a person-to-person edge on the map always
+   * corresponds to two people who were actually charged together.
+   *
+   * It matters to the picture as well as to the truth of it. Without it the
+   * only path between two entities of interest ran through a shared account,
+   * and a network where principals never deal with each other directly is not
+   * one an investigator would recognise. Not every pair transacts — a coin is
+   * tossed per pair, seeded on the pair itself — because a graph where every
+   * co-accused pair moved money would be as unreal as one where none did. */
+  const financialCase = new Map();   // caseId -> [person]
+  accused.forEach((a) => {
+    if (!a.person || !byPerson.has(a.person)) return;
+    const list = financialCase.get(a.caseId);
+    if (list) { if (!list.includes(a.person)) list.push(a.person); }
+    else financialCase.set(a.caseId, [a.person]);
+  });
+  financialCase.forEach((people, caseId) => {
+    if (people.length < 2) return;
+    const c = caseById.get(caseId);
+    if (!c) return;
+    for (let i = 0; i < people.length; i += 1) {
+      for (let j = i + 1; j < people.length; j += 1) {
+        const pair = people[i] < people[j] ? `${people[i]}|${people[j]}` : `${people[j]}|${people[i]}`;
+        const r = mulberry32(djb2(pair));
+        if (r() > 0.3) continue;
+        // Direction is part of the finding: who paid whom.
+        const [from, to] = r() < 0.5 ? [people[i], people[j]] : [people[j], people[i]];
+        add(from, to, RS(r, 30000, 900000), pick(r, CHANNELS), c.ts + RS(r, 1, 45) * 86400000, c);
+      }
     }
   });
 
@@ -227,19 +341,42 @@ export function buildFinancialTrails({ cases, accused }) {
   });
 
   // Round-trip: bounded DFS (≤3 hops, increasing time) that returns to origin.
+  /* Round-trip: does money leave this person and come back within four hops,
+   * with each hop no earlier than the last?
+   *
+   * This was a depth-first walk over simple paths, which re-walked every
+   * branch and became unusable the moment accounts started being shared — one
+   * account used by several people multiplies the branching at every hop. It
+   * is now a breadth-first relaxation keeping the EARLIEST time each account
+   * can be reached, so each is expanded once per hop.
+   *
+   * Same answer, not an approximation of it: an earlier arrival can only allow
+   * more onward edges, so the earliest is the one worth keeping. And a
+   * time-respecting walk back to the origin always contains a time-respecting
+   * simple path back — cutting a loop out of the middle joins an earlier hop
+   * to a later one, which is still non-decreasing. */
   const hasCycle = (person) => {
-    const start = outAdj.get(person) || [];
-    const seen = new Set([person]);
-    const dfs = (node, ts, depth) => {
-      if (depth > 3) return false;
-      for (const e of outAdj.get(node) || []) {
-        if (e.ts < ts) continue;
-        if (e.to === person && depth >= 1) return true;
-        if (!seen.has(e.to)) { seen.add(e.to); if (dfs(e.to, e.ts, depth + 1)) return true; seen.delete(e.to); }
+    const start = outAdj.get(person);
+    if (!start || !start.length) return false;
+    let frontier = new Map();   // node -> earliest ts we can be there
+    for (const e of start) {
+      if (e.to === person) continue;
+      const cur = frontier.get(e.to);
+      if (cur === undefined || e.ts < cur) frontier.set(e.to, e.ts);
+    }
+    for (let hop = 1; hop <= 3 && frontier.size; hop += 1) {
+      const next = new Map();
+      for (const [node, ts] of frontier) {
+        for (const e of outAdj.get(node) || []) {
+          if (e.ts < ts) continue;
+          if (e.to === person) return true;
+          const cur = next.get(e.to);
+          if (cur === undefined || e.ts < cur) next.set(e.to, e.ts);
+        }
       }
-      return false;
-    };
-    return start.some((e) => { seen.add(e.to); const r = e.to === person ? false : dfs(e.to, e.ts, 1); seen.delete(e.to); return r; });
+      frontier = next;
+    }
+    return false;
   };
 
   const alerts = [];
@@ -298,20 +435,72 @@ export function buildFinancialTrails({ cases, accused }) {
     return { ...t, fromLabel: entityLabel.get(t.from) || t.from, toLabel: entityLabel.get(t.to) || t.to, reasons, flagged: reasons.length > 0 };
   }).filter((t) => t.flagged).sort((a, b) => b.amount - a.amount);
 
-  // Money-flow network: top alert entities + their linked accounts.
-  //
-  // Laid out HERE, once, by the same seeded force layout the crime-network map
-  // uses (utils/graphLayout) — see buildMoneyMap. It used to ship a bare node
-  // and edge list to a live SVG simulation in the browser, which re-rendered
-  // the whole React tree on each of a couple of hundred frames before settling
-  // and started again on every drag. Same picture, one paint.
-  const top = alerts.slice(0, 14);
+  /* ── The money-flow map ────────────────────────────────────────────────
+   *
+   * Laid out HERE, once, by the same seeded force layout the crime-network map
+   * uses (utils/graphLayout) — see buildMoneyMap. It used to ship a bare node
+   * and edge list to a live SVG simulation in the browser, which re-rendered
+   * the whole React tree on each of a couple of hundred frames before settling
+   * and started again on every drag. Same picture, one paint.
+   *
+   * TWO HOPS, NOT ONE. This drew only the transfers that touched a top entity
+   * directly, which is why it came out as a row of identical stars: a
+   * principal in the middle, its own accounts around it, and nothing joining
+   * one star to the next. But the first hop is the boring half of a laundering
+   * chain. What an investigator is looking for is the SECOND: where the money
+   * goes after the mule, and — the actual finding — where two chains run
+   * through the same account.
+   *
+   * Real money graphs are lopsided, so this one is too: a handful of dense
+   * knots, some long thin chains, a few pairs that only touch each other, and
+   * a scatter of leaves. That shape comes out of the ledger rather than being
+   * imposed here — see the account pool above. */
+  const HOPS = 2;
+  const MAX_NODES = 190;
+  const top = alerts.slice(0, 18);
   const topSet = new Set(top.map((a) => a.person));
-  const entities = new Map();
-  const flows = new Map();   // "from|to" -> { from, to, value, count }
-  const tierOf = new Map(top.map((a) => [a.person, a.tier]));
-  const valueOf = new Map(top.map((a) => [a.person, a.value]));
 
+  // Directed flows over the whole ledger: one entry per counterparty PAIR,
+  // because twelve transfers between the same two accounts is one relationship
+  // drawn twelve times on top of itself. Weight carries "how much".
+  const allFlows = new Map();          // "from|to" -> { from, to, value, count }
+  const near = new Map();              // node -> Set(neighbours), undirected
+  const touch = (a, b) => {
+    const set = near.get(a);
+    if (set) set.add(b); else near.set(a, new Set([b]));
+  };
+  txns.forEach((t) => {
+    const key = `${t.from}|${t.to}`;
+    const f = allFlows.get(key);
+    if (f) { f.value += t.amount; f.count += 1; } else {
+      allFlows.set(key, { from: t.from, to: t.to, value: t.amount, count: 1 });
+    }
+    touch(t.from, t.to);
+    touch(t.to, t.from);
+  });
+
+  /* Grow outward from the flagged entities, a hop at a time, and stop at the
+     node budget rather than mid-hop — a half-expanded ring reads as a
+     boundary in the data that is not there. Within a hop the busiest
+     neighbours come first, so what gets dropped is the quiet tail. */
+  const keep = new Set(topSet);
+  let ring = [...topSet];
+  for (let hop = 0; hop < HOPS && keep.size < MAX_NODES; hop += 1) {
+    const nextRing = [];
+    const candidates = new Set();
+    ring.forEach((id) => (near.get(id) || []).forEach((n) => { if (!keep.has(n)) candidates.add(n); }));
+    [...candidates]
+      .sort((a, b) => (near.get(b)?.size || 0) - (near.get(a)?.size || 0))
+      .forEach((id) => {
+        if (keep.size >= MAX_NODES) return;
+        keep.add(id);
+        nextRing.push(id);
+      });
+    ring = nextRing;
+  }
+
+  const entities = new Map();
+  const tierOf = new Map(alerts.map((a) => [a.person, a.tier]));
   const entity = (id) => {
     if (!entities.has(id)) {
       const kind = entityKind.get(id);
@@ -325,31 +514,27 @@ export function buildFinancialTrails({ cases, accused }) {
         tier: tierOf.get(id) || null,
         // Only accounts have a branch; a person is not held at one.
         ifsc: entityBranch.get(id) || null,
-        value: valueOf.get(id) || 0,
+        value: 0,
         inCount: 0,
         outCount: 0,
       });
     }
     return entities.get(id);
   };
-  top.forEach((a) => entity(a.person));
-  txns.forEach((t) => {
-    if (!topSet.has(t.from) && !topSet.has(t.to)) return;
-    const a = entity(t.from);
-    const b = entity(t.to);
-    a.outCount += 1;
-    b.inCount += 1;
-    a.value += t.amount;
-    b.value += t.amount;
-    // One edge per PAIR, not per transfer. Twelve transfers between the same
-    // two accounts is one relationship drawn twelve times on top of itself —
-    // the weight is what carries "how much", not the number of lines.
-    const key = `${t.from}|${t.to}`;
-    const f = flows.get(key);
-    if (f) { f.value += t.amount; f.count += 1; } else {
-      flows.set(key, { from: t.from, to: t.to, value: t.amount, count: 1 });
-    }
+  keep.forEach((id) => entity(id));
+
+  const flows = new Map();
+  allFlows.forEach((f, key) => {
+    if (!keep.has(f.from) || !keep.has(f.to)) return;
+    const a = entity(f.from);
+    const b = entity(f.to);
+    a.outCount += f.count;
+    b.inCount += f.count;
+    a.value += f.value;
+    b.value += f.value;
+    flows.set(key, f);
   });
+
   const nodes = entities;
   const links = [...flows.values()];
 
@@ -367,7 +552,11 @@ export function buildFinancialTrails({ cases, accused }) {
 
   return {
     summary, alerts, typologyCounts, flagged, branches,
-    moneyMap: buildMoneyMap([...nodes.values()], links),
+    // The graph, not the drawing. Laying out 190 nodes is half a second of
+    // O(n²) work, so it is a step the caller can yield through rather than
+    // something that happens inside this function whether there is time for
+    // it or not — see getFinancialTrails.
+    moneyGraph: { nodes: [...nodes.values()], flows: links },
   };
 }
 
@@ -398,7 +587,7 @@ function buildNarrative(typ, inD, outD) {
  * answers "where is the money", which is the question the tab exists for.
  * Both are square-rooted so one very large chain does not flatten the rest.
  */
-export function buildMoneyMap(entityList, flows) {
+function moneyMapInput(entityList, flows) {
   const index = new Map(entityList.map((e, i) => [e.id, i]));
   const maxValue = Math.max(1, ...entityList.map((e) => e.value || 0));
   const nodes = entityList.map((e) => ({
@@ -411,11 +600,12 @@ export function buildMoneyMap(entityList, flows) {
   const links = flows
     .map((f) => ({ s: index.get(f.from), t: index.get(f.to), value: f.value, count: f.count }))
     .filter((l) => l.s != null && l.t != null && l.s !== l.t);
+  return { nodes, links };
+}
 
-  layoutForce(nodes, links, seededRandom(0x9C71));
+function moneyMapOutput(nodes, links) {
   const { clusters } = components(nodes, links);
   normaliseLayout(nodes);
-
   return {
     nodes,
     links,
@@ -423,6 +613,19 @@ export function buildMoneyMap(entityList, flows) {
     entities: nodes.filter((n) => n.kind === 'Entity').length,
     accounts: nodes.filter((n) => n.kind === 'Mule' || n.kind === 'Shell').length,
   };
+}
+
+export function buildMoneyMap(entityList, flows) {
+  const { nodes, links } = moneyMapInput(entityList, flows);
+  layoutForce(nodes, links, seededRandom(0x9C71));
+  return moneyMapOutput(nodes, links);
+}
+
+/** The same map, laid out in slices so the page keeps painting. */
+export async function buildMoneyMapAsync(entityList, flows) {
+  const { nodes, links } = moneyMapInput(entityList, flows);
+  await layoutForceAsync(nodes, links, seededRandom(0x9C71));
+  return moneyMapOutput(nodes, links);
 }
 
 
@@ -437,7 +640,10 @@ export const FINANCIAL_KEY = 'financialTrails';
 export function getFinancialTrails() {
   return derived(FINANCIAL_KEY, async () => {
     await afterPaint();          // spinner first, then the build
-    return buildFinancialTrails(await fetchFinancialData());
+    const model = buildFinancialTrails(await fetchFinancialData());
+    await breathe();
+    const { nodes, flows } = model.moneyGraph;
+    return { ...model, moneyMap: await buildMoneyMapAsync(nodes, flows) };
   });
 }
 
