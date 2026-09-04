@@ -2156,6 +2156,20 @@ async function handleAnalyticsSnapshot(req, res) {
   const bucket = app.stratus().bucket(CONV_BUCKET);
   const key = analytics.SNAPSHOT_KEY(table);
 
+  /* The router already required a session, so every caller here is signed in.
+     What it cannot know is whether this particular table is one their CLEARANCE
+     covers — a snapshot hands over a whole table at once, which is a larger
+     prize than the paged query it replaced. Only the tables that are not
+     readable by every role pay for the lookup, so the common path stays a
+     single blob read. */
+  const allowed = analytics.rolesFor(table);
+  if (allowed) {
+    const { role } = await myRole(app, bucket);
+    if (!allowed.includes(role)) {
+      return json(res, 403, { error: `Your clearance does not cover ${table}.` });
+    }
+  }
+
   if (body.rebuild === true) {
     const caller = await requestUser(app);
     if (!isAdminUser(caller)) return json(res, 403, { error: 'admin only' });

@@ -36,9 +36,11 @@ for (const key of Object.keys(A.TABLES)) {
     !!spec && typeof spec.from === 'string' && Array.isArray(spec.cols) && spec.cols.length > 0);
   check(`${key}: no duplicate columns`,
     new Set(spec.cols).size === spec.cols.length);
-  // Every row is keyed back to a case (or is a master table keyed by its own id).
+  // Every row is keyed back to a case, or is a reference table keyed by its own
+  // identifier. The legal tables key on a CODE rather than an ID (ActCode,
+  // SectionCode), which is the CCTNS spelling, so both count.
   check(`${key}: carries a join key`,
-    spec.cols.some((c) => /ID$/i.test(c)));
+    spec.cols.some((c) => /(ID|Code|_id)$/i.test(c)));
 }
 
 // ── aliases ─────────────────────────────────────────────────────────────────
@@ -64,6 +66,32 @@ check('the key is versioned, so a re-import can invalidate every snapshot',
   A.SNAPSHOT_KEY('CaseMaster').includes(`v${A.SNAPSHOT_VERSION}`));
 check('the key stays inside the analytics prefix',
   Object.keys(A.TABLES).every((t) => A.SNAPSHOT_KEY(t).startsWith('analytics/')));
+
+
+// ── the client contract ─────────────────────────────────────────────────────
+// The home page broke in production because CaseCategory was dropped from the
+// spec while reports.js still asked for it: the request 400s, the page renders
+// an error and nothing else. Reading the actual call sites is the only check
+// that catches this, since nothing else connects the two files.
+const fs = require('fs');
+const path = require('path');
+
+const UTILS = path.join(__dirname, '..', '..', 'react-app', 'src', 'utils');
+if (fs.existsSync(UTILS)) {
+  const wanted = new Set();
+  for (const f of fs.readdirSync(UTILS).filter((f) => f.endsWith('.js'))) {
+    const src = fs.readFileSync(path.join(UTILS, f), 'utf8');
+    for (const re of [/fetchSnapshotTable\('([A-Za-z_]+)'\)/g,
+      /\blookup\('([A-Za-z_]+)'/g, /\bmapOf\('([A-Za-z_]+)'/g]) {
+      let m;
+      while ((m = re.exec(src)) !== null) wanted.add(m[1]);
+    }
+  }
+  const missing = [...wanted].filter((t) => !A.specOf(t)).sort();
+  check(`every table the client requests is in the spec${missing.length ? ` (missing: ${missing.join(', ')})` : ''}`,
+    missing.length === 0);
+  check('the client actually requests something (the scan works)', wanted.size > 5);
+}
 
 // ── the read loop ───────────────────────────────────────────────────────────
 // A failed page must NOT be read as the end of the table: that would truncate

@@ -62,6 +62,20 @@ const TABLES = {
   ComplainantDetails: ['CaseMasterID', 'AgeYear', 'GenderID', 'OccupationID'],
   Employee: ['EmployeeID', 'FirstName', 'RankID', 'UnitID'],
 
+  /* Small reference tables. They are a single query each, but they must be
+     HERE: a page asking for a table the snapshot does not know gets a 400 and
+     renders nothing, which is exactly how the home page broke when
+     CaseCategory was dropped from this list. analytics.test.js now asserts the
+     list covers everything the client asks for. */
+  CaseCategory: ['CaseCategoryID', 'LookupValue'],
+  Act: ['ActCode', 'ActDescription', 'ShortName'],
+  Section: ['ActCode', 'SectionCode', 'SectionDescription'],
+  Rank: ['RankID', 'RankName', 'Hierarchy'],
+  Designation: ['DesignationID', 'DesignationName'],
+  OccupationMaster: ['OccupationID', 'OccupationName'],
+  ReligionMaster: ['ReligionID', 'ReligionName'],
+  CasteMaster: ['caste_master_id', 'caste_master_name'],
+
   /* Case linkage needs three more CaseMaster columns that nothing else does:
      the coordinates it measures geographic proximity with, and the free-text
      BriefFacts its modus-operandi matching reads. BriefFacts alone is 4 MB
@@ -78,6 +92,26 @@ const specOf = (key) => {
   if (!e) return null;
   return Array.isArray(e) ? { from: key, cols: e } : { from: e.from, cols: e.cols };
 };
+
+/* Which app roles may read a table, where the answer is not "anyone signed in".
+ *
+ * Most of these tables feed the home page, and Home is open to every role, so
+ * gating them would be theatre — the same officer can already see the data on
+ * a page they are entitled to open.
+ *
+ * CaseLinkageExtra is the exception and the reason this map exists. It carries
+ * BriefFacts, the free-text narrative of all 30,000 cases, and it exists only
+ * for Case Linkage — which lives under AI Analytics, a page INVESTIGATORS
+ * cannot open. Serving it to any authenticated caller would hand an
+ * investigator, in one request, the contents of a page the role system says
+ * they may not see. The route sits behind the session gate, so this is
+ * authorisation, not authentication.
+ */
+const TABLE_ROLES = {
+  CaseLinkageExtra: ['admin', 'supervisor', 'analyst', 'policymaker'],
+};
+
+const rolesFor = (key) => TABLE_ROLES[key] || null;
 
 const PAGE = 300;
 
@@ -138,4 +172,7 @@ async function buildTable(app, key) {
   };
 }
 
-module.exports = { SNAPSHOT_VERSION, SNAPSHOT_KEY, TABLES, specOf, buildTable, readTable };
+module.exports = {
+  SNAPSHOT_VERSION, SNAPSHOT_KEY, TABLES, TABLE_ROLES,
+  specOf, rolesFor, buildTable, readTable,
+};
