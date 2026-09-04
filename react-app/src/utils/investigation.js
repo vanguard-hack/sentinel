@@ -163,7 +163,12 @@ export const updateInvestigationItem = (caseMasterId, section, entryId, patch) =
 // no way to remove a diary opened against the wrong case, so those stayed on
 // the list permanently.
 export const removeInvestigation = (caseMasterId) =>
-  post('investigation/remove', { caseMasterId });
+  // The full path, like every other call here. A bare 'investigation/remove'
+  // resolves against the CURRENT page, so from /app/investigation-diary it
+  // asked the static host for /app/investigation/remove — which Catalyst
+  // answers with the SPA's own 404 fallback. The button reported HTTP 404 and
+  // the diary stayed exactly where it was.
+  post('/server/rag/investigation/remove', { caseMasterId });
 
 export const deleteInvestigationItem = (caseMasterId, section, entryId) =>
   post('/server/rag/investigation/delete', { caseMasterId, section, entryId }).then((d) => d.record);

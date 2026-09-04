@@ -8851,6 +8851,12 @@ span.inv-status-dot {
    the control is focused, so a grid of diaries is not a grid of bins. */
 .inv-card-wrap { position: relative; display: flex; }
 .inv-card-wrap > .inv-card { flex: 1; min-width: 0; }
+/* The bin lands on the card's top-right, which is where the status chip lives.
+   The room is reserved on every card rather than only on hover: shifting the
+   chip out of the way at the moment the pointer arrives makes the row jump
+   under the cursor, and covering the case's status while offering to delete it
+   hides the one field worth reading first. */
+.inv-card-wrap > .inv-card .inv-card-top { padding-right: 28px; }
 .inv-card-del {
   position: absolute;
   top: 8px;
