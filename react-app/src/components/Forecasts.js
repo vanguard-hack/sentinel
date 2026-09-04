@@ -148,8 +148,6 @@ export default function Forecasts() {
     );
   }
 
-  const labelEvery = (h) => Math.max(1, Math.ceil((h.history.length + horizon.weeks) / 12));
-
   return (
     <>
       {/* Alerts first — the early-warning layer */}
@@ -214,7 +212,7 @@ export default function Forecasts() {
               subtitle={`Monthly registrations, all Karnataka · ${accuracyNote(fc.total.quality)}`}
               wide
             >
-              <ForecastChart history={charts.overall.history} forecast={charts.overall.fc} labelEvery={labelEvery(charts.overall)} unit="months" />
+              <ForecastChart history={charts.overall.history} forecast={charts.overall.fc} unit="months" />
             </Card>
 
             <div className="fc-duo">
@@ -223,7 +221,7 @@ export default function Forecasts() {
                   {heads.map((h) => <option key={h.key} value={h.key}>{h.label}</option>)}
                 </select>
                 {charts.byHead
-                  ? <ForecastChart history={charts.byHead.history} forecast={charts.byHead.fc} labelEvery={labelEvery(charts.byHead)} height={300} unit="months" />
+                  ? <ForecastChart history={charts.byHead.history} forecast={charts.byHead.fc} height={300} unit="months" />
                   : <div className="rp-empty">No forecast for this crime head.</div>}
               </Card>
 
@@ -232,7 +230,7 @@ export default function Forecasts() {
                   {districts.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
                 </select>
                 {charts.byDistrict
-                  ? <ForecastChart history={charts.byDistrict.history} forecast={charts.byDistrict.fc} labelEvery={labelEvery(charts.byDistrict)} height={300} unit="months" />
+                  ? <ForecastChart history={charts.byDistrict.history} forecast={charts.byDistrict.fc} height={300} unit="months" />
                   : <div className="rp-empty">No forecast for this district.</div>}
               </Card>
             </div>

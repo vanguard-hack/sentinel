@@ -617,32 +617,51 @@ export function Scatter({ data, xLabel = 'x', yLabel = 'y', height = 200 }) {
   );
 }
 
-// Forecast chart — historical weekly actuals as a solid line, forecast mean as
-// a dashed line, and the confidence interval as a shaded band. Hover reads out
+// Forecast chart — historical actuals as a solid line, forecast mean as a
+// dashed line, and the confidence interval as a shaded band. Hover reads out
 // the value (with the CI range on forecast periods).
-// `unit` names the time bucket in the caption. The crime-volume forecasts are
-// monthly; anything still passing weekly series keeps the old wording.
-export function ForecastChart({ history, forecast, height = 240, labelEvery = 1,
-  unit = 'weeks' }) {
+//
+// Both axes are drawn: a y scale to a nice ceiling with dashed gridlines, and
+// x ticks under the plot at the periods they belong to. Before this the chart
+// had neither — the y extent was unlabelled, so a reader could see the shape
+// of a forecast but not the size of it, and the x labels sat in a flex row
+// underneath that spread them evenly rather than putting them beneath their
+// own points.
+//
+// `unit` names the time bucket in the caption and the axis titles. The
+// crime-volume forecasts are monthly; anything still passing weekly series
+// keeps the old wording.
+const FC_AXIS = {
+  months: { x: 'Month', y: 'FIRs per month' },
+  weeks: { x: 'Week', y: 'FIRs per week' },
+};
+
+export function ForecastChart({ history, forecast, height = 240, unit = 'weeks' }) {
   const [active, setActive] = useState(null);
   const [wrapRef, mw] = useMeasuredWidth();
   if (!history?.length || !forecast?.points?.length) {
     return <div className="rp-empty">Not enough history to forecast</div>;
   }
 
+  const axis = FC_AXIS[unit] || FC_AXIS.weeks;
   const all = [
     ...history.map((p) => ({ ...p, kind: 'actual' })),
     ...forecast.points.map((p) => ({ ...p, kind: 'forecast' })),
   ];
   const n = all.length;
   const w = mw;
-  const padX = 8;
+  // Left room for the y ticks and their rotated title; bottom room for the x
+  // ticks and theirs.
+  const padL = 54;
+  const padR = 14;
   const padTop = 12;
-  const padBottom = 8;
-  const max = Math.max(1, ...all.map((p) => p.hi ?? p.value));
-  const innerW = w - padX * 2;
+  const padBottom = 44;
+  // The band, not the mean, sets the top of the scale — a ceiling that clipped
+  // the interval would understate the uncertainty the band exists to show.
+  const max = niceCeil(Math.max(1, ...all.map((p) => p.hi ?? p.value)));
+  const innerW = w - padL - padR;
   const innerH = height - padTop - padBottom;
-  const x = (i) => padX + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+  const x = (i) => padL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
   const y = (v) => padTop + innerH - (v / max) * innerH;
 
   const hStart = history.length - 1; // forecast joins the last actual
@@ -664,7 +683,9 @@ export function ForecastChart({ history, forecast, height = 240, labelEvery = 1,
   const loPath = smoothPath(loReturn, padTop, base);
   const bandPath = `${smoothPath(hiXY, padTop, base)} L${loReturn[0].x.toFixed(2)},${loReturn[0].y.toFixed(2)} ${loPath.replace(/^M[^ ]+/, '').trim()} Z`;
 
-  const every = Math.max(labelEvery, Math.ceil(n / Math.max(2, Math.floor(innerW / 80))));
+  // Label density is a function of the width available, not of the caller:
+  // roughly one tick per 72px, so a narrow card thins them out on its own.
+  const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(innerW / 72))));
   const shown = active != null ? all[active] : null;
 
   return (
@@ -686,9 +707,32 @@ export function ForecastChart({ history, forecast, height = 240, labelEvery = 1,
         viewBox={`0 0 ${w} ${height}`}
         className="trend-svg"
         role="img"
+        aria-label={`${axis.y} — ${history.length} ${unit} of history and ${forecast.points.length} ${unit} forecast`}
         onMouseLeave={() => setActive(null)}
       >
+        {/* y axis: dashed gridlines with their values, over a solid spine */}
+        {[0.25, 0.5, 0.75, 1].map((f) => (
+          <g key={f}>
+            <line x1={padL} x2={w - padR} y1={y(max * f)} y2={y(max * f)} className="col-grid" />
+            <text x={padL - 8} y={y(max * f) + 4} textAnchor="end" className="col-tick">
+              {fmtTick(max * f)}
+            </text>
+          </g>
+        ))}
+        <text x={padL - 8} y={base + 4} textAnchor="end" className="col-tick">0</text>
+        <line x1={padL} x2={padL} y1={padTop} y2={base} className="col-grid col-grid-base" />
+        <line x1={padL} x2={w - padR} y1={base} y2={base} className="col-grid col-grid-base" />
+        <text
+          className="col-axis-title"
+          textAnchor="middle"
+          transform={`translate(12,${padTop + innerH / 2}) rotate(-90)`}
+        >
+          {axis.y}
+        </text>
+
         <path d={bandPath} className="fc-band" />
+        {/* Where measurement stops and prediction starts, on the x axis. */}
+        <line x1={x(hStart)} x2={x(hStart)} y1={padTop} y2={base} className="col-grid fc-split" />
         <path d={actualPath} fill="none" className="lc-line" />
         <path d={fcPath} fill="none" className="lc-line lc-line-dashed" />
         {all.map((p, i) => (
@@ -697,7 +741,7 @@ export function ForecastChart({ history, forecast, height = 240, labelEvery = 1,
               x={x(i) - innerW / n / 2}
               y={0}
               width={innerW / n}
-              height={height}
+              height={base}
               fill="transparent"
               onMouseEnter={() => setActive(i)}
             />
@@ -711,14 +755,25 @@ export function ForecastChart({ history, forecast, height = 240, labelEvery = 1,
             )}
           </g>
         ))}
-      </svg>
-      <div className="trend-labels">
+
+        {/* x axis: a tick under the period it belongs to, thinned to fit */}
         {all.map((p, i) => (
-          <span key={i} className={active === i ? 'active' : ''}>
-            {i % every === 0 ? p.label : ''}
-          </span>
+          i % every === 0 ? (
+            <text
+              key={`x${i}`}
+              x={x(i)}
+              y={base + 18}
+              textAnchor="middle"
+              className={`col-label ${active === i ? 'active' : ''}`}
+            >
+              {p.label}
+            </text>
+          ) : null
         ))}
-      </div>
+        <text x={padL + innerW / 2} y={height - 4} textAnchor="middle" className="col-axis-title">
+          {axis.x}
+        </text>
+      </svg>
     </div>
   );
 }
