@@ -58,6 +58,9 @@ export default function SocioCrimeMap({ crimeByDistrict }) {
   const [geo, setGeo] = useState(null);
   const [geoError, setGeoError] = useState(null);
   const [indicator, setIndicator] = useState('unemployment_rate');
+  // { topo, ...agg, cx, cy } — the aggregate plus where on the map to draw its
+  // card. Position travels with the hover so the numbers appear ON the
+  // district rather than in a panel parked off to the side.
   const [hover, setHover] = useState(null);
 
   useEffect(() => {
@@ -170,7 +173,11 @@ export default function SocioCrimeMap({ crimeByDistrict }) {
                 d={path(f)}
                 className={`scm-shape ${active ? 'active' : ''}`}
                 style={{ fillOpacity: agg ? shade(agg.value) : 0.05 }}
-                onMouseEnter={() => agg && setHover({ topo: name, ...agg })}
+                onMouseEnter={() => {
+                  if (!agg) return;
+                  const [cx, cy] = centroid(f);
+                  setHover({ topo: name, ...agg, cx: cx / W, cy: cy / H });
+                }}
               />
             );
           })}
@@ -190,29 +197,35 @@ export default function SocioCrimeMap({ crimeByDistrict }) {
             );
           })}
         </svg>
+        {/* The numbers, on the district they belong to.
+            They used to live in a fixed panel in the side column, which meant
+            a box of nothing reading "Hover a district for its numbers" sat
+            there permanently, and reading a value meant looking away from the
+            shape being pointed at. The card is nudged to whichever side of the
+            map has room, so it never covers what is under the cursor. */}
+        {hover && (
+          <div
+            className={`scm-tip scm-tip-float ${hover.cx > 0.55 ? 'left' : 'right'}`}
+            style={{ left: `${hover.cx * 100}%`, top: `${hover.cy * 100}%` }}
+          >
+            <div className="scm-tip-title">{hover.districts.join(' + ')}</div>
+            <div className="scm-tip-row">
+              <span>{meta.label}</span>
+              <strong>{hover.value.toFixed(1)}{meta.unit}</strong>
+            </div>
+            <div className="scm-tip-row">
+              <span>Registered cases</span>
+              <strong>{hover.cases.toLocaleString()}</strong>
+            </div>
+            <div className="scm-tip-row">
+              <span>Cases per lakh</span>
+              <strong>{((hover.cases / hover.population) * 100000).toFixed(1)}</strong>
+            </div>
+          </div>
+        )}
         </div>
 
         <div className="scm-side">
-          {hover ? (
-            <div className="scm-tip">
-              <div className="scm-tip-title">{hover.districts.join(' + ')}</div>
-              <div className="scm-tip-row">
-                <span>{meta.label}</span>
-                <strong>{hover.value.toFixed(1)}{meta.unit}</strong>
-              </div>
-              <div className="scm-tip-row">
-                <span>Registered cases</span>
-                <strong>{hover.cases.toLocaleString()}</strong>
-              </div>
-              <div className="scm-tip-row">
-                <span>Cases per lakh</span>
-                <strong>{((hover.cases / hover.population) * 100000).toFixed(1)}</strong>
-              </div>
-            </div>
-          ) : (
-            <div className="scm-tip scm-tip-idle">Hover a district for its numbers.</div>
-          )}
-
           <div className="scm-legend">
             <div className="scm-legend-row">
               <span className="scm-swatch light" /> lower {meta.label.toLowerCase()}

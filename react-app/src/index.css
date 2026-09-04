@@ -2238,9 +2238,12 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 16px;
   padding-top: 4px;
 }
+/* Same reasoning as the bento cap: label and share are read as a pair, so the
+   row never grows past a comfortable measure however wide the card is. */
+.rp-legend { max-width: 340px; margin: 0 auto; }
 
 /* Only inside a bento tile does the ring sit beside its legend. Stacked, the
    pair wants ~240px of height and a 1x1 tile has 232px, so the legend used to
@@ -2249,7 +2252,9 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .rp-bento .rp-donut-wrap {
   flex-direction: row;
   align-items: center;
-  gap: 14px;
+  justify-content: center;
+  /* The ring was almost touching its own legend. */
+  gap: 30px;
   min-height: 0;
 }
 /* overflow-x is pinned HIDDEN on purpose. Per spec, when one axis is `visible`
@@ -2257,8 +2262,13 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    auto` alone silently gave every donut legend a horizontal scrollbar under
    its labels. The labels already ellipsis, so there is nothing to scroll to. */
 .rp-bento .rp-donut-wrap .rp-legend {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
+  /* Capped, because a legend row is a LABEL and its share read as a pair. On a
+     two-column tile the legend was stretching to ~550px and throwing the two
+     halves to opposite ends of the card — "Police Sub-Inspector" at one edge
+     and "28%" at the other, with a hand's width of nothing between them. */
+  max-width: 340px;
   overflow-y: auto;
   overflow-x: hidden;
   max-height: 100%;
@@ -2266,7 +2276,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* A two-row tile has the height to stack the pair the usual way, and stacked
    is the better read when there is room for it. */
 .rp-bento .rp-card-tall .rp-donut-wrap,
-.rp-bento .rp-card-hero .rp-donut-wrap { flex-direction: column; }
+.rp-bento .rp-card-hero .rp-donut-wrap { flex-direction: column; gap: 16px; }
 @media (max-width: 1180px) {
   .rp-bento .rp-donut-wrap { flex-direction: column; }
   .rp-bento .rp-donut-wrap .rp-legend { max-height: none; }
@@ -2893,6 +2903,25 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* 8 KPI tiles wrap into two tidy rows of four. */
 
 /* ── AI Analytics ────────────────────────────────────────────────────────── */
+
+/* The forecast + insights pair, side by side across the full width.
+   As two ordinary cards in an auto-fill grid they took the first two of four
+   columns and left the right half of the row empty; the chart was cramped into
+   a third of the space it had available. Same shape as .fc-duo on the
+   Forecasts tab, so the two tabs pair their cards the same way. */
+.ai-duo {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: stretch;
+}
+/* Both cards take the height of the taller one, and their bodies fill it, so
+   neither ends in a band of empty card. */
+.ai-duo > .rp-card { display: flex; flex-direction: column; }
+.ai-duo > .rp-card > .rp-card-body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.ai-duo .bk-chart { flex: 1; min-height: 190px; }
+@media (max-width: 900px) { .ai-duo { grid-template-columns: 1fr; } }
 .ai-controls {
   display: flex;
   align-items: center;
@@ -3214,7 +3243,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
    bigger; the tile getting taller does (see grid-auto-rows). So the split stays
    near where it was and the readout keeps a column it can be read in. */
 .scm-body { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(200px, 1fr); gap: 18px; align-items: start; }
-.scm-map { min-width: 0; min-height: 0; display: flex; }
+.scm-map { position: relative; min-width: 0; min-height: 0; display: flex; }
 .scm-svg { width: 100%; height: auto; display: block; }
 .scm-shape {
   fill: var(--rp-series);
@@ -3231,14 +3260,26 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   stroke-width: 1;
 }
 [data-theme="dark"] .scm-bubble { stroke: var(--bg-1); }
-.scm-side { display: flex; flex-direction: column; gap: 14px; }
+.scm-side { display: flex; flex-direction: column; justify-content: center; gap: 16px; }
 .scm-tip {
   border: 1px solid var(--border-1);
   border-radius: var(--radius-sm, 8px);
   padding: 12px 14px;
-  min-height: 108px;
 }
-.scm-tip-idle { display: flex; align-items: center; color: var(--text-4); font-size: 0.82rem; }
+/* Floats over the district under the cursor. `min-height` is deliberately
+   absent: the box no longer has to reserve room for a state it does not have,
+   which is what made the old side panel read as an empty slot. */
+.scm-tip-float {
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+  width: max-content;
+  max-width: 230px;
+  background: var(--bg-1);
+  box-shadow: var(--shadow-pop);
+}
+.scm-tip-float.right { transform: translate(14px, -50%); }
+.scm-tip-float.left { transform: translate(-14px, -50%) translateX(-100%); }
 .scm-tip-title { font-weight: 500; color: var(--text-1); margin-bottom: 8px; font-size: 0.9rem; }
 .scm-tip-row { display: flex; justify-content: space-between; gap: 10px; font-size: 0.8rem; color: var(--text-3); padding: 2px 0; }
 .scm-tip-row strong { color: var(--text-1); }

@@ -315,36 +315,45 @@ export default function AIAnalytics() {
                 )}
               </Card>
 
-              <Card
-                title="Registration forecast"
-                subtitle="Monthly cases, last 12 observed + 3 projected (dashed) — linear trend, not a trained model"
-              >
-                {fc && fc.chartData.length > 4 ? (
-                  <>
-                    <TrendArea data={fc.chartData} height={160} />
-                    <p className={`ai-fc-note ${fc.slope >= 0 ? 'up' : 'down'}`}>
-                      {fc.slope >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
-                      Trend {fc.slope >= 0 ? '+' : '−'}{Math.abs(fc.slope).toFixed(1)} cases/month
-                    </p>
-                  </>
-                ) : (
-                  <div className="rp-empty">Not enough history to project</div>
-                )}
-              </Card>
+              {/* These two were plain 300px-minimum cards in an auto-fill grid,
+                  so on a wide screen they sat in the first two of four columns
+                  and left half the row empty. Paired in a full-width duo they
+                  split the row exactly, and stretch to a common height. */}
+              <div className="ai-duo">
+                <Card
+                  title="Registration forecast"
+                  subtitle="Monthly cases, last 12 observed + 3 projected (dashed) — linear trend, not a trained model"
+                >
+                  {fc && fc.chartData.length > 4 ? (
+                    <>
+                      {/* Height comes from the row now, not from a literal —
+                          the pair stretches to the taller card and the chart
+                          takes whatever that leaves. */}
+                      <TrendArea data={fc.chartData} height={220} />
+                      <p className={`ai-fc-note ${fc.slope >= 0 ? 'up' : 'down'}`}>
+                        {fc.slope >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+                        Trend {fc.slope >= 0 ? '+' : '−'}{Math.abs(fc.slope).toFixed(1)} cases/month
+                      </p>
+                    </>
+                  ) : (
+                    <div className="rp-empty">Not enough history to project</div>
+                  )}
+                </Card>
 
-              <Card
-                title="Patrol insights"
-                subtitle="Auto-derived from the incident data and the current filter"
-              >
-                <ul className="ai-insights">
-                  {insights.map((s, i) => (
-                    <li key={i}>
-                      <Lightbulb size={14} />
-                      <span>{s}</span>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
+                <Card
+                  title="Patrol insights"
+                  subtitle="Auto-derived from the incident data and the current filter"
+                >
+                  <ul className="ai-insights">
+                    {insights.map((s, i) => (
+                      <li key={i}>
+                        <Lightbulb size={14} />
+                        <span>{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              </div>
 
               <Card
                 title="Crime head × time of day"

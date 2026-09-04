@@ -618,8 +618,14 @@ export function Scatter({ data, xLabel = 'x', yLabel = 'y', height = 200 }) {
 }
 
 // Forecast chart — historical actuals as a solid line, forecast mean as a
-// dashed line, and the confidence interval as a shaded band. Hover reads out
-// the value (with the CI range on forecast periods).
+// dashed line, and the confidence interval as a shaded band.
+//
+// Hovering reads out ON the chart: a crosshair down the period under the
+// cursor and a card beside it carrying the value, and the 95% interval when
+// the period is a prediction. It used to put that text in a caption line ABOVE
+// the plot, which meant reading a value required looking away from the point
+// you were pointing at — and on a wide card that was most of the screen's
+// width away.
 //
 // Both axes are drawn: a y scale to a nice ceiling with dashed gridlines, and
 // x ticks under the plot at the periods they belong to. Before this the chart
@@ -688,20 +694,20 @@ export function ForecastChart({ history, forecast, height = 240, unit = 'weeks' 
   const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(innerW / 72))));
   const shown = active != null ? all[active] : null;
 
+  /* The card sits beside the cursor, never under it: to the right on the left
+     half of the plot, to the left on the right half, so it can never cover the
+     point being read. */
+  const tipStyle = active == null ? null
+    : x(active) < w / 2
+      ? { left: x(active) + 14 }
+      : { left: x(active) - 14, transform: 'translateX(-100%)' };
+
   return (
     <div className="trend-wrap lc-wrap" ref={wrapRef}>
       <div className="trend-readout">
-        {shown ? (
-          <span className="trend-readout-cap">
-            {shown.label} · {shown.kind === 'forecast'
-              ? `predicted ${shown.value} (${shown.lo}–${shown.hi} @95%)`
-              : `${shown.value} registered`}
-          </span>
-        ) : (
-          <span className="trend-readout-cap">
-            {history.length} {unit} history · {forecast.points.length} {unit} predicted · shaded = 95% interval
-          </span>
-        )}
+        <span className="trend-readout-cap">
+          {history.length} {unit} history · {forecast.points.length} {unit} predicted · shaded = 95% interval
+        </span>
       </div>
       <svg
         viewBox={`0 0 ${w} ${height}`}
@@ -735,6 +741,12 @@ export function ForecastChart({ history, forecast, height = 240, unit = 'weeks' 
         <line x1={x(hStart)} x2={x(hStart)} y1={padTop} y2={base} className="col-grid fc-split" />
         <path d={actualPath} fill="none" className="lc-line" />
         <path d={fcPath} fill="none" className="lc-line lc-line-dashed" />
+        {active != null && (
+          <line
+            x1={x(active)} x2={x(active)} y1={padTop} y2={base}
+            className="lc-cursor"
+          />
+        )}
         {all.map((p, i) => (
           <g key={i}>
             <rect
@@ -774,6 +786,26 @@ export function ForecastChart({ history, forecast, height = 240, unit = 'weeks' 
           {axis.x}
         </text>
       </svg>
+      {shown && (
+        <div className="lc-tip fc-tip" style={tipStyle}>
+          <div className="lc-tip-title">
+            {shown.label}{shown.kind === 'forecast' ? ' · projected' : ''}
+          </div>
+          <div className="lc-tip-row">
+            <span className="lc-tip-dot" style={{ background: 'var(--rp-cat-0)' }} />
+            <span className="lc-tip-name">
+              {shown.kind === 'forecast' ? 'Predicted' : 'Registered'}
+            </span>
+            <b>{shown.value.toLocaleString()}</b>
+          </div>
+          {shown.kind === 'forecast' && shown.lo != null && (
+            <div className="lc-tip-row lc-tip-total">
+              <span className="lc-tip-name">95% interval</span>
+              <b>{shown.lo.toLocaleString()}–{shown.hi.toLocaleString()}</b>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { ForecastChart } from '../components/Charts';
 
 /* The forecast charts shipped without either axis: the y extent was never
@@ -96,4 +96,68 @@ test('too little history still refuses rather than drawing a bare axis', () => {
   const c = render(<ForecastChart history={[]} forecast={forecast} />).container;
   expect(c.textContent).toMatch(/not enough history/i);
   expect(c.querySelector('svg')).toBeNull();
+});
+
+/* ── Reading a value ───────────────────────────────────────────────────────
+   The value under the cursor used to be printed in a caption ABOVE the plot.
+   On a full-width card that put the number most of the screen away from the
+   point being pointed at, which is not a readout so much as a footnote. It is
+   now a crosshair on the period plus a card beside it. */
+
+const hoverAt = (c, i) => {
+  const rects = [...c.querySelectorAll('svg rect')];
+  fireEvent.mouseEnter(rects[i]);
+};
+
+describe('hovering', () => {
+  test('the caption is a fixed legend, not the place values are read', () => {
+    const c = draw();
+    const cap = c.querySelector('.trend-readout-cap').textContent;
+    hoverAt(c, 3);
+    // Unchanged by hovering — it explains the chart, it does not report it.
+    expect(c.querySelector('.trend-readout-cap').textContent).toBe(cap);
+    expect(cap).toMatch(/95% interval/);
+  });
+
+  test('a card appears on the chart carrying the value', () => {
+    const c = draw();
+    expect(c.querySelector('.lc-tip')).toBeNull();
+    hoverAt(c, 3);
+    const tip = c.querySelector('.lc-tip');
+    expect(tip).not.toBeNull();
+    expect(tip.textContent).toContain(history[3].label);
+    expect(tip.textContent).toContain('Registered');
+    expect(tip.textContent).toContain(String(history[3].value));
+  });
+
+  test('a crosshair marks which period is being read', () => {
+    const c = draw();
+    expect(c.querySelector('line.lc-cursor')).toBeNull();
+    hoverAt(c, 3);
+    const cursor = c.querySelector('line.lc-cursor');
+    expect(cursor).not.toBeNull();
+    const w = Number(c.querySelector('svg').getAttribute('viewBox').split(' ')[2]);
+    const n = history.length + forecast.points.length;
+    expect(Number(cursor.getAttribute('x1')))
+      .toBeCloseTo(54 + (3 / (n - 1)) * (w - 54 - 14), 1);
+  });
+
+  test('a forecast period reads as a prediction, with its interval', () => {
+    const c = draw();
+    hoverAt(c, history.length);            // the first projected month
+    const tip = c.querySelector('.lc-tip');
+    expect(tip.textContent).toContain('projected');
+    expect(tip.textContent).toContain('Predicted');
+    expect(tip.textContent).toContain('95% interval');
+    expect(tip.textContent).toContain('70');   // lo
+    expect(tip.textContent).toContain('120');  // hi
+  });
+
+  test('the card sits beside the cursor and never on top of it', () => {
+    const c = draw();
+    hoverAt(c, 1);                                   // left half
+    expect(c.querySelector('.lc-tip').style.transform).toBe('');
+    hoverAt(c, history.length + 2);                  // right half
+    expect(c.querySelector('.lc-tip').style.transform).toBe('translateX(-100%)');
+  });
 });
