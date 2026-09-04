@@ -13,7 +13,7 @@ framework and running end-to-end on **Zoho Catalyst**.
 ![React](https://img.shields.io/badge/React-19-61dafb?style=for-the-badge&logo=react&logoColor=white)
 ![Node](https://img.shields.io/badge/Node-20-3c873a?style=for-the-badge&logo=node.js&logoColor=white)
 ![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088ff?style=for-the-badge&logo=githubactions&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-358%20passing-0f9d58?style=for-the-badge)
+![Tests](https://img.shields.io/badge/tests-1%2C560%20passing-0f9d58?style=for-the-badge)
 
 </div>
 
@@ -43,18 +43,19 @@ feature — including the **Access & Audit** console and role management — is 
 6. [Zoho Catalyst Services Used](#zoho-catalyst-services-used)
 7. [Project Structure](#project-structure)
 8. [The Dataset](#the-dataset)
-9. [REST API Reference](#rest-api-reference)
-10. [Prerequisites](#prerequisites)
-11. [Setup & Installation](#setup--installation)
-12. [Running Locally](#running-locally)
-13. [Build & Deploy](#build--deploy)
-14. [Testing](#testing)
-15. [Documentation](#documentation)
-16. [Roles & Access](#roles--access)
-17. [Security & Compliance](#security--compliance)
-18. [Future Scope](#future-scope)
-19. [Team](#team)
-20. [Copyright & Licence](#copyright--licence)
+9. [The Forecasting Models](#the-forecasting-models)
+10. [REST API Reference](#rest-api-reference)
+11. [Prerequisites](#prerequisites)
+12. [Setup & Installation](#setup--installation)
+13. [Running Locally](#running-locally)
+14. [Build & Deploy](#build--deploy)
+15. [Testing](#testing)
+16. [Documentation](#documentation)
+17. [Roles & Access](#roles--access)
+18. [Security & Compliance](#security--compliance)
+19. [Future Scope](#future-scope)
+20. [Team](#team)
+21. [Copyright & Licence](#copyright--licence)
 
 ---
 
@@ -77,9 +78,10 @@ Sentinel closes all four gaps on one platform:
 
 Everything runs on a realistic **synthetic** Karnataka FIR dataset built on a 26-table
 CCTNS-aligned schema, with production use on real citizen data explicitly gated behind legal
-sign-off. The frontend reads the Data Store directly from the browser over ZCQL; everything
-that writes, calls a model, handles media or renders a PDF goes through a single serverless
-function that holds every credential server-side and enforces role and audit checks.
+sign-off. The frontend browses the Data Store directly from the browser over ZCQL and pulls
+whole tables for analytics as one columnar snapshot each; everything that writes, calls a model,
+handles media or renders a PDF goes through a single serverless function that holds every
+credential server-side and enforces role and audit checks.
 
 ---
 
@@ -120,11 +122,23 @@ function that holds every credential server-side and enforces role and audit che
 
 ### 🏠 Home Dashboard
 
-The department's daily situational picture, computed in the browser straight from the Data
-Store. Shows FIR volume over time, crime composition by major head, a case-lifecycle funnel
-(registered → investigated → charge-sheeted → disposed), per-officer caseload, and an
-interactive Karnataka geo-heatmap. Every panel responds to a shared filter bar — district,
-police station, date range, crime head — and exports to CSV/XLSX.
+The department's daily situational picture on one screen: **eight headline KPIs** — FIRs
+registered with period-on-period change, open investigations, solved rate, heinous share,
+accused, victims, arrests & surrenders and chargesheet rate — above a **26-card bento** ordered
+into bands that each fill the row exactly.
+
+| Band | Cards |
+| --- | --- |
+| **Where** | District geo-heatmap, station load, socio-economic correlation choropleth (districts shaded by indicator, circles sized by cases, with a Pearson *r* readout) |
+| **What** | Crime category, most-charged legal sections, seasonality (calendar month × crime head), heinous vs non-heinous, and a **crime-flow Sankey** tracing category → type → outcome with ribbon width as case volume |
+| **Who** | Accused and complainant age profiles, gender split, repeat offenders, complainant occupations, victim profile, force rank distribution |
+| **How well** | Case-status funnel, pendency ageing (green fresh → red long-pending), chargesheet filing lag, average investigation time per crime head, IO caseload, court load |
+
+**Time is a control, not a setting.** Today / Month / Year / 5 Years, or any custom date range,
+re-derives every KPI and every chart — so the same twenty-six questions can be asked of any
+window. A headline crime-trend chart carries its own independent range for comparison. The whole
+page exports to **PDF** in one click, as the briefing document a senior officer walks into a
+meeting with.
 
 ![Home dashboard](docs/screenshots/01-dashboard.png)
 
@@ -162,15 +176,75 @@ carries interactive **source citations** you can click through to the exact row 
 
 ### 📈 AI Analytics
 
-Five analytical surfaces under one page:
+Five analytical surfaces under one page. Home tells you what happened; this tells you what it
+means and what to do next.
 
-| Tab | What it does |
-| --- | --- |
-| **Patterns** | Temporal crime profiling — hour-of-day, day-of-month and day-of-week distributions, peak-window detection and a crime-head × daypart matrix. |
-| **Crime Links** | Co-offending network graph. Because `Accused.PersonID` is a *global* offender identity, the same person is tracked across every case they appear in, revealing gangs and repeat associations. |
-| **Case Linkage** | Behavioural case linkage after Bennell & Burrell — ranks case pairs by a combined Jaccard (modus operandi) + geographic + temporal proximity score to surface likely same-offender series. |
-| **Forecasts** | Month-ahead crime projections with 95% confidence bands, plus district risk and recidivism scoring. |
-| **Financial Trails** | An AML/money-laundering typology detector — structuring, layering, mule-account and rapid-passthrough patterns over transaction trails linked to economic, cyber and property FIRs. |
+#### Temporal patterns
+
+Incident profiles by **hour of day, day of month and day of week**, filterable to any crime
+head, which automatically name the peak patrol window ("34% of incidents occur between 20:00 and
+24:00") and expose a **crime-head × daypart matrix** — which offences are nocturnal, which are
+business-hours. Patrol insights are derived from the data rather than written by hand.
+
+#### Crime links — the co-offending network
+
+Two people are linked when they appear as accused in the **same FIR**, and `Accused.PersonID` is
+a *global* offender identity, so the same person is tracked **across** FIRs. That single fact is
+what makes the whole network possible.
+
+From it: **connected components → rings**, **degree centrality → leaders**, **local clustering →
+brokers vs lieutenants**. Every member is labelled **Kingpin / Broker / Repeat / Member** from
+the maths rather than by assertion. The ring map draws one labelled node per ring, sized by
+membership, on a canvas from a layout computed once — hover to trace a ring's connections, click
+to open its members and every linked crime.
+
+#### Case linkage — behavioural comparative case analysis
+
+Pick an index offence; every other FIR is ranked by **MO similarity (Jaccard, 50%) +
+inter-crime distance (30%) + temporal proximity (20%)** — the weighting used in the
+Bennell/Burrell linkage literature.
+
+It **publishes its own accuracy on the card**: ROC AUC ≈ 0.87 against ground-truth series plus a
+top-10 hit rate, both measured on held-out data by rolling-origin validation. A separate
+**calibration** panel answers the question most tools skip — the ranking is good, but does a
+"72%" actually mean 72%? An isotonic correction closes the gap without reordering anything, so
+the AUC above it is unchanged by it.
+
+#### Forecasts — three deployed models
+
+Not a trend line: **live QuickML models** covering force-wide FIR volume, ten crime heads and
+thirty-one districts — 42 series from **3 pipelines**, in the *direct multi-horizon* form used
+for global forecasting models (one row = series × origin × horizon, so the series is a feature
+and one pipeline covers them all).
+
+- **30 / 60 / 90-day horizons**, with a 95% band derived from each model's measured held-out
+  error rather than from the endpoint, which returns a point estimate only.
+- **Scored against the baseline a forecaster actually has to beat** — each series' own
+  historical average, because for noisy counts the mean beats both naive and seasonal-naive:
+  **+65% force-wide (4.1% MAPE), +12% by crime head, +7% by district**. These are the
+  rolling-origin numbers, not the optimistic console metric from a random split.
+- Monthly, and that is not a detail: weekly, every one of these lost to a flat average, because
+  Poisson noise grows as √level while the seasonal signal grows with the level.
+
+Alongside: a **district risk board** for next month, **repeat-offender risk scoring** with a
+visible frequency / recency / severity / network breakdown, and **anomaly alerts** for any week
+running ≥2σ above its trailing baseline.
+
+#### Financial trails — money-laundering typologies
+
+A transaction graph screened against **nine standard AML typologies**: structuring, layering,
+fan-in (mule hub), fan-out (dispersal), round-tripping, pass-through, high-value cash, high-risk
+channel, and shell/mule routing.
+
+- **Prioritised alerts** — entities ranked by composite laundering risk, each with the
+  typologies that triggered it and a plain-language assessment an analyst can act on.
+- An interactive **money-flow map** on the same canvas renderer as the ring map: entities of
+  interest, mule and shell accounts, one edge per counterparty relationship, node size by value
+  moved, colour by account kind. The graph is deliberately *uneven* — shared accounts, chains of
+  varying depth and hubs with a long tail — because a field of identical stars would say nothing
+  about where two chains meet, which is the finding.
+- **The accounts are synthetic; the branches are real.** Every IFSC resolves live through the
+  public directory, so layering acquires a geography: which districts the money actually crossed.
 
 All outputs are advisory, cited and guardrail-bound: protected attributes (religion, caste,
 gender) are excluded from every risk model.
@@ -238,7 +312,7 @@ deterministically synthesised per person so the registry is realistic and stable
 
 ### 👮 Personnel
 
-An 888-officer directory across the full Karnataka rank ladder (PC → DGP, 12 ranks), with a
+An 889-officer directory across the full Karnataka rank ladder (PC → DGP, 12 ranks), with a
 weekly **duty roster** and a per-district **organisation chart** rendered from the Unit
 hierarchy. Rank insignia are drawn inline. Because ZCQL is single-table, `Employee` is joined
 against `Rank`, `Unit` and `District` client-side; contact details and duty status are not in the
@@ -271,27 +345,67 @@ refused, what the clearance filter redacted, and which sources were cited.
 
 ![Access & Audit](docs/screenshots/14-access-audit.png)
 
+### 📴 Working with no signal
+
+Station connectivity is uneven, so the app keeps working without it. A service worker caches the
+app shell, the maps and the reference tables; diary entries written at a scene are queued in
+IndexedDB and flushed on reconnect; an offline bar states the connection state and how many
+writes are waiting.
+
+The shape of this is set by one decision: **no citizen data is cached to disk.** What the queue
+holds is the officer's *own* work — the entry they typed — and it is deleted the moment it
+reaches the server. The honest limitation is surfaced rather than hidden: offline you can add to
+a case you already have open, but you cannot browse to one you have not loaded, because the case
+itself was never cached. `navigator.onLine` is not trusted either — a station on a dead uplink
+still reports "online", so reachability is measured with a real round trip.
+
+Signing out wipes all of it: cached shell, reference data and any queued write. If unsynced work
+would be lost, the officer is warned *before* it happens, not after.
+
 ### 🌐 Cross-cutting
 
 Multilingual UI and answers (**English / हिन्दी / ಕನ್ನಡ**), global search with deep links into
-any tab, a help centre that emails the admin, per-user profiles with photos, and an error
-boundary that keeps one broken panel from taking the page down.
+any tab, an **action queue** of investigative obligations with due dates, a help centre that
+emails the admin, per-user profiles with photos, light/dark themes, an accessibility gate in CI,
+and an error boundary that keeps one broken panel from taking the page down.
 
 ---
 
 ## Architecture
 
-Sentinel is a **two-path** application, and the split is deliberate.
+Sentinel is a **three-path** application, and each split is deliberate.
 
-**Reads are direct.** Dashboards, maps, case files, analytics and the custody registry query the
-Catalyst Data Store *from the browser* over ZCQL, authenticated by the user's own Catalyst
-session. No function sits in the middle, so a dashboard panel costs one round trip and no
-serverless cold start.
+**Browsing is direct.** Case Files and other row-level reads query the Catalyst Data Store *from
+the browser* over ZCQL, authenticated by the user's own Catalyst session. No function sits in
+the middle, so a page of records costs one round trip and no serverless cold start.
 
-**Everything else goes through one function.** Anything that writes, calls a model, touches
-media, renders a PDF or reads the audit trail is routed through the `rag` Advanced I/O function.
-That function is the only place credentials exist, the only place role checks are authoritative,
-and the single choke point where every action gets audited.
+**Analytics arrive as one snapshot per table.** ZCQL returns 300 rows a query, so at 30,000 FIRs
+the home page alone needed **437 browser round trips** before it could draw anything. Those
+reads now happen inside the datacentre and each table comes back as a single columnar response
+from `/analytics/snapshot` — data rather than the same twelve JSON keys repeated 30,000 times.
+A page requests only the tables it uses, in parallel, and the result is shared across every
+panel and every tab for the life of the session.
+
+**Everything that writes goes through one function.** Anything that writes, calls a model,
+touches media, renders a PDF or reads the audit trail is routed through the `rag` Advanced I/O
+function. That function is the only place credentials exist, the only place role checks are
+authoritative, and the single choke point where every action gets audited.
+
+### Making the analytics feel instant
+
+The snapshot fixed the network. It did not fix the *wait*, because every analytics tab turns
+those rows into a model of its own before it can draw — a co-offending graph, a synthesised
+transaction ledger, a linkage candidate set. Three rules now hold across the five tabs:
+
+| Rule | Why |
+| --- | --- |
+| **Derived models are cached for the session** (`utils/derived.js`) | The FIR data is read-only and every model is a pure function of it, so a cached model is the same model. The cache holds *promises*, so two panels mounting at once share one build; a rejection is evicted so Retry can actually retry. A second visit to a tab costs ~1 ms instead of ~370 ms. |
+| **Tabs are kept, not destroyed** | Switching away hides a tab rather than unmounting it, so filters, page positions and a laid-out map survive. Unvisited tabs are never mounted, so the first paint stays cheap. |
+| **Long work runs after the paint, in slices** | An `await` on a resolved promise resumes in a *microtask*, which runs **before** the browser paints — so a component could mount a spinner, block for half a second and never show it. Builds now wait for a real frame first, and anything measured in seconds (the linkage validation, a 190-node force layout) yields every ~10 ms so the page keeps responding. |
+
+Graph maps are drawn to a **canvas** from a layout computed once, never a live force simulation
+in the browser: one DOM node per graph node plus its label is the bottleneck past a couple of
+hundred, and a simulation that re-renders the React tree on every frame is worse than that.
 
 > **Editable diagrams (Lucidchart).** The two headline diagrams below are also maintained as
 > Lucidchart documents, so they can be exported to PNG/PDF for slides and submission packs, and
@@ -316,13 +430,14 @@ flowchart TB
         direction LR
         Nav["Auth + RBAC context<br/>route guards, sidebar"]
         Read["Dashboard · Crime Map · Case Files<br/>AI Analytics · Inmate Registry"]
+        Cachez["Derived-model cache<br/>one build per session, tabs kept mounted"]
         Write["Assistant · Investigation Diary · Report Studio<br/>Records · Access and Audit"]
     end
 
     subgraph Fn["rag — Catalyst Advanced I/O Function, Node 20"]
         direction TB
         Gate["Router gate<br/>IP blocklist → session check → rate limit"]
-        Handlers["~45 endpoint handlers"]
+        Handlers["~58 endpoint handlers"]
         Guard["Clearance filter + redaction<br/>tier 1 pre-prompt, tier 2 post-generation"]
         Gate --> Handlers --> Guard
     end
@@ -336,7 +451,7 @@ flowchart TB
         NoSQL[("NoSQL<br/>officer memory")]
         Zia["Zia<br/>OCR · Speech-to-Text · Vision"]
         SB["SmartBrowz<br/>HTML → PDF"]
-        QML["QuickML<br/>RAG knowledge base"]
+        QML["QuickML<br/>3 forecast models · RAG knowledge base"]
     end
 
     subgraph LLM["LLM providers — ordered fallback chain"]
@@ -346,7 +461,9 @@ flowchart TB
 
     User --> Client
     Nav <--> Auth
-    Read -- "ZCQL read, user session" --> DS
+    Read -- "ZCQL row browse, user session" --> DS
+    Read -- "one columnar snapshot per table" --> Fn
+    Read --> Cachez
     Write -- "HTTPS POST /server/rag/*" --> Fn
 
     Gate -. "verify caller session" .-> Auth
@@ -356,7 +473,7 @@ flowchart TB
     Handlers -- "long-term facts" --> NoSQL
     Handlers -- "OCR · transcription · vision" --> Zia
     Handlers -- "render report" --> SB
-    Handlers -- "semantic retrieval" --> QML
+    Handlers -- "forecast predictions · semantic retrieval" --> QML
     Handlers -- "routing · chat · summaries · tools" --> LLM
     Groq -. "on failure" .-> Claude
 ```
@@ -600,7 +717,9 @@ and a 401 on an anonymous call — not against the CLI's exit code.
 | Routing | **react-router-dom 7** | Client routing under the `/app` basename, with per-route guards |
 | Maps | **d3-geo** + **topojson-client** | Custom SVG India → Karnataka → district → station drill-down |
 | Maps | **Leaflet** + `leaflet.heat` + `leaflet.markercluster` | Incident heatmaps and pin clustering |
-| Charts | Hand-built SVG (`components/Charts.js`, `Sankey.js`, `NetworkGraph.js`) | Trend areas, bar lists, funnels, Sankey flows, force-directed networks |
+| Charts | **visx** (`@visx/scale`, `shape`, `curve`, `responsive`) + hand-built SVG | The vendored chart kit in `components/charts/` — trend lines and areas, bar columns and rows, rings, stat tiles — plus `Charts.js` and `Sankey.js` for the forecast chart, funnels and flow diagrams |
+| Graph maps | **Canvas 2D** (`components/GraphCanvas.js`) | The co-offending ring map and the money-flow map: a precomputed seeded layout drawn in one pass, rather than a live simulation in the DOM |
+| Motion | **motion** (`motion/react`) | Spring-driven chart crosshairs and reveal transitions, all honouring `prefers-reduced-motion` |
 | Rich text | **TipTap 3** (`@tiptap/*` + ProseMirror) | The paged A4 report editor, tables and text alignment |
 | PDF | **jsPDF** + **html2canvas** | Client-side PDF export of cases and dashboards |
 | PDF (server) | **SmartBrowz** | High-fidelity HTML → PDF for statutory reports |
@@ -608,7 +727,8 @@ and a 401 on an anonymous call — not against the CLI's exit code.
 | Spreadsheets | **SheetJS / xlsx** | CSV and XLSX exports, and reading attached spreadsheets |
 | i18n | **i18next** + **react-i18next** + browser language detector | English, Hindi and Kannada UI and answers |
 | Icons | **lucide-react** | Icon set throughout |
-| Browser APIs | Web Speech API, MediaRecorder, IndexedDB | Voice input, evidence recording, local caching |
+| Offline | **Service Worker** + **IndexedDB** | Cached app shell, maps and reference tables; a write queue that flushes on reconnect |
+| Browser APIs | Web Speech API, MediaRecorder, `requestIdleCallback`, `scheduler.yield` | Voice input, evidence recording, and yielding long work back to the browser |
 
 ### Backend
 
@@ -653,8 +773,8 @@ Vision separately — and there is no self-managed server anywhere in the system
 | Catalyst service | How Sentinel uses it |
 | --- | --- |
 | **Web Hosting (Client)** | Serves the React bundle at `/app`. `postbuild` copies `index.html` → `404.html` so client-side routes survive a hard refresh. |
-| **Functions — Advanced I/O** | The single `rag` function (Node 20) is the entire backend: ~45 endpoints behind one router gate that enforces the IP blocklist, session check and rate limit before any handler runs. |
-| **Data Store (ZCQL)** | The 26-table CCTNS-aligned FIR schema, plus the `ChatConversations` table. Read **directly from the browser** over ZCQL for dashboards and analytics; read and written with admin scope from the function. |
+| **Functions — Advanced I/O** | The single `rag` function (Node 20) is the entire backend: ~58 endpoints behind one router gate that enforces the IP blocklist, session check and rate limit before any handler runs. |
+| **Data Store (ZCQL)** | The 26-table CCTNS-aligned FIR schema, plus the `ChatConversations` table. Read **directly from the browser** over ZCQL for row-level browsing; whole tables for analytics arrive as one columnar snapshot per table read inside the datacentre; read and written with admin scope from the function. |
 | **Stratus (object storage)** | Investigation diary entries, evidence media, scanned source documents, per-day audit logs, user profiles and photos, Report Studio drafts, and CSV staging for `ds:import`. |
 | **Authentication & User Management** | Zoho OAuth sign-in, session verification on every API call, and the *App Administrator* project role that backs the `admin` app role — so admin can never be self-assigned. |
 | **Cache** | The `chat-sessions` segment holds the assistant's live conversation buffer — read and written every turn, so it has to be cheap. |
@@ -663,13 +783,15 @@ Vision separately — and there is no self-managed server anywhere in the system
 | **Zia — Speech-to-Text** | Live voice-to-text for testimony capture and assistant voice input, plus transcription of uploaded interview recordings. |
 | **Zia — Vision** | The fast attachment pre-parser: runs vision services in parallel on an attached image the moment it is attached, so the digest is ready before the officer finishes typing. |
 | **SmartBrowz** | Renders the composed HTML of a statutory report or a full case file into a court-ready PDF, server-side. |
-| **QuickML** | The RAG knowledge base behind legal and procedural answers, and the semantic-recall tier of officer memory. |
+| **QuickML** | Two distinct jobs. **Forecasting:** three deployed pipelines (force-wide volume, ten crime heads, thirty-one districts) served through prediction endpoints, one key per model so a leaked key is one model rather than all of them. **Retrieval:** the RAG knowledge base behind legal and procedural answers, and the semantic-recall tier of officer memory. |
 
 > **Graceful degradation is deliberate.** Cache segments and NoSQL tables cannot be created from
 > code — only from the console. Every memory read returns empty and every write returns `false`
 > when the backing store is absent, so the assistant behaves exactly as it did before memory
 > existed rather than erroring. The same applies to QuickML: no knowledge base means the RAG lane
-> falls through, not fails.
+> falls through, not fails, and a forecast model with no key is reported as unconfigured by
+> `/health` rather than drawn as a flat line. A model outage blanks its own card and nothing
+> else on the page.
 
 ---
 
@@ -734,10 +856,13 @@ sentinel/
 │       │   ├── Sidebar.js           # Primary navigation; hides what the router blocks
 │       │   ├── TopBar.js            # Page header, filters, breadcrumbs
 │       │   ├── GlobalSearch.js      # Command-palette search across every destination
-│       │   ├── Charts.js            # Trend areas, bar lists, funnels and stat tiles
+│       │   ├── Charts.js            # Trend areas, bar lists, funnels, stat tiles, forecast chart
+│       │   ├── charts/              # Vendored chart kit — shared primitives and tokens
 │       │   ├── Sankey.js            # Case-lifecycle flow diagram
-│       │   ├── NetworkGraph.js      # Force-directed graph primitive
-│       │   ├── NetworkOverview.js   # Summary panel for a network graph
+│       │   ├── GraphCanvas.js       # The canvas graph renderer — pan, zoom, focus, picking
+│       │   ├── NetworkOverview.js   # Ring map of the co-offending landscape (GraphCanvas)
+│       │   ├── MoneyFlowMap.js      # Money-flow map, same renderer, coloured by account kind
+│       │   ├── NetworkGraph.js      # Legacy SVG force graph — assistant replies only
 │       │   ├── CrimeLinks.js        # Co-offending network tab
 │       │   ├── CaseLinkage.js       # Behavioural case-linkage tab
 │       │   ├── Forecasts.js         # Forecast + district-risk tab
@@ -775,16 +900,20 @@ sentinel/
 │       │
 │       ├── utils/                   # ── Data layers and domain logic ──
 │       │   ├── catalyst.js          # Loads and wraps the Catalyst Web SDK v4
-│       │   ├── datastore.js         # Browser ZCQL — query, paginate and flatten Data Store rows
+│       │   ├── datastore.js         # Browser ZCQL + the analytics snapshot cache (one read per table)
+│       │   ├── derived.js           # Per-session cache of each analytics tab's derived model
+│       │   ├── idle.js              # Yielding to the browser, and warming tabs when it is idle
+│       │   ├── graphLayout.js       # Seeded force layout, shared by both graph maps
 │       │   ├── access.js            # Role labels and the authoritative feature→role registry
 │       │   ├── audit.js             # Client-side audit event emitter
 │       │   ├── reports.js           # Home-dashboard data layer over the FIR schema
 │       │   ├── incidents.js         # Latest FIRs with related rows stitched in (ZCQL has no joins)
 │       │   ├── aianalytics.js       # Temporal pattern mining — hour/day profiles, peak windows
-│       │   ├── predict.js           # Forecasting and district-risk scoring
+│       │   ├── predict.js           # QuickML forecast bundle, district risk, anomaly alerts
 │       │   ├── crimelinks.js        # Co-offending network construction
 │       │   ├── caselinkage.js       # Jaccard + geo + temporal case-linkage ranking
-│       │   ├── financial.js         # Deterministic transaction synthesis + AML typology detection
+│       │   ├── financial.js         # Deterministic transaction synthesis, AML typologies, money map
+│       │   ├── publicRefs.js        # Keyless public lookups — IFSC branches, PIN codes
 │       │   ├── custody.js           # Person-centric custodial registry derivation
 │       │   ├── personnel.js         # Officer directory derivation from Employee/Rank/Unit
 │       │   ├── roster.js            # Weekly duty-roster derivation
@@ -811,32 +940,44 @@ sentinel/
 │       │   ├── hierarchyStore.js    # Unit/rank hierarchy used by the org chart
 │       │   └── socioeconomic.js     # District socio-economic indicators
 │       │
-│       └── __smoke__/               # Front-end smoke tests (citations, extraction, PDF, i18n, …)
+│       └── __smoke__/               # 49 front-end suites (citations, extraction, PDF, i18n, sign-out, graphs, …)
 │
 ├── functions/
 │   └── rag/                         # ── BACKEND ── the single Catalyst Advanced I/O function
-│       ├── index.js                 # Router gate + all ~45 endpoint handlers + the assistant lanes
+│       ├── index.js                 # Router gate + all ~58 endpoint handlers + the assistant lanes
 │       ├── zcql.js                  # Natural language → ZCQL compiler, validator and row enrichment
 │       ├── tools.js                 # The four clearance-filtered tools the model may call
 │       ├── memory.js                # Officer memory over Cache + NoSQL + QuickML KB
 │       ├── sources.js               # The unified citation contract, server side
 │       ├── redaction.js             # Two-tier clearance filter — pre-prompt and post-generation
+│       ├── guard.js                 # Prompt-injection defence — nonce-fenced retrieved content
+│       ├── grounding.js             # Did the answer stay inside what was actually read
+│       ├── integrity.js             # Tamper-evidence for the audit trail — per-day seals
+│       ├── analytics.js             # Whole-table snapshots, columnar, paged inside the datacentre
+│       ├── forecast.js              # The three QuickML pipelines, bands, and the Stratus bundle cache
+│       ├── forecast_features.json   # The exact feature row for every (series, horizon)
+│       ├── statutory.js             # BNS / BNSS statutory citation
+│       ├── legal.js                 # Act–section reference lookups
+│       ├── network.js               # Server-side network assembly for assistant replies
+│       ├── i18n.js                  # Language detection and the three answer languages
 │       ├── vision.js                # Fast attachment pre-parser over Zia vision services
 │       ├── masters.json             # Snapshot of master tables, for enriching ZCQL results in code
 │       ├── catalyst-config.template.json  # Env-var template — copy to catalyst-config.json
-│       └── *.test.js                # Backend suites — router, validator, sources, tools, memory, api gate
+│       └── *.test.js                # 25 backend suites — no framework, one node script each
 │
 ├── ksp/                             # ── DATASET ── synthetic Karnataka FIR data, generators, importers
 │   ├── fir/                         # The 26-table CCTNS-aligned schema (the live dataset)
 │   │   ├── *.csv                    # One CSV per table — CaseMaster, Accused, Victim, Employee, …
 │   │   ├── generate_fir_dataset.py  # Seeded generator for the whole FIR schema
 │   │   ├── generate_accused_network.py # Builds consistent offender series and co-offending links
-│   │   ├── enrich_personnel.py      # Expands Employee into 881 officers on a 12-rank ladder
+│   │   ├── enrich_personnel.py      # Expands Employee onto the 12-rank Karnataka ladder
 │   │   └── import/
 │   │       ├── SCHEMA.md            # Column types and lengths for every table — create these first
 │   │       ├── configs/*.json       # One non-interactive `ds:import` config per table
 │   │       ├── prepare_import.py    # Stages CSVs and writes the import configs
 │   │       └── run_import.sh        # Runs every import in dependency order
+│   ├── ml/                          # ── FORECASTING ── the QuickML training tables
+│   │   └── export_forecast_data.py  # Builds the three monthly training tables and the feature rows
 │   ├── rag_docs/                    # Plain-text corpus uploaded to the QuickML knowledge base
 │   ├── import/                      # Import tooling for the earlier flat dataset
 │   ├── *.csv                        # The earlier flat 16-table dataset (superseded by fir/)
@@ -869,7 +1010,7 @@ Live in the Catalyst **Data Store**; column types and lengths are in
 | **People** | `Accused` | 3,268 | Accused persons, carrying the **global** `PersonID` offender identity |
 | | `Victim` | 1,988 | Victims linked to their case |
 | | `ComplainantDetails` | 2,374 | Who filed the complaint |
-| | `Employee` | 888 | Police officers across a 12-rank ladder, with unique full names |
+| | `Employee` | 889 | Police officers across a 12-rank ladder, with unique full names |
 | **Geography** | `Unit` | 155 | Police stations, circles and sub-divisions |
 | | `District` | 39 | Karnataka districts (plus neighbouring-state entries) |
 | | `State` | 7 | States referenced by the data |
@@ -901,10 +1042,77 @@ Live in the Catalyst **Data Store**; column types and lengths are in
   signature modus operandi, within a coherent geography, over a coherent time window, with
   co-offending partners. This is what the case-linkage ranking (AUC ≈ 0.87 on the planted series)
   and the co-offending network graph actually detect.
-- **[`enrich_personnel.py`](ksp/fir/enrich_personnel.py)** — expands `Employee` to 888 officers
+- **[`enrich_personnel.py`](ksp/fir/enrich_personnel.py)** — expands `Employee` to 889 officers
   with unique full names distributed across the 12-rank ladder and posted to real units.
 - **[`fix_datetimes.py`](ksp/fix_datetimes.py)** — normalises datetime columns to the exact format
   the Data Store's importer accepts.
+
+---
+
+## The Forecasting Models
+
+The Forecasts tab is the one place Sentinel ships **trained models** rather than derived
+statistics, so it is worth being precise about what they are and how they were scored.
+
+### Three pipelines, forty-two series
+
+| Pipeline | Series | What it forecasts |
+| --- | :-: | --- |
+| `firvolume` | 1 | The force-wide monthly FIR total |
+| `crimehead` | 10 | Monthly volume per crime head |
+| `district` | 31 | Monthly volume per district |
+
+QuickML's *forecasting* pipelines are per-target — one series each, so forty-two pipelines built
+and maintained by hand. These are **regression tables in the direct multi-horizon form** used for
+global forecasting models:
+
+```
+one row = (series s, origin t, horizon h)  →  target y_s[t+h]
+features = calendar(t+h) + h + lags/rollings of s observed up to t + s
+```
+
+The series is a **feature**, so one pipeline covers every series in its table — three pipelines,
+not forty-two — and a district with a thin, noisy history borrows the seasonal shape from the
+other thirty. *Direct* rather than recursive (`h` is a feature and lags always come from real
+observed history, never from the model's own output), so there is no compounding error along the
+horizon and each horizon is an independent row the backend never has to chain.
+
+### Monthly, and why that is not a detail
+
+This started weekly and every model lost to a flat per-series average. The cause is arithmetic,
+not modelling: registrations are counts, so their noise grows as √level while the seasonal signal
+grows *with* the level. A district averaging 5 FIRs a week carries Poisson noise of ±2.2 against
+a seasonal swing of ±1.7 — the signal sits underneath the noise and no model can recover it.
+Bucketing to months multiplies the level by ~4.3 and the signal-to-noise by ~2.
+
+Measured the same way (pooled rolling-origin, leak-free), the switch is the difference between a
+product and a decoration:
+
+| | Weekly | Monthly |
+| --- | :-: | :-: |
+| Force-wide | +11% | **+65%** (MAPE 4.1%) |
+| Crime head | −5% | **+12%** (MAPE 15.6%) |
+| District | −2% | **+7%** (MAPE 22.0%) |
+
+### Scored against the honest baseline
+
+Skill is reported against **each series' own historical average**, not against naive or
+seasonal-naive. For noisy counts the mean beats both, so a model scored only against those can
+look strong while adding nothing.
+
+These are also **not** the numbers QuickML's console reports. The console scores a random split,
+and on a table of lag features adjacent rows share history — so its metric is optimistic by
+construction. The figures on the card are the ones that survive contact with a month the model
+has never seen.
+
+### Two honest limitations, surfaced rather than hidden
+
+- A QuickML regression endpoint returns a **point estimate and nothing else**, so the 95% band is
+  derived from each model's held-out mean absolute error (MAE → σ via `MAE × √(π/2)`, then
+  1.96σ), scaled with the predicted value and floored at ±1 FIR — the resolution of a count.
+- The features are **exactly the twelve that were measured**. Nothing is added at serving time
+  that was not in the backtest, and a trend counter is deliberately absent because a tree cannot
+  extrapolate one.
 
 ---
 
@@ -935,6 +1143,14 @@ POST /server/rag/<path>
 | `POST /server/rag/transcribe` | Zia speech-to-text for voice input and uploaded recordings. |
 | `POST /server/rag/vision/parse` | Fast attachment pre-parser — runs Zia vision services in parallel on attach so the digest is ready before the officer hits send. |
 | `POST /server/rag/health` | Reports **whether** each provider and the RAG credentials are configured — never a value. The one route ahead of the session gate; CI asserts against it after every deploy. |
+
+### Analytics & forecasting
+
+| Endpoint | Does |
+| --- | --- |
+| `POST /server/rag/analytics/snapshot` | Returns one whole reference table as a **columnar** payload (`{ cols, rows }`) — the read that replaced 437 browser round trips on the home page. Paged and retried server-side; a refused page is retried rather than failing the build. |
+| `POST /server/rag/forecast` | The assembled forecast bundle for all three QuickML pipelines: history, per-horizon predictions, 95% bands and each model's held-out quality figures. Normally a Stratus blob read — QuickML bills per prediction call and a full refresh is 42 series × 6 horizons = **252 calls**, so the numbers come from the models but are paid for once. Keyed by the dataset's origin month, so a cached bundle is not a stale one. |
+| `POST /server/rag/forecast/refresh` | Forces the bundle to be rebuilt from the live model endpoints. |
 
 ### Assistant memory
 
@@ -1102,6 +1318,8 @@ cp functions/rag/catalyst-config.template.json functions/rag/catalyst-config.jso
 | `BLOCKED_IPS` | — | Comma-separated IP blocklist, checked before anything else |
 | `TOOL_MAX_ITERATIONS` / `TOOL_BUDGET_MS` | — | Bounds on the assistant's tool loop |
 | `MEMORY_*` | see [`functions/rag/memory.js`](functions/rag/memory.js) | Cache segment, NoSQL table names and TTLs for officer memory |
+| `QUICKML_KEY_FIRVOLUME` / `QUICKML_KEY_CRIMEHEAD` / `QUICKML_KEY_DISTRICT` | — | One endpoint key per forecasting model. Kept separate on purpose: a leaked key is one model rather than all three. Without them the Forecasts tab says the models are unavailable instead of drawing a line it cannot justify — and `/health` reports which are configured. |
+| `QUICKML_PREDICT_URL` / `QUICKML_ENV` | project default | Override the prediction endpoint or environment |
 
 The refresh token needs scopes for **QuickML** (including `QuickML.deployment.READ` for
 transcription, not just `QuickML.rag.READ`), **Data Store**, **Stratus**, **Zia**, **SmartBrowz**
@@ -1138,9 +1356,23 @@ unless you pass `--config`, and staged object keys must **not** have a leading s
 ### 6. Enable Zia and QuickML
 
 - **Zia** — enable OCR, Speech-to-Text and Vision in the console.
-- **QuickML** — create a RAG knowledge base and upload the corpus in
+- **QuickML — retrieval** — create a RAG knowledge base and upload the corpus in
   [`ksp/rag_docs/`](ksp/rag_docs/). Put the resulting document IDs in `RAG_DOCUMENT_IDS` if you
   want to scope retrieval.
+- **QuickML — forecasting** — build the three training tables and the serving feature rows:
+
+  ```bash
+  cd ksp/ml && python3 export_forecast_data.py
+  ```
+
+  That writes `firvolume_train.csv`, `crimehead_train.csv` and `district_train.csv` to upload as
+  QuickML datasets, plus `functions/rag/forecast_features.json` — the exact feature row for every
+  `(series, horizon)` the dashboard can ask for. Train one **regression** pipeline per table,
+  deploy each, and put its endpoint key in the matching `QUICKML_KEY_*` variable.
+
+  > The feature names in `forecast_features.json` are a contract with the trained model. QuickML
+  > returns `null` rather than erroring when a feature name does not match a training column, so
+  > a typo fails silently and looks like a bad model.
 
 ### 7. (Optional) Enable assistant memory
 
@@ -1211,46 +1443,74 @@ CI runs all three automatically on every push to `main`.
 
 ## Testing
 
-**358 checks across 28 suites**, all passing as of the last run on `main`. Everything runs
-locally in well under a minute and needs no database, no network and no credentials — the tests
-that cover platform behaviour assert against the *source* and against injected fakes rather than
-a live Catalyst project.
+**1,560 checks across 74 suites** — 1,101 backend checks in 25 suites and 459 frontend tests in
+49 — all passing as of the last run on `main`. Everything runs locally in well under a minute
+and needs no database, no network and no credentials: the tests that cover platform behaviour
+assert against the *source* and against injected fakes rather than a live Catalyst project.
 
 ```bash
-cd functions/rag
-for t in *.test.js; do echo "── $t"; node "$t" || exit 1; done
+cd functions/rag && npm test           # every *.test.js, in order
 
 cd react-app
 CI=true npx react-scripts test --watchAll=false
 npx eslint src --ext .js --ignore-pattern '__smoke__'
+
+node scripts/a11y-check.test.js && node scripts/a11y-check.js
 ```
 
-### Backend suites (`functions/rag/*.test.js`)
+### How the backend suites work
+
+No test framework. Each `*.test.js` is a plain node script with a local `check(name, cond)` that
+prints `ok`/`FAIL` and exits non-zero; `npm test` loops over them, and dropping a new file in is
+all it takes to add a suite.
+
+Several suites read `index.js` as text and evaluate a fragment with `new Function` so they
+exercise the real implementation rather than asserting on how the source reads. That is
+deliberate: **a guard tested by regex is a guard that passes while doing nothing.**
+
+### Backend suites (`functions/rag/*.test.js`) — the load-bearing ones
 
 | Suite | Checks | What it holds the code to |
 | --- | :-: | --- |
-| `sources.test.js` | 50 | The unified citation contract — how a database row, a knowledge-base passage and a digitised record are each labelled, deduplicated and ordered. Includes the rule that a record whose title came from its filename is not printed twice. |
-| `apigate.test.js` | 41 | The security gate. Asserts on the router source itself that the session check is dispatched **before the first route**, that a missing session returns rather than falls through, and that the route count hasn't grown past what the gate covers — so a newly added endpoint cannot quietly land outside it. Also covers identity resolution and the rate limiter. |
-| `tools.test.js` | 33 | Tool schemas, dispatch and the bounded loop. Every tool must declare a name, description and schema with required inputs; `query_records` must warn the model that joins fail *and* tell it to use an `IN` clause instead; and the clearance filter must run on every tool result. |
-| `vision.test.js` | 27 | The fast attachment pre-parser — document-type heuristics, field extraction from OCR text, and per-service degradation (one slow or broken Zia service nulls its own field instead of sinking the digest). |
-| `router.test.js` | 24 | Route classification and the confidence floor. The deterministic heuristics and the model-reply parser are lifted out of `index.js` source so the test stays dependency-free. Also covers redaction. |
+| `statutory.test.js` | 116 | Statutory citation and the BNS/BNSS mapping — the legal text an answer is allowed to assert. |
+| `analytics.test.js` | 113 | The snapshot endpoint: columnar encoding, per-table paging, clearance, and retrying a refused page instead of failing the whole build. |
+| `tools.test.js` | 88 | Tool schemas, dispatch and the bounded loop. Every tool must declare a name, description and schema with required inputs; `query_records` must warn the model that joins fail *and* tell it to use an `IN` clause instead; and the clearance filter must run on every tool result. |
+| `guard.test.js` | 77 | Prompt-injection defence. The threat model is **indirect** injection — attachments, OCR, seized documents — so retrieved content is fenced in a per-request random nonce a hostile document cannot close. |
+| `forecast.test.js` | 66 | The QuickML bundle: response-shape parsing per pipeline, band derivation from measured error, cache keying by origin month, and one model's outage never blanking the others. |
+| `sources.test.js` | 50 | The unified citation contract — how a database row, a knowledge-base passage and a digitised record are each labelled, deduplicated and ordered, including the rule that a record whose title came from its filename is not printed twice. |
+| `protected.test.js` | 42 | Protected attributes (religion, caste, gender) stay out of every risk model and every prompt. |
+| `integrity.test.js` | 42 | Tamper-evidence on the audit trail — per-day seals, and a broken chain that reports itself. |
+| `apigate.test.js` | 41 | The security gate. Asserts on the router source itself that the session check is dispatched **before the first route**, that a missing session returns rather than falls through, and that the route count hasn't grown past what the gate covers — so a newly added endpoint cannot quietly land outside it. |
+| `injection.test.js` | 39 | Adversarial inputs end to end, from a poisoned attachment to a crafted question. |
 | `validator.test.js` | 17 | The ZCQL validator, written adversarially — each case is something an injected prompt might realistically emit. Rejects comma cross-joins, explicit joins, subqueries, stacked statements and every write keyword; accepts a literal that merely *contains* a keyword (`WHERE BriefFacts = 'join the gang'`) as data, not syntax. Must fail closed with a reason rather than silently rewrite. |
-| `memory.test.js` | 16 | Recall intent (a question about the past triggers retrieval; `list thefts in Beforepur` does not), context assembly, and graceful behaviour when the Cache segment and NoSQL tables are absent. |
 | `noanswer.test.js` | 13 | One rule: if the assistant did not answer, it attributes nothing. A source chip beside *"the records don't hold this"* reads as though something was found and invites an officer to open a record that does not exist. |
+
+…plus `solar`, `bench`, `network`, `legal`, `i18n`, `purgeseeded`, `grounding`, `vision`,
+`router`, `keys`, `csrf`, `join` and `memory`.
 
 ### Frontend suites (`react-app/src/__smoke__/`)
 
-20 suites, 137 tests, covering citation rendering, file extraction (PDF/Office/ZIP), attachment
-context, page context, provenance rules, PDF export, record and network rendering, slash
-commands, global search surfaces, i18n, sidebar account state, and interaction behaviour.
+49 suites, 459 tests. Beyond rendering, several pin behaviour that had already gone wrong once
+and would go wrong silently again:
+
+| Suite | Holds the line on |
+| --- | --- |
+| `signout.test.js` · `signoutflow.test.js` | Nothing local — a timer, a wedged IndexedDB open, a browser with site data blocked — may stand between the click and the end of the session. |
+| `linkagevalidation.test.js` | The optimised validation reports the *same* hit rate as the implementation it replaced, including the all-ties case where selection order is the only thing deciding. |
+| `moneygraph.test.js` | The money network's **shape**: one connected network rather than a field of stars, accounts genuinely shared, lopsided degree, edges past the first hop, and no account transferring to itself. |
+| `ringedges.test.js` | Ring edges assembled the fast way still match the definition — every edge inside its own ring, none dropped or duplicated, no edge crossing two gangs. |
+| `analyticscache.test.js` · `tabresponsive.test.js` | A model is built once and shared; a rejection is never cached as an answer; long work yields instead of blocking. |
+| `maplabels.test.js` | The class of bug, not the literal: a map never paints label text in a surface colour. |
+| `forecastaxes.test.js` | Both axes exist, the y ceiling covers the confidence band rather than clipping it, and hovering reads out *on* the chart. |
 
 ### What CI runs
 
-Every push and pull request: install both workspaces → syntax-check the function → run all 8
-backend suites → lint `src` as a hard gate (`__smoke__` is advisory) → production build →
-assert `build/404.html` exists. Only a green run on `main` proceeds to deploy, and the deploy
-then asserts three things against the **live** site: the bundle hash matches what CI built,
-`/health` still reports its provider keys, and an anonymous `POST` still returns `401`.
+Every push and pull request: install both workspaces → syntax-check the function → run all 25
+backend suites → run the frontend suites → lint `src` as a hard gate (`__smoke__` is advisory) →
+the accessibility gate → production build → assert `build/404.html` exists. Only a green run on
+`main` proceeds to deploy, and the deploy then asserts three things against the **live** site:
+the bundle hash matches what CI built, `/health` still reports its provider keys, and an
+anonymous `POST` still returns `401`.
 
 ---
 
@@ -1363,7 +1623,6 @@ CCTNS/BNSS infrastructure**, not a replacement for it. That framing shapes every
 | **Live CCTNS / ICJS integration** | Replace the synthetic dataset with a live sync connector to CCTNS and ICJS. The schema is already CCTNS-aligned, so this is a connector and a field-mapping exercise, not a re-architecture — and a sync, not a full historical re-migration. |
 | **Production hardening** | Third-party security review, VAPT, load testing at district scale, and a formal DPDP compliance assessment before a single real FIR enters the system. |
 | **Write-back to CCTNS** | Today Sentinel reads from the FIR schema and writes diary, report and record artefacts to its own store. A pilot needs a governed write-back path so a digital Case Diary is the system of record, not a parallel copy. |
-| **Offline-first field capture** | Station connectivity is uneven. Queue diary entries, statements and evidence locally and sync on reconnect, so an officer is never blocked by the network. |
 | **Native mobile app** | The web app is responsive, but testimony capture, evidence photography and hotspot navigation belong on a phone in the field. |
 
 ### Medium term — deeper intelligence
