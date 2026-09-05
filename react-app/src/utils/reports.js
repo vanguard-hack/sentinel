@@ -346,6 +346,29 @@ function groupCount(rows, keyFn, nameFn) {
     .sort((a, b) => b.value - a.value);
 }
 
+// A small, FIXED vocabulary (case status, gravity, gender, rank, …) should
+// never disappear just because a narrow window — Today, This week — happened
+// to land zero rows in one bucket. `groupCount` drops zero entries because
+// dropping noise is right for a large, variable-cardinality breakdown (155
+// stations, 62 courts); it is wrong here, where the axis itself is a known,
+// small set and a true zero is real information a card should say plainly
+// rather than vanish behind "No data".
+//
+// The label SET and its order come from the whole, unfiltered dataset (so the
+// axis is stable across every window); the VALUES come from the window and
+// may legitimately be zero.
+function groupCountFixed(allRows, windowRows, keyFn, nameFn) {
+  const order = groupCount(allRows, keyFn, nameFn).map((d) => d.label);
+  const counts = new Map();
+  windowRows.forEach((r) => {
+    const k = keyFn(r);
+    if (k === null || k === undefined || k === '') return;
+    const label = nameFn(k);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  });
+  return order.map((label) => ({ label, value: counts.get(label) || 0 }));
+}
+
 // Build a 3-stage crime Sankey: major head (category) → sub-head (type) →
 // case status (outcome). The long tail at each stage is clubbed into an
 // "Other" node so the diagram branches richly but stays readable. Each flow
@@ -460,7 +483,10 @@ export function computeReport(raw, masters, rangeKey, custom) {
   const chargesheets = raw.chargesheetCases.reduce((n, id) => n + (idSet.has(id) ? 1 : 0), 0);
 
   const byCategory = capOther(groupCount(wcases, (c) => c.major, (id) => headName(id)), 8);
-  const byStatus = capOther(groupCount(wcases, (c) => c.status, (id) => statusName(id)), 5);
+  // Case status is a small, fixed vocabulary (CaseStatusMaster has 7 rows) —
+  // every status stays on the axis even at zero for the window, rather than
+  // a narrow window quietly dropping "Convicted" or "Acquitted".
+  const byStatus = groupCountFixed(raw.cases, wcases, (c) => c.status, (id) => statusName(id));
   const bySubHead = capOther(groupCount(wcases, (c) => c.minor, (id) => subHeadName(id)), 8);
   const crimeSankey = buildCrimeSankey(wcases, headName, subHeadName, statusName);
   const byDistrictAll = groupCount(wcases, (c) => c.station, (uid) => districtName(unitDistrict(uid)));
@@ -569,10 +595,12 @@ export function computeReport(raw, masters, rangeKey, custom) {
     .sort((a, b) => b.value - a.value)
     .slice(0, 8);
 
-  // Composition splits.
-  const gravitySplit = groupCount(wcases, (c) => c.gravity,
+  // Composition splits. Each is a small, fixed vocabulary, so both sides
+  // always stay on the axis (a day with zero heinous cases is not a day with
+  // no data — it is the finding).
+  const gravitySplit = groupCountFixed(raw.cases, wcases, (c) => c.gravity,
     (id) => (String(id) === '1' ? 'Heinous' : 'Non-heinous'));
-  const categorySplit = groupCount(wcases, (c) => c.category, (id) => categoryName(id));
+  const categorySplit = groupCountFixed(raw.cases, wcases, (c) => c.category, (id) => categoryName(id));
   // Compact section labels: "IPC 354 — Outraging modesty". Long statutory
   // descriptions shrink to their operative words.
   const SECTION_SHORT = {
@@ -618,9 +646,11 @@ export function computeReport(raw, masters, rangeKey, custom) {
   groupCount(wcases, (c) => c.status, (id) => statusName(id)).forEach((d) => {
     if (!statusCounts.has(d.label)) statusCounts.set(d.label, d.value);
   });
+  // Every lifecycle stage stays on the funnel even at zero — a narrow window
+  // legitimately has no acquittals yet, and a funnel that drops stages reads
+  // as a shorter lifecycle rather than a quiet one.
   const statusFunnel = FUNNEL_ORDER
-    .map((label) => ({ label, value: statusCounts.get(label) || 0 }))
-    .filter((d) => d.value > 0);
+    .map((label) => ({ label, value: statusCounts.get(label) || 0 }));
 
   const AGEING = [
     { label: '< 3 months', to: 91 }, { label: '3–6 months', to: 183 },
@@ -644,7 +674,7 @@ export function computeReport(raw, masters, rangeKey, custom) {
     value: wcompl.filter((p) => p.age >= b.from && p.age <= b.to).length,
   }));
   const GENDER = { 1: 'Male', 2: 'Female' };
-  const accusedGender = groupCount(accusedRows, (a) => a.gender, (id) => GENDER[id] || 'Other');
+  const accusedGender = groupCountFixed(raw.accused, accusedRows, (a) => a.gender, (id) => GENDER[id] || 'Other');
 
   const personAgg = new Map();
   accusedRows.forEach((a) => {
@@ -660,12 +690,14 @@ export function computeReport(raw, masters, rangeKey, custom) {
     .slice(0, 8);
 
   const wvictims = raw.victims.filter((v) => idSet.has(v.caseId));
-  const victimPoliceSplit = [
-    { label: 'Civilians', value: wvictims.filter((v) => !v.police).length },
-    { label: 'Police personnel', value: wvictims.filter((v) => v.police).length },
-  ].filter((d) => d.value > 0);
+  const victimPoliceSplit = groupCountFixed(
+    raw.victims, wvictims,
+    (v) => (v.police ? '1' : '0'),
+    (id) => (id === '1' ? 'Police personnel' : 'Civilians')
+  );
 
-  const arrestOutcome = groupCount(
+  const arrestOutcome = groupCountFixed(
+    raw.arrests,
     raw.arrests.filter((a) => idSet.has(a.caseId)),
     (a) => a.type,
     (id) => AS_TYPE[id] || `Type ${id}`

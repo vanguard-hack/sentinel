@@ -1927,11 +1927,11 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .st-tile {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  /* Roomier than the other cards on purpose: eight tiles across two rows are
-     the first thing on the page, and at the old 14px/28px the figure sat in
-     the top third of a tile that was mostly empty. */
-  padding: 18px 18px 20px;
+  gap: 7px;
+  /* Sized to the 28px figure the tile actually holds now, not the 40px one
+     the old padding was built for — that padding at this figure size read as
+     dead air top and bottom rather than room to breathe. */
+  padding: 15px 16px 16px;
   background: var(--bg-1);
   border: 1px solid var(--border);
   border-radius: var(--r-card);
@@ -1961,14 +1961,17 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 }
 
 /* The figure. Tabular so a counting number does not jitter its own width,
-   and tracked in like the rest of the display scale. */
+   and tracked in like the rest of the display scale.
+
+   40px (display-md) read as the loudest thing on the page above eight tiles
+   of them — at headline size a KPI row competes with the page's own headline.
+   28px is display's card-title step: still the biggest text in its own tile,
+   no longer bigger than the report itself. */
 .st-value {
-  /* display-md. These are the headline figures of the whole product; at 28px
-     they read as captions of the tile rather than its subject. */
-  font-size: 40px;
+  font-size: 28px;
   font-weight: var(--fw-display);
-  line-height: 1.12;
-  letter-spacing: -1px;
+  line-height: 1.15;
+  letter-spacing: -0.6px;
   color: var(--text-0);
   font-variant-numeric: tabular-nums;
 }
@@ -2077,8 +2080,13 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   /* A hero spans two of these, so this number is what decides how much room
      the Sankey and the socio map actually get: 248 gave them a ~420px body,
      and the map — which is limited by height, not width — could not fill it.
-     Rows still grow past this when their content needs it. */
-  grid-auto-rows: minmax(280px, auto);
+     Rows still grow past this when their content needs it.
+
+     Bumped from 280 to give a plain 1x1 donut tile room to stack its ring
+     above its legend (see .rp-donut-wrap below) — stacked wants ~240px of
+     body height and a 280px row left it 8px short, which is what forced the
+     ring and legend into a side-by-side row too narrow for either. */
+  grid-auto-rows: minmax(304px, auto);
   align-items: stretch;
 }
 .rp-bento .rp-card-hero { grid-column: span 2; grid-row: span 2; }
@@ -2245,16 +2253,22 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    row never grows past a comfortable measure however wide the card is. */
 .rp-legend { max-width: 340px; margin: 0 auto; }
 
-/* Only inside a bento tile does the ring sit beside its legend. Stacked, the
-   pair wants ~240px of height and a 1x1 tile has 232px, so the legend used to
-   spill into the card below. Everywhere else the stacked layout is correct and
-   is what Custody and the assistant render. */
+/* Ring above legend by default, everywhere in the bento — including a plain
+   1x1 tile, which is most of them (case status, gravity, gender, victim
+   profile, arrest outcome). That used to be forced into a ROW instead: ring
+   and legend side by side in a tile roughly 300px wide, which left the
+   legend maybe 120px to hold a label AND a percentage. The text was not too
+   small; there was no room for it at any size, so it read as unreadably
+   small and half its rows ellipsized.
+
+   Stacked, the legend gets the tile's full width — the grid-auto-rows bump
+   above is what makes the extra height for it fit without spilling into the
+   card below. */
 .rp-bento .rp-donut-wrap {
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  /* The ring was almost touching its own legend. */
-  gap: 30px;
+  gap: 14px;
   min-height: 0;
 }
 /* overflow-x is pinned HIDDEN on purpose. Per spec, when one axis is `visible`
@@ -2269,16 +2283,20 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
      halves to opposite ends of the card — "Police Sub-Inspector" at one edge
      and "28%" at the other, with a hand's width of nothing between them. */
   max-width: 340px;
+  width: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   max-height: 100%;
 }
-/* A two-row tile has the height to stack the pair the usual way, and stacked
-   is the better read when there is room for it. */
-.rp-bento .rp-card-tall .rp-donut-wrap,
-.rp-bento .rp-card-hero .rp-donut-wrap { flex-direction: column; gap: 16px; }
+/* The one exception: a WIDE tile (2 columns, 1 row) has the width for a row
+   layout and only ever a single row's worth of height — Rank Distribution's
+   12-item legend is the reason this card gets `wide` at all. */
+.rp-bento .rp-card-wide .rp-donut-wrap {
+  flex-direction: row;
+  gap: 30px;
+}
 @media (max-width: 1180px) {
-  .rp-bento .rp-donut-wrap { flex-direction: column; }
+  .rp-bento .rp-card-wide .rp-donut-wrap { flex-direction: column; }
   .rp-bento .rp-donut-wrap .rp-legend { max-height: none; }
 }
 .rp-donut {
@@ -2314,7 +2332,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 12px;
+  font-size: 13px;
   padding: 6px 2px;
   border-bottom: 1px dotted var(--border-bright);
 }
@@ -5173,20 +5191,31 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .rp-legend-row li { border-bottom: none; padding: 3px 6px; margin: 0; }
 .ml-cursor { stroke: var(--border-bright); stroke-width: 1; }
 
-/* Heat grid */
-.rp-heat { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
-.rp-heat-row { display: flex; align-items: center; gap: 5px; }
+/* Heat grid.
+
+   A row-label column plus 12 month cells never all shrank below their own
+   content width — the label was flex-shrink:0 and the cells had no explicit
+   min-width, which defaults to auto (their content's natural size). On a
+   card narrower than that combined width the row could not compress, and the
+   ancestor .rp-card's `overflow: hidden` silently clipped whatever spilled
+   past the edge — always the last column, December. min-width: 0 lets every
+   cell shrink together instead; overflow-x is a last-resort escape hatch so
+   a truly too-narrow card scrolls rather than clips. */
+.rp-heat { display: flex; flex-direction: column; gap: 5px; font-size: 12px; min-width: 0; overflow-x: auto; }
+.rp-heat-row { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .rp-heat-label {
-  width: 200px;
-  flex-shrink: 0;
+  width: 130px;
+  flex: 0 0 auto;
+  min-width: 60px;
   color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.rp-heat-col { flex: 1; text-align: center; color: var(--text-4); font-size: 11px; }
+.rp-heat-col { flex: 1; min-width: 0; text-align: center; color: var(--text-4); font-size: 11px; }
 .rp-heat-cell {
   flex: 1;
+  min-width: 0;
   height: 28px;
   border-radius: 4px;
   background: var(--blue-500);
@@ -8908,6 +8937,16 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 }
 .rp-hero-controls .cf-icon-btn { width: var(--h-lg); }
 .rp-hero-controls .cf-export-btn { padding-top: 0; padding-bottom: 0; }
+/* The calendar button is a .cf-icon-btn too, but only while it has no custom
+   range picked — once a range is active it also carries a text label (e.g.
+   "9 Sept – 11 Sept"), and the fixed square width above clipped that label
+   straight out over the Export button and the refresh icon beside it. Same
+   specificity, later in the file, so this is what actually wins. */
+.rp-hero-controls .rp-cal-btn {
+  width: auto;
+  min-width: var(--h-lg);
+  padding: 0 10px;
+}
 
 /* ── Case status dots ──────────────────────────────────────────────────────
    The status classes are written for a CHIP — a 16% tint behind dark text —

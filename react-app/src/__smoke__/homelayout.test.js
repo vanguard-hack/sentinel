@@ -20,9 +20,18 @@ const px = (rule, prop) => {
 };
 
 describe('the donut and its legend', () => {
-  test('the ring is not left touching the legend beside it', () => {
-    // 14px was a hair; the ring and its own key read as one crowded block.
-    expect(px(ruleFor('.rp-bento .rp-donut-wrap'), 'gap')).toBeGreaterThanOrEqual(24);
+  test('a plain 1x1 tile stacks the ring above its legend, not beside it', () => {
+    // A base tile is ~300px wide — not enough for a 136px ring, a gap and a
+    // legend that needs room for "Police Sub-Inspector" AND its percentage.
+    // Side by side there, the legend was squeezed to the point of being
+    // unreadable; stacked, the legend gets the tile's full width.
+    expect(ruleFor('.rp-bento .rp-donut-wrap')).toMatch(/flex-direction:\s*column/);
+  });
+
+  test('a wide tile has the width to put them beside each other instead', () => {
+    // Rank Distribution is the one donut given `wide` specifically because its
+    // 12-item legend needs the room a 2-column tile has and a 1x1 does not.
+    expect(px(ruleFor('.rp-bento .rp-card-wide .rp-donut-wrap'), 'gap')).toBeGreaterThanOrEqual(24);
   });
 
   test('a legend row is capped, so the label and its share stay a readable pair', () => {

@@ -89,6 +89,214 @@ export async function exportReportPdf(element, filename) {
   pdf.save(filename || `sentinel-report-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
+// ── Home dashboard → sectioned, titled PDF ──────────────────────────────────
+// exportReportPdf() above treats the report as one flat list of blocks and
+// stretches every one of them to the full page width. That is right for a
+// standalone chart and wrong here: it turned a page of small KPI tiles and
+// donuts into one oversized image per page, with nothing on the page saying
+// what any of it had to do with its neighbours.
+//
+// This walks the same rendered DOM but groups cards by the `data-pdf-section`
+// attribute Reports.js's Card() stamps on every card (see that file's Band
+// comments — the section names below ARE those bands). Each section gets its
+// own page, a real vector header and title (not a screenshot, so it stays
+// crisp at any zoom), and its cards packed several to a row instead of one
+// per page — the column count follows each run's own aspect ratio, so eight
+// short, wide KPI tiles pack 4-across and a pair of squarer donuts pack
+// 2-across, matching what the row would actually hold on screen.
+export async function exportHomeReportPdf(element, meta = {}) {
+  if (!element) throw new Error('nothing to export');
+  const bg =
+    getComputedStyle(document.body).backgroundColor ||
+    (document.documentElement.getAttribute('data-theme') === 'dark' ? '#ffffff' : '#ffffff');
+
+  // Group the DOM into sections, preserving source order. Every section is
+  // built of the SAME kind of thing everywhere except Overview, where the KPI
+  // row is one element holding eight tiles rather than one card each — those
+  // get unpacked into individual blocks so they pack like everything else.
+  const sectionEls = Array.from(element.querySelectorAll('[data-pdf-section]'))
+    .filter((el) => el.offsetHeight && el.offsetWidth);
+
+  const sections = [];
+  for (const el of sectionEls) {
+    const name = el.getAttribute('data-pdf-section');
+    let sec = sections[sections.length - 1];
+    if (!sec || sec.name !== name) {
+      sec = { name, items: [] };
+      sections.push(sec);
+    }
+    if (el.classList.contains('rp-kpi-row')) {
+      Array.from(el.children).forEach((tile) => sec.items.push({ el: tile, wide: false }));
+    } else {
+      // hero/wide cards get a full-width row to themselves; the standalone
+      // crime-trend chart carries neither class but is exactly as full-width.
+      const wide =
+        el.classList.contains('rp-card-wide') ||
+        el.classList.contains('rp-card-hero') ||
+        el.classList.contains('rp-standalone');
+      sec.items.push({ el, wide });
+    }
+  }
+  if (!sections.length) throw new Error('nothing to export');
+
+  // Capture every block ONCE, up front, so the layout pass below is pure
+  // arithmetic and never blocks on html2canvas mid-page.
+  const captured = [];
+  for (const sec of sections) {
+    const items = [];
+    for (const it of sec.items) {
+      if (!it.el.offsetHeight || !it.el.offsetWidth) continue;
+      let canvas;
+      try {
+        canvas = await html2canvas(it.el, {
+          scale: 2,
+          backgroundColor: bg,
+          useCORS: true,
+          logging: false,
+          windowWidth: element.scrollWidth,
+        });
+      } catch {
+        continue; // one bad block must not sink the whole export
+      }
+      if (!canvas.width || !canvas.height) continue;
+      items.push({ canvas, wide: it.wide, aspect: canvas.height / canvas.width });
+    }
+    if (items.length) captured.push({ name: sec.name, items });
+  }
+  if (!captured.length) throw new Error('nothing could be captured for the PDF');
+
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const margin = 12;
+  const gap = 5;
+  const contentW = pageW - margin * 2;
+  const headerH = 20; // brand strip + rule + section title
+  const footerH = 9;  // rule + source line, reserved on every page
+  const bodyTop = margin + headerH;
+  const bodyBottom = pageH - margin - footerH;
+
+  const rangeLabel = meta.rangeLabel || '';
+  const generated = new Date().toLocaleString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+
+  const drawHeader = (sectionTitle, continued) => {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(8);
+    pdf.setTextColor(94, 106, 210); // Linear lavender, this platform's one accent
+    pdf.text('SENTINEL · KARNATAKA STATE POLICE', margin, margin + 3.5);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(140, 142, 150);
+    pdf.text(
+      `Home Report${rangeLabel ? ' · ' + rangeLabel : ''}`,
+      pageW - margin, margin + 3.5, { align: 'right' }
+    );
+    pdf.setDrawColor(94, 106, 210);
+    pdf.setLineWidth(0.5);
+    pdf.line(margin, margin + 6, pageW - margin, margin + 6);
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(13);
+    pdf.setTextColor(26, 28, 35);
+    pdf.text(sectionTitle + (continued ? ' (continued)' : ''), margin, margin + 15);
+  };
+
+  const drawFooter = (pageNum, pageCount) => {
+    pdf.setDrawColor(224, 226, 234);
+    pdf.setLineWidth(0.3);
+    pdf.line(margin, pageH - margin - 5, pageW - margin, pageH - margin - 5);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(7.5);
+    pdf.setTextColor(140, 142, 150);
+    pdf.text(
+      'Source: Sentinel · Synthetic Karnataka FIR dataset, Catalyst Data Store · Advisory only, verify before acting',
+      margin, pageH - margin
+    );
+    pdf.text(
+      `Generated ${generated}  ·  Page ${pageNum} of ${pageCount}`,
+      pageW - margin, pageH - margin, { align: 'right' }
+    );
+  };
+
+  // A run of consecutive non-wide items packs into a grid whose column count
+  // follows the run's own shape: short, wide tiles (KPI cards) read best
+  // 4-across; the squarer bento cards (donuts, tall lists) read best 2-across.
+  // Decided once from the first item — every run in this report is uniform,
+  // since a section only mixes shapes at a `wide` boundary, which always ends
+  // the run.
+  const columnsFor = (aspect) => (aspect < 0.5 ? 4 : 2);
+
+  // One section per call, so `y` is this section's own local state rather
+  // than a loop-scoped variable captured by helpers defined on every pass.
+  const renderSection = (sec, isFirst) => {
+    if (!isFirst) pdf.addPage();
+    let y = bodyTop;
+    drawHeader(sec.name, false);
+
+    const ensureRoom = (rowH) => {
+      if (y + rowH > bodyBottom) {
+        pdf.addPage();
+        drawHeader(sec.name, true);
+        y = bodyTop;
+      }
+    };
+
+    const placeFull = (item) => {
+      let w = contentW;
+      let h = item.aspect * w;
+      const maxH = bodyBottom - bodyTop;
+      if (h > maxH) { const s = maxH / h; h *= s; w *= s; }
+      ensureRoom(h);
+      const x = margin + (contentW - w) / 2;
+      pdf.addImage(item.canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, w, h);
+      y += h + gap;
+    };
+
+    const placeRun = (run) => {
+      if (!run.length) return;
+      const cols = columnsFor(run[0].aspect);
+      for (let i = 0; i < run.length; i += cols) {
+        const row = run.slice(i, i + cols);
+        const w = (contentW - gap * (row.length - 1)) / cols;
+        const heights = row.map((it) => it.aspect * w);
+        const rowH = Math.max(...heights);
+        ensureRoom(rowH);
+        for (let ci = 0; ci < row.length; ci += 1) {
+          const h = heights[ci];
+          const x = margin + ci * (w + gap);
+          // Short of the row's own tallest item: centred vertically, not
+          // stretched — a stretched donut is a wrong donut.
+          pdf.addImage(row[ci].canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y + (rowH - h) / 2, w, h);
+        }
+        y += rowH + gap;
+      }
+    };
+
+    let run = [];
+    for (const item of sec.items) {
+      if (item.wide) {
+        placeRun(run); run = [];
+        placeFull(item);
+      } else {
+        run.push(item);
+      }
+    }
+    placeRun(run);
+  };
+
+  captured.forEach((sec, i) => renderSection(sec, i === 0));
+
+  const pageCount = pdf.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i += 1) {
+    pdf.setPage(i);
+    drawFooter(i, pageCount);
+  }
+
+  pdf.save(meta.filename || `sentinel-home-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
 // ── Investigation Diary → professional PDF (server-rendered) ────────────────
 // Builds a clean, print-styled HTML document of the ENTIRE case record — every
 // section laid out properly — and has SmartBrowz render it to a real multi-page
