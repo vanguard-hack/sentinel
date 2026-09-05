@@ -1,5 +1,5 @@
 // Catalyst Web SDK v4 is loaded in public/index.html via two scripts:
-//   <script src="https://static.zohocdn.com/catalyst/sdk/js/4.0.0/catalystWebSDK.js"></script>
+//   <script src="https://static.zohocdn.com/catalyst/sdk/js/4.6.2/catalystWebSDK.js"></script>
 //   <script src="/__catalyst/sdk/init.js"></script>
 // The second script is served from THIS deployment's Catalyst origin and binds
 // the SDK to the correct project + data centre. There is NO catalyst.initialize()
@@ -43,6 +43,15 @@ export const resetPassword = () => { window.location.href = AUTH_URLS.resetPassw
  * Sign-out appeared to do nothing, and the failure got MORE likely the worse
  * the connection was. A fallback that navigates away from the logout request
  * cannot complete a logout.
+ *
+ * THAT WAS NOT THE WHOLE STORY. Fixing the timer left sign-out still doing
+ * nothing, because the URL the SDK was building was itself rejected: SDK 4.0.0
+ * emits the legacy global-logout shape and Zoho IAM answers it with a
+ * `?error=invalid_portal` dead end, so the cookie survived a logout that
+ * "succeeded". The real fix is the SDK version pinned in public/index.html —
+ * nothing in this file could have repaired a logout URL it does not construct.
+ * Kept as a note because the symptom (a spinner, then the app again) is
+ * identical for both causes, and the timing one is the tempting explanation.
  *
  * The redirect target is this deployment's own index (the documented value for
  * a Web Client mounted at /app), not the Catalyst login page. After the cookie

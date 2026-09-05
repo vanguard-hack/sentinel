@@ -103,7 +103,21 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Sans+Kannada:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <script src="https://static.zohocdn.com/catalyst/sdk/js/4.0.0/catalystWebSDK.js"></script>
+    <!-- Catalyst Web SDK.
+         THE VERSION IS LOAD-BEARING, and 4.0.0 is why Sign out did nothing.
+         Its constructSignOutUrl builds the legacy global-logout shape
+           <accounts-domain>/logout?logout=true&PROJECT_ID=<ZAID>&serviceurl=...
+         which Zoho IAM now answers with 302 -> /accounts/clienterror?error=invalid_portal
+         and a dead end. The redirect never reaches the app, the HttpOnly session
+         cookie is never cleared, so the officer lands back inside a live session --
+         "Signing out..." followed by nothing at all.
+         4.6.2 (the build Catalyst itself serves on this deployment's own login page)
+         builds the portal-scoped shape
+           /accounts/p/<ZAID>/logout?servicename=ZohoCatalyst&serviceurl=...
+         which answers 302 -> the app and does end the session. Every SDK call this
+         app makes exists unchanged in both builds; see src/__smoke__/sdkversion.test.js,
+         which fails if this pin ever slips back below the fix. -->
+    <script src="https://static.zohocdn.com/catalyst/sdk/js/4.6.2/catalystWebSDK.js"></script>
     <script src="/__catalyst/sdk/init.js"></script>
   </head>
   <body>
