@@ -13,7 +13,7 @@ framework and running end-to-end on **Zoho Catalyst**.
 ![React](https://img.shields.io/badge/React-19-61dafb?style=for-the-badge&logo=react&logoColor=white)
 ![Node](https://img.shields.io/badge/Node-20-3c873a?style=for-the-badge&logo=node.js&logoColor=white)
 ![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088ff?style=for-the-badge&logo=githubactions&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1%2C560%20passing-0f9d58?style=for-the-badge)
+![Tests](https://img.shields.io/badge/tests-1%2C565%20passing-0f9d58?style=for-the-badge)
 
 </div>
 
@@ -156,9 +156,12 @@ one-tap `tel:` call links, so a map lookup ends in a phone call rather than a se
 A full chat workspace at `/assistant`, not a corner widget. An officer asks a question in plain
 English, Hindi or Kannada and a router decides how to answer it:
 
-- **Tool loop** — the model is given four clearance-filtered tools (`query_records`,
-  `lookup_reference`, `search_knowledge_base`, `search_scanned_records`) and runs as many
-  lookups as one question needs before answering.
+- **Tool loop** — the model is given **eight clearance-filtered tools** and runs as many
+  lookups as one question needs before answering, batching independent ones into a single
+  turn. This is the lane that answers questions the single-lane paths structurally cannot:
+  ZCQL has no joins, so *"which FIRs were filed in Belagavi last month and who is accused in
+  them"* is two dependent lookups, and *"who has this man offended with"* is a graph walk.
+  See [Assistant tools](#assistant-tools) for the full set.
 - **ZCQL lane** — the question is compiled to a validated, single-table ZCQL query against the
   live FIR schema, then enriched with master-table names and district rollups in code.
 - **RAG lane** — legal, procedural and SOP questions are answered from a QuickML knowledge base.
@@ -312,7 +315,7 @@ deterministically synthesised per person so the registry is realistic and stable
 
 ### 👮 Personnel
 
-An 889-officer directory across the full Karnataka rank ladder (PC → DGP, 12 ranks), with a
+A 3,368-officer directory across the full Karnataka rank ladder (PC → DGP, 12 ranks), with a
 weekly **duty roster** and a per-district **organisation chart** rendered from the Unit
 hierarchy. Rank insignia are drawn inline. Because ZCQL is single-table, `Employee` is joined
 against `Rank`, `Unit` and `District` client-side; contact details and duty status are not in the
@@ -436,8 +439,8 @@ flowchart TB
 
     subgraph Fn["rag — Catalyst Advanced I/O Function, Node 20"]
         direction TB
-        Gate["Router gate<br/>IP blocklist → session check → rate limit"]
-        Handlers["~58 endpoint handlers"]
+        Gate["Router gate<br/>IP blocklist → origin check → session check → rate limit"]
+        Handlers["58 routes, one gate"]
         Guard["Clearance filter + redaction<br/>tier 1 pre-prompt, tier 2 post-generation"]
         Gate --> Handlers --> Guard
     end
@@ -451,7 +454,7 @@ flowchart TB
         NoSQL[("NoSQL<br/>officer memory")]
         Zia["Zia<br/>OCR · Speech-to-Text · Vision"]
         SB["SmartBrowz<br/>HTML → PDF"]
-        QML["QuickML<br/>3 forecast models · RAG knowledge base"]
+        QML["QuickML<br/>3 forecast pipelines · chargesheet classifier<br/>RAG knowledge base"]
     end
 
     subgraph LLM["LLM providers — ordered fallback chain"]
@@ -542,7 +545,7 @@ sequenceDiagram
 
     O->>UI: types a question
     UI->>F: POST /server/rag { query, session_id, page_context }
-    F->>F: IP blocklist check
+    F->>F: IP blocklist, then origin (CSRF) check
     F->>A: verify session cookie
     A-->>F: caller identity
     F->>F: rate limit by email and route class
@@ -550,13 +553,14 @@ sequenceDiagram
     F->>R: classify the question
     R-->>F: route + confidence (TOOLS / ZCQL / RAG / BOTH / CHAT)
 
-    alt TOOLS — bounded tool loop
-        loop until answered or budget spent
-            F->>L: prompt with clearance-filtered tool set
-            L-->>F: tool call
-            F->>D: ZCQL lookup
-            D-->>F: rows
+    alt TOOLS — bounded tool loop (max 6 turns / 45 s)
+        loop until answered, or the bound is reached
+            F->>L: prompt with 8 clearance-filtered tools
+            L-->>F: one or more tool calls, batched
+            F->>D: records, joins, network walk, law, obligations
+            D-->>F: rows — filtered, capped and nonce-fenced
         end
+        Note over F,L: on the last turn the tools are withdrawn,<br/>which forces an answer instead of another call
     else ZCQL — compiled query
         F->>L: natural language to ZCQL
         L-->>F: candidate query
@@ -773,7 +777,7 @@ Vision separately — and there is no self-managed server anywhere in the system
 | Catalyst service | How Sentinel uses it |
 | --- | --- |
 | **Web Hosting (Client)** | Serves the React bundle at `/app`. `postbuild` copies `index.html` → `404.html` so client-side routes survive a hard refresh. |
-| **Functions — Advanced I/O** | The single `rag` function (Node 20) is the entire backend: ~58 endpoints behind one router gate that enforces the IP blocklist, session check and rate limit before any handler runs. |
+| **Functions — Advanced I/O** | The single `rag` function (Node 20) is the entire backend: 58 routes — `/health` ahead of the gates, and 57 behind one router gate that enforces the IP blocklist, CSRF origin check, session check and rate limit before any handler runs. `apigate.test.js` counts them and fails if a route is ever dispatched ahead of the gate. |
 | **Data Store (ZCQL)** | The 26-table CCTNS-aligned FIR schema, plus the `ChatConversations` table. Read **directly from the browser** over ZCQL for row-level browsing; whole tables for analytics arrive as one columnar snapshot per table read inside the datacentre; read and written with admin scope from the function. |
 | **Stratus (object storage)** | Investigation diary entries, evidence media, scanned source documents, per-day audit logs, user profiles and photos, Report Studio drafts, and CSV staging for `ds:import`. |
 | **Authentication & User Management** | Zoho OAuth sign-in, session verification on every API call, and the *App Administrator* project role that backs the `admin` app role — so admin can never be self-assigned. |
@@ -783,7 +787,7 @@ Vision separately — and there is no self-managed server anywhere in the system
 | **Zia — Speech-to-Text** | Live voice-to-text for testimony capture and assistant voice input, plus transcription of uploaded interview recordings. |
 | **Zia — Vision** | The fast attachment pre-parser: runs vision services in parallel on an attached image the moment it is attached, so the digest is ready before the officer finishes typing. |
 | **SmartBrowz** | Renders the composed HTML of a statutory report or a full case file into a court-ready PDF, server-side. |
-| **QuickML** | Two distinct jobs. **Forecasting:** three deployed pipelines (force-wide volume, ten crime heads, thirty-one districts) served through prediction endpoints, one key per model so a leaked key is one model rather than all of them. **Retrieval:** the RAG knowledge base behind legal and procedural answers, and the semantic-recall tier of officer memory. |
+| **QuickML** | Three distinct jobs. **Forecasting:** three deployed pipelines (force-wide volume, ten crime heads, thirty-one districts) served through prediction endpoints, one key per model so a leaked key is one model rather than all of them. **Classification:** a chargesheet-likelihood model over 21 case features, which returns its own measured accuracy with every prediction. **Retrieval:** the RAG knowledge base behind legal and procedural answers, and the semantic-recall tier of officer memory. |
 
 > **Graceful degradation is deliberate.** Cache segments and NoSQL tables cannot be created from
 > code — only from the console. Every memory read returns empty and every write returns `false`
@@ -940,13 +944,13 @@ sentinel/
 │       │   ├── hierarchyStore.js    # Unit/rank hierarchy used by the org chart
 │       │   └── socioeconomic.js     # District socio-economic indicators
 │       │
-│       └── __smoke__/               # 49 front-end suites (citations, extraction, PDF, i18n, sign-out, graphs, …)
+│       └── __smoke__/               # 50 front-end suites (citations, extraction, PDF, i18n, sign-out, graphs, …)
 │
 ├── functions/
 │   └── rag/                         # ── BACKEND ── the single Catalyst Advanced I/O function
-│       ├── index.js                 # Router gate + all ~58 endpoint handlers + the assistant lanes
+│       ├── index.js                 # Router gate + all 58 routes + the assistant lanes and tool loop
 │       ├── zcql.js                  # Natural language → ZCQL compiler, validator and row enrichment
-│       ├── tools.js                 # The four clearance-filtered tools the model may call
+│       ├── tools.js                 # The eight clearance-filtered tools the model may call
 │       ├── memory.js                # Officer memory over Cache + NoSQL + QuickML KB
 │       ├── sources.js               # The unified citation contract, server side
 │       ├── redaction.js             # Two-tier clearance filter — pre-prompt and post-generation
@@ -1002,33 +1006,70 @@ Live in the Catalyst **Data Store**; column types and lengths are in
 [`ksp/fir/import/SCHEMA.md`](ksp/fir/import/SCHEMA.md).
 
 | Group | Table | Rows | What it holds |
-| --- | --- | --- | --- |
-| **Cases** | `CaseMaster` | 2,200 | The FIR itself — crime number, registration date, station, status, IO |
-| | `ChargesheetDetails` | 1,658 | Final report / charge sheet filed with the court |
-| | `ActSectionAssociation` | 2,535 | Which Act and Section each case is charged under |
-| | `ArrestSurrender` | 1,803 | Arrest and court-surrender events per accused |
-| **People** | `Accused` | 3,268 | Accused persons, carrying the **global** `PersonID` offender identity |
-| | `Victim` | 1,988 | Victims linked to their case |
-| | `ComplainantDetails` | 2,374 | Who filed the complaint |
-| | `Employee` | 889 | Police officers across a 12-rank ladder, with unique full names |
+| --- | --- | --: | --- |
+| **Cases** | `CaseMaster` | 30,000 | The FIR itself — crime number, registration date, station, status, IO |
+| | `ActSectionAssociation` | 34,409 | Which Act and Section each case is charged under |
+| | `ArrestSurrender` | 28,708 | Arrest and court-surrender events per accused |
+| | `ChargesheetDetails` | 21,789 | Final report / charge sheet filed with the court |
+| **People** | `Accused` | 44,237 | Accused persons, carrying the **global** `PersonID` offender identity |
+| | `ComplainantDetails` | 32,389 | Who filed the complaint |
+| | `Victim` | 27,572 | Victims linked to their case |
+| | `Employee` | 3,368 | Police officers across a 12-rank ladder, with unique full names |
 | **Geography** | `Unit` | 155 | Police stations, circles and sub-divisions |
+| | `Court` | 62 | Courts that charge sheets are filed in |
 | | `District` | 39 | Karnataka districts (plus neighbouring-state entries) |
 | | `State` | 7 | States referenced by the data |
 | | `UnitType` | 6 | Station / circle / sub-division / range classification |
-| | `Court` | 62 | Courts that charge sheets are filed in |
-| **Crime taxonomy** | `Act` | 10 | IPC, BNS, and the special/local laws in use |
+| **Crime taxonomy** | `CrimeHeadActSection` | 36 | Maps a crime head onto its Act–Section combinations |
 | | `Section` | 35 | Sections within those Acts |
-| | `CrimeHead` | 10 | Major heads — body, property, women, cyber, economic … |
 | | `CrimeSubHead` | 31 | Sub-heads beneath each major head |
-| | `CrimeHeadActSection` | 36 | Maps a crime head onto its Act–Section combinations |
-| | `CaseCategory` | 4 | Case category lookup |
+| | `Act` | 10 | IPC, BNS, and the special/local laws in use |
+| | `CrimeHead` | 10 | Major heads — body, property, women, cyber, economic … |
 | | `CaseStatusMaster` | 7 | Under investigation, charge-sheeted, disposed, cold … |
+| | `CaseCategory` | 4 | Case category lookup |
 | | `GravityOffence` | 2 | Heinous / non-heinous classification |
-| **Person masters** | `Rank` | 12 | PC → DGP, the Karnataka Police rank ladder |
-| | `Designation` | 6 | Posting designations |
+| **Person masters** | `OccupationMaster` | 14 | Occupation lookup |
+| | `Rank` | 12 | PC → DGP, the Karnataka Police rank ladder |
 | | `CasteMaster` | 10 | Reference only — **excluded from every risk model** |
 | | `ReligionMaster` | 7 | Reference only — **excluded from every risk model** |
-| | `OccupationMaster` | 14 | Occupation lookup |
+| | `Designation` | 6 | Posting designations |
+
+**222,925 rows in total** — 219,104 case-linked records over 3,821 rows of reference data.
+
+The CSVs are gitignored and the seeded generators are the tracked source of truth, so these
+counts are reproducible rather than remembered. They are what CI builds on every push:
+
+```bash
+cd ksp/fir
+rm -f Employee.base.csv
+N_CASES=30000 STAFF_PER_PS=26 python3 generate_fir_dataset.py
+python3 generate_accused_network.py
+python3 enrich_personnel.py
+```
+
+Both environment variables move the numbers, and `STAFF_PER_PS` moves them further than it
+looks: it sets the station roster (six per station gives 888 officers, twenty-six gives 3,368),
+and because it draws from the same seeded stream, changing it shifts every table generated after
+it by a few dozen rows. `rm -f Employee.base.csv` is not optional — the enrichment reads that
+file as its pristine input, so a stale one silently carries the previous roster forward.
+
+### Why 30,000 cases, and what it changed
+
+The dataset was built at 2,200 FIRs and scaled to **30,000** — a realistic year of registrations
+for a force this size, and the point at which the analytics stop being a demo.
+
+The size is not cosmetic; it broke things that a small dataset hid, and each break is now a test:
+
+- **Row ceilings that never bit.** Three separate paths carried their own limit — 6,000 rows in
+  the analytics builder, 10,000 in the generic fetch, 30,000 in crime links. At 2,200 cases none
+  of them ever fired. At 30,000 all three truncated silently, drawing every chart on the first
+  fifth of the data rather than failing loudly.
+- **Paging arithmetic.** ZCQL returns 300 rows a query, so a full scan is 100 round trips; those
+  now run concurrently and land in one shared snapshot per table instead of each analytics tab
+  re-reading the same 30,000 rows for itself.
+- **Comparisons that grew quadratically.** Case linkage scores an index offence against ~30,000
+  candidates — 3.6 million comparisons — which is why the ranking streams a top-10 rather than
+  scoring everything into an array first.
 
 ### How it was built
 
@@ -1042,7 +1083,7 @@ Live in the Catalyst **Data Store**; column types and lengths are in
   signature modus operandi, within a coherent geography, over a coherent time window, with
   co-offending partners. This is what the case-linkage ranking (AUC ≈ 0.87 on the planted series)
   and the co-offending network graph actually detect.
-- **[`enrich_personnel.py`](ksp/fir/enrich_personnel.py)** — expands `Employee` to 889 officers
+- **[`enrich_personnel.py`](ksp/fir/enrich_personnel.py)** — expands `Employee` to 3,368 officers
   with unique full names distributed across the 12-rank ladder and posted to real units.
 - **[`fix_datetimes.py`](ksp/fix_datetimes.py)** — normalises datetime columns to the exact format
   the Data Store's importer accepts.
@@ -1056,11 +1097,16 @@ statistics, so it is worth being precise about what they are and how they were s
 
 ### Three pipelines, forty-two series
 
-| Pipeline | Series | What it forecasts |
-| --- | :-: | --- |
-| `firvolume` | 1 | The force-wide monthly FIR total |
-| `crimehead` | 10 | Monthly volume per crime head |
-| `district` | 31 | Monthly volume per district |
+| Pipeline | Series | Training rows | What it forecasts |
+| --- | :-: | --: | --- |
+| `firvolume` | 1 | 159 | The force-wide monthly FIR total |
+| `crimehead` | 10 | 1,590 | Monthly volume per crime head |
+| `district` | 31 | 4,929 | Monthly volume per district |
+
+All three share one table shape: 24 months of observed history, a 12-month warm-up before the
+first usable origin, a 6-month horizon, and the same **12 features** — `series`, `horizon`,
+`month`, `quarter`, `lag_1`, `lag_2`, `lag_3`, `lag_12`, `seasonal_lag_12`, `roll_3`, `roll_6`,
+`roll_12` — predicting `target_count`.
 
 QuickML's *forecasting* pipelines are per-target — one series each, so forty-two pipelines built
 and maintained by hand. These are **regression tables in the direct multi-horizon form** used for
@@ -1094,25 +1140,79 @@ product and a decoration:
 | Crime head | −5% | **+12%** (MAPE 15.6%) |
 | District | −2% | **+7%** (MAPE 22.0%) |
 
-### Scored against the honest baseline
+### Every measured number, per pipeline
 
-Skill is reported against **each series' own historical average**, not against naive or
-seasonal-naive. For noisy counts the mean beats both, so a model scored only against those can
-look strong while adding nothing.
+These are the figures the Forecasts card publishes and the ones
+[`functions/rag/forecast.js`](functions/rag/forecast.js) serves. All are **pooled
+rolling-origin, leak-free** — the model is scored only on months it never saw.
 
-These are also **not** the numbers QuickML's console reports. The console scores a random split,
-and on a table of lag features adjacent rows share history — so its metric is optimistic by
-construction. The figures on the card are the ones that survive contact with a month the model
-has never seen.
+| Metric | `firvolume` | `crimehead` | `district` |
+| --- | --: | --: | --: |
+| Series covered | 1 | 10 | 31 |
+| **MAE** (held out) | 31.6 FIRs/month | 9.1 FIRs/month | 4.3 FIRs/month |
+| **MAPE** | 4.1% | 15.6% | 22.0% |
+| Baseline MAE — the series' own average | 91.2 | 10.3 | 4.6 |
+| **Skill over that baseline** | **+65%** | **+12%** | **+7%** |
+| Relative MAE (MAE ÷ level) | 0.041 | 0.116 | 0.172 |
+| 95% band at the forecast value | ±10.1% | ±28.5% | ±42.3% |
+| Forecast horizon | 6 months | 6 months | 6 months |
+
+The band row is derived, not reported: a QuickML regression endpoint returns a point estimate
+and nothing else, so the interval comes from measured error — MAE → σ as `MAE × √(π/2)`, then
+`1.96σ`, i.e. `relMae × 2.4565`, scaled with the predicted value and floored at ±1 FIR, the
+resolution of a count. A large district therefore gets a wider band in absolute FIRs than a
+small one, and the widths above are what that works out to as a percentage.
+
+**Two design choices the numbers paid for:**
+
+- *A dedicated total, rather than summing the districts.* Summing the 31 district forecasts does
+  work — **+46% to +59%** — but the dedicated pipeline lands **+64% to +67% across three
+  learners**, and is steadier, because the aggregate is where the seasonal swing most clearly
+  clears the noise. Its 6-month horizon (rather than 3) is also what makes its table large
+  enough to train on, and is needed anyway: the dataset ends in June while the dashboard has to
+  forecast past today.
+- *Skill against the mean, not against naive.* Skill is reported over **each series' own
+  historical average**, never naive or seasonal-naive. For noisy counts the mean beats both, so
+  a model scored only against those can look strong while adding nothing.
+
+### Why these are not QuickML's console scores
+
+QuickML's console reports a metric from a **random split**, and on a table of lag features
+adjacent rows share history — an origin's `lag_1` is a neighbouring row's target — so a random
+split leaks the answer across the boundary and the score is optimistic by construction. It is
+the right default for i.i.d. tabular data and the wrong one for a time series flattened into a
+table.
+
+The figures above were therefore measured offline in [`ksp/ml`](ksp/ml/) by pooled
+rolling-origin validation, which is the only way to score a month the model has never seen. They
+are lower than the console's, and they are the ones on the card.
 
 ### Two honest limitations, surfaced rather than hidden
 
-- A QuickML regression endpoint returns a **point estimate and nothing else**, so the 95% band is
-  derived from each model's held-out mean absolute error (MAE → σ via `MAE × √(π/2)`, then
-  1.96σ), scaled with the predicted value and floored at ±1 FIR — the resolution of a count.
+- A QuickML regression endpoint returns a **point estimate and nothing else**, so the interval on
+  the chart is inferred from held-out error rather than reported by the model — see the band row
+  above. It is an honest width, not a model-supplied one.
 - The features are **exactly the twelve that were measured**. Nothing is added at serving time
   that was not in the backtest, and a trend counter is deliberately absent because a tree cannot
   extrapolate one.
+
+### The fourth model: chargesheet likelihood
+
+Not a forecast, and it lives in [`index.js`](functions/rag/index.js) rather than `forecast.js`,
+but it is the other trained QuickML model this platform serves, so its numbers belong here.
+
+| Metric | Value |
+| --- | --- |
+| Kind | Binary classification — will this case reach a charge sheet |
+| Features | 21 (crime head and minor head, category, gravity, station, district, incident hour and weekday, registration month and year, report delay, counts of accused / victims / complainants / arrests, arrest made, mean accused and victim age, station caseload, IO caseload, case age) |
+| **Accuracy** | **81.87%** |
+| Majority-class baseline | 72.6% |
+| Skill over that baseline | +9.3 points |
+| Served at | `POST /server/rag/predict/chargesheet` |
+
+The accuracy is returned **with every prediction** rather than published once: roughly one call
+in five is wrong, and a screen that shows a confident percentage while hiding that is worse than
+showing no model at all.
 
 ---
 
@@ -1129,10 +1229,13 @@ POST /server/rag/<path>
    ├─ /health only ─────────────────► answered before the gate (deploy verification)
    │
    ├─ 1. IP blocklist ──────────────► 403 Access denied
-   ├─ 2. Catalyst session check ────► 401 (this is asserted in CI on every deploy)
-   ├─ 3. Rate limit ────────────────► 429 + Retry-After
+   ├─ 2. Origin check (CSRF) ───────► 403; a request carrying an Origin must carry one of
+   │                                   ours. A request with none (curl, CI) falls to step 3 —
+   │                                   browsers cannot suppress it, so this costs nothing.
+   ├─ 3. Catalyst session check ────► 401 (this is asserted in CI on every deploy)
+   ├─ 4. Rate limit ────────────────► 429 + Retry-After
    │      general routes vs. metered routes (transcription, OCR, PDF, every LLM lane)
-   └─ 4. Handler
+   └─ 5. Handler
 ```
 
 ### Assistant
@@ -1151,6 +1254,7 @@ POST /server/rag/<path>
 | `POST /server/rag/analytics/snapshot` | Returns one whole reference table as a **columnar** payload (`{ cols, rows }`) — the read that replaced 437 browser round trips on the home page. Paged and retried server-side; a refused page is retried rather than failing the build. |
 | `POST /server/rag/forecast` | The assembled forecast bundle for all three QuickML pipelines: history, per-horizon predictions, 95% bands and each model's held-out quality figures. Normally a Stratus blob read — QuickML bills per prediction call and a full refresh is 42 series × 6 horizons = **252 calls**, so the numbers come from the models but are paid for once. Keyed by the dataset's origin month, so a cached bundle is not a stale one. |
 | `POST /server/rag/forecast/refresh` | Forces the bundle to be rebuilt from the live model endpoints. |
+| `POST /server/rag/predict/<model>` | The non-forecasting QuickML models. Today that is `chargesheet` — a chargesheet-likelihood classifier over 21 case features. The response carries the model's measured accuracy alongside the prediction, because roughly one call in five is wrong and a screen that hides that is worse than no model. |
 
 ### Assistant memory
 
@@ -1236,15 +1340,48 @@ POST /server/rag/<path>
 
 ### Assistant tools
 
-Within the TOOLS lane the model may call four tools, each filtered by the caller's clearance
-before the results ever reach a prompt:
+Within the TOOLS lane the model may call **eight** tools. Each is dispatched through one
+function ([`functions/rag/tools.js`](functions/rag/tools.js)), and that single choke point is
+where the caller's clearance filter and the result cap are applied — so a tool added later
+cannot forget either.
 
-| Tool | Does |
-| --- | --- |
-| `query_records` | Runs a validated single-table ZCQL query against the live FIR schema. |
-| `lookup_reference` | Resolves master-table codes to names — Acts, Sections, districts, ranks, statuses. |
-| `search_knowledge_base` | Semantic retrieval from the QuickML legal/SOP corpus. |
-| `search_scanned_records` | Searches the station's own digitised uploads. |
+| Tool | Does | Why the single-lane path cannot |
+| --- | --- | --- |
+| `query_records` | A validated single-table ZCQL query against the live FIR schema, with optional district resolution and station→district rollup. | — |
+| `join_records` | Relates `CaseMaster` to `Accused`, `Victim`, `ComplainantDetails`, `ArrestSurrender`, `ChargesheetDetails` or `ActSectionAssociation`, matching on `CaseMasterID` **inside the function**. | ZCQL has no joins, and doing it by hand means pasting hundreds of ids into an `IN` clause until the list truncates and the count comes out silently wrong. |
+| `traverse_network` | The co-offending graph: `neighbours` (1–3 hops), `path` between two people, `ring`, `most_connected`. Returns edges the assistant can draw. | Following a person from one case to another needs the global `PersonID` across tables. |
+| `lookup_reference` | Resolves master-table codes to names — districts, units, ranks, designations, crime heads and sub-heads, statuses, categories, courts. | — |
+| `lookup_law` | One provision by number, search by offence wording, IPC→BNS and BNS→IPC mapping, or every section held for an act. Covers the 35 sections in this deployment across IPC, NDPS, Arms, IT, POCSO, MV, Excise, Dowry Prohibition and the Karnataka Police Act. | Answering from the model's own recollection is exactly what must not happen with a section number an officer will cite. |
+| `case_obligations` | What is outstanding or running out of time on the officer's own cases — statutory deadlines, perishable evidence, procedural gaps — each with what the law does when the clock runs out. | Reads the investigation diaries, not the Data Store. It calls the **same builder** the Action Queue page calls, so "what's urgent?" asked in chat and the page an officer opens cannot disagree. |
+| `search_knowledge_base` | Semantic retrieval from the QuickML legal/SOP corpus. | — |
+| `search_scanned_records` | Searches the station's own digitised paper — scanned FIRs, statements, seizure memos, transcripts. | The Data Store has no column for what an officer wrote in free text. |
+
+**The loop is bounded on four axes**, because a model that decides how many lookups to run must
+not also decide how much of the Data Store enters the prompt:
+
+| Bound | Value | What it stops |
+| --- | --- | --- |
+| Iterations | `TOOL_MAX_ITERATIONS` = 6 | On the last permitted turn **the tools are withdrawn**, which forces an answer rather than a call the loop cannot service. |
+| Wall clock | `TOOL_BUDGET_MS` = 45 s (30 s per model call) | A slow lookup turning into an unbounded chat request. |
+| Rows per result | 60 | A loop of calls filling the context window with rows. |
+| Bytes per result | 12,000 | One wide row set crowding out the question. |
+
+Independent calls come back in one turn and their results go back in **one** user message —
+splitting them teaches the model to stop batching.
+
+**Every tool result is fenced before the model reads it.** Two tools fence their own passages;
+the other six return record fields, and record fields are not system-generated — a `BriefFacts`
+narrative is prose a member of the public partly dictated by walking in to file a complaint. So
+the fence is applied at dispatch, in the per-request random nonce a hostile document cannot
+close, covering all eight tools and any tool added later. Injection markers found in retrieved
+content go to the audit trail; the model is given the fenced text and never the fact that it was
+suspected, which would only invite it to argue the point.
+
+**Failure falls through, it does not surface.** If the loop cannot run — no `ANTHROPIC_API_KEY`,
+no answer produced, budget spent — the question drops into the ZCQL or RAG lane it would have
+taken before this route existed, so the worst case is the behaviour that was already there. What
+ran is recorded either way: the audit entry carries `tools:<names>|iterations=<n>`, and rows the
+loop read become the answer's citations.
 
 ---
 
@@ -1253,7 +1390,7 @@ before the results ever reach a prompt:
 | Requirement | Notes |
 | --- | --- |
 | **Node.js 18+** and npm | The function targets the Node 20 runtime; CI builds on 20 |
-| **Python 3.9+** | Only if you want to regenerate the dataset rather than use the committed CSVs |
+| **Python 3.9+** | Required. `ksp/**/*.csv` is gitignored — the seeded generators are the tracked source of truth, so the dataset is built, not cloned |
 | **Zoho Catalyst account** | <https://catalyst.zoho.in> — this project lives on the **India** data centre |
 | **Catalyst CLI** | `npm install -g zcatalyst-cli` |
 | **Zoho Self-Client** | <https://api-console.zoho.in> — issues the OAuth refresh token the function uses |
@@ -1316,9 +1453,10 @@ cp functions/rag/catalyst-config.template.json functions/rag/catalyst-config.jso
 | `SUPPORT_EMAIL`, `SMTP_USER`, `SMTP_PASS` | — | Help Centre ticket delivery (a Gmail **app password**, not the account password) |
 | `RATE_LIMIT_PER_MIN` / `RATE_LIMIT_METERED_PER_MIN` | — | Per-user rate limits for general and metered routes |
 | `BLOCKED_IPS` | — | Comma-separated IP blocklist, checked before anything else |
-| `TOOL_MAX_ITERATIONS` / `TOOL_BUDGET_MS` | — | Bounds on the assistant's tool loop |
+| `TOOL_MAX_ITERATIONS` / `TOOL_BUDGET_MS` | `6` / `45000` | Bounds on the assistant's tool loop — turns, and milliseconds of wall clock |
 | `MEMORY_*` | see [`functions/rag/memory.js`](functions/rag/memory.js) | Cache segment, NoSQL table names and TTLs for officer memory |
 | `QUICKML_KEY_FIRVOLUME` / `QUICKML_KEY_CRIMEHEAD` / `QUICKML_KEY_DISTRICT` | — | One endpoint key per forecasting model. Kept separate on purpose: a leaked key is one model rather than all three. Without them the Forecasts tab says the models are unavailable instead of drawing a line it cannot justify — and `/health` reports which are configured. |
+| `QUICKML_KEY_CHARGESHEET` | — | Endpoint key for the chargesheet-likelihood classifier behind `/predict/chargesheet`. |
 | `QUICKML_PREDICT_URL` / `QUICKML_ENV` | project default | Override the prediction endpoint or environment |
 
 The refresh token needs scopes for **QuickML** (including `QuickML.deployment.READ` for
@@ -1343,10 +1481,24 @@ This is not optional — investigation records, evidence, audit logs, report dra
 all live here. Without `PutObject`, every save fails with *"request denied by resource access
 policy"*.
 
-### 5. Load the FIR dataset
+### 5. Generate and load the FIR dataset
+
+The CSVs are not in the repository. Build them first, with the same parameters CI uses — the
+generators are seeded, so this reproduces the exact dataset the row-count table describes:
 
 ```bash
-cd ksp/fir/import
+cd ksp/fir
+rm -f Employee.base.csv
+N_CASES=30000 STAFF_PER_PS=26 python3 generate_fir_dataset.py
+python3 generate_accused_network.py
+python3 enrich_personnel.py
+```
+
+Then create every table listed in [`ksp/fir/import/SCHEMA.md`](ksp/fir/import/SCHEMA.md) in the
+Catalyst console — there is no auto-create and no CLI equivalent — and import:
+
+```bash
+cd import
 ./run_import.sh
 ```
 
@@ -1404,6 +1556,16 @@ Two things to know:
 - The `rag` function must be reachable at **`/server/rag/*`** for the assistant, diary, reports,
   records, custody and audit to work at all. Use `catalyst serve`, or point the dev server at a
   deployed function.
+- **`catalyst serve` needs the Node version the CLI was installed under.** On the wrong one it
+  silently skips the function and serves only the client — the only sign is
+  `skipping serve of function [rag]` in the log, and every API call then 404s. Put that Node's
+  bin directory ahead of `PATH`, e.g.
+  `PATH="$HOME/.nvm/versions/node/v20.20.2/bin:$PATH" catalyst serve --http 3000`.
+- **Local has no separate data plane.** Data Store and Stratus calls from a local serve proxy to
+  and mutate **real Development data**. Testing function logic is safe; testing a destructive
+  data operation is not.
+- `npm install` in `react-app` needs `--legacy-peer-deps` — react-scripts 5 pins TypeScript
+  `^3 || ^4` against the installed 5.x.
 
 ---
 
@@ -1443,8 +1605,8 @@ CI runs all three automatically on every push to `main`.
 
 ## Testing
 
-**1,560 checks across 74 suites** — 1,101 backend checks in 25 suites and 459 frontend tests in
-49 — all passing as of the last run on `main`. Everything runs locally in well under a minute
+**1,565 checks across 75 suites** — 1,101 backend checks in 25 suites and 464 frontend tests in
+50 — all passing as of the last run on `main`. Everything runs locally in well under a minute
 and needs no database, no network and no credentials: the tests that cover platform behaviour
 assert against the *source* and against injected fakes rather than a live Catalyst project.
 
@@ -1490,12 +1652,13 @@ deliberate: **a guard tested by regex is a guard that passes while doing nothing
 
 ### Frontend suites (`react-app/src/__smoke__/`)
 
-49 suites, 459 tests. Beyond rendering, several pin behaviour that had already gone wrong once
+50 suites, 464 tests. Beyond rendering, several pin behaviour that had already gone wrong once
 and would go wrong silently again:
 
 | Suite | Holds the line on |
 | --- | --- |
 | `signout.test.js` · `signoutflow.test.js` | Nothing local — a timer, a wedged IndexedDB open, a browser with site data blocked — may stand between the click and the end of the session. |
+| `sdkversion.test.js` | The Catalyst Web SDK **version** pinned in `public/index.html`. Sign out is the one flow the app cannot implement itself — the session cookie is HttpOnly, so only the SDK's own logout navigation clears it — and SDK 4.0.0 built a logout URL Zoho IAM answers with `?error=invalid_portal`. The suites above mock `catalyst.auth.signOut`, so by construction they cannot see a bad URL built inside it; they passed throughout the outage. This one asserts the only thing they cannot. |
 | `linkagevalidation.test.js` | The optimised validation reports the *same* hit rate as the implementation it replaced, including the all-ties case where selection order is the only thing deciding. |
 | `moneygraph.test.js` | The money network's **shape**: one connected network rather than a field of stars, accounts genuinely shared, lopsided degree, edges past the first hop, and no account transferring to itself. |
 | `ringedges.test.js` | Ring edges assembled the fast way still match the definition — every edge inside its own ring, none dropped or duplicated, no edge crossing two gangs. |
@@ -1505,9 +1668,11 @@ and would go wrong silently again:
 
 ### What CI runs
 
-Every push and pull request: install both workspaces → syntax-check the function → run all 25
-backend suites → run the frontend suites → lint `src` as a hard gate (`__smoke__` is advisory) →
-the accessibility gate → production build → assert `build/404.html` exists. Only a green run on
+Every push and pull request: install both workspaces → syntax-check the function → **regenerate
+the whole FIR dataset from the seeded generators** and assert `forecast_features.json` still
+matches it → run all 25 backend suites → run the 50 frontend suites → lint `src` as a hard gate
+(`__smoke__` is advisory) → the accessibility gate → production build → assert `build/404.html`
+exists. Only a green run on
 `main` proceeds to deploy, and the deploy then asserts three things against the **live** site:
 the bundle hash matches what CI built, `/health` still reports its provider keys, and an
 anonymous `POST` still returns `401`.
@@ -1585,9 +1750,9 @@ which is the single source of truth.
 
 - **Credentials never reach the browser.** Every API key, OAuth token and SMTP password lives
   server-side in the function's environment. All AI, media, OCR and PDF calls proxy through it.
-- **One gate, ahead of every route.** IP blocklist → session verification → rate limit, applied
-  by the router rather than by each handler, so a new endpoint cannot forget to check. CI asserts
-  on every deploy that an anonymous `POST` still returns `401`.
+- **One gate, ahead of every route.** IP blocklist → origin (CSRF) check → session verification
+  → rate limit, applied by the router rather than by each handler, so a new endpoint cannot
+  forget to check. CI asserts on every deploy that an anonymous `POST` still returns `401`.
 - **Two-tier clearance filtering.** Tier 1 keeps unauthorised data out of the model's prompt;
   tier 2 catches an identifier the model restated or inferred rather than copied. An identity
   lookup that *fails* redacts more, not less — the disclosure path deliberately does not reuse

@@ -1,11 +1,11 @@
 # Catalyst Data Store — table schemas
 
-_Generated 2026-09-03 14:14 • bucket: `accused`_
+_Generated 2026-09-05 08:31 • bucket: `accused`_
 
 Every table also gets an automatic `ROWID` primary key from Catalyst — you don't add it. Create each table below in the console (Data Store → New Table), then run `run_import.sh`.
 
 
-## `Accused`  (44150 rows)
+## `Accused`  (44237 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -25,7 +25,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | ShortName | varchar | 50 |
 | Active | boolean |  |
 
-## `ActSectionAssociation`  (34438 rows)
+## `ActSectionAssociation`  (34409 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -35,7 +35,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | ActOrderID | int |  |
 | SectionOrderID | int |  |
 
-## `ArrestSurrender`  (28849 rows)
+## `ArrestSurrender`  (28708 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -96,7 +96,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | caste_master_id | int |  |
 | caste_master_name | varchar | 50 |
 
-## `ChargesheetDetails`  (21787 rows)
+## `ChargesheetDetails`  (21789 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -106,7 +106,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | cstype | varchar | 50 |
 | PolicePersonID | int |  |
 
-## `ComplainantDetails`  (32386 rows)
+## `ComplainantDetails`  (32389 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -172,7 +172,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | StateID | int |  |
 | Active | boolean |  |
 
-## `Employee.base`  (744 rows)
+## `Employee.base`  (3224 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -189,7 +189,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | PhysicallyChallenged | boolean |  |
 | AppointmentDate | datetime |  |
 
-## `Employee`  (888 rows)
+## `Employee`  (3368 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -277,7 +277,7 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 | Hierarchy | int |  |
 | Active | boolean |  |
 
-## `Victim`  (27648 rows)
+## `Victim`  (27572 rows)
 
 | Column | Type | Max length |
 |--------|------|-----------|
@@ -290,10 +290,10 @@ Every table also gets an automatic `ROWID` primary key from Catalyst — you don
 
 ## ⚠️ Row-limit warnings
 
-- **Accused**: 44150 rows > 5000 dev-env cap — split into 9 parts, imported in sequence.
-- **ActSectionAssociation**: 34438 rows > 5000 dev-env cap — split into 7 parts, imported in sequence.
-- **ArrestSurrender**: 28849 rows > 5000 dev-env cap — split into 6 parts, imported in sequence.
+- **Accused**: 44237 rows > 5000 dev-env cap — split into 9 parts, imported in sequence.
+- **ActSectionAssociation**: 34409 rows > 5000 dev-env cap — split into 7 parts, imported in sequence.
+- **ArrestSurrender**: 28708 rows > 5000 dev-env cap — split into 6 parts, imported in sequence.
 - **CaseMaster**: 30000 rows > 5000 dev-env cap — split into 6 parts, imported in sequence.
-- **ChargesheetDetails**: 21787 rows > 5000 dev-env cap — split into 5 parts, imported in sequence.
-- **ComplainantDetails**: 32386 rows > 5000 dev-env cap — split into 7 parts, imported in sequence.
-- **Victim**: 27648 rows > 5000 dev-env cap — split into 6 parts, imported in sequence.
+- **ChargesheetDetails**: 21789 rows > 5000 dev-env cap — split into 5 parts, imported in sequence.
+- **ComplainantDetails**: 32389 rows > 5000 dev-env cap — split into 7 parts, imported in sequence.
+- **Victim**: 27572 rows > 5000 dev-env cap — split into 6 parts, imported in sequence.
