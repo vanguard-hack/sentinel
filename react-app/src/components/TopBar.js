@@ -47,7 +47,13 @@ export default function TopBar({ title, parent, parentTo, search, children }) {
         )}
       </nav>
 
-      {search && <div className="topbar-search">{search}</div>}
+      {/* Docks the clock/language/search/actions cluster to the header's
+          right edge. `.topbar-search` (flex: 1) did this job when a page
+          passed a search box, but no page currently does — so on every page
+          the cluster was packing left, right after the breadcrumb, with dead
+          space between it and the header's actual right edge. This spacer
+          keeps the same effect for every page, search box or not. */}
+      {search ? <div className="topbar-search">{search}</div> : <div className="topbar-spacer" />}
       <LiveClock />
       <LanguageSwitcher />
       <div className="topbar-global"><GlobalSearch /></div>

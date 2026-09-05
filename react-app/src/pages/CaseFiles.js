@@ -4,13 +4,13 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Check, RefreshCw, AlertTriangle,
   FileSpreadsheet,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import {
   TABLE_GROUPS, ALL_TABLES, tableLabel, SYSTEM_COLUMNS, FILTER_OPS,
-  fetchColumns, fetchPage, fetchCount, fetchAllRows,
+  fetchColumns, fetchPage, fetchCount,
 } from '../utils/datastore';
 import TopBar from '../components/TopBar';
 import { useTranslation } from 'react-i18next';
+import { useExport } from '../context/ExportContext';
 
 const OP_PLACEHOLDER = {
   contains: 'contains…', '=': 'equals…', '!=': 'not equals…',
@@ -62,36 +62,10 @@ export default function CaseFiles() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Excel export: every table becomes a worksheet in one workbook.
-  const [exporting, setExporting] = useState(null); // null | { done, total, table }
-
-  const exportExcel = useCallback(async () => {
-    if (exporting) return;
-    const wb = XLSX.utils.book_new();
-    try {
-      for (let i = 0; i < ALL_TABLES.length; i++) {
-        const t = ALL_TABLES[i];
-        setExporting({ done: i, total: ALL_TABLES.length, table: t.label });
-        let rows = [];
-        try {
-          rows = await fetchAllRows(t.name);
-        } catch {
-          rows = [{ error: 'export failed for this table' }];
-        }
-        // Sheet names cap at 31 chars and forbid : \ / ? * [ ]
-        const sheet = t.name.replace(/[:\\/?*[\]]/g, ' ').slice(0, 31);
-        XLSX.utils.book_append_sheet(
-          wb,
-          XLSX.utils.json_to_sheet(rows.length ? rows : [{}]),
-          sheet
-        );
-      }
-      const stamp = new Date().toISOString().slice(0, 10);
-      XLSX.writeFile(wb, `sentinel-datastore-${stamp}.xlsx`);
-    } finally {
-      setExporting(null);
-    }
-  }, [exporting]);
+  // Excel export runs as a background job in ExportContext (mounted once,
+  // above the router) so switching pages mid-export neither stops it nor
+  // loses the progress readout — see that file for why.
+  const { exporting, startExport } = useExport();
 
   // Table picker (searchable combobox) state.
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -212,7 +186,24 @@ export default function CaseFiles() {
 
   return (
     <div className="cf-page">
-      <TopBar title={t('pages.caseFiles')} subtitle={t('pages.caseFilesSub')} />
+      <TopBar title={t('pages.caseFiles')} subtitle={t('pages.caseFilesSub')}>
+        {/* Runs as a background job (ExportContext) — moved to the
+            rightmost end of the page, the one spot that survives switching
+            to another section while it is still running. */}
+        <button
+          className="cf-export-btn"
+          onClick={startExport}
+          disabled={!!exporting}
+          title="Export every table to one Excel workbook (a sheet per table)"
+        >
+          <FileSpreadsheet size={15} />
+          <span>
+            {exporting
+              ? `Exporting ${exporting.done + 1}/${exporting.total}…`
+              : 'Export Excel'}
+          </span>
+        </button>
+      </TopBar>
 
       <div className="cf-body">
         {/* ── Main ── */}
@@ -338,20 +329,6 @@ export default function CaseFiles() {
 
               <button className="cf-icon-btn" onClick={load} title="Refresh" disabled={loading}>
                 <RefreshCw size={15} className={loading ? 'cf-spin' : ''} />
-              </button>
-
-              <button
-                className="cf-export-btn"
-                onClick={exportExcel}
-                disabled={!!exporting}
-                title="Export every table to one Excel workbook (a sheet per table)"
-              >
-                <FileSpreadsheet size={15} />
-                <span>
-                  {exporting
-                    ? `Exporting ${exporting.done + 1}/${exporting.total}…`
-                    : 'Export Excel'}
-                </span>
               </button>
             </div>
           </div>

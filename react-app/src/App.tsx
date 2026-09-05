@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AccessProvider } from './context/AccessContext';
 import { LayoutProvider } from './context/LayoutContext';
+import { ExportProvider } from './context/ExportContext';
 import Dashboard from './pages/Dashboard';
 import CrimeMap from './pages/CrimeMap';
 import CaseFiles from './pages/CaseFiles';
@@ -108,9 +109,11 @@ export default function App() {
   return (
     <AuthProvider>
       <AccessProvider>
-        <Router basename="/app">
-          <AppRoutes />
-        </Router>
+        <ExportProvider>
+          <Router basename="/app">
+            <AppRoutes />
+          </Router>
+        </ExportProvider>
       </AccessProvider>
     </AuthProvider>
   );

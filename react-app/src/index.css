@@ -4210,6 +4210,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 }
 .crumb-active { color: var(--blue-500); font-weight: 500; }
 .topbar-search { flex: 1; max-width: 460px; margin: 0 auto 0 8px; }
+.topbar-spacer { flex: 1; }
 .topbar-global { margin-left: 12px; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 
