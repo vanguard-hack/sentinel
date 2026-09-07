@@ -487,7 +487,6 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
     app,
     role,
     ragSearch: async (q) => {
-      usedKnowledgeBase = true;
       const token = await getAccessToken();
       const r = await fetch(RAG_API_URL, {
         method: 'POST',
@@ -500,7 +499,13 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
         signal: AbortSignal.timeout(15_000),
       });
       const d = await r.json().catch(() => ({}));
-      return r.ok ? (d.response || d.answer || d.result || '') : '';
+      const text = r.ok ? (d.response || d.answer || d.result || '') : '';
+      // Only a real finding earns a citation. Marking this true on every call
+      // — whether or not anything came back — is what put an empty,
+      // unopenable "Knowledge base" chip next to answers that found nothing:
+      // a negative answer must carry no source at all, not a placeholder one.
+      if (text) usedKnowledgeBase = true;
+      return text;
     },
     digitisedSearch: async (q) => {
       const hits = await searchDigitised(bucket, q, 6);

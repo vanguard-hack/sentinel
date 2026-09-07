@@ -178,6 +178,12 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /stale && Array\.isArray\(stale\.records\)/.test(loop));
   check('a successful rebuild is written back to the cache',
     /bucket\.putObject\(sanctions\.CACHE_KEY/.test(loop));
+  // A negative answer must carry no source, not a placeholder one — this was
+  // the actual bug behind the "Knowledge base" chip showing next to an
+  // answer that found nothing: the flag went true on every call to
+  // search_knowledge_base, whether or not anything came back.
+  check('the knowledge-base flag is only set when the search actually found something',
+    /if \(text\) usedKnowledgeBase = true;/.test(loop));
 
   const route = src.slice(src.indexOf("if (routed === 'TOOLS')"), src.indexOf("if (routed && /chat/i.test(routed))"));
   check('a failed loop falls through to the lanes that were already there',
