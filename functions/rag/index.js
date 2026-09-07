@@ -3398,31 +3398,55 @@ async function handlePatrolDirections(req, res) {
 
   const body = JSON.parse((await readBody(req)) || '{}');
   const stops = Array.isArray(body.stops) ? body.stops : [];
-  if (stops.length < 2 || stops.length > 8) {
-    return json(res, 400, { error: 'Provide 2-8 stops.' });
+  if (stops.length < 2 || stops.length > 60) {
+    return json(res, 400, { error: 'Provide 2-60 stops.' });
   }
   const coordinates = stops.map((s) => [Number(s.lng), Number(s.lat)]);
   if (coordinates.some(([lng, lat]) => !Number.isFinite(lng) || !Number.isFinite(lat))) {
     return json(res, 400, { error: 'Invalid coordinates.' });
   }
 
+  // OpenRouteService's directions endpoint has its own practical ceiling on
+  // coordinates per request — a district with many hotspots can produce a
+  // route well past that. A route within the ceiling is still one call;
+  // past it, the stop list is split into overlapping legs (each ending on
+  // the point the next one starts from) so the geometry stitches back into
+  // one continuous line, and each leg's distance/duration is summed.
+  const CHUNK = 25;
+  const legs = [];
+  for (let i = 0; i < coordinates.length - 1; i += CHUNK - 1) {
+    legs.push(coordinates.slice(i, i + CHUNK));
+  }
+
   try {
-    const orsRes = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
-      method: 'POST',
-      headers: { Authorization: key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ coordinates }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!orsRes.ok) return json(res, 200, { available: false });
-    const data = await orsRes.json();
-    const feat = data?.features?.[0];
-    const coords = feat?.geometry?.coordinates;
-    if (!Array.isArray(coords) || !coords.length) return json(res, 200, { available: false });
+    let coords = [];
+    let distanceM = 0;
+    let durationS = 0;
+    for (const leg of legs) {
+      if (leg.length < 2) continue;
+      const orsRes = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+        method: 'POST',
+        headers: { Authorization: key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coordinates: leg }),
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!orsRes.ok) return json(res, 200, { available: false });
+      const data = await orsRes.json();
+      const feat = data?.features?.[0];
+      const legCoords = feat?.geometry?.coordinates;
+      if (!Array.isArray(legCoords) || !legCoords.length) return json(res, 200, { available: false });
+      // The joint coordinate is the end of one leg and the start of the
+      // next — drop the duplicate so the stitched line doesn't double back.
+      coords = coords.length ? coords.concat(legCoords.slice(1)) : legCoords;
+      distanceM += feat.properties.summary.distance;
+      durationS += feat.properties.summary.duration;
+    }
+    if (!coords.length) return json(res, 200, { available: false });
     return json(res, 200, {
       available: true,
       coordinates: coords.map(([lng, lat]) => [lat, lng]),
-      distanceKm: Math.round((feat.properties.summary.distance / 1000) * 10) / 10,
-      durationMin: Math.round(feat.properties.summary.duration / 60),
+      distanceKm: Math.round((distanceM / 1000) * 10) / 10,
+      durationMin: Math.round(durationS / 60),
     });
   } catch {
     return json(res, 200, { available: false });
