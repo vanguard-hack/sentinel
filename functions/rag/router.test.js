@@ -103,10 +103,15 @@ check('a plain year is not redacted',
 const routerCallSite = src.slice(src.indexOf("if (process.env.GROQ_API_KEY) {"), src.indexOf('const lowConfidence ='));
 check('the JSON route instruction actually offers TOOLS as an option',
   /"route":"[^"]*\bTOOLS\b[^"]*"/.test(routerCallSite));
-check('the router prompt carves out single-lookup IP/domain questions for TOOLS',
-  /single lookup about an IP\s*\n?\s*address or domain/.test(zcql.ROUTER_PROMPT.replace(/\n/g, ' ')));
+check('the router prompt carves out single-lookup external-data questions for TOOLS',
+  /single lookup the Data Store has\s*\n?\s*no column for/.test(zcql.ROUTER_PROMPT.replace(/\n/g, ' ')));
 check('  with a worked example of the exact failure that was seen',
   /abuse reports against/.test(zcql.ROUTER_PROMPT));
+check('  and it generalises to sanctions screening, not just IP/domain',
+  /sanctions or watchlist/.test(zcql.ROUTER_PROMPT) && /on any sanctions list/.test(zcql.ROUTER_PROMPT));
+check('  and to crypto wallet lookups too',
+  /Bitcoin\/\s*\n?\s*Ethereum wallet address/.test(zcql.ROUTER_PROMPT.replace(/\n/g, ' '))
+  && /check this crypto wallet/.test(zcql.ROUTER_PROMPT));
 
 console.log(fail ? `\n${fail} FAILED, ${pass} passed.` : `\nAll ${pass} router/redaction checks passed.`);
 process.exit(fail ? 1 : 0);

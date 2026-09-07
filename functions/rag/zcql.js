@@ -150,13 +150,16 @@ const ROUTER_PROMPT =
   '"compare arrests in Hubballi and Belagavi" → TOOLS. ' +
   'A question answerable by ONE query stays ZCQL — do not send simple counts, ' +
   'top-N rankings or single lookups here.\n\n' +
-  'The one exception: also answer TOOLS for a single lookup about an IP ' +
-  'address or domain — what it is registered to, whether it has abuse ' +
-  'reports. Nothing in the Data Store has an IP or domain column, so ZCQL ' +
-  'cannot answer these even as a single query. ' +
+  'The exception: also answer TOOLS for a single lookup the Data Store has ' +
+  'no column for — an IP address or domain (registration, abuse reports), ' +
+  'a name being screened against a sanctions or watchlist, or a Bitcoin/' +
+  'Ethereum wallet address (balance, activity). None of these is ' +
+  'answerable from the FIR relational schema even as a single query. ' +
   'Examples: "any abuse reports against 185.220.101.45?" → TOOLS. ' +
   '"who registered example.com?" → TOOLS. ' +
-  '"check this IP: 45.33.32.156, found it in a seized laptop" → TOOLS.';
+  '"check this IP: 45.33.32.156, found it in a seized laptop" → TOOLS. ' +
+  '"is Ravi Kumar on any sanctions list?" → TOOLS. ' +
+  '"check this crypto wallet: bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" → TOOLS.';
 
 // ── schema + rules for the generator ────────────────────────────────────────
 const districtLines = Object.entries(DISTRICT_IDS)
