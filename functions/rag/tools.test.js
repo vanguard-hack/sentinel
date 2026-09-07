@@ -251,6 +251,34 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   check('with no diary access the tool says so instead of throwing',
     /unavailable/i.test((await run('case_obligations', {}, { role: 'investigator' })).error || ''));
 
+  // ── osint_lookup ─────────────────────────────────────────────────────
+  //
+  // The one tool here that reaches outside Sentinel entirely. Two things
+  // matter: the role gate has to run before any lookup happens (an unentitled
+  // role must never even reach osint.js, let alone the network), and the tool
+  // definition has to tell the model this leaves the country, because nothing
+  // downstream will say so if the definition doesn't.
+
+  check('the OSINT tool discloses that the lookup leaves Sentinel and India',
+    /outside Sentinel and outside India/.test(
+      tools.DEFINITIONS.find((d) => d.name === 'osint_lookup').description));
+
+  // Deliberately malformed values below: the gate must pass THROUGH to
+  // osint.js's own validation (proving the tool is actually wired up) without
+  // ever reaching the network, which is what makes this safe to run with no
+  // mocking.
+  for (const role of ['investigator', 'supervisor', 'admin', 'analyst']) {
+    const ok = await run('osint_lookup', { kind: 'ip', value: 'not-an-ip' }, { role });
+    check(`${role} can reach the OSINT lookup (gate passes)`,
+      /not a valid IP/.test(ok.error || ''), JSON.stringify(ok));
+  }
+  const osintDenied = await run('osint_lookup', { kind: 'ip', value: '8.8.8.8' }, { role: 'policymaker' });
+  check('policymaker cannot reach OSINT lookups through the assistant',
+    /limited to investigators, supervisors, analysts and admin/.test(osintDenied.error || ''));
+  const osintNoRole = await run('osint_lookup', { kind: 'ip', value: '8.8.8.8' }, {});
+  check('an uncleared caller cannot reach OSINT lookups either',
+    /limited to investigators, supervisors, analysts and admin/.test(osintNoRole.error || ''));
+
   // The page and the tool must be one engine, not two implementations.
   const idx = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
   check('the tool and the Action Queue page share one builder',

@@ -31,6 +31,7 @@ const masters = require('./masters.json');
 const network = require('./network');
 const legal = require('./legal');
 const guard = require('./guard');
+const osint = require('./osint');
 
 // Per-result caps. Generous enough to answer, small enough that a loop of
 // tool calls cannot fill the context window with rows.
@@ -312,6 +313,36 @@ const DEFINITIONS = [
           description: 'Restrict to one case by its crime/case number.',
         },
       },
+    },
+  },
+  {
+    name: 'osint_lookup',
+    description:
+      'Look up what is publicly known about an IP address or domain: RDAP ' +
+      'registration data for both, and AbuseIPDB abuse-reputation data for ' +
+      'IP addresses. Use this when an officer asks about an IP or domain ' +
+      'found in evidence — who it is registered to, whether it has a ' +
+      'history of abuse reports — not for anything already in the Data ' +
+      'Store.\n\n' +
+      'This sends the identifier to external services (rdap.org, and ' +
+      'api.abuseipdb.com for IP addresses), outside Sentinel and outside ' +
+      'India. State that plainly in your answer — do not let the officer ' +
+      'assume this came from an internal record. Nothing besides the bare ' +
+      'identifier travels with the request.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        kind: {
+          type: 'string',
+          enum: ['ip', 'domain'],
+          description: 'Whether value is an IP address or a domain name.',
+        },
+        value: {
+          type: 'string',
+          description: 'The IP address or domain to look up.',
+        },
+      },
+      required: ['kind', 'value'],
     },
   },
 ];
@@ -856,6 +887,18 @@ async function run(name, input, deps) {
           return { error: 'Case obligations are limited to investigators, supervisors and admin.' };
         }
         return await caseObligationsTool(input || {}, caseObligations, role, access);
+      }
+
+      case 'osint_lookup': {
+        // Same gate shape as case_obligations: checked inline at dispatch so
+        // a new tool cannot forget it. Analyst is included here (unlike
+        // case_obligations) because this is public registration/reputation
+        // data about an internet identifier, not a case record — an
+        // analyst's need-to-know covers it.
+        if (!['admin', 'supervisor', 'investigator', 'analyst'].includes(role)) {
+          return { error: 'OSINT lookups are limited to investigators, supervisors, analysts and admin.' };
+        }
+        return await osint.lookup(input || {});
       }
 
       default:
