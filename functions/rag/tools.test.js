@@ -316,6 +316,42 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   check('an uncleared caller cannot reach OSINT lookups either',
     /limited to investigators, supervisors, analysts and admin/.test(osintNoRole.error || ''));
 
+  // ── sanctions_check ──────────────────────────────────────────────────
+  //
+  // Text matching, not identity verification — the tool has to say so, and
+  // it has to be the ONLY tool the model reaches for on a sanctions
+  // question, the same disambiguation osint_lookup needed after a real bug
+  // where the model fell back to search_knowledge_base instead.
+
+  check('the sanctions tool discloses that it is text matching, not identity verification',
+    /not verified identity/.test(
+      tools.DEFINITIONS.find((d) => d.name === 'sanctions_check').description));
+  check('the sanctions tool tells the model it is the ONLY source for watchlist data',
+    /ONLY tool that knows anything about international sanctions/.test(
+      tools.DEFINITIONS.find((d) => d.name === 'sanctions_check').description));
+  check('the knowledge-base tool also rules out sanctions questions',
+    /sanctions_check/.test(
+      tools.DEFINITIONS.find((d) => d.name === 'search_knowledge_base').description));
+
+  const fakeSanctionsCheck = async () => ({ found: false, matches: [], total: 0 });
+  for (const role of ['investigator', 'supervisor', 'admin', 'analyst']) {
+    const ok = await run('sanctions_check', { query: 'Test Name' },
+      { role, sanctionsCheck: fakeSanctionsCheck });
+    check(`${role} can reach the sanctions check (gate passes)`, ok.found === false);
+  }
+  const sanctionsDenied = await run('sanctions_check', { query: 'Test Name' },
+    { role: 'policymaker', sanctionsCheck: fakeSanctionsCheck });
+  check('policymaker cannot reach sanctions checks through the assistant',
+    /limited to investigators, supervisors, analysts and admin/.test(sanctionsDenied.error || ''));
+  const sanctionsNoRole = await run('sanctions_check', { query: 'Test Name' },
+    { sanctionsCheck: fakeSanctionsCheck });
+  check('an uncleared caller cannot reach sanctions checks either',
+    /limited to investigators, supervisors, analysts and admin/.test(sanctionsNoRole.error || ''));
+
+  check('with no sanctions index available the tool says so instead of throwing',
+    /unavailable/i.test(
+      (await run('sanctions_check', { query: 'x' }, { role: 'investigator' })).error || ''));
+
   // The page and the tool must be one engine, not two implementations.
   const idx = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
   check('the tool and the Action Queue page share one builder',

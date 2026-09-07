@@ -132,7 +132,9 @@ const DEFINITIONS = [
       'does the law require", "what is the procedure for". It holds no case records; ' +
       'use query_records for those. It holds nothing about IP addresses, domains or ' +
       'any other external/internet identifier either — use osint_lookup for those. ' +
-      'Do not call this tool as a fallback for a question that names an IP or domain.',
+      'It holds nothing about sanctions or watchlists either — use sanctions_check for ' +
+      'those. Do not call this tool as a fallback for a question that names an IP, a ' +
+      'domain, or asks about a sanctions listing.',
     input_schema: {
       type: 'object',
       properties: {
@@ -348,6 +350,34 @@ const DEFINITIONS = [
         },
       },
       required: ['kind', 'value'],
+    },
+  },
+  {
+    name: 'sanctions_check',
+    description:
+      'Check a name — a person or an organisation — against the UN Security ' +
+      'Council Consolidated List of sanctioned individuals and entities. Use ' +
+      'this when an officer asks whether a name is on a sanctions or ' +
+      'watchlist, or when a name surfacing in a financial or network ' +
+      'investigation is worth screening. This is the ONLY tool that knows ' +
+      'anything about international sanctions listings — never call ' +
+      'search_knowledge_base or query_records for this instead; neither ' +
+      'holds this data.\n\n' +
+      'This is text matching against a name, not verified identity — a hit ' +
+      'means the name matched, nothing more, and must be reported to the ' +
+      'officer as a lead to verify, never as a confirmed identification. ' +
+      'The list is refreshed roughly daily from the UN\'s own published ' +
+      'source; this does not send the officer\'s question anywhere — the ' +
+      'lookup runs against a copy already held by Sentinel.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The person or organisation name to check.',
+        },
+      },
+      required: ['query'],
     },
   },
 ];
@@ -800,7 +830,7 @@ async function queryRecords(app, { zcql: statement, rollup, district }, role, ac
  * turn ending.
  */
 async function run(name, input, deps) {
-  const { app, role, ragSearch, digitisedSearch, access, caseObligations } = deps;
+  const { app, role, ragSearch, digitisedSearch, access, caseObligations, sanctionsCheck } = deps;
   try {
     switch (name) {
       case 'lookup_reference':
@@ -904,6 +934,16 @@ async function run(name, input, deps) {
           return { error: 'OSINT lookups are limited to investigators, supervisors, analysts and admin.' };
         }
         return await osint.lookup(input || {});
+      }
+
+      case 'sanctions_check': {
+        // Same gate as osint_lookup: checked inline at dispatch so a new
+        // tool cannot forget it.
+        if (!['admin', 'supervisor', 'investigator', 'analyst'].includes(role)) {
+          return { error: 'Sanctions checks are limited to investigators, supervisors, analysts and admin.' };
+        }
+        if (typeof sanctionsCheck !== 'function') return { error: 'Sanctions list unavailable.' };
+        return await sanctionsCheck((input && input.query) || '');
       }
 
       default:
