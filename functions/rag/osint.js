@@ -41,9 +41,20 @@ function isValidDomain(v) {
   return DOMAIN_RE.test(String(v || '').trim());
 }
 
+// rdap.org's edge blocks requests carrying no User-Agent (or Node's default,
+// undistinguished one) with a 403 from its bot-protection layer, even though
+// the exact same request with an ordinary client UA succeeds — verified
+// directly against the live service, not assumed. Every call through here
+// carries one, since AbuseIPDB's edge could start doing the same tomorrow.
+const USER_AGENT = 'Sentinel-OSINT/1.0 (Karnataka State Police crime platform)';
+
 async function fetchJson(url, opts, timeoutMs) {
   try {
-    const res = await fetch(url, { ...opts, signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetch(url, {
+      ...opts,
+      headers: { 'User-Agent': USER_AGENT, ...(opts && opts.headers) },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
     if (!res.ok) return null;
     return await res.json();
   } catch {
