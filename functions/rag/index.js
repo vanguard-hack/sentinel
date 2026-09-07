@@ -5515,7 +5515,7 @@ module.exports = async (req, res) => {
       const scored = forced || parseRouteReply(await callLLM(
         [
           { role: 'system', content: zcql.ROUTER_PROMPT +
-            '\n\nReply ONLY as JSON: {"route":"CHAT|GUIDE|ZCQL|RAG|BOTH","confidence":0.0-1.0}. ' +
+            '\n\nReply ONLY as JSON: {"route":"CHAT|GUIDE|ZCQL|RAG|BOTH|TOOLS","confidence":0.0-1.0}. ' +
             'Use BOTH when the question needs written procedure AND specific record data. ' +
             'Set confidence below 0.5 when the intent is genuinely unclear.' },
           {

@@ -1,5 +1,6 @@
 // Router + redaction checks. Run: node functions/rag/router.test.js
 const redaction = require('./redaction');
+const zcql = require('./zcql');
 
 let pass = 0, fail = 0;
 const check = (name, cond) => { cond ? pass++ : (fail++, console.log('FAIL ' + name)); if (cond) console.log('ok  ' + name); };
@@ -87,6 +88,25 @@ check('a crime number is not mistaken for an identifier',
   redaction.guardAnswer('FIR 42/2026 is open.', 'analyst').answer === 'FIR 42/2026 is open.');
 check('a plain year is not redacted',
   redaction.guardAnswer('Filed in 2024 at Ashok Nagar.', 'analyst').answer === 'Filed in 2024 at Ashok Nagar.');
+
+// ── TOOLS is actually reachable ───────────────────────────────────────────
+//
+// The router prompt defined and explained TOOLS in prose, and parseRouteReply
+// accepted it — but the JSON-format instruction appended at the call site
+// listed only CHAT|GUIDE|ZCQL|RAG|BOTH, so a model following that literal
+// instruction could never emit "TOOLS" through the primary path. This went
+// unnoticed because every prior TOOLS scenario was a multi-hop question, and
+// the classifier's own prose reinforced ZCQL for anything answerable in one
+// query — which single-lookup tools like osint_lookup always are. Both bugs
+// together meant an OSINT question about a bare IP was routed to ZCQL, which
+// correctly (and uselessly) reported that the Data Store has no IP column.
+const routerCallSite = src.slice(src.indexOf("if (process.env.GROQ_API_KEY) {"), src.indexOf('const lowConfidence ='));
+check('the JSON route instruction actually offers TOOLS as an option',
+  /"route":"[^"]*\bTOOLS\b[^"]*"/.test(routerCallSite));
+check('the router prompt carves out single-lookup IP/domain questions for TOOLS',
+  /single lookup about an IP\s*\n?\s*address or domain/.test(zcql.ROUTER_PROMPT.replace(/\n/g, ' ')));
+check('  with a worked example of the exact failure that was seen',
+  /abuse reports against/.test(zcql.ROUTER_PROMPT));
 
 console.log(fail ? `\n${fail} FAILED, ${pass} passed.` : `\nAll ${pass} router/redaction checks passed.`);
 process.exit(fail ? 1 : 0);
