@@ -1098,6 +1098,23 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   box-shadow: var(--shadow-pop);
 }
 
+.leaflet-div-icon.patrol-you-icon { background: transparent; border: none; }
+.patrol-you-icon span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--text-0);
+  color: var(--bg-0);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  box-shadow: var(--shadow-pop);
+}
+
 .leaflet-tooltip {
   background: var(--bg-1);
   border: 1px solid var(--border-bright);

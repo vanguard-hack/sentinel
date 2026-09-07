@@ -15,6 +15,7 @@ import {
 import { H, CRIME, STATE, DISTRICT, refreshAllData } from '../data/hierarchyStore';
 import { loadPersonnel } from '../utils/personnel';
 import { optimalOrder, tourLength, validatePatrolRoute, fetchRoadRoute, buildGoogleMapsNavUrl, currentLocation, splitIntoSegments } from '../utils/patrol';
+import { pointInFeature } from '../utils/geo';
 import TopBar from '../components/TopBar';
 
 const fmtN = (n) => (n == null ? '—' : n.toLocaleString('en-IN'));
@@ -398,6 +399,11 @@ export default function CrimeMap() {
     let patrolOnLocal = false;
     let patrolSegments = []; // latest computed per-car stop sequences, for the "Navigate" handoff
     let patrolCarsLocal = 1;
+    // Single-car only: the exact location reading the drawn route was
+    // reconciled against, reused for "Navigate" so the start point Google
+    // Maps opens on is identical to the one already drawn — not a second,
+    // possibly slightly different, GPS fix taken moments later.
+    let officerLocation = null;
     let patrolRequestId = 0; // guards the async road-route fetch against a newer route replacing it mid-flight
     const SEGMENT_COLORS = 6; // rp-cat-0 .. rp-cat-5
     const current = { level: 'india', state: null, district: null, districtBounds: null };
@@ -428,6 +434,7 @@ export default function CrimeMap() {
     const showDistrict = (f) => {
       current.level = 'district'; current.district = f.properties.district;
       current.districtBounds = boundsOf(f);
+      current.districtFeature = f;
       setLevel('district'); setSelectedDistrict(f.properties.district);
       drawDistrictHighlight(f);
       map.flyToBounds(boundsOf(f), { padding: [40, 40], duration: 0.9, easeLinearity: 0.22 });
@@ -437,7 +444,7 @@ export default function CrimeMap() {
     const showState = (name) => {
       const sf = stateFeatureByName(name);
       if (!sf) return;
-      current.level = 'state'; current.state = name; current.district = null; current.districtBounds = null;
+      current.level = 'state'; current.state = name; current.district = null; current.districtBounds = null; current.districtFeature = null;
       setLevel('state'); setSelectedState(name); setSelectedDistrict(null); setSelectedStation(null);
 
       remove(districtsLayer);
@@ -536,9 +543,18 @@ export default function CrimeMap() {
       remove(patrolLayer); patrolLayer = null;
       const dname = current.district;
       const bounds = current.districtBounds;
-      if (!dname || !bounds) { setPatrolInfo(null); return; }
+      const districtFeature = current.districtFeature;
+      if (!dname || !bounds || !districtFeature) { setPatrolInfo(null); return; }
 
-      const inBounds = points.filter((p) => bounds.contains([p.lat, p.lng]));
+      // bounds.contains() is a cheap first pass (a district's RECTANGULAR
+      // bbox) — a real district is never actually a rectangle, so it's
+      // followed by an exact point-in-polygon test against the district's
+      // real shape. Skipping that second test was why a hotspot sitting in
+      // the bbox but genuinely inside a neighbouring district could get
+      // picked up as a "stop", pulling the drawn route across the border.
+      const inBounds = points
+        .filter((p) => bounds.contains([p.lat, p.lng]))
+        .filter((p) => pointInFeature(p.lat, p.lng, districtFeature));
       const severityScore = (p) => p.intensity * (CATEGORY_SEVERITY[p.category] || 1);
       const candidates = [...inBounds]
         .sort((a, b) => severityScore(b) - severityScore(a))
@@ -580,6 +596,11 @@ export default function CrimeMap() {
       // from where the previous car's leg happened to end.
       const segments = splitIntoSegments(order, patrolCarsLocal);
       patrolSegments = segments;
+      // A cached reading only ever applies to a single-car route — with
+      // multiple cars there is no one "the officer", so a stale reading from
+      // an earlier single-car route must never leak into a different car's
+      // "Navigate" click.
+      if (segments.length > 1) officerLocation = null;
 
       patrolLayer = L.layerGroup();
       let globalIdx = 0;
@@ -588,18 +609,20 @@ export default function CrimeMap() {
         const segColor = css(segColorVar);
         const segKm = tourLength(segment) / 1000;
 
-        // Popup content is rebuilt both immediately (straight-line km) and
-        // again if this segment's road-snapped fetch comes back with real
-        // driving distance/time — same function, different figures.
-        const buildPopupHtml = (roadInfo) => (
+        // Popup content is rebuilt every time the underlying figures change:
+        // immediately (straight-line, stops only), again once a road-snapped
+        // fetch resolves, and — single car only, see below — again once the
+        // officer's own location is known. `baseKm` is null when there's no
+        // meaningful distance to show yet (a lone stop with no origin fixed).
+        const buildPopupHtml = (roadInfo, baseKm) => (
           segments.length > 1
             ? `<div class="patrol-popup-car" style="color:${segColor}">Car ${segIdx + 1}</div>`
             : ''
         ) + (
           `<div class="patrol-popup-stats">` +
           `<span class="patrol-popup-stat"><b>${segment.length}</b><small>stops</small></span>` +
-          (segment.length > 1
-            ? `<span class="patrol-popup-stat"><b>${(roadInfo ? roadInfo.distanceKm : segKm).toFixed(1)}</b><small>km</small></span>`
+          (baseKm != null
+            ? `<span class="patrol-popup-stat"><b>${(roadInfo ? roadInfo.distanceKm : baseKm).toFixed(1)}</b><small>km</small></span>`
             : '') +
           (roadInfo ? `<span class="patrol-popup-stat"><b>${roadInfo.durationMin}</b><small>min driving</small></span>` : '') +
           `</div>` +
@@ -619,7 +642,7 @@ export default function CrimeMap() {
           color: segColor, weight: 6, opacity: 1, lineCap: 'round', lineJoin: 'round',
           className: `patrol-route-line patrol-route-line-${segIdx % SEGMENT_COLORS}`,
         }).addTo(patrolLayer);
-        segLine.bindPopup(buildPopupHtml(null));
+        segLine.bindPopup(buildPopupHtml(null, segment.length > 1 ? segKm : null));
 
         segment.forEach((s) => {
           const stopNo = ++globalIdx;
@@ -635,16 +658,56 @@ export default function CrimeMap() {
           ).addTo(patrolLayer);
         });
 
-        // Best-effort upgrade: try to snap this segment's stops to actual
-        // roads. No key configured, a timeout, or any ORS error resolves to
-        // null, and the straight-line segment above is simply left in place.
-        if (segment.length > 1) {
+        if (segments.length === 1) {
+          // Single car: reconcile with the officer's own live location, so
+          // "Navigate" opens Google Maps on the SAME start point and a
+          // matching distance — not just the stops, which is what made the
+          // two disagree. Falls back to the stops-only road-snap below if
+          // location isn't available (denied, unsupported, timed out).
+          currentLocation().then((origin) => {
+            if (reqId !== patrolRequestId) return; // superseded meanwhile
+            officerLocation = origin;
+            const fullPoints = origin ? [origin, ...segment] : segment;
+            if (origin) {
+              L.marker([origin.lat, origin.lng], {
+                icon: L.divIcon({ className: 'patrol-you-icon', html: '<span>You</span>', iconSize: [34, 20] }),
+              }).addTo(patrolLayer);
+              const fullLatLngs = fullPoints.map((p) => [p.lat, p.lng]);
+              segCasing.setLatLngs(fullLatLngs);
+              segLine.setLatLngs(fullLatLngs);
+            }
+            const baseKm = fullPoints.length > 1 ? tourLength(fullPoints) / 1000 : null;
+            segLine.setPopupContent(buildPopupHtml(null, baseKm));
+            if (baseKm != null) {
+              setPatrolInfo({
+                cars: 1, stops: order.length, km: Math.round(baseKm * 10) / 10,
+                tourSavingsPct: validation ? Math.round(validation.tourSavingsPct) : null, shift: shiftIdx,
+              });
+            }
+            if (fullPoints.length > 1) {
+              fetchRoadRoute(fullPoints).then((road) => {
+                if (!road || reqId !== patrolRequestId) return;
+                const roadLatLngs = road.coordinates.map(([lat, lng]) => [lat, lng]);
+                segCasing.setLatLngs(roadLatLngs);
+                segLine.setLatLngs(roadLatLngs);
+                segLine.setPopupContent(buildPopupHtml(road, baseKm));
+                setPatrolInfo({
+                  cars: 1, stops: order.length, km: road.distanceKm,
+                  tourSavingsPct: validation ? Math.round(validation.tourSavingsPct) : null, shift: shiftIdx,
+                });
+              });
+            }
+          });
+        } else if (segment.length > 1) {
+          // Multiple cars: each car's own device knows its own location —
+          // this dispatcher view doesn't, so it stays stops-only, road-snapped
+          // for a realistic distance but without a "you are here" leg.
           fetchRoadRoute(segment).then((road) => {
             if (!road || reqId !== patrolRequestId) return; // superseded by a newer shift/district/car-count
             const roadLatLngs = road.coordinates.map(([lat, lng]) => [lat, lng]);
             segCasing.setLatLngs(roadLatLngs);
             segLine.setLatLngs(roadLatLngs);
-            segLine.setPopupContent(buildPopupHtml(road));
+            segLine.setPopupContent(buildPopupHtml(road, segKm));
           });
         }
       });
@@ -664,7 +727,7 @@ export default function CrimeMap() {
       shiftIdx = 0;
       setPatrolOn(on);
       if (on) computePatrolRoute();
-      else { patrolRequestId += 1; remove(patrolLayer); patrolLayer = null; patrolSegments = []; setPatrolInfo(null); }
+      else { patrolRequestId += 1; remove(patrolLayer); patrolLayer = null; patrolSegments = []; officerLocation = null; setPatrolInfo(null); }
     };
     const shufflePatrolShift = () => {
       if (!patrolOnLocal) return;
@@ -689,8 +752,12 @@ export default function CrimeMap() {
         const segment = patrolSegments[Number(btn.dataset.seg)];
         if (!segment || segment.length < 1) return;
         btn.disabled = true;
-        btn.textContent = 'Locating you…';
-        const origin = await currentLocation();
+        // Reuse the exact reading the drawn route was already reconciled
+        // against, when there is one, so the trip Google Maps opens starts
+        // from the SAME point already shown on the map — not a fresh GPS fix
+        // that may have drifted since.
+        btn.textContent = officerLocation ? 'Opening…' : 'Locating you…';
+        const origin = officerLocation || await currentLocation();
         const url = buildGoogleMapsNavUrl(segment, origin);
         if (url) window.open(url, '_blank', 'noopener');
         btn.disabled = false;
