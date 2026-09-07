@@ -1,11 +1,10 @@
-/* Three layout complaints from the home page and the temporal-patterns tab.
+/* Two layout complaints from the home page.
  *
- * All three are the same failure in different places: a box sized by the space
+ * Both are the same failure in different places: a box sized by the space
  * available rather than by what it holds. The donut's legend stretched to the
  * full width of a two-column tile and threw "Police Sub-Inspector" and "28%" to
  * opposite edges; the socio map reserved a permanent panel for a hover state it
- * did not have; the forecast and insights cards took two of four grid columns
- * and left half the row empty.
+ * did not have.
  */
 import fs from 'fs';
 import path from 'path';
@@ -44,25 +43,6 @@ describe('the donut and its legend', () => {
 
   test('the ring stays centred once the legend stops stretching', () => {
     expect(ruleFor('.rp-bento .rp-donut-wrap')).toMatch(/justify-content:\s*center/);
-  });
-});
-
-describe('the temporal-patterns pair', () => {
-  test('the two cards span the whole row rather than two of four columns', () => {
-    const duo = ruleFor('.ai-duo');
-    expect(duo).not.toBeNull();
-    expect(duo).toMatch(/grid-column:\s*1\s*\/\s*-1/);
-    expect(duo).toMatch(/grid-template-columns:\s*1fr 1fr/);
-  });
-
-  test('they stretch to a common height, and their bodies fill it', () => {
-    expect(ruleFor('.ai-duo')).toMatch(/align-items:\s*stretch/);
-    expect(ruleFor('.ai-duo > .rp-card > .rp-card-body')).toMatch(/flex:\s*1/);
-  });
-
-  test('and stack rather than squeeze on a narrow screen', () => {
-    const after = css.slice(css.indexOf('.ai-duo .bk-chart'));
-    expect(after).toMatch(/@media[^{]*max-width[^{]*\{\s*\.ai-duo \{ grid-template-columns: 1fr; \}/);
   });
 });
 

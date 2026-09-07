@@ -1082,22 +1082,6 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .patrol-nav-btn:hover { background: color-mix(in srgb, var(--primary) 20%, transparent); }
 .patrol-nav-btn:disabled { opacity: 0.65; cursor: wait; }
 
-.leaflet-div-icon.patrol-stop-icon { background: transparent; border: none; }
-.patrol-stop-icon span {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--primary);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  border: 2px solid var(--bg-0);
-  box-shadow: var(--shadow-pop);
-}
-
 .leaflet-div-icon.patrol-you-icon { background: transparent; border: none; }
 .patrol-you-pin {
   display: flex;
@@ -3099,24 +3083,6 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 
 /* ── AI Analytics ────────────────────────────────────────────────────────── */
 
-/* The forecast + insights pair, side by side across the full width.
-   As two ordinary cards in an auto-fill grid they took the first two of four
-   columns and left the right half of the row empty; the chart was cramped into
-   a third of the space it had available. Same shape as .fc-duo on the
-   Forecasts tab, so the two tabs pair their cards the same way. */
-.ai-duo {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  align-items: stretch;
-}
-/* Both cards take the height of the taller one, and their bodies fill it, so
-   neither ends in a band of empty card. */
-.ai-duo > .rp-card { display: flex; flex-direction: column; }
-.ai-duo > .rp-card > .rp-card-body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
-.ai-duo .bk-chart { flex: 1; min-height: 190px; }
-@media (max-width: 900px) { .ai-duo { grid-template-columns: 1fr; } }
 .ai-controls {
   display: flex;
   align-items: center;
@@ -3389,21 +3355,6 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   .lk-workbench { grid-template-columns: 1fr; }
   .lk-case-list { max-height: 220px; }
 }
-
-.ai-fc-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 10px 0 0;
-  font-size: 0.8rem;
-  font-weight: 500;
-}
-.ai-fc-note.up { color: var(--red); }   /* rising crime = bad */
-.ai-fc-note.down { color: var(--green); }
-
-.ai-insights { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-.ai-insights li { display: flex; gap: 10px; align-items: flex-start; font-size: 0.86rem; color: var(--text-2); line-height: 1.5; }
-.ai-insights li svg { flex: none; margin-top: 3px; color: var(--gold); }
 
 /* Shared table system owns density and headers. */
 .ai-matrix-head { color: var(--text-1); font-weight: var(--fw-medium); white-space: nowrap; }
@@ -6599,11 +6550,15 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .ft-ai-error .ft-ai-btn, .ft-ai-tag .ft-ai-btn { display: inline; margin-left: 4px; }
 
 /* Financial trails: score cell + its per-typology breakdown */
-.ft-score-cell { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-0); min-width: 130px; }
-.ft-breakdown { margin-top: 6px; }
+.ft-score-cell { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-0); min-width: 230px; }
+.ft-breakdown { margin-top: 6px; min-width: 220px; }
 .ft-breakdown .lk-bd-row { gap: 5px; }
+.ft-breakdown .lk-bd-track { min-width: 46px; }
 .ft-bd-label {
-  width: 96px;
+  /* Wide enough for the longest typology label ("Structuring / smurfing",
+     23 characters) at this font size — it was clipping mid-word into a
+     literal "…" before, which is what made the column unreadable. */
+  width: 140px;
   font-size: 10.5px;
   font-weight: 500;
   color: var(--text-3);
@@ -9080,7 +9035,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   font-size: 9.5px; letter-spacing: 0.01em; color: var(--text-4);
 }
 .cl-cal-table td { padding: 7px 9px; border-bottom: 1px solid var(--border); color: var(--text-2); }
-.cl-cal-table tr:last-child td { border-bottom: 0; }
+.cl-cal-table tr:last-child td, .cl-cal-table tr:last-child th { border-bottom: 0; }
 .cl-cal-table td:first-child { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-3); }
 .cl-gap-bad { color: var(--red); font-weight: 600; }
 .cl-cal-note {

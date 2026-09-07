@@ -620,7 +620,6 @@ export default function CrimeMap() {
       patrolSegments = segments;
 
       patrolLayer = L.layerGroup();
-      let globalIdx = 0;
       const segRefs = segments.map((segment, segIdx) => {
         const segColorVar = `--rp-cat-${segIdx % SEGMENT_COLORS}`;
         const segColor = css(segColorVar);
@@ -660,20 +659,6 @@ export default function CrimeMap() {
           className: `patrol-route-line patrol-route-line-${segIdx % SEGMENT_COLORS}`,
         }).addTo(patrolLayer);
         segLine.bindPopup(buildPopupHtml(null, segment.length > 1 ? segKm : null));
-
-        segment.forEach((s) => {
-          const stopNo = ++globalIdx;
-          L.marker([s.lat, s.lng], {
-            icon: L.divIcon({
-              className: 'patrol-stop-icon',
-              html: `<span style="background:${segColor}">${stopNo}</span>`,
-              iconSize: [22, 22],
-            }),
-          }).bindPopup(
-            `<b>Stop ${stopNo}${segments.length > 1 ? ` · Car ${segIdx + 1}` : ''}${s.corridor ? ' · corridor' : ''}</b>` +
-            `<br/>${s.label}<br/><span style="color:var(--text-3)">Recommended dwell ~10-15 min, then move on.</span>`
-          ).addTo(patrolLayer);
-        });
 
         return { segment, segCasing, segLine, buildPopupHtml };
       });

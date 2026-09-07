@@ -282,6 +282,53 @@ export function detectAnomalies(cases, { z = 2, recentWeeks = 4 } = {}) {
   return [...best.values()].sort((a, b) => b.z - a.z);
 }
 
+// ── Anomaly detection, grounded in the deployed QuickML models ──────────────
+// detectAnomalies (above) flags a week against an ad-hoc z >= 2 threshold on
+// a 12-week sample — a real signal, but the threshold is a guess.
+// crimehead/district already have live, trained QuickML regression models
+// behind them (functions/rag/forecast.js), each with a MEASURED error rate
+// (relMae) from held-out rolling-origin validation — the same number that
+// sizes their forecast confidence bands. This reuses that: is the latest
+// OBSERVED month, for a series the model actually knows, outside the range
+// the model's own track record says is normal for a series at that level?
+// Same MAE -> 95% interval constant forecast.js uses for its forecast bands,
+// so "anomalous" here means the same thing "outside the shaded band" means
+// on the forecast charts, not a different, unrelated definition of unusual.
+const ANOMALY_BAND = 1.96 * 1.2533;
+
+export function detectModelAnomalies(fc) {
+  const out = [];
+  const scan = (table, kind) => {
+    if (!table || !table.quality || !table.quality.relMae) return;
+    const relMae = table.quality.relMae;
+    Object.values(table.series).forEach((s) => {
+      const hist = s.history;
+      if (!hist || hist.length < 13) return; // need a real trailing-12 baseline
+      const latest = hist[hist.length - 1];
+      const baseline = hist.slice(-13, -1).map((h) => h.value);
+      const mean = baseline.reduce((a, v) => a + v, 0) / baseline.length;
+      const half = Math.max(1, ANOMALY_BAND * relMae * mean);
+      const lo = Math.max(0, mean - half);
+      const hi = mean + half;
+      if (latest.value < lo || latest.value > hi) {
+        out.push({
+          kind,
+          label: s.label,
+          month: latest.month,
+          actual: latest.value,
+          expected: Math.round(mean * 10) / 10,
+          lo: Math.round(lo * 10) / 10,
+          hi: Math.round(hi * 10) / 10,
+          z: Math.round(((latest.value - mean) / (half / ANOMALY_BAND)) * 10) / 10,
+        });
+      }
+    });
+  };
+  scan(fc?.crimehead, 'head');
+  scan(fc?.district, 'district');
+  return out.sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
+}
+
 // ── Live forecasts from the deployed QuickML models ──────────────────────────
 //
 // The three volume charts are NOT computed here. Each comes from its own

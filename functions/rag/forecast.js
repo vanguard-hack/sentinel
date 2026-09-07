@@ -254,13 +254,18 @@ async function buildBundle(token) {
     source: 'quickml',
     total: {
       label: MODELS.firvolume.label,
-      quality: MODELS.firvolume.quality,
+      // relMae rides along with quality — it's what turns the model's
+      // measured accuracy into a usable tolerance band client-side (see
+      // withBand above, and detectModelAnomalies in utils/predict.js).
+      quality: { ...MODELS.firvolume.quality, relMae: MODELS.firvolume.relMae },
       forecast: totalSeries.forecast,
       history: totalSeries.history,
     },
-    crimehead: { label: MODELS.crimehead.label, quality: MODELS.crimehead.quality,
+    crimehead: { label: MODELS.crimehead.label,
+      quality: { ...MODELS.crimehead.quality, relMae: MODELS.crimehead.relMae },
       series: ch.series },
-    district: { label: MODELS.district.label, quality: MODELS.district.quality,
+    district: { label: MODELS.district.label,
+      quality: { ...MODELS.district.quality, relMae: MODELS.district.relMae },
       series: di.series },
     errors: [...fv.errors, ...ch.errors, ...di.errors].slice(0, 20),
     billedCalls: (t.series.length + FEATURES.tables.crimehead.series.length

@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   RefreshCw, AlertTriangle,
-  Brain, TrendingUp, TrendingDown, Lightbulb, Activity, Share2, LineChart, Fingerprint, Landmark,
+  Brain, Activity, Share2, LineChart, Fingerprint, Landmark,
 } from 'lucide-react';
 import {
   getIncidents, refreshIncidents, hourlyProfile, dayOfMonthProfile, weekdayProfile,
-  peakWindow, monthlySeries, forecastMonths, headDaypartMatrix, DAYPARTS,
+  peakWindow, headDaypartMatrix, DAYPARTS,
 } from '../utils/aianalytics';
 import TrendArea from '../components/charts/TrendArea';
 import BarList from '../components/charts/BarColumns';
@@ -134,54 +134,23 @@ export default function AIAnalytics() {
     };
   }, [filtered, dim]);
 
-  // Forecast from the full (unfiltered-by-time) monthly series of the current
-  // head selection.
-  const fc = useMemo(() => {
-    if (!filtered.length) return null;
-    const series = monthlySeries(filtered);
-    const { points, slope } = forecastMonths(series);
-    return {
-      chartData: [...series.slice(-12), ...points],
-      points,
-      slope,
-    };
-  }, [filtered]);
-
   const matrix = useMemo(
     () => (data ? headDaypartMatrix(data.incidents, data.headNames) : []),
     [data]
   );
   const matrixMax = Math.max(1, ...matrix.flatMap((r) => r.cells));
 
-  const insights = useMemo(() => {
-    if (!data || !filtered.length || !fc) return [];
-    const out = [];
-    const hp = hourlyProfile(filtered);
-    const hw = peakWindow(hp, 4);
-    out.push(
-      `${hw.share.toFixed(0)}% of incidents occur between ${pad2(hw.start)}:00 and ${pad2(hw.end)}:00 — the highest-risk patrol window.`
-    );
-    const wp = weekdayProfile(filtered);
-    const topDay = [...wp].sort((a, b) => b.value - a.value)[0];
-    out.push(`${topDay.label} is the busiest day of the week (${topDay.value.toLocaleString()} incidents).`);
-    if (fc.points.length) {
-      const dir = fc.slope >= 0 ? 'rising' : 'falling';
-      out.push(
-        `Registrations are ${dir} by ~${Math.abs(fc.slope).toFixed(1)} cases/month; next month is projected at ${fc.points[0].value.toLocaleString()} cases.`
-      );
-    }
-    if (head === 'ALL' && matrix.length) {
-      const nocturnal = [...matrix]
-        .filter((r) => r.total >= 30)
-        .sort((a, b) => b.cells[0] / b.total - a.cells[0] / a.total)[0];
-      if (nocturnal) {
-        out.push(
-          `${nocturnal.head} is the most nocturnal category — ${Math.round((nocturnal.cells[0] / nocturnal.total) * 100)}% of its incidents happen between 00:00 and 06:00.`
-        );
-      }
-    }
-    return out;
-  }, [data, filtered, fc, matrix, head]);
+  // Category breakdown for the current filter — which crime heads make up
+  // the volume, ranked, rather than just their time-of-day split (the
+  // matrix below) or a single time dimension (the chart above).
+  const headBreakdown = useMemo(() => {
+    if (!data || !filtered.length) return [];
+    const counts = {};
+    filtered.forEach((r) => { counts[r.head] = (counts[r.head] || 0) + 1; });
+    return Object.entries(counts)
+      .map(([id, value]) => ({ label: data.headNames[id] || id, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [data, filtered]);
 
   const headOptions = data
     ? Object.entries(data.headNames).sort((a, b) => Number(a[0]) - Number(b[0]))
@@ -315,45 +284,17 @@ export default function AIAnalytics() {
                 )}
               </Card>
 
-              {/* These two were plain 300px-minimum cards in an auto-fill grid,
-                  so on a wide screen they sat in the first two of four columns
-                  and left half the row empty. Paired in a full-width duo they
-                  split the row exactly, and stretch to a common height. */}
-              <div className="ai-duo">
-                <Card
-                  title="Registration forecast"
-                  subtitle="Monthly cases, last 12 observed + 3 projected (dashed) — linear trend, not a trained model"
-                >
-                  {fc && fc.chartData.length > 4 ? (
-                    <>
-                      {/* Height comes from the row now, not from a literal —
-                          the pair stretches to the taller card and the chart
-                          takes whatever that leaves. */}
-                      <TrendArea data={fc.chartData} height={220} />
-                      <p className={`ai-fc-note ${fc.slope >= 0 ? 'up' : 'down'}`}>
-                        {fc.slope >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
-                        Trend {fc.slope >= 0 ? '+' : '−'}{Math.abs(fc.slope).toFixed(1)} cases/month
-                      </p>
-                    </>
-                  ) : (
-                    <div className="rp-empty">Not enough history to project</div>
-                  )}
-                </Card>
-
-                <Card
-                  title="Patrol insights"
-                  subtitle="Auto-derived from the incident data and the current filter"
-                >
-                  <ul className="ai-insights">
-                    {insights.map((s, i) => (
-                      <li key={i}>
-                        <Lightbulb size={14} />
-                        <span>{s}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              </div>
+              <Card
+                title="Incidents by crime head"
+                subtitle="Which categories make up the current filter, ranked by volume"
+                wide
+              >
+                {headBreakdown.length ? (
+                  <BarList data={headBreakdown} height={230} />
+                ) : (
+                  <div className="rp-empty">No incidents match this filter</div>
+                )}
+              </Card>
 
               <Card
                 title="Crime head × time of day"

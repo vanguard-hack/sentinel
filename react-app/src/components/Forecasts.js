@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { RefreshCw, AlertTriangle, Siren } from 'lucide-react';
 import {
   getPredictData, getForecasts, refreshPredict, toChartSeries,
-  districtRisk, offenderRisk, detectAnomalies,
+  districtRisk, offenderRisk, detectAnomalies, detectModelAnomalies,
 } from '../utils/predict';
 import { ForecastChart } from './Charts';
 import BarList from './charts/BarColumns';
@@ -105,13 +105,19 @@ export default function Forecasts() {
       { label: '40–59', value: 0 }, { label: '60+', value: 0 },
     ];
     offenders.forEach((o) => { scoreDist[Math.min(3, Math.floor(o.score / 20))].value++; });
+    // Prefer the model-grounded check (detectModelAnomalies) whenever the
+    // forecast bundle actually loaded — including when it finds nothing
+    // unusual, which is a real result, not a reason to fall back. The
+    // ad-hoc weekly z-score only covers for a forecast-model outage.
+    const useModel = !!(fc && fc.crimehead && fc.district);
     return {
       risk: districtRisk(cases),
       offenders: offenders.slice(0, 10),
       scoreDist,
-      alerts: detectAnomalies(cases),
+      alerts: useModel ? detectModelAnomalies(fc) : detectAnomalies(cases),
+      alertsFromModel: useModel,
     };
-  }, [data]);
+  }, [data, fc]);
 
   /* The three volume charts, straight from the deployed models. `horizon`
      trims the prediction to 1, 2 or 3 months — the models always return all
@@ -159,7 +165,9 @@ export default function Forecasts() {
       {/* Alerts first — the early-warning layer */}
       <Card
         title="Anomaly alerts"
-        subtitle="Weeks running ≥2σ above their trailing 12-week baseline"
+        subtitle={model.alertsFromModel
+          ? "Latest observed month outside the deployed model's own 95% accuracy band"
+          : 'Weeks running ≥2σ above their trailing 12-week baseline (forecast models unavailable)'}
         wide
       >
         {model.alerts.length === 0 ? (
@@ -172,8 +180,10 @@ export default function Forecasts() {
                 <div>
                   <strong>{a.label}</strong>
                   <span>
-                    {a.actual} FIRs in wk of {a.week} vs ~{a.expected} expected
-                    · z = {a.z} · {a.kind === 'head' ? 'crime type' : 'district'}
+                    {model.alertsFromModel
+                      ? `${a.actual} in ${a.month} vs ~${a.expected} expected`
+                      : `${a.actual} FIRs in wk of ${a.week} vs ~${a.expected} expected`}
+                    {' '}· z = {a.z} · {a.kind === 'head' ? 'crime type' : 'district'}
                   </span>
                 </div>
               </div>
