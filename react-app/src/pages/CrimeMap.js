@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { H, CRIME, STATE, DISTRICT, refreshAllData } from '../data/hierarchyStore';
 import { loadPersonnel } from '../utils/personnel';
-import { optimalOrder, tourLength, validatePatrolRoute, fetchRoadRoute, buildGoogleMapsNavUrl, currentLocation, splitIntoSegments } from '../utils/patrol';
+import { optimalOrder, tourLength, validatePatrolRoute, fetchRoadRoute, buildGoogleMapsNavUrl, currentLocation, splitIntoSegments, mapWithConcurrency } from '../utils/patrol';
 import { pointInFeature } from '../utils/geo';
 import TopBar from '../components/TopBar';
 
@@ -201,6 +201,7 @@ export default function CrimeMap() {
   const [corridorsOn, setCorridorsOn] = useState(false);
   const [patrolOn, setPatrolOn] = useState(false);
   const [patrolCars, setPatrolCarsState] = useState(1);
+  const [patrolCarsInput, setPatrolCarsInput] = useState('1'); // free-typed text, committed on blur/Enter
   const [patrolInfo, setPatrolInfo] = useState(null); // { stops, km } while a route is drawn
   const [lightbox, setLightbox] = useState(null); // full-screen image URL
   const [dataReady, setDataReady] = useState('loading'); // 'loading' | 'ready' | 'error'
@@ -529,12 +530,15 @@ export default function CrimeMap() {
     };
 
     // ── Patrol route ──
-    // Greedy nearest-neighbour tour over the current district's hottest points
-    // plus any smuggling-corridor waypoint that touches this district, so the
-    // suggested loop covers both crime density and flagged corridor segments.
-    // This is a coverage heuristic, not a road-network route — there is no
-    // road-graph data to route against.
-    const MAX_STOPS = 8;
+    // Tour over the current district's hottest points plus any
+    // smuggling-corridor waypoint that touches this district, so the
+    // suggested route covers both crime density and flagged corridor
+    // segments. High enough to cover the large majority of a district's
+    // hotspots rather than just a handful — optimalOrder's exact brute force
+    // only applies up to 8 stops (BRUTE_FORCE_LIMIT in utils/patrol.js);
+    // above that it automatically switches to the nearest-neighbour + 2-opt
+    // heuristic, which is the normal path at this size, not a rare fallback.
+    const MAX_STOPS = 40;
     // Which stop anchors the walk. 0 = the district centre (the default,
     // "shortest overall" route); every click of "New shift" moves this to the
     // next stop instead — see the note on predictability below.
@@ -596,24 +600,19 @@ export default function CrimeMap() {
       // from where the previous car's leg happened to end.
       const segments = splitIntoSegments(order, patrolCarsLocal);
       patrolSegments = segments;
-      // A cached reading only ever applies to a single-car route — with
-      // multiple cars there is no one "the officer", so a stale reading from
-      // an earlier single-car route must never leak into a different car's
-      // "Navigate" click.
-      if (segments.length > 1) officerLocation = null;
 
       patrolLayer = L.layerGroup();
       let globalIdx = 0;
-      segments.forEach((segment, segIdx) => {
+      const segRefs = segments.map((segment, segIdx) => {
         const segColorVar = `--rp-cat-${segIdx % SEGMENT_COLORS}`;
         const segColor = css(segColorVar);
         const segKm = tourLength(segment) / 1000;
 
         // Popup content is rebuilt every time the underlying figures change:
-        // immediately (straight-line, stops only), again once a road-snapped
-        // fetch resolves, and — single car only, see below — again once the
-        // officer's own location is known. `baseKm` is null when there's no
-        // meaningful distance to show yet (a lone stop with no origin fixed).
+        // immediately (straight-line, stops only), then again once the
+        // officer's location + a road-snapped fetch resolve. `baseKm` is
+        // null when there's no meaningful distance to show yet (a lone stop
+        // with no origin fixed).
         const buildPopupHtml = (roadInfo, baseKm) => (
           segments.length > 1
             ? `<div class="patrol-popup-car" style="color:${segColor}">Car ${segIdx + 1}</div>`
@@ -658,58 +657,7 @@ export default function CrimeMap() {
           ).addTo(patrolLayer);
         });
 
-        if (segments.length === 1) {
-          // Single car: reconcile with the officer's own live location, so
-          // "Navigate" opens Google Maps on the SAME start point and a
-          // matching distance — not just the stops, which is what made the
-          // two disagree. Falls back to the stops-only road-snap below if
-          // location isn't available (denied, unsupported, timed out).
-          currentLocation().then((origin) => {
-            if (reqId !== patrolRequestId) return; // superseded meanwhile
-            officerLocation = origin;
-            const fullPoints = origin ? [origin, ...segment] : segment;
-            if (origin) {
-              L.marker([origin.lat, origin.lng], {
-                icon: L.divIcon({ className: 'patrol-you-icon', html: '<span>You</span>', iconSize: [34, 20] }),
-              }).addTo(patrolLayer);
-              const fullLatLngs = fullPoints.map((p) => [p.lat, p.lng]);
-              segCasing.setLatLngs(fullLatLngs);
-              segLine.setLatLngs(fullLatLngs);
-            }
-            const baseKm = fullPoints.length > 1 ? tourLength(fullPoints) / 1000 : null;
-            segLine.setPopupContent(buildPopupHtml(null, baseKm));
-            if (baseKm != null) {
-              setPatrolInfo({
-                cars: 1, stops: order.length, km: Math.round(baseKm * 10) / 10,
-                tourSavingsPct: validation ? Math.round(validation.tourSavingsPct) : null, shift: shiftIdx,
-              });
-            }
-            if (fullPoints.length > 1) {
-              fetchRoadRoute(fullPoints).then((road) => {
-                if (!road || reqId !== patrolRequestId) return;
-                const roadLatLngs = road.coordinates.map(([lat, lng]) => [lat, lng]);
-                segCasing.setLatLngs(roadLatLngs);
-                segLine.setLatLngs(roadLatLngs);
-                segLine.setPopupContent(buildPopupHtml(road, baseKm));
-                setPatrolInfo({
-                  cars: 1, stops: order.length, km: road.distanceKm,
-                  tourSavingsPct: validation ? Math.round(validation.tourSavingsPct) : null, shift: shiftIdx,
-                });
-              });
-            }
-          });
-        } else if (segment.length > 1) {
-          // Multiple cars: each car's own device knows its own location —
-          // this dispatcher view doesn't, so it stays stops-only, road-snapped
-          // for a realistic distance but without a "you are here" leg.
-          fetchRoadRoute(segment).then((road) => {
-            if (!road || reqId !== patrolRequestId) return; // superseded by a newer shift/district/car-count
-            const roadLatLngs = road.coordinates.map(([lat, lng]) => [lat, lng]);
-            segCasing.setLatLngs(roadLatLngs);
-            segLine.setLatLngs(roadLatLngs);
-            segLine.setPopupContent(buildPopupHtml(road, segKm));
-          });
-        }
+        return { segment, segCasing, segLine, buildPopupHtml };
       });
       patrolLayer.addTo(map);
 
@@ -720,6 +668,48 @@ export default function CrimeMap() {
         km: Math.round(km * 10) / 10,
         tourSavingsPct: validation ? Math.round(validation.tourSavingsPct) : null,
         shift: shiftIdx,
+      });
+
+      // One geolocation read for the whole route, reused by EVERY segment
+      // (and by "Navigate" itself) — not just a single-car special case —
+      // so whichever segment's popup you check, the start point and distance
+      // it shows are the same ones Google Maps will open with.
+      currentLocation().then((origin) => {
+        if (reqId !== patrolRequestId) return; // superseded meanwhile
+        officerLocation = origin;
+        if (origin) {
+          L.marker([origin.lat, origin.lng], {
+            icon: L.divIcon({
+              className: 'patrol-you-icon',
+              html: '<span class="patrol-you-ring"></span><span class="patrol-you-core"></span>',
+              iconSize: [22, 22],
+            }),
+          }).addTo(patrolLayer);
+        }
+
+        // Road-snapping every segment at once is what was silently losing
+        // most of them to OpenRouteService's per-minute rate limit once car
+        // count wasn't capped — each failure fell back to a straight line
+        // (or, for a lone-stop segment, no line at all). Staggering the
+        // requests keeps them landing instead of racing each other.
+        mapWithConcurrency(segRefs, 4, async (ref) => {
+          const fullPoints = origin ? [origin, ...ref.segment] : ref.segment;
+          const baseKm = fullPoints.length > 1 ? tourLength(fullPoints) / 1000 : null;
+          if (origin && fullPoints.length > 1) {
+            const fullLatLngs = fullPoints.map((p) => [p.lat, p.lng]);
+            ref.segCasing.setLatLngs(fullLatLngs);
+            ref.segLine.setLatLngs(fullLatLngs);
+          }
+          ref.segLine.setPopupContent(ref.buildPopupHtml(null, baseKm));
+          if (fullPoints.length > 1) {
+            const road = await fetchRoadRoute(fullPoints);
+            if (!road || reqId !== patrolRequestId) return;
+            const roadLatLngs = road.coordinates.map(([lat, lng]) => [lat, lng]);
+            ref.segCasing.setLatLngs(roadLatLngs);
+            ref.segLine.setLatLngs(roadLatLngs);
+            ref.segLine.setPopupContent(ref.buildPopupHtml(road, baseKm));
+          }
+        });
       });
     };
     const setPatrol = (on) => {
@@ -735,7 +725,11 @@ export default function CrimeMap() {
       computePatrolRoute();
     };
     const setPatrolCars = (n) => {
-      patrolCarsLocal = Math.max(1, Math.min(SEGMENT_COLORS, Math.floor(n) || 1));
+      // No upper cap on the input itself — splitIntoSegments already clamps
+      // the actual number of segments drawn to the stop count (MAX_STOPS),
+      // so typing more cars than there are stops to hand out is harmless,
+      // not a way to hang the map with an unbounded number of layers.
+      patrolCarsLocal = Math.max(1, Math.floor(n) || 1);
       if (patrolOnLocal) computePatrolRoute();
     };
 
@@ -848,9 +842,14 @@ export default function CrimeMap() {
   const togglePatrol = () => { ctrlRef.current?.setPatrol(!patrolOn); };
   const shufflePatrol = () => { ctrlRef.current?.shufflePatrolShift(); };
   const changePatrolCars = (n) => {
-    const clamped = Math.max(1, Math.min(6, n));
+    const clamped = Math.max(1, Math.floor(n) || 1); // no upper limit — see setPatrolCars in the map effect
     setPatrolCarsState(clamped);
+    setPatrolCarsInput(String(clamped));
     ctrlRef.current?.setPatrolCars(clamped);
+  };
+  const commitPatrolCarsInput = () => {
+    const n = parseInt(patrolCarsInput, 10);
+    changePatrolCars(Number.isFinite(n) ? n : patrolCars);
   };
   const toggleDistrictMode = () => {
     const m = districtMode === 'crime' ? 'zones' : 'crime';
@@ -1093,9 +1092,18 @@ export default function CrimeMap() {
           {level === 'district' && patrolOn && (
             <div className="map-ctrl map-ctrl-cars" title="How many patrol cars to split this route across">
               <Car size={15} />
-              <button type="button" onClick={() => changePatrolCars(patrolCars - 1)} disabled={patrolCars <= 1} aria-label="Fewer patrol cars">−</button>
-              <span>{patrolCars}</span>
-              <button type="button" onClick={() => changePatrolCars(patrolCars + 1)} disabled={patrolCars >= 6} aria-label="More patrol cars">+</button>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                inputMode="numeric"
+                aria-label="Number of patrol cars"
+                value={patrolCarsInput}
+                onChange={(e) => setPatrolCarsInput(e.target.value)}
+                onBlur={commitPatrolCarsInput}
+                onKeyDown={(e) => { if (e.key === 'Enter') { commitPatrolCarsInput(); e.target.blur(); } }}
+              />
+              <span>cars</span>
             </div>
           )}
           {level === 'district' && patrolOn && (

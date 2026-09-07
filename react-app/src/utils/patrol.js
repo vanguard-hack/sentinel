@@ -2,11 +2,13 @@
 // the question a route like this actually needs answered: does visiting the
 // SAME stops in an optimized order help, compared to a random order?
 //
-// The route actually drawn (optimalOrder, below) is the exact-optimal stop
-// order, found by brute force — practical because MAX_STOPS caps a route at
-// 8 stops. nearestNeighborOrder remains as the construction step for
-// validatePatrolRoute's random-baseline comparison, and as optimalOrder's own
-// fallback if that cap is ever raised past what brute force can cover.
+// The route actually drawn (optimalOrder, below) is exact-optimal — found by
+// brute force — for up to BRUTE_FORCE_LIMIT (8) stops. CrimeMap's MAX_STOPS
+// is well above that, to cover most of a district's hotspots rather than a
+// handful, so at real-world sizes optimalOrder normally takes its
+// nearest-neighbour + 2-opt fallback, not the brute-force path.
+// nearestNeighborOrder also remains as the construction step for
+// validatePatrolRoute's random-baseline comparison.
 //
 // The random-baseline method mirrors Kim et al. 2023, "Hotspots-based patrol
 // route optimization for smart policing" (Heliyon) — they validate their
@@ -137,6 +139,24 @@ export function splitIntoSegments(order, carCount) {
     idx += size;
   }
   return segments;
+}
+
+// Runs `worker` over `items` with at most `limit` in flight at once. With no
+// car-count ceiling, a district split across many cars means many segments
+// each wanting their own OpenRouteService road-snap — firing all of them at
+// once is what was silently losing most of them to ORS's per-minute rate
+// limit (each failure falls back to a straight line, which is why more cars
+// meant fewer visible roads). Throttling keeps every segment's request
+// actually landing, just staggered instead of simultaneous.
+export async function mapWithConcurrency(items, limit, worker) {
+  let i = 0;
+  const lanes = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      await worker(items[idx], idx);
+    }
+  });
+  await Promise.all(lanes);
 }
 
 // Deterministic PRNG (mulberry32 — the same generator utils/financial.js

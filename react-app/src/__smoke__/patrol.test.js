@@ -4,7 +4,7 @@
  */
 import {
   haversineMeters, tourLength, nearestNeighborOrder, validatePatrolRoute,
-  fetchRoadRoute, buildGoogleMapsNavUrl, optimalOrder, splitIntoSegments,
+  fetchRoadRoute, buildGoogleMapsNavUrl, optimalOrder, splitIntoSegments, mapWithConcurrency,
 } from '../utils/patrol';
 
 const ok = (body) => ({ ok: true, json: async () => body });
@@ -88,6 +88,31 @@ test('splitIntoSegments clamps a car count above the stop count down to one stop
   const segments = splitIntoSegments(order, 10);
   expect(segments).toHaveLength(3);
   expect(segments.every((s) => s.length === 1)).toBe(true);
+});
+
+test('mapWithConcurrency runs every item exactly once, in the given order of completion tracking', async () => {
+  const seen = [];
+  await mapWithConcurrency([1, 2, 3, 4, 5], 2, async (n) => { seen.push(n); });
+  expect(seen.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
+});
+
+test('mapWithConcurrency never runs more than `limit` workers at once', async () => {
+  let active = 0;
+  let maxActive = 0;
+  const items = Array.from({ length: 9 }, (_, i) => i);
+  await mapWithConcurrency(items, 3, async () => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active -= 1;
+  });
+  expect(maxActive).toBeLessThanOrEqual(3);
+});
+
+test('mapWithConcurrency with more lanes than items still runs each item once', async () => {
+  const seen = [];
+  await mapWithConcurrency(['a', 'b'], 10, async (item) => { seen.push(item); });
+  expect(seen.sort()).toEqual(['a', 'b']);
 });
 
 test('a route clustered along a line beats scattering the same stops randomly', () => {
