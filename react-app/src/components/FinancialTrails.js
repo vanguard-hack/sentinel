@@ -1,18 +1,77 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { lookupIfscMany } from '../utils/publicRefs';
-import { AlertTriangle, RefreshCw, Landmark, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getFinancialTrails, refreshFinancialTrails, formatRs, TYPOLOGIES } from '../utils/financial';
+import {
+  AlertTriangle, RefreshCw, Landmark, ChevronLeft, ChevronRight, Ruler, Sparkles,
+} from 'lucide-react';
+import {
+  getFinancialTrails, refreshFinancialTrails, formatRs, TYPOLOGIES,
+  scoreBreakdown, narrateFinancial,
+} from '../utils/financial';
 import MoneyFlowMap from './MoneyFlowMap';
 
 const Tier = ({ t }) => <span className={`fc-tier fc-tier-${t.toLowerCase()}`}>{t}</span>;
 const ALERTS_PER_PAGE = 8;
 const TXNS_PER_PAGE = 12;
+const pct = (v) => (v == null || !Number.isFinite(v) ? '—' : `${Math.round(v * 100)}%`);
 
 function Kpi({ value, label }) {
   return (
     <div className="cl-kpi">
       <span className="cl-kpi-value">{value}</span>
       <span className="cl-kpi-label">{label}</span>
+    </div>
+  );
+}
+
+// The score, taken apart — the same points the formula summed, not a
+// separate guess at them. Reuses the labelled-micro-bar look Case Linkage
+// uses for its own score breakdown, scaled to this score's ~20-point items.
+function ScoreBreakdown({ alert }) {
+  const items = scoreBreakdown(alert);
+  if (!items.length) return null;
+  return (
+    <div className="lk-breakdown ft-breakdown">
+      {items.map((it) => (
+        <div key={it.key} className="lk-bd-row" title={`${it.label}: +${it.points}`}>
+          <span className="lk-bd-label ft-bd-label">{it.label}</span>
+          <span className="lk-bd-track"><span className="lk-bd-fill" style={{ width: `${Math.min(100, (it.points / 20) * 100)}%` }} /></span>
+          <span className="ft-bd-points">+{it.points}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// The templated read is free and always there; the AI narrative is a
+// separate, explicit, per-row action — never generated automatically for a
+// page of alerts, since that would be an LLM call nobody asked for on every
+// visit to the tab.
+function Narrative({ alert }) {
+  const [state, setState] = useState({ status: 'idle', text: '' });
+  const generate = async () => {
+    setState({ status: 'loading', text: '' });
+    try {
+      const text = await narrateFinancial(alert);
+      setState({ status: 'done', text });
+    } catch (e) {
+      setState({ status: 'error', text: e.message || 'Could not generate a narrative.' });
+    }
+  };
+  return (
+    <div className="ft-narrative-wrap">
+      <div className="ft-narrative">{state.status === 'done' ? state.text : alert.narrative}</div>
+      {state.status === 'idle' && (
+        <button className="ft-ai-btn" onClick={generate} title="Draft an AI investigation note from this alert's own facts">
+          <Sparkles size={11} /> AI narrative
+        </button>
+      )}
+      {state.status === 'loading' && <span className="ft-ai-loading">Drafting…</span>}
+      {state.status === 'error' && (
+        <span className="ft-ai-error">{state.text} <button className="ft-ai-btn" onClick={generate}>Retry</button></span>
+      )}
+      {state.status === 'done' && (
+        <span className="ft-ai-tag">AI-drafted from the facts above — verify before relying on it. <button className="ft-ai-btn" onClick={generate}>Regenerate</button></span>
+      )}
     </div>
   );
 }
@@ -67,7 +126,7 @@ export default function FinancialTrails() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const { summary, alerts, typologyCounts, flagged, moneyMap, branches } = data || {};
+  const { summary, alerts, typologyCounts, flagged, moneyMap, branches, validation } = data || {};
   // Which node the map has pinned. Focus is a highlight, not a re-layout.
   const [mapSel, setMapSel] = useState(null);
 
@@ -194,6 +253,110 @@ export default function FinancialTrails() {
         </div>
       </section>
 
+      {/* ── Model validation ────────────────────────────────────────────────
+          The generator plants a known answer — every accused gets one of six
+          behavioural profiles, and 'ordinary' is the only non-laundering one
+          — so the detector can be checked against it the same way Case
+          Linkage checks its own scorer: AUC for ranking, a confusion matrix
+          at the tier the tool actually flags at, and (below) whether the
+          number it prints means what it says. */}
+      {validation && (
+        <section className="rp-card rp-card-wide">
+          <div className="rp-card-head">
+            <h2><Ruler size={16} /> Does the score find laundering?</h2>
+            <span className="rp-card-sub">
+              Measured against the {validation.population.toLocaleString()} accused this ledger was synthesised
+              for — {validation.positives.toLocaleString()} on a planted laundering profile,{' '}
+              {validation.negatives.toLocaleString()} on the baseline "ordinary" profile
+            </span>
+          </div>
+          <div className="rp-card-body">
+            <div className="cl-kpi-row">
+              <Kpi value={validation.auc == null ? '—' : validation.auc.toFixed(2)} label={`ROC AUC — ${validation.aucBand}`} />
+              <Kpi value={pct(validation.confusion.precision)} label="Precision — flags that are real" />
+              <Kpi value={pct(validation.confusion.recall)} label="Recall — real cases caught" />
+              <Kpi value={pct(validation.confusion.f1)} label="F1" />
+              <Kpi value={validation.confusion.mcc == null ? '—' : validation.confusion.mcc.toFixed(2)} label="MCC" />
+            </div>
+            <table className="cl-cal-table fc-confusion">
+              <thead>
+                <tr><th /><th>Flagged (predicted)</th><th>Not flagged (predicted)</th></tr>
+              </thead>
+              <tbody>
+                <tr><th>Laundering profile (actual)</th><td>{validation.confusion.tp.toLocaleString()} caught</td><td className={validation.confusion.fn > 0 ? 'cl-gap-bad' : ''}>{validation.confusion.fn.toLocaleString()} missed</td></tr>
+                <tr><th>Ordinary profile (actual)</th><td className={validation.confusion.fp > 0 ? 'cl-gap-bad' : ''}>{validation.confusion.fp.toLocaleString()} false alarm</td><td>{validation.confusion.tn.toLocaleString()} correctly clear</td></tr>
+              </tbody>
+            </table>
+            <p className="cl-cal-note">
+              "Flagged" means the alert rule fired at all — the same bar the Prioritised alerts table below uses;
+              Tier is a severity label applied after that decision, not a second gate. This is a hand-tuned rule
+              engine measured against a ground truth this demo itself plants, not a trained, independently
+              validated model — the numbers show whether the rules are doing what they were designed to, not
+              real-world accuracy.
+            </p>
+          </div>
+        </section>
+      )}
+
+      {validation && validation.calibration && (
+        <section className="rp-card rp-card-wide">
+          <div className="rp-card-head">
+            <div>
+              <h2><Ruler size={16} /> Does the score mean what it says?</h2>
+              <span className="rp-card-sub">
+                ROC AUC above measures ranking — whether laundering profiles score above ordinary ones — and says
+                nothing about the number itself. This bins all {validation.calibration.samples.toLocaleString()} scored
+                accused and compares what the score claimed against what the planted profile actually was.
+              </span>
+            </div>
+          </div>
+          <div className="rp-card-body">
+            <div className="cl-kpi-row">
+              <Kpi
+                value={validation.calibration.ece == null ? '—' : `${(validation.calibration.ece * 100).toFixed(1)}%`}
+                label={`Calibration error — ${validation.calibration.band}`}
+              />
+              <Kpi
+                value={validation.calibration.brier == null ? '—' : validation.calibration.brier.score.toFixed(4)}
+                label={`Brier · ${validation.calibration.brier.baseRateScore.toFixed(4)} = ignore the model`}
+              />
+              <Kpi value={pct(validation.calibration.brier?.baseRate)} label="Base rate — planted laundering profile" />
+              <Kpi
+                value={validation.calibration.calibratedEce == null ? '—' : `${(validation.calibration.calibratedEce * 100).toFixed(1)}%`}
+                label="After isotonic correction"
+              />
+            </div>
+            <table className="cl-cal-table">
+              <thead>
+                <tr><th>Score band</th><th>Entities</th><th>Score said</th><th>Actually laundering</th><th>Gap</th></tr>
+              </thead>
+              <tbody>
+                {validation.calibration.bins.map((b) => (
+                  <tr key={b.lo}>
+                    <td>{Math.round(b.lo * 100)}–{Math.round(b.hi * 100)}</td>
+                    <td>{b.n.toLocaleString()}</td>
+                    <td>{pct(b.meanPredicted)}</td>
+                    <td>{pct(b.observedRate)}</td>
+                    <td className={Math.abs(b.gap) > 0.1 ? 'cl-gap-bad' : ''}>
+                      {b.gap >= 0 ? '+' : ''}{(b.gap * 100).toFixed(1)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="cl-cal-note">
+              Read the last two columns together. Where they diverge, a score of 70 does not mean "70% likely" —
+              however well the score ranks laundering above ordinary.{' '}
+              {validation.calibration.improved
+                ? `A monotone isotonic correction closes the gap from ${(validation.calibration.ece * 100).toFixed(1)}% to ${(validation.calibration.calibratedEce * 100).toFixed(1)}% — and because it only rescales, never reorders, the ROC AUC above is unchanged by it.`
+                : 'The raw score is already close to calibrated on this data, so no correction is applied.'}
+              {' '}Synthetic hackathon data, scored against a ground truth this demo itself plants — the method is
+              what is being shown, not the accuracy of these particular numbers on real cases.
+            </p>
+          </div>
+        </section>
+      )}
+
       {/* Where the money went — real branches behind synthetic accounts */}
       {districts.length > 1 && (
         <section id="fin-geography" className="rp-card rp-card-wide">
@@ -299,12 +462,15 @@ export default function FinancialTrails() {
                   <tr key={a.person}>
                     <td className="ft-entity-cell">{a.name} <span className="fc-pid">{a.person}</span></td>
                     <td><Tier t={a.tier} /></td>
-                    <td>{a.score}</td>
+                    <td className="ft-score-cell">
+                      {a.score}
+                      <ScoreBreakdown alert={a} />
+                    </td>
                     <td className="ft-flags">
-                      {a.typologies.map((k) => <span key={k} className="ft-flag">{TYPOLOGIES[k].label}</span>)}
+                      {a.typologies.map((k) => <span key={k} className="ft-flag" title={TYPOLOGIES[k].desc}>{TYPOLOGIES[k].label}</span>)}
                     </td>
                     <td className="ft-num">{formatRs(a.value)}</td>
-                    <td className="ft-narrative">{a.narrative}</td>
+                    <td className="ft-narrative-cell"><Narrative alert={a} /></td>
                     <td className="ft-firs fc-pid">{a.firs.join(', ')}</td>
                   </tr>
                 ))}

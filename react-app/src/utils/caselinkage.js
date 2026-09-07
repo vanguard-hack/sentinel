@@ -19,7 +19,7 @@
 //
 // ZCQL has no joins, so tables are paged down and stitched client-side.
 
-import { assess, applyIsotonic, isotonicSupport } from './calibration';
+import { assess, applyIsotonic, isotonicSupport, rocAuc, aucBand } from './calibration';
 
 import { fetchSnapshotTable } from './datastore';
 import { derived, invalidate } from './derived';
@@ -141,36 +141,11 @@ export function pairScore(a, b) {
   return WEIGHTS.behaviour * j + WEIGHTS.spatial * sSpatial + WEIGHTS.temporal * sTemporal;
 }
 
-// AUC via the Mann-Whitney rank statistic (ties get average ranks) — the
-// probability that a random linked pair outscores a random unlinked pair.
-function rocAuc(linkedScores, unlinkedScores) {
-  const all = [
-    ...linkedScores.map((s) => ({ s, linked: 1 })),
-    ...unlinkedScores.map((s) => ({ s, linked: 0 })),
-  ].sort((x, y) => x.s - y.s);
-  let i = 0;
-  let rankSum = 0;
-  while (i < all.length) {
-    let j = i;
-    while (j + 1 < all.length && all[j + 1].s === all[i].s) j++;
-    const avgRank = (i + j) / 2 + 1;
-    for (let k = i; k <= j; k++) if (all[k].linked) rankSum += avgRank;
-    i = j + 1;
-  }
-  const n1 = linkedScores.length;
-  const n2 = unlinkedScores.length;
-  if (!n1 || !n2) return null;
-  return (rankSum - (n1 * (n1 + 1)) / 2) / (n1 * n2);
-}
-
-// Swets (1988) interpretation bands, as used across the linkage literature.
-export function aucBand(auc) {
-  if (auc == null) return '';
-  if (auc >= 0.9) return 'high accuracy';
-  if (auc >= 0.7) return 'moderate accuracy';
-  if (auc >= 0.5) return 'low accuracy';
-  return 'non-informative';
-}
+// rocAuc/aucBand now live in ./calibration — Financial Trails validation needs
+// the identical AUC statistic, so it moved to the shared stats module rather
+// than being duplicated. Re-exported here so existing importers of
+// caselinkage.js don't need to change.
+export { aucBand };
 
 export async function fetchLinkageData() {
   const [baseCases, accused, victims, extra, units, districts, heads, subheads, statuses] =

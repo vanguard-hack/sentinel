@@ -1962,7 +1962,7 @@ function rateLimited(key, max) {
 
 // Routes that cost money per call: Zoho transcription and OCR, SmartBrowz PDF
 // rendering, and every lane that reaches an LLM.
-const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|predict\/[a-z]+|forecast(\/refresh)?|digitise\/(upload|ingest))$/;
+const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|predict\/[a-z]+|forecast(\/refresh)?|digitise\/(upload|ingest)|financial\/narrative)$/;
 const isAdminUser = (u) => /admin/i.test(u?.role_details?.role_name || '');
 
 /* ── Case prediction (QuickML) ───────────────────────────────────────────────
@@ -3322,6 +3322,68 @@ async function handleInvestigationSummary(req, res) {
   });
 }
 
+// AI Analytics → Financial Trails: turn an already client-scored AML alert
+// into a short investigation note. Unlike handleInvestigationSummary this
+// reads nothing from storage — the caller (Financial Trails' rule engine,
+// entirely client-side) has already computed every fact: typologies, the
+// per-typology point breakdown, transaction counts, flagged value. The LLM is
+// asked only to phrase those facts, never to find them, so it has no path to
+// introduce a number the officer isn't already looking at on screen.
+async function handleFinancialNarrative(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !canInvestigate(role)) {
+    return json(res, 403, { error: 'Investigator, supervisor or admin access required' });
+  }
+
+  const name = String(body.name || '').trim();
+  const breakdown = Array.isArray(body.breakdown) ? body.breakdown : [];
+  if (!name || !breakdown.length) return json(res, 400, { error: 'name and breakdown are required' });
+
+  const score = Number(body.score) || 0;
+  const tier = String(body.tier || '').trim();
+  const value = Number(body.value) || 0;
+  const txnCount = Number(body.txnCount) || 0;
+  const flaggedCount = Number(body.flaggedCount) || 0;
+  const inDistinct = Number(body.inDistinct) || 0;
+  const outDistinct = Number(body.outDistinct) || 0;
+  const firs = Array.isArray(body.firs) ? body.firs.slice(0, 6).map(String) : [];
+
+  const factLines = [
+    `Entity: ${name}`,
+    `Risk tier: ${tier || '—'} (composite score ${score}/100)`,
+    `Score contributors: ${breakdown.map((b) => `${b.label} (+${b.points})`).join(', ')}`,
+    `Flagged value: Rs. ${value.toLocaleString('en-IN')} across ${flaggedCount} of ${txnCount} transactions`,
+    `Distinct counterparties: ${inDistinct} incoming, ${outDistinct} outgoing`,
+    firs.length ? `Related FIR crime numbers: ${firs.join(', ')}` : null,
+  ].filter(Boolean).join('\n');
+
+  const prose = await callLLM(
+    [
+      {
+        role: 'system',
+        content:
+          'You are drafting a short note for a police financial-crime alert, for an Investigating Officer to read ' +
+          'before opening the case file. Use ONLY the facts given below — never invent a number, name, date or ' +
+          'claim not present in them. Write 2-4 sentences: what pattern the transactions show and why it was ' +
+          'flagged at this tier. This is a demo built on synthetic transactions and is advisory decision-support ' +
+          'only, never a finding of fact.',
+      },
+      { role: 'user', content: factLines },
+    ],
+    { maxTokens: 300, temperature: 0.2, timeoutMs: 15_000 }
+  );
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'ai-narrative', feature: 'Financial Trails', path: '/ai-analytics?tab=financial',
+    detail: `${name} · ${tier} · ${breakdown.map((b) => b.label).join(', ')}`.slice(0, 300),
+  }], caller);
+
+  return json(res, 200, { narrative: (prose || 'Narrative unavailable right now — try again shortly.').trim() });
+}
+
 // ── Records Digitisation (paper files → searchable digital records) ─────────
 // Police records still live largely on paper. Officers photograph or scan a
 // document here; Zia OCR lifts the text, an LLM pass classifies it and pulls
@@ -4588,6 +4650,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/reportdocs/ai')) return await handleReportAi(req, res);
     if (path.endsWith('/investigation/reorder')) return await handleInvestigation(req, res, 'reorder');
     if (path.endsWith('/investigation/summarize')) return await handleInvestigationSummary(req, res);
+    if (path.endsWith('/financial/narrative')) return await handleFinancialNarrative(req, res);
     if (path.endsWith('/investigation/media/upload')) return await handleMediaUpload(req, res);
     if (path.endsWith('/investigation/media/get')) return await handleMediaGet(req, res);
     if (path.endsWith('/investigation/ocr')) return await handleOcr(req, res);

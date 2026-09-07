@@ -6442,7 +6442,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   .ft-geo li { grid-template-columns: 1fr auto; }
   .ft-geo em { grid-column: 1 / -1; }
 }
-.fc-table td.ft-narrative {
+.fc-table td.ft-narrative-cell {
   font-size: 12px;
   color: var(--text-2);
   white-space: normal;
@@ -6452,6 +6452,48 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   line-height: 1.45;
   vertical-align: top;
 }
+.ft-narrative { line-height: 1.45; }
+.ft-narrative-wrap { display: flex; flex-direction: column; gap: 5px; }
+.ft-ai-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--blue-500);
+  cursor: pointer;
+}
+.ft-ai-btn:hover { color: var(--blue-400); text-decoration: underline; }
+.ft-ai-loading, .ft-ai-error, .ft-ai-tag {
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+.ft-ai-error { color: var(--red); }
+.ft-ai-error .ft-ai-btn, .ft-ai-tag .ft-ai-btn { display: inline; margin-left: 4px; }
+
+/* Financial trails: score cell + its per-typology breakdown */
+.ft-score-cell { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-0); min-width: 130px; }
+.ft-breakdown { margin-top: 6px; }
+.ft-breakdown .lk-bd-row { gap: 5px; }
+.ft-bd-label {
+  width: 96px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ft-bd-points { font-size: 10.5px; color: var(--text-3); width: 22px; text-align: right; flex-shrink: 0; }
+
+/* Financial trails: model-validation confusion matrix */
+.fc-confusion th:first-child { text-align: left; font-weight: 600; color: var(--text-2); }
+.fc-confusion td { text-align: center; font-variant-numeric: tabular-nums; }
 .ft-alert-table .ft-flags { max-width: 240px; }
 .ft-alert-table td { vertical-align: top; }
 .fc-table td.ft-entity-cell { white-space: normal; min-width: 140px; max-width: 180px; vertical-align: top; }

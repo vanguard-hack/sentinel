@@ -11,6 +11,7 @@ import { fetchSharedCases, fetchSharedAccused, fetchSnapshotTable } from './data
 import { seededRandom, layoutForce, layoutForceAsync, normaliseLayout, components } from './graphLayout';
 import { derived, invalidate } from './derived';
 import { afterPaint, breathe } from './idle';
+import { assess, rocAuc, aucBand, confusionMetrics } from './calibration';
 
 // Paging lives in datastore.pageQuery, which reports when it stopped short.
 // Three modules each had their own copy of this loop with a different
@@ -228,6 +229,11 @@ export function buildFinancialTrails({ cases, accused }) {
   byPerson.forEach((agg, person) => {
     const rnd = mulberry32(djb2(person));
     const profile = PROFILES[Math.floor(rnd() * PROFILES.length)];
+    // Kept on the aggregate for validateFinancialTrails(): 'ordinary' is the
+    // only non-laundering profile, so it doubles as this demo's ground truth —
+    // ONLY for measuring the detector against a known-planted answer. It plays
+    // no part in detection itself, which sees only the transaction graph.
+    agg.profile = profile;
     const c0 = agg.cases[Math.floor(rnd() * agg.cases.length)];
     const base = c0.ts + Math.round((rnd() - 0.5) * 30 * 86400000);
 
@@ -379,7 +385,12 @@ export function buildFinancialTrails({ cases, accused }) {
     return false;
   };
 
-  const alerts = [];
+  // Every accused with any transaction gets scored, not just the ones a rule
+  // fires on — `alerts` (what the tables below show) is the subset that
+  // triggered at least one typology, same as before. The unfiltered set is
+  // what validateFinancialTrails() needs: to know a false negative happened,
+  // the person who WASN'T flagged has to be in the population being measured.
+  const scored = [];
   byPerson.forEach((agg, person) => {
     const out = outByPerson.get(person) || [];
     const inc = inByPerson.get(person) || [];
@@ -403,14 +414,13 @@ export function buildFinancialTrails({ cases, accused }) {
     if (out.concat(inc).some((t) => HIGH_RISK_CH.has(t.channel))) typ.add('highRiskChannel');
     if (out.concat(inc).some((t) => /^(SHELL|MULE)/.test(t.from) || /^(SHELL|MULE)/.test(t.to))) typ.add('shellMule');
 
-    if (!typ.size) return;
     const typologies = [...typ];
     const flaggedTxns = all.filter((t) => t.amount >= 40000 || HIGH_RISK_CH.has(t.channel) || /^(SHELL|MULE)/.test(t.from + t.to) || (t.channel === 'Cash' && t.amount >= 1000000));
     const value = flaggedTxns.reduce((s, t) => s + t.amount, 0);
     let score = typologies.reduce((s, k) => s + TYPOLOGIES[k].weight, 0);
     score = Math.min(100, Math.round(score * 0.75 + Math.min(20, value / 500000)));
-    alerts.push({
-      person, name: agg.name, typologies, score,
+    scored.push({
+      person, name: agg.name, profile: agg.profile, typologies, score,
       tier: score >= 60 ? 'High' : score >= 35 ? 'Medium' : 'Low',
       value, txnCount: all.length, flaggedCount: flaggedTxns.length,
       inDistinct, outDistinct,
@@ -418,7 +428,9 @@ export function buildFinancialTrails({ cases, accused }) {
       narrative: buildNarrative(typologies, inDistinct, outDistinct),
     });
   });
+  const alerts = scored.filter((a) => a.typologies.length > 0);
   alerts.sort((a, b) => b.score - a.score);
+  const validation = validateFinancialTrails(scored);
 
   const typologyCounts = Object.keys(TYPOLOGIES)
     .map((k) => ({ key: k, ...TYPOLOGIES[k], count: alerts.filter((a) => a.typologies.includes(k)).length }))
@@ -551,13 +563,96 @@ export function buildFinancialTrails({ cases, accused }) {
   const branches = [...new Set([...nodes.values()].map((n) => n.ifsc).filter(Boolean))];
 
   return {
-    summary, alerts, typologyCounts, flagged, branches,
+    summary, alerts, typologyCounts, flagged, branches, validation,
     // The graph, not the drawing. Laying out 190 nodes is half a second of
     // O(n²) work, so it is a step the caller can yield through rather than
     // something that happens inside this function whether there is time for
     // it or not — see getFinancialTrails.
     moneyGraph: { nodes: [...nodes.values()], flows: links },
   };
+}
+
+/**
+ * Does the score actually predict laundering, and does the number mean what
+ * it says? The generator plants a known answer — every accused gets one of
+ * six behavioural profiles, and 'ordinary' is the only one that is not a
+ * laundering pattern — so it can be used to check the detector the same way
+ * Case Linkage checks its own scorer (see utils/caselinkage.js): AUC for
+ * ranking, a confusion matrix at the tier the tool actually flags at, and a
+ * calibration curve for whether "72" means anything like 72%.
+ *
+ * "Flagged" here means the same thing the Prioritised alerts table means: at
+ * least one typology fired. That is the tool's real operating point today —
+ * Tier is a severity label applied AFTER that decision, not a second gate.
+ */
+export function validateFinancialTrails(scored) {
+  const positives = scored.filter((s) => s.profile !== 'ordinary');
+  const negatives = scored.filter((s) => s.profile === 'ordinary');
+  const auc = rocAuc(positives.map((s) => s.score), negatives.map((s) => s.score));
+
+  let tp = 0; let fp = 0; let tn = 0; let fn = 0;
+  scored.forEach((s) => {
+    const predicted = s.typologies.length > 0;
+    const actual = s.profile !== 'ordinary';
+    if (predicted && actual) tp++;
+    else if (predicted && !actual) fp++;
+    else if (!predicted && actual) fn++;
+    else tn++;
+  });
+  const confusion = confusionMetrics(tp, fp, tn, fn);
+
+  const samples = scored.map((s) => ({ x: s.score / 100, y: s.profile !== 'ordinary' ? 1 : 0 }));
+  const calibration = assess(samples);
+
+  return {
+    population: scored.length,
+    positives: positives.length,
+    negatives: negatives.length,
+    auc, aucBand: aucBand(auc),
+    confusion,
+    calibration,
+  };
+}
+
+// How a score was actually built, typology by typology — the same numbers
+// scoring the alert, not a separate approximation of them. Points are rounded
+// per item for display, so they can be off by a point or two from the score
+// shown alongside; that is a rounding artefact of presentation, not a
+// different calculation.
+export function scoreBreakdown({ typologies, value }) {
+  const items = typologies.map((k) => ({
+    key: k, label: TYPOLOGIES[k].label, points: Math.round(TYPOLOGIES[k].weight * 0.75),
+  }));
+  const valuePoints = Math.round(Math.min(20, value / 500000));
+  if (valuePoints > 0) items.push({ key: 'value', label: 'Transaction value', points: valuePoints });
+  return items.sort((a, b) => b.points - a.points);
+}
+
+// Ask the backend to turn an already-scored alert into a short investigation
+// note. The facts (typologies, points, value, FIR numbers) are computed here,
+// client-side, before the call — the LLM is asked to phrase them, never to
+// find them, so it cannot invent a number that isn't already on screen.
+export async function narrateFinancial(alert) {
+  const res = await fetch('/server/rag/financial/narrative', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      person: alert.person,
+      name: alert.name,
+      tier: alert.tier,
+      score: alert.score,
+      breakdown: scoreBreakdown(alert),
+      value: alert.value,
+      txnCount: alert.txnCount,
+      flaggedCount: alert.flaggedCount,
+      inDistinct: alert.inDistinct,
+      outDistinct: alert.outDistinct,
+      firs: alert.firs,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data.narrative;
 }
 
 function buildNarrative(typ, inD, outD) {

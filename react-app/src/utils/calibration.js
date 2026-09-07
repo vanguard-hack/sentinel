@@ -215,6 +215,65 @@ export function ece(bins) {
   return bins.reduce((a, b) => a + (b.weight / total) * Math.abs(b.gap), 0);
 }
 
+// AUC via the Mann-Whitney rank statistic (ties get average ranks) — the
+// probability that a random positive outscores a random negative. Scale-free,
+// so raw scores (0-100, 0-1, whatever) work without normalising first.
+export function rocAuc(positiveScores, negativeScores) {
+  const all = [
+    ...positiveScores.map((s) => ({ s, positive: 1 })),
+    ...negativeScores.map((s) => ({ s, positive: 0 })),
+  ].sort((x, y) => x.s - y.s);
+  let i = 0;
+  let rankSum = 0;
+  while (i < all.length) {
+    let j = i;
+    while (j + 1 < all.length && all[j + 1].s === all[i].s) j++;
+    const avgRank = (i + j) / 2 + 1;
+    for (let k = i; k <= j; k++) if (all[k].positive) rankSum += avgRank;
+    i = j + 1;
+  }
+  const n1 = positiveScores.length;
+  const n2 = negativeScores.length;
+  if (!n1 || !n2) return null;
+  return (rankSum - (n1 * (n1 + 1)) / 2) / (n1 * n2);
+}
+
+// Swets (1988) interpretation bands, as used across the linkage literature.
+export function aucBand(auc) {
+  if (auc == null) return '';
+  if (auc >= 0.9) return 'high accuracy';
+  if (auc >= 0.7) return 'moderate accuracy';
+  if (auc >= 0.5) return 'low accuracy';
+  return 'non-informative';
+}
+
+/**
+ * Precision / recall / F1 / MCC from a confusion matrix at one operating
+ * threshold. AUC and calibration both describe the score as a whole; this is
+ * the question an officer asks about the SPECIFIC threshold the tool actually
+ * flags at today — how many of the flags are real, how many reals get missed.
+ *
+ * MCC (Matthews Correlation Coefficient) is included alongside the more
+ * familiar precision/recall/F1 because, unlike them, it uses all four
+ * confusion-matrix cells at once and stays meaningful under heavy class
+ * imbalance — the property the fraud-detection literature singles it out for.
+ */
+export function confusionMetrics(tp, fp, tn, fn) {
+  const total = tp + fp + tn + fn;
+  const precision = tp + fp > 0 ? tp / (tp + fp) : null;
+  const recall = tp + fn > 0 ? tp / (tp + fn) : null;
+  const f1 = precision != null && recall != null && precision + recall > 0
+    ? (2 * precision * recall) / (precision + recall)
+    : null;
+  const mccDenomSq = (tp + fp) * (tp + fn) * (tn + fp) * (tn + fn);
+  const mcc = mccDenomSq > 0 ? (tp * tn - fp * fn) / Math.sqrt(mccDenomSq) : null;
+  return {
+    tp, fp, tn, fn, total,
+    accuracy: total > 0 ? (tp + tn) / total : null,
+    precision, recall, f1, mcc,
+  };
+}
+
 export function calibrationBand(e) {
   if (e == null) return '';
   if (e < 0.05) return 'well calibrated';
