@@ -363,10 +363,10 @@ export default function ActionQueue() {
                             type="button"
                             className="aq-details"
                             aria-expanded={expanded}
+                            aria-label={expanded ? 'Hide details' : 'Show details'}
                             onClick={() => { setOpenRow(expanded ? null : k); setAcking(null); }}
                           >
-                            Details
-                            <ChevronDown size={12} className={expanded ? 'open' : ''} aria-hidden="true" />
+                            <ChevronDown size={14} className={expanded ? 'open' : ''} aria-hidden="true" />
                           </button>
                         </td>
                       </tr>

@@ -26,19 +26,56 @@ function Kpi({ value, label }) {
 // The score, taken apart — the same points the formula summed, not a
 // separate guess at them. Reuses the labelled-micro-bar look Case Linkage
 // uses for its own score breakdown, scaled to this score's ~20-point items.
+//
+// Capped to the top factors (already sorted highest-first by scoreBreakdown)
+// rather than showing all of them: an alert can trigger anywhere from 2 to 7
+// typologies, so an uncapped list made every row a different height, and
+// with it the row divider below every row sat at a different level — this
+// is what actually fixes that, not the divider itself. Every hidden factor's
+// label and points are still in the "+N more" chip's title tooltip.
+// TypologyChips (below) caps the Typologies column the same way, for the
+// same reason — the two columns were the row's two independent
+// height-drivers, and both needed capping, not just one.
+const BREAKDOWN_CAP = 4;
 function ScoreBreakdown({ alert }) {
   const items = scoreBreakdown(alert);
   if (!items.length) return null;
+  const shown = items.slice(0, BREAKDOWN_CAP);
+  const hidden = items.length - shown.length;
   return (
     <div className="lk-breakdown ft-breakdown">
-      {items.map((it) => (
+      {shown.map((it) => (
         <div key={it.key} className="lk-bd-row" title={`${it.label}: +${it.points}`}>
           <span className="lk-bd-label ft-bd-label">{it.label}</span>
           <span className="lk-bd-track"><span className="lk-bd-fill" style={{ width: `${Math.min(100, (it.points / 20) * 100)}%` }} /></span>
           <span className="ft-bd-points">+{it.points}</span>
         </div>
       ))}
+      {hidden > 0 && (
+        <div className="lk-bd-row ft-bd-more" title={items.slice(BREAKDOWN_CAP).map((it) => `${it.label}: +${it.points}`).join(', ')}>
+          <span className="ft-bd-more-label">+{hidden} more factor{hidden === 1 ? '' : 's'}</span>
+        </div>
+      )}
     </div>
+  );
+}
+
+// Same cap, same reason, for the Typologies column — sorted highest-weight
+// first so the chips shown line up with ScoreBreakdown's own top factors,
+// rather than the two columns spotlighting different typologies.
+function TypologyChips({ typologies }) {
+  const sorted = [...typologies].sort((a, b) => (TYPOLOGIES[b].weight || 0) - (TYPOLOGIES[a].weight || 0));
+  const shown = sorted.slice(0, BREAKDOWN_CAP);
+  const hidden = sorted.slice(BREAKDOWN_CAP);
+  return (
+    <>
+      {shown.map((k) => <span key={k} className="ft-flag" title={TYPOLOGIES[k].desc}>{TYPOLOGIES[k].label}</span>)}
+      {hidden.length > 0 && (
+        <span className="ft-flag ft-flag-more" title={hidden.map((k) => TYPOLOGIES[k].label).join(', ')}>
+          +{hidden.length} more
+        </span>
+      )}
+    </>
   );
 }
 
@@ -466,9 +503,7 @@ export default function FinancialTrails() {
                       {a.score}
                       <ScoreBreakdown alert={a} />
                     </td>
-                    <td className="ft-flags">
-                      {a.typologies.map((k) => <span key={k} className="ft-flag" title={TYPOLOGIES[k].desc}>{TYPOLOGIES[k].label}</span>)}
-                    </td>
+                    <td className="ft-flags"><TypologyChips typologies={a.typologies} /></td>
                     <td className="ft-num">{formatRs(a.value)}</td>
                     <td className="ft-narrative-cell"><Narrative alert={a} /></td>
                     <td className="ft-firs fc-pid">{a.firs.join(', ')}</td>

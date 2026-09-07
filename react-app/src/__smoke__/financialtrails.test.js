@@ -16,6 +16,14 @@ const mockModel = {
     { person: 'P1', name: 'Suspect One', typologies: ['fanIn'], score: 72, tier: 'High',
       value: 2500000, txnCount: 9, flaggedCount: 5, inDistinct: 5, outDistinct: 1,
       firs: ['CR/1'], narrative: 'Collected funds from 5 accounts.' },
+    // Every typology triggered at once — the row-height stress case: without
+    // a cap, this alert's Score/Typologies columns would be far taller than
+    // a one-typology alert's, which is exactly what put the row divider
+    // below each row at a different level.
+    { person: 'P2', name: 'Suspect Two', tier: 'High', score: 98,
+      typologies: ['structuring', 'layering', 'fanIn', 'fanOut', 'roundTrip', 'passThrough'],
+      value: 9000000, txnCount: 20, flaggedCount: 15, inDistinct: 8, outDistinct: 8,
+      firs: ['CR/2'], narrative: 'Every typology at once.' },
   ],
   typologyCounts: [{ key: 'fanIn', label: 'Fan-in (mule hub)', desc: 'Funds collected', count: 1 }],
   flagged: [
@@ -91,4 +99,28 @@ test('one account is "1 account", not "1 accounts"', async () => {
   await waitFor(() => expect(container.querySelector('.ft-geo')).not.toBeNull());
   const counts = [...container.querySelectorAll('.ft-geo li > span')].map((s) => s.textContent);
   expect(counts.every((c) => /^1 account$|^\d+ accounts$/.test(c))).toBe(true);
+});
+
+// The row-height fix: an alert with more typologies than the display cap
+// must show a bounded number of chips/breakdown rows, not everything it
+// triggered — that unbounded growth was what put each row's bottom divider
+// at a different level. Both columns are capped, since either one growing
+// unbounded would reintroduce the same problem.
+test('a heavily-flagged alert caps its typology chips, with a "+N more" chip instead of all of them', async () => {
+  render(<FinancialTrails />);
+  const row = (await screen.findByText('Suspect Two')).closest('tr');
+  const chips = row.querySelectorAll('.ft-flags .ft-flag');
+  expect(chips).toHaveLength(5); // 4 shown + the "+N more" chip
+  expect(chips[4].className).toMatch(/ft-flag-more/);
+  expect(chips[4].textContent).toBe('+2 more');
+});
+
+test('a heavily-flagged alert caps its score breakdown, with a "+N more factors" row instead of all of them', async () => {
+  render(<FinancialTrails />);
+  const row = (await screen.findByText('Suspect Two')).closest('tr');
+  const breakdownRows = row.querySelectorAll('.ft-breakdown .lk-bd-row');
+  // 6 typologies + the "Transaction value" factor scoreBreakdown adds = 7,
+  // capped to 4 shown + 1 "+N more" row.
+  expect(breakdownRows).toHaveLength(5);
+  expect(row.querySelector('.ft-bd-more-label').textContent).toBe('+3 more factors');
 });
