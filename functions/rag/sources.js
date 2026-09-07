@@ -413,6 +413,44 @@ function fromSanctions(hits) {
   });
 }
 
+// ── Lane 8: crypto wallet lookups ───────────────────────────────────────
+//
+// Unlike fromOsint, both chains' human-browsable address pages are simple
+// path substitutions on their own domain — no separate "public check page"
+// workaround needed the way AbuseIPDB's was. The API host and the page
+// host differ (api.etherscan.io vs etherscan.io, blockstream.info/api/
+// vs blockstream.info/), so the citation still has to build the page URL
+// deliberately rather than reuse the one that was actually called.
+
+function fromCrypto(hit) {
+  if (!hit) return [];
+  const address = str(hit.address, 100);
+  if (hit.chain === 'bitcoin' && hit.bitcoin && hit.bitcoin.available) {
+    const b = hit.bitcoin;
+    const facts = [`Balance: ${b.balanceBtc} BTC`, `Transactions: ${b.txCount}`].join(' · ');
+    return [{
+      source_type: TYPES.EXTERNAL_WEB,
+      display_name: `Bitcoin address — ${address}`,
+      uri: `https://blockstream.info/address/${encodeURIComponent(hit.address)}`,
+      domain: 'blockstream.info',
+      scope: 'Bitcoin blockchain activity',
+      passages: [{ location: null, excerpt: str(facts, 400), score: null }],
+    }];
+  }
+  if (hit.chain === 'ethereum' && hit.ethereum && hit.ethereum.available) {
+    const facts = `Balance: ${hit.ethereum.balanceEth} ETH`;
+    return [{
+      source_type: TYPES.EXTERNAL_WEB,
+      display_name: `Ethereum address — ${address}`,
+      uri: `https://etherscan.io/address/${encodeURIComponent(hit.address)}`,
+      domain: 'etherscan.io',
+      scope: 'Ethereum blockchain activity',
+      passages: [{ location: null, excerpt: str(facts, 400), score: null }],
+    }];
+  }
+  return [];
+}
+
 // ── Clearance ───────────────────────────────────────────────────────────────
 
 // Fields whose NAME alone discloses something — a filter clause reading
@@ -577,6 +615,7 @@ module.exports = {
   fromWeb,
   fromOsint,
   fromSanctions,
+  fromCrypto,
   filterSummary,
   matchedRecordIds,
   clearanceFilter,

@@ -163,6 +163,34 @@ check('no hits produces no citations', a.fromSanctions([]).length === 0);
 check('an analyst can see a sanctions citation — it names a public UN record, not a case',
   a.clearanceFilter(a.merge(sanctionsCited), 'analyst').sources.length === 1);
 
+// ── Crypto wallet citations ─────────────────────────────────────────────
+const btcHit = {
+  chain: 'bitcoin', address: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
+  bitcoin: { available: true, balanceBtc: 3.71218483, txCount: 1131, fundedCount: 1174, spentCount: 434 },
+};
+const btcCited = a.fromCrypto(btcHit);
+check('a Bitcoin lookup produces one citation', btcCited.length === 1);
+check('it links the real, checkable Blockstream address page, not the API endpoint',
+  btcCited[0].uri === 'https://blockstream.info/address/bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh'
+  && btcCited[0].domain === 'blockstream.info');
+check('it carries the balance and transaction count as its passage',
+  /3\.71218483 BTC/.test(btcCited[0].passages[0].excerpt) && /Transactions: 1131/.test(btcCited[0].passages[0].excerpt));
+
+const ethHit = {
+  chain: 'ethereum', address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+  ethereum: { available: true, balanceEth: 2.5 },
+};
+const ethCited = a.fromCrypto(ethHit);
+check('an Ethereum lookup produces one citation', ethCited.length === 1);
+check('it links the real, checkable Etherscan address page, not the API endpoint',
+  ethCited[0].uri === 'https://etherscan.io/address/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
+  && ethCited[0].domain === 'etherscan.io');
+
+const unavailableHit = { chain: 'bitcoin', address: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', bitcoin: { available: false } };
+check('a chain that did not answer produces no citation', a.fromCrypto(unavailableHit).length === 0);
+check('an analyst can see a crypto citation — it names a public address, not a case',
+  a.clearanceFilter(a.merge(btcCited), 'analyst').sources.length === 1);
+
 // ── Merge & dedupe ─────────────────────────────────────────────────────────
 const merged = a.merge(
   a.fromRagNodes([{ document_title: 'SOP.pdf', page_label: 3, text: 'a' }]),
