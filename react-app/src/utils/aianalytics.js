@@ -124,6 +124,79 @@ export function forecastMonths(series, { window = 18, horizon = 3 } = {}) {
   return { points, slope };
 }
 
+// Every incident's weekday x hour → a 7x24 grid, in calendar order (Sunday
+// first, matching WEEKDAYS above) rather than sorted by volume — a day-of-week
+// view reads by when it is, not by how busy it was.
+export function weekdayHourMatrix(rows) {
+  const grid = WEEKDAYS.map((day) => ({ day, cells: Array(24).fill(0), total: 0 }));
+  rows.forEach((r) => {
+    if (!Number.isFinite(r.weekday) || !Number.isFinite(r.hour)) return;
+    grid[r.weekday].cells[r.hour] += 1;
+    grid[r.weekday].total += 1;
+  });
+  return grid;
+}
+
+// Yearly registration totals, oldest -> newest, each flagged `complete` (all
+// 12 months present in the gap-filled monthly series) or not. The dataset's
+// most recent year is normally partial — it stops mid-year, not at
+// December — and reading that as a real year-over-year drop would be
+// comparing a part to a whole. Complete-vs-partial is what lets the chart
+// (and the trend fit below) tell the difference.
+export function yearlySeries(rows) {
+  const months = monthlySeries(rows);
+  const years = new Map(); // year -> { value, monthCount }
+  months.forEach((m) => {
+    const y = m.key.slice(0, 4);
+    const e = years.get(y) || { value: 0, monthCount: 0 };
+    e.value += m.value;
+    e.monthCount += 1;
+    years.set(y, e);
+  });
+  return [...years.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([year, e]) => ({ year, value: e.value, complete: e.monthCount === 12 }));
+}
+
+// OLS linear trend over the COMPLETE years only — a partial year would drag
+// the slope toward "decline" simply for not being over yet — projected
+// `horizon` years past the last year actually IN the series (complete or
+// partial), so a forecast never re-predicts a year already shown as an
+// actual. Same honesty rule as forecastMonths: transparent, not a trained
+// model, and only offered with at least 2 complete years to fit a line
+// through.
+export function forecastYears(series, horizon = 2) {
+  const complete = series.filter((y) => y.complete);
+  const n = complete.length;
+  if (n < 2 || !series.length) return { points: [], slope: 0 };
+  const xs = complete.map((_, i) => i);
+  const ys = complete.map((y) => y.value);
+  const xm = xs.reduce((a, b) => a + b, 0) / n;
+  const ym = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (xs[i] - xm) * (ys[i] - ym);
+    den += (xs[i] - xm) ** 2;
+  }
+  const slope = den ? num / den : 0;
+  const intercept = ym - slope * xm;
+
+  const lastCompleteYear = Number(complete[n - 1].year);
+  const lastYearInSeries = Number(series[series.length - 1].year);
+  const points = [];
+  for (let h = 1; h <= horizon; h++) {
+    const targetYear = lastYearInSeries + h;
+    const stepsFromFit = targetYear - lastCompleteYear; // >=1; skips any partial year already shown
+    points.push({
+      year: String(targetYear),
+      value: Math.max(0, Math.round(intercept + slope * (n - 1 + stepsFromFit))),
+      forecast: true,
+    });
+  }
+  return { points, slope };
+}
+
 export const DAYPARTS = [
   { label: 'Night 00–06', from: 0, to: 5 },
   { label: 'Morning 06–12', from: 6, to: 11 },

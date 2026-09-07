@@ -5,10 +5,11 @@ import {
 } from 'lucide-react';
 import {
   getIncidents, refreshIncidents, hourlyProfile, dayOfMonthProfile, weekdayProfile,
-  peakWindow, headDaypartMatrix, DAYPARTS,
+  peakWindow, headDaypartMatrix, DAYPARTS, weekdayHourMatrix, yearlySeries, forecastYears,
 } from '../utils/aianalytics';
 import TrendArea from '../components/charts/TrendArea';
 import BarList from '../components/charts/BarColumns';
+import HBarList from '../components/charts/BarRows';
 import CrimeLinks from '../components/CrimeLinks';
 import CaseLinkage from '../components/CaseLinkage';
 import Forecasts from '../components/Forecasts';
@@ -152,6 +153,32 @@ export default function AIAnalytics() {
       .sort((a, b) => b.value - a.value);
   }, [data, filtered]);
 
+  const dowHourMatrix = useMemo(() => (filtered.length ? weekdayHourMatrix(filtered) : []), [filtered]);
+  const dowHourMax = Math.max(1, ...dowHourMatrix.flatMap((r) => r.cells));
+
+  // Yearly volume: every complete calendar year the dataset covers, plus
+  // whatever partial year it currently trails off into, plus a 2-year linear
+  // projection fitted on the complete years only (see forecastYears — a
+  // partial year would drag the trend toward "decline" simply for not being
+  // over yet). Reusing TrendArea's forecast:true dashed convention rather
+  // than inventing a bar-chart forecast treatment this app doesn't have yet.
+  const yearly = useMemo(() => {
+    if (!filtered.length) return null;
+    const series = yearlySeries(filtered);
+    if (series.length < 2) return null;
+    const { points, slope } = forecastYears(series, 2);
+    return {
+      chartData: [
+        ...series.map((y) => ({ label: y.complete ? y.year : `${y.year}*`, value: y.value })),
+        ...points.map((p) => ({ label: p.year, value: p.value, forecast: true })),
+      ],
+      hasPartial: series.some((y) => !y.complete),
+      hasForecast: points.length > 0,
+      completeYears: series.filter((y) => y.complete).length,
+      slope,
+    };
+  }, [filtered]);
+
   const headOptions = data
     ? Object.entries(data.headNames).sort((a, b) => Number(a[0]) - Number(b[0]))
     : [];
@@ -259,9 +286,6 @@ export default function AIAnalytics() {
                   <option key={id} value={id}>{name}</option>
                 ))}
               </select>
-              <span className="ai-sample">
-                {filtered.length.toLocaleString()} incidents analysed
-              </span>
             </div>
 
             <div className="rp-grid">
@@ -290,7 +314,11 @@ export default function AIAnalytics() {
                 wide
               >
                 {headBreakdown.length ? (
-                  <BarList data={headBreakdown} height={230} />
+                  // Horizontal bars: crime-head names are long enough ("Crimes
+                  // Against Property") that a vertical chart either slants
+                  // them or clips them at the plot edges. A label column
+                  // reads the full name straight across, at any length.
+                  <HBarList data={headBreakdown} />
                 ) : (
                   <div className="rp-empty">No incidents match this filter</div>
                 )}
@@ -332,6 +360,65 @@ export default function AIAnalytics() {
                   </table>
                 </div>
               </Card>
+
+              <Card
+                title="Day of week × hour"
+                subtitle="When incidents actually happen — darker means more incidents"
+                wide
+              >
+                <div className="cf-scroll">
+                  <table className="ai-matrix">
+                    <thead>
+                      <tr>
+                        <th>Day</th>
+                        {Array.from({ length: 24 }, (_, h) => <th key={h}>{pad2(h)}</th>)}
+                        <th>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dowHourMatrix.map((row) => (
+                        <tr key={row.day}>
+                          <td className="ai-matrix-head">{row.day}</td>
+                          {row.cells.map((v, h) => (
+                            <td key={h}>
+                              <span
+                                className="ai-cell"
+                                style={{ '--heat': (v / dowHourMax).toFixed(3) }}
+                                title={`${row.day} · ${pad2(h)}:00: ${v}`}
+                              >
+                                {v}
+                              </span>
+                            </td>
+                          ))}
+                          <td className="ai-matrix-total">{row.total}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+
+              {yearly && (
+                <Card
+                  title="Yearly crime volume"
+                  subtitle={
+                    `${yearly.completeYears} complete year${yearly.completeYears === 1 ? '' : 's'} of history`
+                    + (yearly.hasPartial ? ', plus the year in progress' : '')
+                    + (yearly.hasForecast ? ' — trend projected 2 years ahead (dashed)' : '')
+                  }
+                  wide
+                >
+                  <TrendArea data={yearly.chartData} height={220} />
+                  {yearly.hasForecast && (
+                    <p className={`ai-fc-note ${yearly.slope >= 0 ? 'up' : 'down'}`}>
+                      Trend {yearly.slope >= 0 ? '+' : '−'}{Math.abs(Math.round(yearly.slope))} cases/year
+                      · a transparent linear projection from {yearly.completeYears} complete years —
+                      not a trained model, and not a substitute for the QuickML forecasts on the
+                      Forecasts tab
+                    </p>
+                  )}
+                </Card>
+              )}
             </div>
 
             <p className="rp-footnote">

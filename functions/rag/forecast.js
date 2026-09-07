@@ -106,7 +106,11 @@ function withBand(value, rel) {
   };
 }
 
-const CACHE_KEY = () => `forecast/bundle-v3-${FEATURES.tables.firvolume.origin_month}.json`;
+// v4: bundle now carries relMae in each table's `quality` (see buildBundle) —
+// detectModelAnomalies needs it and silently finds nothing without it, so a
+// cached v3 blob (written before that field existed) has to miss and rebuild
+// rather than get served as-is with the field just absent.
+const CACHE_KEY = () => `forecast/bundle-v4-${FEATURES.tables.firvolume.origin_month}.json`;
 
 /* A series key ("district_4401") -> the name on screen ("Bengaluru City"). */
 function labelFor(model, seriesKey) {
