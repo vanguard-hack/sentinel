@@ -10,6 +10,7 @@ import 'leaflet.heat';
 import { feature } from 'topojson-client';
 import {
   ArrowLeft, Home, Plus, Minus, Maximize2, Flame, Shield, X, Phone, Mail, ExternalLink, Layers,
+  AlertTriangle, Route,
 } from 'lucide-react';
 import { H, CRIME, STATE, DISTRICT, refreshAllData } from '../data/hierarchyStore';
 import { loadPersonnel } from '../utils/personnel';
@@ -86,6 +87,10 @@ function OfficerRow({ label, sub, officer, onOpenPhoto }) {
 
 const DATA_URL = `${process.env.PUBLIC_URL}/maps/india.json`;
 const POLICE_URL = `${process.env.PUBLIC_URL}/maps/karnataka-police-stations.geojson`;
+// Derived offline from FIR Narcotics cases by ksp/fir/generate_smuggling_corridors.py —
+// districts with elevated case density, chained into a route. A pattern in past
+// seizures, not a verified ground-truth trafficking map.
+const CORRIDOR_URL = `${process.env.PUBLIC_URL}/maps/smuggling-corridors.json`;
 const INDIA_CENTER = [14.9, 76.2]; // Karnataka centroid — the map never leaves the state
 const INDIA_ZOOM = 6.4;
 const POLICE_STATE = 'Karnataka'; // the state our police-station dataset covers
@@ -176,6 +181,9 @@ export default function CrimeMap() {
   const [districtMode, setDistrictMode] = useState('crime'); // 'crime' choropleth | 'zones'
   const [policeOn, setPoliceOn] = useState(true);
   const [policeCount, setPoliceCount] = useState(0);
+  const [corridorsOn, setCorridorsOn] = useState(false);
+  const [patrolOn, setPatrolOn] = useState(false);
+  const [patrolInfo, setPatrolInfo] = useState(null); // { stops, km } while a route is drawn
   const [lightbox, setLightbox] = useState(null); // full-screen image URL
   const [dataReady, setDataReady] = useState('loading'); // 'loading' | 'ready' | 'error'
   const navigate = useNavigate();
@@ -363,9 +371,15 @@ export default function CrimeMap() {
     let districtHighlightLayer = null;
     let heatLayer = null;
     let clusterLayer = null;
+    let pulseLayer = null;
     let policeLayer = null;
     let policeOnLocal = true;
-    const current = { level: 'india', state: null, district: null };
+    let corridorLayer = null;
+    let corridorsOnLocal = false;
+    let corridors = []; // raw corridor records, once loaded
+    let patrolLayer = null;
+    let patrolOnLocal = false;
+    const current = { level: 'india', state: null, district: null, districtBounds: null };
 
     const remove = (l) => { if (l) map.removeLayer(l); };
     const boundsOf = (f) => L.geoJSON(f).getBounds();
@@ -392,19 +406,22 @@ export default function CrimeMap() {
 
     const showDistrict = (f) => {
       current.level = 'district'; current.district = f.properties.district;
+      current.districtBounds = boundsOf(f);
       setLevel('district'); setSelectedDistrict(f.properties.district);
       drawDistrictHighlight(f);
       map.flyToBounds(boundsOf(f), { padding: [40, 40], duration: 0.9, easeLinearity: 0.22 });
+      if (patrolOnLocal) computePatrolRoute(); // eslint-disable-line no-use-before-define
     };
 
     const showState = (name) => {
       const sf = stateFeatureByName(name);
       if (!sf) return;
-      current.level = 'state'; current.state = name; current.district = null;
+      current.level = 'state'; current.state = name; current.district = null; current.districtBounds = null;
       setLevel('state'); setSelectedState(name); setSelectedDistrict(null); setSelectedStation(null);
 
       remove(districtsLayer);
       remove(districtHighlightLayer); districtHighlightLayer = null;
+      remove(patrolLayer); patrolLayer = null; setPatrolInfo(null); // no district → no route
       const dFC = {
         type: 'FeatureCollection',
         features: data.districts.features.filter((f) => f.properties.st_nm === name),
@@ -439,16 +456,28 @@ export default function CrimeMap() {
       );
       clusterLayer = L.markerClusterGroup({ chunkedLoading: true, showCoverageOnHover: false });
       const dot = L.divIcon({ className: 'hotspot-dot', iconSize: [12, 12] });
+      pulseLayer = L.layerGroup();
       points.forEach((p) => {
         L.marker([p.lat, p.lng], { icon: dot })
           .bindPopup(`<b>Incident #${p.id}</b><br/>${p.category}<br/><span style="color:var(--text-3)">${p.city}</span>`)
           .addTo(clusterLayer);
+        // Pulsating red circle: a size 0.6-1.0 ring, scaled by the point's intensity.
+        const size = Math.round(16 + p.intensity * 18);
+        const pulseIcon = L.divIcon({
+          className: 'hotspot-pulse-icon',
+          html: '<span class="hotspot-pulse-ring"></span><span class="hotspot-pulse-core"></span>',
+          iconSize: [size, size],
+        });
+        L.marker([p.lat, p.lng], { icon: pulseIcon })
+          .bindPopup(`<b>Hotspot</b><br/>${p.category}<br/><span style="color:var(--text-3)">${p.city}</span>`)
+          .addTo(pulseLayer);
       });
     };
     const setHotspots = (mode) => {
-      remove(heatLayer); remove(clusterLayer);
+      remove(heatLayer); remove(clusterLayer); remove(pulseLayer);
       if (mode === 'heat') heatLayer.addTo(map);
       else if (mode === 'markers') clusterLayer.addTo(map);
+      else if (mode === 'pulse') pulseLayer.addTo(map);
     };
 
     const togglePolice = () => {
@@ -459,8 +488,91 @@ export default function CrimeMap() {
 
     const setDistrictMode2 = (m) => { districtModeLocal = m; if (districtsLayer) districtsLayer.setStyle(districtStyleFn); };
 
+    // ── Smuggling / trafficking corridors ──
+    // Show only over Karnataka, same gate as the police layer.
+    const applyCorridors = (stateName) => {
+      remove(corridorLayer);
+      if (corridorLayer && corridorsOnLocal && stateName === POLICE_STATE) corridorLayer.addTo(map);
+    };
+    const toggleCorridors = () => {
+      corridorsOnLocal = !corridorsOnLocal;
+      setCorridorsOn(corridorsOnLocal);
+      applyCorridors(current.state);
+    };
+
+    // ── Patrol route ──
+    // Greedy nearest-neighbour tour over the current district's hottest points
+    // plus any smuggling-corridor waypoint that touches this district, so the
+    // suggested loop covers both crime density and flagged corridor segments.
+    // This is a coverage heuristic, not a road-network route — there is no
+    // road-graph data to route against.
+    const MAX_STOPS = 8;
+    const computePatrolRoute = () => {
+      remove(patrolLayer); patrolLayer = null;
+      const dname = current.district;
+      const bounds = current.districtBounds;
+      if (!dname || !bounds) { setPatrolInfo(null); return; }
+
+      const inBounds = points.filter((p) => bounds.contains([p.lat, p.lng]));
+      const candidates = [...inBounds]
+        .sort((a, b) => b.intensity - a.intensity)
+        .slice(0, MAX_STOPS - 1) // leave room for a corridor waypoint below
+        .map((p) => ({ lat: p.lat, lng: p.lng, label: `${p.category} hotspot`, corridor: false }));
+
+      corridors
+        .filter((c) => c.districts.includes(dname))
+        .forEach((c) => {
+          const idx = c.districts.indexOf(dname);
+          const [lat, lng] = c.waypoints[idx];
+          if (!candidates.some((s) => s.corridor && s.lat === lat && s.lng === lng)) {
+            candidates.push({ lat, lng, label: c.label, corridor: true });
+          }
+        });
+
+      if (candidates.length < 2) { setPatrolInfo(null); return; }
+      const stops = candidates.slice(0, MAX_STOPS);
+
+      // Nearest-neighbour walk starting from the point nearest the district centre.
+      const center = bounds.getCenter();
+      const dist = (a, b) => L.latLng(a.lat, a.lng).distanceTo(L.latLng(b.lat, b.lng));
+      const remaining = [...stops];
+      const start = remaining.reduce((best, s) =>
+        dist(s, center) < dist(best, center) ? s : best, remaining[0]);
+      const order = [start];
+      remaining.splice(remaining.indexOf(start), 1);
+      while (remaining.length) {
+        const last = order[order.length - 1];
+        let nearest = remaining[0];
+        remaining.forEach((s) => { if (dist(last, s) < dist(last, nearest)) nearest = s; });
+        order.push(nearest);
+        remaining.splice(remaining.indexOf(nearest), 1);
+      }
+
+      let km = 0;
+      for (let i = 0; i < order.length - 1; i++) km += dist(order[i], order[i + 1]) / 1000;
+
+      patrolLayer = L.layerGroup();
+      L.polyline(order.map((s) => [s.lat, s.lng]), {
+        color: css('--primary'), weight: 3, opacity: 0.9, dashArray: '2 8', lineCap: 'round',
+      }).addTo(patrolLayer);
+      order.forEach((s, i) => {
+        L.marker([s.lat, s.lng], {
+          icon: L.divIcon({ className: 'patrol-stop-icon', html: `<span>${i + 1}</span>`, iconSize: [22, 22] }),
+        }).bindPopup(`<b>Stop ${i + 1}${s.corridor ? ' · corridor' : ''}</b><br/>${s.label}`).addTo(patrolLayer);
+      });
+      patrolLayer.addTo(map);
+      setPatrolInfo({ stops: order.length, km: Math.round(km * 10) / 10 });
+    };
+    const setPatrol = (on) => {
+      patrolOnLocal = on;
+      setPatrolOn(on);
+      if (on) computePatrolRoute();
+      else { remove(patrolLayer); patrolLayer = null; setPatrolInfo(null); }
+    };
+
     ctrlRef.current = {
       showIndia, showState, showDistrict, back, setHotspots, togglePolice, setDistrictMode: setDistrictMode2,
+      toggleCorridors, setPatrol,
       zoomIn:  () => map.setZoom(map.getZoom() + 0.6, { animate: true }),
       zoomOut: () => map.setZoom(map.getZoom() - 0.6, { animate: true }),
     };
@@ -504,6 +616,23 @@ export default function CrimeMap() {
       })
       .catch(() => { /* police layer optional — ignore load failure */ });
 
+    // ── Load smuggling / trafficking corridors (independent of boundaries) ──
+    fetch(CORRIDOR_URL)
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((list) => {
+        corridors = list;
+        corridorLayer = L.layerGroup();
+        list.forEach((c) => {
+          L.polyline(c.waypoints, {
+            color: css('--rp-cat-2'), weight: 2 + c.severity * 3, opacity: 0.55 + c.severity * 0.35, dashArray: '8 6',
+          })
+            .bindPopup(`<b>${c.label}</b><br/>${c.districts.join(' → ')}<br/><span style="color:var(--text-3)">${fmt(c.caseCount)} Narcotics cases</span>`)
+            .addTo(corridorLayer);
+        });
+        applyCorridors(current.state); // show now if Karnataka is already selected and toggle is on
+      })
+      .catch(() => { /* corridor layer optional — ignore load failure */ });
+
     return () => {
       window.removeEventListener('resize', onResize);
       map.remove();
@@ -512,13 +641,16 @@ export default function CrimeMap() {
     };
   }, [dataReady]);
 
+  const HOTSPOT_MODES = ['heat', 'markers', 'pulse', 'off'];
   const cycleHotspots = () => {
-    const next = hotspotMode === 'heat' ? 'markers' : hotspotMode === 'markers' ? 'off' : 'heat';
+    const next = HOTSPOT_MODES[(HOTSPOT_MODES.indexOf(hotspotMode) + 1) % HOTSPOT_MODES.length];
     setHotspotMode(next);
     ctrlRef.current?.setHotspots(next);
   };
-  const hotspotLabel = hotspotMode === 'heat' ? 'Heatmap' : hotspotMode === 'markers' ? 'Markers' : 'Off';
+  const hotspotLabel = { heat: 'Heatmap', markers: 'Markers', pulse: 'Pulse', off: 'Off' }[hotspotMode];
   const togglePolice = () => { ctrlRef.current?.togglePolice(); };
+  const toggleCorridors = () => { ctrlRef.current?.toggleCorridors(); };
+  const togglePatrol = () => { ctrlRef.current?.setPatrol(!patrolOn); };
   const toggleDistrictMode = () => {
     const m = districtMode === 'crime' ? 'zones' : 'crime';
     setDistrictMode(m);
@@ -747,6 +879,16 @@ export default function CrimeMap() {
               <Shield size={15} /> <span>Police {policeCount ? `(${policeCount})` : ''}</span>
             </button>
           )}
+          {hasPolice && (
+            <button className={`map-ctrl map-ctrl-corridor ${corridorsOn ? 'on' : ''}`} onClick={toggleCorridors} title="Toggle smuggling / trafficking corridors">
+              <AlertTriangle size={15} /> <span>Corridors</span>
+            </button>
+          )}
+          {level === 'district' && (
+            <button className={`map-ctrl map-ctrl-patrol ${patrolOn ? 'on' : ''}`} onClick={togglePatrol} title="Suggested patrol route for this district">
+              <Route size={15} /> <span>Patrol route</span>
+            </button>
+          )}
           <button className={`map-ctrl map-ctrl-hotspot ${hotspotMode !== 'off' ? 'on' : ''}`} onClick={cycleHotspots} title="Toggle crime hotspots">
             <Flame size={15} /> <span>{hotspotLabel}</span>
           </button>
@@ -757,7 +899,8 @@ export default function CrimeMap() {
 
         <div className="map-hint">
           {level === 'state' && `${selectedState} · click a district to zoom`}
-          {level === 'district' && `${selectedDistrict}, ${selectedState}`}
+          {level === 'district' && !patrolInfo && `${selectedDistrict}, ${selectedState}`}
+          {level === 'district' && patrolInfo && `Patrol route · ${patrolInfo.stops} stops · ~${patrolInfo.km} km`}
         </div>
       </div>
 
