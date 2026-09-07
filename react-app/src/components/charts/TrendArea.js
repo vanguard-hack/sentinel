@@ -25,6 +25,31 @@ import './chart-tokens.css';
 
 const MARGIN = { top: 12, right: 16, bottom: 28, left: 40 };
 
+// A forecast tail is a different kind of claim from a measurement, so it is
+// drawn dashed and carries no fill. A LEADING run of `illustrative: true`
+// points (a placeholder backdrop with no real record behind it — e.g. the
+// Temporal Patterns yearly chart's pre-dataset years) gets the same dashed,
+// no-fill treatment for the same reason, symmetrically at the other end.
+// Both are optional: a caller that sets neither flag gets back exactly the
+// solid-only rendering this chart has always had. Two separate dashed runs,
+// never concatenated into one: they are not adjacent in x-index, and a
+// single path between them would draw a spurious line straight across the
+// solid segment.
+export function trendSegments(data) {
+  const fcStart = data.findIndex((d) => d.forecast);
+  let illEnd = data.findIndex((d) => !d.illustrative); // count of leading illustrative points
+  if (illEnd === -1) illEnd = data.length; // every point flagged illustrative — treat it all as the lead-in
+  const hasLead = illEnd > 0;
+  const hasTrail = fcStart !== -1;
+  const idx = data.map((d, i) => ({ i, value: d.value ?? 0 }));
+  const solid = idx.slice(illEnd, hasTrail ? fcStart : idx.length);
+  // Each dashed run overlaps the solid segment by one point so its line
+  // visually joins where the solid line starts/ends.
+  const leadDashed = hasLead ? idx.slice(0, Math.min(idx.length, illEnd + 1)) : [];
+  const trailDashed = hasTrail ? idx.slice(Math.max(0, fcStart - 1)) : [];
+  return { solid, leadDashed, trailDashed };
+}
+
 function Plot({ width, height, data, ariaLabel }) {
   const [active, setActive] = useState(null);
   const svgRef = useRef(null);
@@ -67,12 +92,7 @@ function Plot({ width, height, data, ariaLabel }) {
 
   if (innerW <= 0) return null;
 
-  // A forecast tail is a different kind of claim from a measurement, so it is
-  // drawn dashed and carries no fill.
-  const fcStart = data.findIndex((d) => d.forecast);
-  const idx = data.map((d, i) => ({ i, value: d.value ?? 0, forecast: !!d.forecast }));
-  const solid = fcStart === -1 ? idx : idx.slice(0, fcStart);
-  const dashed = fcStart === -1 ? [] : idx.slice(Math.max(0, fcStart - 1));
+  const { solid, leadDashed, trailDashed } = trendSegments(data);
 
   const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(innerW / 76))));
   const hovering = active != null;
@@ -163,9 +183,24 @@ function Plot({ width, height, data, ariaLabel }) {
               }}
             />
           )}
-          {dashed.length > 1 && (
+          {leadDashed.length > 1 && (
             <LinePath
-              data={dashed}
+              data={leadDashed}
+              x={ax}
+              y={ay}
+              curve={curveNatural}
+              stroke={cat(0)}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeDasharray="5,5"
+              fill="none"
+              opacity={drawn ? 0.75 : 0}
+              style={{ transition: `opacity ${DRAW_MS}ms ${EASE}` }}
+            />
+          )}
+          {trailDashed.length > 1 && (
+            <LinePath
+              data={trailDashed}
               x={ax}
               y={ay}
               curve={curveNatural}
@@ -212,7 +247,7 @@ function Plot({ width, height, data, ariaLabel }) {
           width={width}
           title={data[active].label}
           rows={[{
-            name: data[active].forecast ? 'Forecast' : 'Recorded',
+            name: data[active].forecast ? 'Forecast' : data[active].illustrative ? 'Illustrative' : 'Recorded',
             value: (data[active].value ?? 0).toLocaleString(),
             color: cat(0),
           }]}

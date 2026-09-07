@@ -158,6 +158,61 @@ export function yearlySeries(rows) {
     .map(([year, e]) => ({ year, value: e.value, complete: e.monthCount === 12 }));
 }
 
+// Deterministic PRNG (mulberry32 — the same generator utils/patrol.js and
+// utils/financial.js each already carry their own copy of, for the same
+// reason: reproducible synthetic figures with no external dependency).
+function mulberry32(seed) {
+  return () => {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// A CLEARLY-LABELLED illustrative lead-in for the years before this
+// (synthetic) dataset's own coverage starts — this platform's underlying
+// case data only ever covers 2023 through mid-2026 (see CLAUDE.md); there is
+// no real record, synthetic or otherwise, behind anything earlier. Rather
+// than pretend to know a 13-year trend that was never modelled, each year is
+// drawn independently around the first REAL year's level with bounded
+// deterministic noise — a plausible-looking, admittedly-decorative backdrop,
+// not a second forecast. Every point carries `illustrative: true`, which is
+// what TrendArea uses to draw it dashed and unmistakably apart from the
+// actual recorded years — see completePartialYear and forecastYears below
+// for how those, by contrast, both stay strictly evidence-based.
+export function illustrativeHistory(series, years = 13, seed = 20100101) {
+  if (!series.length) return [];
+  const anchor = series[0].value;
+  const firstYear = Number(series[0].year);
+  const rnd = mulberry32(seed);
+  const out = [];
+  for (let i = years; i >= 1; i--) {
+    const noise = (rnd() - 0.5) * 0.3; // +/-15% around the anchor level
+    out.push({ year: String(firstYear - i), value: Math.max(0, Math.round(anchor * (1 + noise))), illustrative: true });
+  }
+  return out;
+}
+
+// If the trailing year in `series` is partial and `modelSeries.forecast` (a
+// deployed QuickML monthly forecast, e.g. fc.total or fc.crimehead.series[k]
+// from getForecasts()) reaches into it, tops that year up with the model's
+// own predicted remaining months — real model output, not a second guess —
+// rather than leaving the bar visibly short. A no-op (returns `series`
+// unchanged) when there's no partial year, or the model's forecast doesn't
+// happen to cover it.
+export function completePartialYear(series, modelSeries) {
+  const last = series[series.length - 1];
+  if (!last || last.complete || !modelSeries?.forecast) return { series, modelCompleted: false };
+  const remaining = modelSeries.forecast.filter((p) => p.month && p.month.startsWith(last.year) && p.value != null);
+  if (!remaining.length) return { series, modelCompleted: false };
+  const addedValue = remaining.reduce((s, p) => s + p.value, 0);
+  return {
+    series: [...series.slice(0, -1), { ...last, value: last.value + addedValue }],
+    modelCompleted: true,
+  };
+}
+
 // OLS linear trend over the COMPLETE years only — a partial year would drag
 // the slope toward "decline" simply for not being over yet — projected
 // `horizon` years past the last year actually IN the series (complete or

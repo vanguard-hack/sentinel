@@ -3,7 +3,9 @@
  * years. Both build on the same {hour, weekday, month} row shape
  * fetchIncidents() already produces.
  */
-import { weekdayHourMatrix, yearlySeries, forecastYears } from '../utils/aianalytics';
+import {
+  weekdayHourMatrix, yearlySeries, forecastYears, completePartialYear, illustrativeHistory,
+} from '../utils/aianalytics';
 
 const row = (weekday, hour) => ({ weekday, hour, dayOfMonth: 1, month: '2025-01', head: '1' });
 
@@ -74,4 +76,63 @@ test('forecastYears needs at least 2 complete years, and never predicts below ze
   ];
   const { points } = forecastYears(declining, 3);
   expect(points.every((p) => p.value >= 0)).toBe(true);
+});
+
+test('completePartialYear tops up the trailing partial year with the model\'s remaining months', () => {
+  const series = [
+    { year: '2025', value: 1200, complete: true },
+    { year: '2026', value: 600, complete: false }, // Jan-Jun actual
+  ];
+  const modelSeries = {
+    forecast: [
+      { month: '2026-07', value: 100 },
+      { month: '2026-08', value: 110 },
+      { month: '2027-01', value: 999 }, // a different year — must not leak in
+    ],
+  };
+  const { series: out, modelCompleted } = completePartialYear(series, modelSeries);
+  expect(modelCompleted).toBe(true);
+  expect(out).toEqual([
+    { year: '2025', value: 1200, complete: true },
+    { year: '2026', value: 810, complete: false }, // 600 + 100 + 110
+  ]);
+});
+
+test('completePartialYear is a no-op when the trailing year is already complete', () => {
+  const series = [{ year: '2025', value: 1200, complete: true }];
+  const result = completePartialYear(series, { forecast: [{ month: '2026-01', value: 50 }] });
+  expect(result).toEqual({ series, modelCompleted: false });
+});
+
+test('completePartialYear is a no-op with no model series, or one with no forecast for that year', () => {
+  const series = [{ year: '2026', value: 600, complete: false }];
+  expect(completePartialYear(series, null)).toEqual({ series, modelCompleted: false });
+  expect(completePartialYear(series, { forecast: [{ month: '2027-01', value: 50 }] }))
+    .toEqual({ series, modelCompleted: false });
+});
+
+test('illustrativeHistory prepends the requested number of years, ending right before the first real year', () => {
+  const series = [{ year: '2023', value: 1000, complete: true }];
+  const lead = illustrativeHistory(series, 13);
+  expect(lead).toHaveLength(13);
+  expect(lead.map((p) => p.year)).toEqual(
+    Array.from({ length: 13 }, (_, i) => String(2023 - 13 + i)) // 2010..2022, ascending
+  );
+  expect(lead.every((p) => p.illustrative)).toBe(true);
+});
+
+test('illustrativeHistory values stay bounded and non-negative around the first real year\'s level', () => {
+  const series = [{ year: '2023', value: 1000, complete: true }];
+  const lead = illustrativeHistory(series, 13);
+  lead.forEach((p) => {
+    expect(p.value).toBeGreaterThanOrEqual(0);
+    expect(p.value).toBeLessThanOrEqual(1500); // anchor * 1.15, with rounding slack
+    expect(p.value).toBeGreaterThanOrEqual(850); // anchor * 0.85, with rounding slack
+  });
+});
+
+test('illustrativeHistory is deterministic for the same seed, and empty with no series to anchor on', () => {
+  const series = [{ year: '2023', value: 1000, complete: true }];
+  expect(illustrativeHistory(series, 5, 42)).toEqual(illustrativeHistory(series, 5, 42));
+  expect(illustrativeHistory([])).toEqual([]);
 });

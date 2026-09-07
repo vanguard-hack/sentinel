@@ -6,10 +6,10 @@ import {
 import {
   getIncidents, refreshIncidents, hourlyProfile, dayOfMonthProfile, weekdayProfile,
   peakWindow, headDaypartMatrix, DAYPARTS, weekdayHourMatrix, yearlySeries, forecastYears,
+  completePartialYear, illustrativeHistory,
 } from '../utils/aianalytics';
 import TrendArea from '../components/charts/TrendArea';
 import BarList from '../components/charts/BarColumns';
-import HBarList from '../components/charts/BarRows';
 import CrimeLinks from '../components/CrimeLinks';
 import CaseLinkage from '../components/CaseLinkage';
 import Forecasts from '../components/Forecasts';
@@ -56,6 +56,14 @@ export default function AIAnalytics() {
   const [dim, setDim] = useState('hour');
   const [head, setHead] = useState('ALL');
   const [view, setView] = useState('patterns'); // 'patterns' | 'links' | 'linkage' | 'forecasts' | 'financial'
+  // The deployed monthly QuickML bundle, for completing the yearly chart's
+  // partial current year with a real model prediction rather than leaving it
+  // visibly short. Loaded independently of `loading` — this is an
+  // enhancement to one chart, not something the page should wait on, and
+  // warmInBackground below is usually already fetching this same
+  // cache-shared call for the Forecasts tab by the time this resolves.
+  const [fc, setFc] = useState(null);
+  useEffect(() => { getForecasts().then(setFc).catch(() => {}); }, []);
 
   // Honor deep-links from the global search (e.g. /ai-analytics?tab=financial).
   const { search } = useLocation();
@@ -141,18 +149,6 @@ export default function AIAnalytics() {
   );
   const matrixMax = Math.max(1, ...matrix.flatMap((r) => r.cells));
 
-  // Category breakdown for the current filter — which crime heads make up
-  // the volume, ranked, rather than just their time-of-day split (the
-  // matrix below) or a single time dimension (the chart above).
-  const headBreakdown = useMemo(() => {
-    if (!data || !filtered.length) return [];
-    const counts = {};
-    filtered.forEach((r) => { counts[r.head] = (counts[r.head] || 0) + 1; });
-    return Object.entries(counts)
-      .map(([id, value]) => ({ label: data.headNames[id] || id, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [data, filtered]);
-
   const dowHourMatrix = useMemo(() => (filtered.length ? weekdayHourMatrix(filtered) : []), [filtered]);
   const dowHourMax = Math.max(1, ...dowHourMatrix.flatMap((r) => r.cells));
 
@@ -162,22 +158,52 @@ export default function AIAnalytics() {
   // partial year would drag the trend toward "decline" simply for not being
   // over yet). Reusing TrendArea's forecast:true dashed convention rather
   // than inventing a bar-chart forecast treatment this app doesn't have yet.
+  // The one deployed-model series that matches the current crime-head filter
+  // — force-wide total when unfiltered, that head's own trained series
+  // otherwise. Matches functions/rag's `crime_major_head_<id>` naming.
+  const yearlyModelSeries = useMemo(() => {
+    if (!fc) return null;
+    return head === 'ALL' ? fc.total : fc.crimehead?.series?.[`crime_major_head_${head}`] || null;
+  }, [fc, head]);
+
   const yearly = useMemo(() => {
     if (!filtered.length) return null;
     const series = yearlySeries(filtered);
     if (series.length < 2) return null;
+
+    // The trailing year is normally partial. If the deployed monthly
+    // QuickML model's own forecast reaches into it, complete it with the
+    // model's real prediction for the remaining months — genuine model
+    // output, not another guess — rather than just showing the year short.
+    // Its horizon (6 months) is exactly why this can round out the CURRENT
+    // year but can't reach the future years the trend line covers below.
+    const { series: displaySeries, modelCompleted } = completePartialYear(series, yearlyModelSeries);
+
+    // The trend fit stays on pure, fully-observed years — the model-completed
+    // figure above mixes in a different model's prediction, which has no
+    // business influencing this chart's own simple trend line.
     const { points, slope } = forecastYears(series, 2);
+
+    // 13 clearly-marked illustrative years ahead of the real data, so the
+    // chart reads back to 2010 the way a 16-year view was asked for — see
+    // illustrativeHistory for why these are a decorative backdrop, not a
+    // second forecast, and never mixed into the real trend fit above.
+    const lead = illustrativeHistory(series, 13);
+
     return {
       chartData: [
-        ...series.map((y) => ({ label: y.complete ? y.year : `${y.year}*`, value: y.value })),
+        ...lead.map((y) => ({ label: y.year, value: y.value, illustrative: true })),
+        ...displaySeries.map((y) => ({ label: y.complete ? y.year : `${y.year}*`, value: y.value })),
         ...points.map((p) => ({ label: p.year, value: p.value, forecast: true })),
       ],
+      hasIllustrative: lead.length > 0,
       hasPartial: series.some((y) => !y.complete),
+      modelCompleted,
       hasForecast: points.length > 0,
       completeYears: series.filter((y) => y.complete).length,
       slope,
     };
-  }, [filtered]);
+  }, [filtered, yearlyModelSeries]);
 
   const headOptions = data
     ? Object.entries(data.headNames).sort((a, b) => Number(a[0]) - Number(b[0]))
@@ -309,22 +335,6 @@ export default function AIAnalytics() {
               </Card>
 
               <Card
-                title="Incidents by crime head"
-                subtitle="Which categories make up the current filter, ranked by volume"
-                wide
-              >
-                {headBreakdown.length ? (
-                  // Horizontal bars: crime-head names are long enough ("Crimes
-                  // Against Property") that a vertical chart either slants
-                  // them or clips them at the plot edges. A label column
-                  // reads the full name straight across, at any length.
-                  <HBarList data={headBreakdown} />
-                ) : (
-                  <div className="rp-empty">No incidents match this filter</div>
-                )}
-              </Card>
-
-              <Card
                 title="Crime head × time of day"
                 subtitle="Incident intensity per daypart — darker means more incidents"
                 wide
@@ -402,13 +412,24 @@ export default function AIAnalytics() {
                 <Card
                   title="Yearly crime volume"
                   subtitle={
-                    `${yearly.completeYears} complete year${yearly.completeYears === 1 ? '' : 's'} of history`
-                    + (yearly.hasPartial ? ', plus the year in progress' : '')
+                    `${yearly.completeYears} complete year${yearly.completeYears === 1 ? '' : 's'} of real history`
+                    + (yearly.modelCompleted
+                      ? ', current year completed with the deployed monthly forecast model'
+                      : yearly.hasPartial ? ', plus the year in progress' : '')
+                    + (yearly.hasIllustrative ? ', 13 illustrative years before that (dashed)' : '')
                     + (yearly.hasForecast ? ' — trend projected 2 years ahead (dashed)' : '')
                   }
                   wide
                 >
                   <TrendArea data={yearly.chartData} height={220} />
+                  {yearly.hasIllustrative && (
+                    <p className="ai-fc-note">
+                      2010–2022 (dashed, left) is an illustrative backdrop, not recorded history —
+                      this dataset only ever covers 2023 onward. It is anchored near the first real
+                      year's level with bounded random variation, not a modelled trend, and plays no
+                      part in the forecast below.
+                    </p>
+                  )}
                   {yearly.hasForecast && (
                     <p className={`ai-fc-note ${yearly.slope >= 0 ? 'up' : 'down'}`}>
                       Trend {yearly.slope >= 0 ? '+' : '−'}{Math.abs(Math.round(yearly.slope))} cases/year
