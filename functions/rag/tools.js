@@ -32,6 +32,7 @@ const network = require('./network');
 const legal = require('./legal');
 const guard = require('./guard');
 const osint = require('./osint');
+const crypto = require('./crypto');
 
 // Per-result caps. Generous enough to answer, small enough that a loop of
 // tool calls cannot fill the context window with rows.
@@ -133,8 +134,9 @@ const DEFINITIONS = [
       'use query_records for those. It holds nothing about IP addresses, domains or ' +
       'any other external/internet identifier either — use osint_lookup for those. ' +
       'It holds nothing about sanctions or watchlists either — use sanctions_check for ' +
-      'those. Do not call this tool as a fallback for a question that names an IP, a ' +
-      'domain, or asks about a sanctions listing.',
+      'those. It holds nothing about crypto wallet addresses either — use crypto_lookup ' +
+      'for those. Do not call this tool as a fallback for a question that names an IP, a ' +
+      'domain, a sanctions listing, or a Bitcoin/Ethereum address.',
     input_schema: {
       type: 'object',
       properties: {
@@ -378,6 +380,33 @@ const DEFINITIONS = [
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'crypto_lookup',
+    description:
+      'Look up a Bitcoin or Ethereum wallet address: its balance and how ' +
+      'many transactions it has made. Use this when an officer asks about ' +
+      'a crypto wallet address found in evidence — how much it holds, ' +
+      'whether it has been active. This is the ONLY tool that knows ' +
+      'anything about crypto wallet addresses — never call ' +
+      'search_knowledge_base or query_records for this instead; neither ' +
+      'holds this data.\n\n' +
+      'The chain (Bitcoin or Ethereum) is detected automatically from the ' +
+      'address format — do not ask the officer which chain it is.\n\n' +
+      'This sends the address to external services (blockstream.info for ' +
+      'Bitcoin, api.etherscan.io for Ethereum), outside Sentinel and ' +
+      'outside India. State that plainly in your answer. Nothing besides ' +
+      'the bare address travels with the request.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        address: {
+          type: 'string',
+          description: 'The Bitcoin or Ethereum wallet address to look up.',
+        },
+      },
+      required: ['address'],
     },
   },
 ];
@@ -944,6 +973,15 @@ async function run(name, input, deps) {
         }
         if (typeof sanctionsCheck !== 'function') return { error: 'Sanctions list unavailable.' };
         return await sanctionsCheck((input && input.query) || '');
+      }
+
+      case 'crypto_lookup': {
+        // Same gate as osint_lookup: checked inline at dispatch so a new
+        // tool cannot forget it.
+        if (!['admin', 'supervisor', 'investigator', 'analyst'].includes(role)) {
+          return { error: 'Crypto wallet lookups are limited to investigators, supervisors, analysts and admin.' };
+        }
+        return await crypto.lookup(input || {});
       }
 
       default:

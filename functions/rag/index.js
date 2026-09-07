@@ -6,6 +6,7 @@ const redaction = require('./redaction');
 const vision = require('./vision');
 const attribution = require('./sources');
 const sanctions = require('./sanctions');
+const crypto = require('./crypto');
 const memory = require('./memory');
 const assistantTools = require('./tools');
 const integrity = require('./integrity');
@@ -480,6 +481,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
   const scanHits = [];   // digitised records, for citations
   const osintHits = [];  // RDAP/AbuseIPDB lookups, for citations
   const sanctionsHits = []; // UN sanctions-list matches, for citations
+  const cryptoHits = []; // crypto wallet lookups, for citations
   const toolThreats = []; // injection markers found in retrieved content
   let usedKnowledgeBase = false;
 
@@ -599,7 +601,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           .join('')
           .trim();
         if (!text) return null;
-        return { text, used, rowSets, scanHits, osintHits, sanctionsHits, usedKnowledgeBase, protectedAccess, toolThreats, iterations: i + 1 };
+        return { text, used, rowSets, scanHits, osintHits, sanctionsHits, cryptoHits, usedKnowledgeBase, protectedAccess, toolThreats, iterations: i + 1 };
       }
 
       messages.push({ role: 'assistant', content: res.content });
@@ -623,6 +625,9 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           }
           if (c.name === 'sanctions_check' && out && !out.error && Array.isArray(out.matches) && out.matches.length) {
             sanctionsHits.push(...out.matches);
+          }
+          if (c.name === 'crypto_lookup' && out && !out.error && (out.bitcoin || out.ethereum)) {
+            cryptoHits.push(out);
           }
           // Internal bookkeeping never goes back to the model.
           const { _redactions, _hits, _protectedAccess, _threat, ...clean } = out || {};
@@ -5631,6 +5636,7 @@ module.exports = async (req, res) => {
           }
           for (const hit of looped.osintHits) cites.push(attribution.fromOsint(hit));
           if (looped.sanctionsHits.length) cites.push(attribution.fromSanctions(looped.sanctionsHits));
+          for (const hit of looped.cryptoHits) cites.push(attribution.fromCrypto(hit));
           // The knowledge-base fallback is only worth showing when nothing else
           // answered — otherwise a model that (wrongly, or as a first attempt)
           // also called search_knowledge_base leaves an empty, unopenable chip

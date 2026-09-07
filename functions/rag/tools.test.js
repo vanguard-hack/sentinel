@@ -184,6 +184,10 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   // search_knowledge_base, whether or not anything came back.
   check('the knowledge-base flag is only set when the search actually found something',
     /if \(text\) usedKnowledgeBase = true;/.test(loop));
+  check('a crypto_lookup result is collected for citations, the same way osint_lookup results are',
+    /c\.name === 'crypto_lookup'[\s\S]{0,80}cryptoHits\.push\(out\)/.test(loop));
+  check('cryptoHits travels out of the loop in its return value',
+    /return \{ text, used, rowSets, scanHits, osintHits, sanctionsHits, cryptoHits,/.test(loop));
 
   const route = src.slice(src.indexOf("if (routed === 'TOOLS')"), src.indexOf("if (routed && /chat/i.test(routed))"));
   check('a failed loop falls through to the lanes that were already there',
@@ -198,6 +202,10 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /looped\.sanctionsHits\.length/.test(route));
   check('  built by the same fromSanctions attribution function sources.js exports',
     /attribution\.fromSanctions\(looped\.sanctionsHits\)/.test(route));
+  check('every crypto wallet lookup the loop read becomes a citation too',
+    /for \(const hit of looped\.cryptoHits\)/.test(route));
+  check('  built by the same fromCrypto attribution function sources.js exports',
+    /attribution\.fromCrypto\(hit\)/.test(route));
   check('the knowledge-base fallback only appears when nothing else answered',
     /looped\.usedKnowledgeBase && !cites\.length/.test(route),
     'a real citation must not sit next to a dead "Knowledge base" chip from a redundant call');
@@ -357,6 +365,32 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   check('with no sanctions index available the tool says so instead of throwing',
     /unavailable/i.test(
       (await run('sanctions_check', { query: 'x' }, { role: 'investigator' })).error || ''));
+
+  // ── crypto_lookup ────────────────────────────────────────────────────
+  //
+  // No kind input, unlike osint_lookup — chain is auto-detected from the
+  // address format, so the gate test uses a value malformed enough to be
+  // refused by crypto.js's own validation, proving the call actually
+  // reached the module without ever touching the network.
+
+  check('the crypto tool discloses that it leaves Sentinel and India',
+    /outside Sentinel and outside India/.test(
+      tools.DEFINITIONS.find((d) => d.name === 'crypto_lookup').description));
+  check('the knowledge-base tool also rules out wallet-address questions',
+    /crypto_lookup/.test(
+      tools.DEFINITIONS.find((d) => d.name === 'search_knowledge_base').description));
+
+  for (const role of ['investigator', 'supervisor', 'admin', 'analyst']) {
+    const ok = await run('crypto_lookup', { address: 'not an address' }, { role });
+    check(`${role} can reach the crypto lookup (gate passes)`,
+      /not a recognisable Bitcoin or Ethereum address/.test(ok.error || ''), JSON.stringify(ok));
+  }
+  const cryptoDenied = await run('crypto_lookup', { address: 'not an address' }, { role: 'policymaker' });
+  check('policymaker cannot reach crypto lookups through the assistant',
+    /limited to investigators, supervisors, analysts and admin/.test(cryptoDenied.error || ''));
+  const cryptoNoRole = await run('crypto_lookup', { address: 'not an address' }, {});
+  check('an uncleared caller cannot reach crypto lookups either',
+    /limited to investigators, supervisors, analysts and admin/.test(cryptoNoRole.error || ''));
 
   // The page and the tool must be one engine, not two implementations.
   const idx = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
