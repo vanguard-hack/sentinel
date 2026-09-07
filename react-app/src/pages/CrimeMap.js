@@ -10,10 +10,11 @@ import 'leaflet.heat';
 import { feature } from 'topojson-client';
 import {
   ArrowLeft, Home, Plus, Minus, Maximize2, Flame, Shield, X, Phone, Mail, ExternalLink, Layers,
-  AlertTriangle, Route,
+  AlertTriangle, Route, Shuffle,
 } from 'lucide-react';
 import { H, CRIME, STATE, DISTRICT, refreshAllData } from '../data/hierarchyStore';
 import { loadPersonnel } from '../utils/personnel';
+import { nearestNeighborOrder, validatePatrolRoute } from '../utils/patrol';
 import TopBar from '../components/TopBar';
 
 const fmtN = (n) => (n == null ? '—' : n.toLocaleString('en-IN'));
@@ -112,6 +113,21 @@ const CITY_HOTSPOTS = [
   { city: 'Hassan',     lat: 13.00, lng: 76.10, n: 7 },
 ];
 const CATEGORIES = ['Theft', 'Assault', 'Burglary', 'Vehicle', 'Fraud', 'Vandalism'];
+// Picking patrol stops by raw hotspot intensity alone treats every crime type
+// as equally costly. Two independent sources weight by social cost instead:
+// the Medellín hot-spots experiment (Collazos et al. 2019) built its crime
+// index from average sentence length per offence, and the Atlanta case study
+// surveyed in Ramakrishnan et al. 2024 folds community impact into hotspot
+// selection. Same idea here — a violent category outranks a public-order one
+// of equal raw intensity when choosing which points to patrol.
+// Vandalism sat lowest (0.6) on harm intuition alone. Braga, Turchan,
+// Papachristos & Hureau's 2019 Campbell systematic review (65 studies, 78
+// tests) found disorder offenses carry the SECOND-largest measured hot-spots
+// effect size (d=0.161, Table 5) — behind only drug offenses and ahead of
+// both property (0.124) and violent crime (0.102). Harm still sets the
+// overall order (a violent-crime hotspot outranks a disorder one of equal
+// intensity), but the gap is narrowed rather than left at pure intuition.
+const CATEGORY_SEVERITY = { Assault: 1.3, Vehicle: 1.1, Burglary: 1.0, Theft: 0.9, Fraud: 0.7, Vandalism: 0.75 };
 
 function generateHotspots() {
   const pts = [];
@@ -507,6 +523,10 @@ export default function CrimeMap() {
     // This is a coverage heuristic, not a road-network route — there is no
     // road-graph data to route against.
     const MAX_STOPS = 8;
+    // Which stop anchors the walk. 0 = the district centre (the default,
+    // "shortest overall" route); every click of "New shift" moves this to the
+    // next stop instead — see the note on predictability below.
+    let shiftIdx = 0;
     const computePatrolRoute = () => {
       remove(patrolLayer); patrolLayer = null;
       const dname = current.district;
@@ -514,8 +534,9 @@ export default function CrimeMap() {
       if (!dname || !bounds) { setPatrolInfo(null); return; }
 
       const inBounds = points.filter((p) => bounds.contains([p.lat, p.lng]));
+      const severityScore = (p) => p.intensity * (CATEGORY_SEVERITY[p.category] || 1);
       const candidates = [...inBounds]
-        .sort((a, b) => b.intensity - a.intensity)
+        .sort((a, b) => severityScore(b) - severityScore(a))
         .slice(0, MAX_STOPS - 1) // leave room for a corridor waypoint below
         .map((p) => ({ lat: p.lat, lng: p.lng, label: `${p.category} hotspot`, corridor: false }));
 
@@ -532,47 +553,79 @@ export default function CrimeMap() {
       if (candidates.length < 2) { setPatrolInfo(null); return; }
       const stops = candidates.slice(0, MAX_STOPS);
 
-      // Nearest-neighbour walk starting from the point nearest the district centre.
-      const center = bounds.getCenter();
-      const dist = (a, b) => L.latLng(a.lat, a.lng).distanceTo(L.latLng(b.lat, b.lng));
-      const remaining = [...stops];
-      const start = remaining.reduce((best, s) =>
-        dist(s, center) < dist(best, center) ? s : best, remaining[0]);
-      const order = [start];
-      remaining.splice(remaining.indexOf(start), 1);
-      while (remaining.length) {
-        const last = order[order.length - 1];
-        let nearest = remaining[0];
-        remaining.forEach((s) => { if (dist(last, s) < dist(last, nearest)) nearest = s; });
-        order.push(nearest);
-        remaining.splice(remaining.indexOf(nearest), 1);
-      }
-
-      let km = 0;
-      for (let i = 0; i < order.length - 1; i++) km += dist(order[i], order[i + 1]) / 1000;
+      // Nearest-neighbour walk, plus a comparison against random orderings of
+      // these same stops — see utils/patrol.js for the method (Kim et al.
+      // 2023). Shift 0 anchors on the district centre; "New shift" anchors on
+      // a different stop each time, so the route an officer actually drives
+      // varies rather than repeating the identical loop every visit.
+      const centerLL = bounds.getCenter();
+      const center = shiftIdx === 0
+        ? { lat: centerLL.lat, lng: centerLL.lng }
+        : { lat: stops[(shiftIdx - 1) % stops.length].lat, lng: stops[(shiftIdx - 1) % stops.length].lng };
+      const order = nearestNeighborOrder(stops, center);
+      const validation = validatePatrolRoute(stops, { start: center });
+      const km = validation ? validation.optimizedKm : 0;
 
       patrolLayer = L.layerGroup();
-      L.polyline(order.map((s) => [s.lat, s.lng]), {
+      const routeLine = L.polyline(order.map((s) => [s.lat, s.lng]), {
         color: css('--primary'), weight: 3, opacity: 0.9, dashArray: '2 8', lineCap: 'round',
       }).addTo(patrolLayer);
+      if (validation) {
+        routeLine.bindPopup(
+          `<b>Patrol route</b><br/>${order.length} stops · ~${km.toFixed(1)} km` +
+          `<br/><span style="color:var(--text-3)">Vs. ${validation.trials} random orderings of the same stops:</span>` +
+          `<br/>Tour ${validation.tourSavingsPct >= 0 ? Math.round(validation.tourSavingsPct) + '% shorter' : Math.round(-validation.tourSavingsPct) + '% longer'}` +
+          ` (${km.toFixed(1)} km vs ${validation.randomAvgKm.toFixed(1)} km avg)` +
+          `<br/>${validation.responseSavingsPct >= 0 ? Math.round(validation.responseSavingsPct) + '% closer' : Math.round(-validation.responseSavingsPct) + '% farther'}` +
+          ` to a random incident on average, over ${validation.incidentSamples} sampled points` +
+          `<br/><span style="color:var(--text-3)">Straight-line distance, not road/traffic time — no navigation data behind this map.</span>` +
+          `<hr style="border-color:var(--border);margin:6px 0"/>` +
+          `<b>Why patrol hotspots at all?</b><br/><span style="color:var(--text-3)">` +
+          `Concentrating patrol at high-activity places is one of the better-evidenced tactics in policing: a ` +
+          `Campbell Collaboration systematic review of 65 studies (78 tests, 27 of them randomized trials) found a ` +
+          `small but statistically significant crime reduction overall — largest for drug and disorder offenses, ` +
+          `smaller (though still real) for property and violent crime — and, across 40 direct tests, a small but ` +
+          `significant <i>diffusion</i> of crime-control benefit into nearby areas, not displacement (Braga, ` +
+          `Turchan, Papachristos &amp; Hureau, 2019).</span>` +
+          `<br/><span style="color:var(--text-3)">Effects vary a lot by context, though — a randomized trial in Medellín found real drops in car theft but ` +
+          `no significant effect on robbery, homicide or assault, and warned that what works in the U.S. "is not as ` +
+          `responsive" elsewhere (Collazos, García, Mejía, Ortega &amp; Tobón, 2019). Karnataka is neither.</span>` +
+          `<br/><span style="color:var(--text-3)">More presence isn't automatically better, either: the same systematic review cautions that hot-spots ` +
+          `tactics can tip into zero-tolerance, indiscriminate enforcement that strains community trust — and only ` +
+          `7 of the 65 studies even measured that effect. Dosage beats duration: brief, frequent, unpredictable ` +
+          `visits (~15 min, several times a day — Koper, 1995) outperform one long, fixed stay. Vary the start with ` +
+          `"New shift" below.</span>`
+        );
+      }
       order.forEach((s, i) => {
         L.marker([s.lat, s.lng], {
           icon: L.divIcon({ className: 'patrol-stop-icon', html: `<span>${i + 1}</span>`, iconSize: [22, 22] }),
-        }).bindPopup(`<b>Stop ${i + 1}${s.corridor ? ' · corridor' : ''}</b><br/>${s.label}`).addTo(patrolLayer);
+        }).bindPopup(`<b>Stop ${i + 1}${s.corridor ? ' · corridor' : ''}</b><br/>${s.label}<br/><span style="color:var(--text-3)">Recommended dwell ~10-15 min, then move on.</span>`).addTo(patrolLayer);
       });
       patrolLayer.addTo(map);
-      setPatrolInfo({ stops: order.length, km: Math.round(km * 10) / 10 });
+      setPatrolInfo({
+        stops: order.length,
+        km: Math.round(km * 10) / 10,
+        tourSavingsPct: validation ? Math.round(validation.tourSavingsPct) : null,
+        shift: shiftIdx,
+      });
     };
     const setPatrol = (on) => {
       patrolOnLocal = on;
+      shiftIdx = 0;
       setPatrolOn(on);
       if (on) computePatrolRoute();
       else { remove(patrolLayer); patrolLayer = null; setPatrolInfo(null); }
     };
+    const shufflePatrolShift = () => {
+      if (!patrolOnLocal) return;
+      shiftIdx += 1;
+      computePatrolRoute();
+    };
 
     ctrlRef.current = {
       showIndia, showState, showDistrict, back, setHotspots, togglePolice, setDistrictMode: setDistrictMode2,
-      toggleCorridors, setPatrol,
+      toggleCorridors, setPatrol, shufflePatrolShift,
       zoomIn:  () => map.setZoom(map.getZoom() + 0.6, { animate: true }),
       zoomOut: () => map.setZoom(map.getZoom() - 0.6, { animate: true }),
     };
@@ -651,6 +704,7 @@ export default function CrimeMap() {
   const togglePolice = () => { ctrlRef.current?.togglePolice(); };
   const toggleCorridors = () => { ctrlRef.current?.toggleCorridors(); };
   const togglePatrol = () => { ctrlRef.current?.setPatrol(!patrolOn); };
+  const shufflePatrol = () => { ctrlRef.current?.shufflePatrolShift(); };
   const toggleDistrictMode = () => {
     const m = districtMode === 'crime' ? 'zones' : 'crime';
     setDistrictMode(m);
@@ -889,6 +943,11 @@ export default function CrimeMap() {
               <Route size={15} /> <span>Patrol route</span>
             </button>
           )}
+          {level === 'district' && patrolOn && (
+            <button className="map-ctrl" onClick={shufflePatrol} title="Vary the route's starting stop — a fixed loop driven the same way every shift is easy to learn">
+              <Shuffle size={15} /> <span>New shift</span>
+            </button>
+          )}
           <button className={`map-ctrl map-ctrl-hotspot ${hotspotMode !== 'off' ? 'on' : ''}`} onClick={cycleHotspots} title="Toggle crime hotspots">
             <Flame size={15} /> <span>{hotspotLabel}</span>
           </button>
@@ -900,7 +959,14 @@ export default function CrimeMap() {
         <div className="map-hint">
           {level === 'state' && `${selectedState} · click a district to zoom`}
           {level === 'district' && !patrolInfo && `${selectedDistrict}, ${selectedState}`}
-          {level === 'district' && patrolInfo && `Patrol route · ${patrolInfo.stops} stops · ~${patrolInfo.km} km`}
+          {level === 'district' && patrolInfo && (
+            <>
+              {`Patrol route${patrolInfo.shift ? ` · shift ${patrolInfo.shift + 1}` : ''} · ${patrolInfo.stops} stops · ~${patrolInfo.km} km`}
+              {patrolInfo.tourSavingsPct != null && (patrolInfo.tourSavingsPct >= 0
+                ? ` · ${patrolInfo.tourSavingsPct}% shorter than random order (click route)`
+                : ` · ${-patrolInfo.tourSavingsPct}% longer than random order (click route)`)}
+            </>
+          )}
         </div>
       </div>
 

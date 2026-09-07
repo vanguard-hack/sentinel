@@ -1,0 +1,162 @@
+// Patrol-route optimization for the Crime Map's "Patrol route" toggle, plus
+// the question a route like this actually needs answered: does visiting the
+// SAME stops in an optimized order help, compared to a random order?
+//
+// The method mirrors Kim et al. 2023, "Hotspots-based patrol route
+// optimization for smart policing" (Heliyon) — they validate their optimized
+// route against random routes two ways: is the tour itself shorter, and does
+// it put an officer closer, on average, to a random incident in the patrol
+// area. This module answers the same two questions.
+//
+// One honest difference: Kim et al. measure real travel time from a live
+// navigation API reflecting road network and traffic. This is straight-line
+// distance, the same simplification the rest of the patrol-route feature
+// already uses (there is no road-network data behind Sentinel's map). The
+// random-baseline comparison is still meaningful on its own terms — it
+// measures whether the ORDERING helps, not whether the underlying distance
+// model is road-accurate.
+
+const R_M = 6371000; // Earth radius, metres.
+
+export function haversineMeters(a, b) {
+  const rad = Math.PI / 180;
+  const dLa = (b.lat - a.lat) * rad;
+  const dLo = (b.lng - a.lng) * rad;
+  const s = Math.sin(dLa / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLo / 2) ** 2;
+  return 2 * R_M * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
+export function tourLength(order) {
+  let m = 0;
+  for (let i = 0; i < order.length - 1; i++) m += haversineMeters(order[i], order[i + 1]);
+  return m;
+}
+
+// Greedy nearest-neighbour tour, starting from the stop nearest `start`.
+export function nearestNeighborOrder(stops, start) {
+  if (!stops.length) return [];
+  const remaining = [...stops];
+  const first = remaining.reduce((best, s) =>
+    haversineMeters(s, start) < haversineMeters(best, start) ? s : best, remaining[0]);
+  const order = [first];
+  remaining.splice(remaining.indexOf(first), 1);
+  while (remaining.length) {
+    const last = order[order.length - 1];
+    let nearest = remaining[0];
+    remaining.forEach((s) => { if (haversineMeters(last, s) < haversineMeters(last, nearest)) nearest = s; });
+    order.push(nearest);
+    remaining.splice(remaining.indexOf(nearest), 1);
+  }
+  return order;
+}
+
+// Deterministic PRNG (mulberry32 — the same generator utils/financial.js
+// uses) so the random-order baseline is reproducible across reloads rather
+// than flapping the reported savings every render.
+function mulberry32(a) {
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffled(arr, rnd) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Where a random moment finds the officer along the route — weighted by leg
+// length, a straight-line stand-in for travel time, the same idea as Kim et
+// al.'s Eq. 8: a longer leg is more likely to be where transit catches you.
+function pointOnRoute(order, rnd) {
+  if (order.length === 1) return order[0];
+  const segs = [];
+  let total = 0;
+  for (let i = 0; i < order.length - 1; i++) {
+    const d = haversineMeters(order[i], order[i + 1]);
+    segs.push(d);
+    total += d;
+  }
+  if (!total) return order[0];
+  let r = rnd() * total;
+  for (let i = 0; i < segs.length; i++) {
+    if (r <= segs[i] || i === segs.length - 1) {
+      const t = segs[i] ? r / segs[i] : 0;
+      return {
+        lat: order[i].lat + (order[i + 1].lat - order[i].lat) * t,
+        lng: order[i].lng + (order[i + 1].lng - order[i].lng) * t,
+      };
+    }
+    r -= segs[i];
+  }
+  return order[order.length - 1];
+}
+
+/**
+ * Does the optimized order actually help, against `trials` random orderings
+ * of the SAME stops? Two comparisons, both seeded for reproducibility:
+ *   - tour length: is the loop itself shorter;
+ *   - response distance: averaged over `incidentSamples` random incident
+ *     points in the stops' bounding box, how far is a random moment on the
+ *     patrol from that incident, on this route vs. a randomly-ordered one.
+ *
+ * The same `incidents` sample is scored against every route compared, so the
+ * routes are judged against identical test points — not each against its own
+ * easier or harder draw.
+ */
+export function validatePatrolRoute(stops, { start, trials = 20, incidentSamples = 150, seed = 20260907 } = {}) {
+  if (!stops || stops.length < 2) return null;
+  const rnd = mulberry32(seed);
+  const centre = start || {
+    lat: stops.reduce((s, p) => s + p.lat, 0) / stops.length,
+    lng: stops.reduce((s, p) => s + p.lng, 0) / stops.length,
+  };
+  const optimized = nearestNeighborOrder(stops, centre);
+
+  const lats = stops.map((s) => s.lat);
+  const lngs = stops.map((s) => s.lng);
+  const padLat = Math.max(0.01, (Math.max(...lats) - Math.min(...lats)) * 0.2);
+  const padLng = Math.max(0.01, (Math.max(...lngs) - Math.min(...lngs)) * 0.2);
+  const b = {
+    latMin: Math.min(...lats) - padLat, latMax: Math.max(...lats) + padLat,
+    lngMin: Math.min(...lngs) - padLng, lngMax: Math.max(...lngs) + padLng,
+  };
+  const incidents = Array.from({ length: incidentSamples }, () => ({
+    lat: b.latMin + rnd() * (b.latMax - b.latMin),
+    lng: b.lngMin + rnd() * (b.lngMax - b.lngMin),
+  }));
+
+  const responseDistance = (order) => {
+    let sum = 0;
+    incidents.forEach((incident) => { sum += haversineMeters(pointOnRoute(order, rnd), incident); });
+    return sum / incidents.length;
+  };
+
+  const optimizedKm = tourLength(optimized) / 1000;
+  const optimizedResponseM = responseDistance(optimized);
+
+  let randomKmTotal = 0;
+  let randomResponseTotal = 0;
+  for (let t = 0; t < trials; t++) {
+    const order = shuffled(stops, rnd);
+    randomKmTotal += tourLength(order) / 1000;
+    randomResponseTotal += responseDistance(order);
+  }
+  const randomAvgKm = randomKmTotal / trials;
+  const randomAvgResponseM = randomResponseTotal / trials;
+
+  return {
+    order: optimized,
+    optimizedKm, randomAvgKm,
+    tourSavingsPct: randomAvgKm > 0 ? (1 - optimizedKm / randomAvgKm) * 100 : 0,
+    optimizedResponseM, randomAvgResponseM,
+    responseSavingsPct: randomAvgResponseM > 0 ? (1 - optimizedResponseM / randomAvgResponseM) * 100 : 0,
+    trials, incidentSamples,
+  };
+}
