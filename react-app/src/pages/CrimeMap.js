@@ -567,8 +567,18 @@ export default function CrimeMap() {
       const km = validation ? validation.optimizedKm : 0;
 
       patrolLayer = L.layerGroup();
-      const routeLine = L.polyline(order.map((s) => [s.lat, s.lng]), {
-        color: css('--primary'), weight: 3, opacity: 0.9, dashArray: '2 8', lineCap: 'round',
+      const routeLatLngs = order.map((s) => [s.lat, s.lng]);
+      // Nav-style rendering: a light casing underneath makes the route read
+      // clearly against any basemap colour, then a bold solid line on top —
+      // the same construction turn-by-turn apps use so the route reads at a
+      // glance instead of blending into the tile colours.
+      L.polyline(routeLatLngs, {
+        color: '#ffffff', weight: 9, opacity: 0.85, lineCap: 'round', lineJoin: 'round',
+        className: 'patrol-route-casing',
+      }).addTo(patrolLayer);
+      const routeLine = L.polyline(routeLatLngs, {
+        color: css('--primary'), weight: 6, opacity: 1, lineCap: 'round', lineJoin: 'round',
+        className: 'patrol-route-line',
       }).addTo(patrolLayer);
       if (validation) {
         routeLine.bindPopup(
@@ -944,7 +954,7 @@ export default function CrimeMap() {
             </button>
           )}
           {level === 'district' && patrolOn && (
-            <button className="map-ctrl" onClick={shufflePatrol} title="Vary the route's starting stop — a fixed loop driven the same way every shift is easy to learn">
+            <button className="map-ctrl map-ctrl-shift" onClick={shufflePatrol} title="Vary the route's starting stop — a fixed loop driven the same way every shift is easy to learn">
               <Shuffle size={15} /> <span>New shift</span>
             </button>
           )}

@@ -1024,6 +1024,8 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   100% { transform: scale(1.6); opacity: 0; }
 }
 
+.patrol-route-line { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--primary) 70%, transparent)); }
+
 .leaflet-div-icon.patrol-stop-icon { background: transparent; border: none; }
 .patrol-stop-icon span {
   display: flex;
@@ -1178,6 +1180,15 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .map-ctrl-patrol.on { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 40%, transparent); }
 .map-ctrl-patrol.on svg { color: var(--primary); }
 .map-ctrl-police.on svg { color: var(--rp-cat-4); }
+
+.map-ctrl-shift {
+  width: auto;
+  gap: 6px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
 
 .map-info-panel {
   position: absolute;
