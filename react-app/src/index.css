@@ -1024,7 +1024,45 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   100% { transform: scale(1.6); opacity: 0; }
 }
 
-.patrol-route-line { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--primary) 70%, transparent)); }
+.patrol-route-line-0 { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--rp-cat-0) 70%, transparent)); }
+.patrol-route-line-1 { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--rp-cat-1) 70%, transparent)); }
+.patrol-route-line-2 { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--rp-cat-2) 70%, transparent)); }
+.patrol-route-line-3 { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--rp-cat-3) 70%, transparent)); }
+.patrol-route-line-4 { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--rp-cat-4) 70%, transparent)); }
+.patrol-route-line-5 { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--rp-cat-5) 70%, transparent)); }
+
+.patrol-popup-car {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 2px;
+}
+
+.patrol-popup-stats {
+  display: flex;
+  gap: 14px;
+  padding: 2px 0 4px;
+}
+.patrol-popup-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.patrol-popup-stat b {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: var(--text-0);
+  line-height: 1.1;
+}
+.patrol-popup-stat small {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
 
 .patrol-nav-btn {
   display: block;
@@ -1207,6 +1245,37 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   font-weight: 500;
   white-space: nowrap;
 }
+
+.map-ctrl-cars {
+  width: auto;
+  gap: 6px;
+  padding: 0 8px 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.map-ctrl-cars span {
+  min-width: 14px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--text-0);
+}
+.map-ctrl-cars button {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs, 4px);
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-1);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.map-ctrl-cars button:hover:not(:disabled) { border-color: var(--border-bright); color: var(--text-0); }
+.map-ctrl-cars button:disabled { opacity: 0.4; cursor: default; }
 
 .map-info-panel {
   position: absolute;

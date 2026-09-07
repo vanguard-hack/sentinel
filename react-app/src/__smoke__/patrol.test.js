@@ -4,7 +4,7 @@
  */
 import {
   haversineMeters, tourLength, nearestNeighborOrder, validatePatrolRoute,
-  fetchRoadRoute, buildGoogleMapsNavUrl,
+  fetchRoadRoute, buildGoogleMapsNavUrl, optimalOrder, splitIntoSegments,
 } from '../utils/patrol';
 
 const ok = (body) => ({ ok: true, json: async () => body });
@@ -34,6 +34,60 @@ test('nearest-neighbour order visits every stop exactly once', () => {
   expect(order).toHaveLength(stops.length);
   const seen = new Set(order.map((s) => `${s.lat},${s.lng}`));
   expect(seen.size).toBe(stops.length);
+});
+
+test('optimalOrder visits every stop exactly once', () => {
+  const stops = [
+    { lat: 12.97, lng: 77.59 }, { lat: 12.30, lng: 76.65 },
+    { lat: 15.36, lng: 75.12 }, { lat: 12.91, lng: 74.86 },
+  ];
+  const order = optimalOrder(stops, { lat: 13, lng: 77 });
+  expect(order).toHaveLength(stops.length);
+  const seen = new Set(order.map((s) => `${s.lat},${s.lng}`));
+  expect(seen.size).toBe(stops.length);
+});
+
+test('optimalOrder finds the exact shortest path — the input order gives no hint', () => {
+  // Colinear points, deliberately shuffled: the only path of minimal length
+  // visits them in distance-from-start order, whichever order they're given
+  // in — a brute-force search has no excuse to miss it.
+  const start = { lat: 0, lng: 0 };
+  const A = { lat: 0, lng: 1 };
+  const B = { lat: 0, lng: 2 };
+  const C = { lat: 0, lng: 3 };
+  const order = optimalOrder([C, A, B], start);
+  expect(order.map((s) => s.lng)).toEqual([1, 2, 3]);
+});
+
+test('optimalOrder is never longer than the nearest-neighbour construction it replaces', () => {
+  const start = { lat: 13.0, lng: 77.0 };
+  const stops = [
+    { lat: 12.97, lng: 77.59 }, { lat: 12.30, lng: 76.65 }, { lat: 15.36, lng: 75.12 },
+    { lat: 12.91, lng: 74.86 }, { lat: 14.50, lng: 76.00 }, { lat: 13.80, lng: 75.30 },
+  ];
+  const nnLen = tourLength([start, ...nearestNeighborOrder(stops, start)]);
+  const optLen = tourLength([start, ...optimalOrder(stops, start)]);
+  expect(optLen).toBeLessThanOrEqual(nnLen + 1e-6);
+});
+
+test('splitIntoSegments covers every stop exactly once, in order, across contiguous segments', () => {
+  const order = Array.from({ length: 7 }, (_, i) => ({ lat: i, lng: i }));
+  const segments = splitIntoSegments(order, 3);
+  expect(segments).toHaveLength(3);
+  expect(segments.map((s) => s.length)).toEqual([3, 2, 2]); // remainder goes to the earliest cars
+  expect(segments.flat()).toEqual(order); // concatenation reproduces the original order exactly
+});
+
+test('splitIntoSegments with one car returns the whole route as a single segment', () => {
+  const order = Array.from({ length: 5 }, (_, i) => ({ lat: i, lng: i }));
+  expect(splitIntoSegments(order, 1)).toEqual([order]);
+});
+
+test('splitIntoSegments clamps a car count above the stop count down to one stop per car', () => {
+  const order = Array.from({ length: 3 }, (_, i) => ({ lat: i, lng: i }));
+  const segments = splitIntoSegments(order, 10);
+  expect(segments).toHaveLength(3);
+  expect(segments.every((s) => s.length === 1)).toBe(true);
 });
 
 test('a route clustered along a line beats scattering the same stops randomly', () => {

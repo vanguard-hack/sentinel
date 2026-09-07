@@ -2,11 +2,18 @@
 // the question a route like this actually needs answered: does visiting the
 // SAME stops in an optimized order help, compared to a random order?
 //
-// The method mirrors Kim et al. 2023, "Hotspots-based patrol route
-// optimization for smart policing" (Heliyon) — they validate their optimized
-// route against random routes two ways: is the tour itself shorter, and does
-// it put an officer closer, on average, to a random incident in the patrol
-// area. This module answers the same two questions.
+// The route actually drawn (optimalOrder, below) is the exact-optimal stop
+// order, found by brute force — practical because MAX_STOPS caps a route at
+// 8 stops. nearestNeighborOrder remains as the construction step for
+// validatePatrolRoute's random-baseline comparison, and as optimalOrder's own
+// fallback if that cap is ever raised past what brute force can cover.
+//
+// The random-baseline method mirrors Kim et al. 2023, "Hotspots-based patrol
+// route optimization for smart policing" (Heliyon) — they validate their
+// optimized route against random routes two ways: is the tour itself
+// shorter, and does it put an officer closer, on average, to a random
+// incident in the patrol area. validatePatrolRoute answers the same two
+// questions.
 //
 // One honest difference: Kim et al. measure real travel time from a live
 // navigation API reflecting road network and traffic. This is straight-line
@@ -48,6 +55,88 @@ export function nearestNeighborOrder(stops, start) {
     remaining.splice(remaining.indexOf(nearest), 1);
   }
   return order;
+}
+
+// The path length from `start` through an ordered list of stops — same
+// convention nearestNeighborOrder anchors on: `start` costs a leg to reach
+// the first stop, but isn't itself a stop in the returned order.
+function pathLengthFrom(start, order) {
+  let m = haversineMeters(start, order[0]);
+  for (let i = 0; i < order.length - 1; i++) m += haversineMeters(order[i], order[i + 1]);
+  return m;
+}
+
+function permutations(arr) {
+  if (arr.length <= 1) return [arr];
+  const out = [];
+  for (let i = 0; i < arr.length; i++) {
+    const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
+    for (const p of permutations(rest)) out.push([arr[i], ...p]);
+  }
+  return out;
+}
+
+// 2-opt local search: repeatedly reverses a segment of the route whenever
+// doing so shortens it, until no such swap is left. Standard TSP-heuristic
+// improvement step — cleans up the crossovers a greedy nearest-neighbour
+// build tends to leave behind. Used only as the fallback above the size
+// brute force stays practical for.
+function twoOpt(order, start) {
+  let route = [...order];
+  let improved = true;
+  while (improved) {
+    improved = false;
+    for (let i = 0; i < route.length - 1; i++) {
+      for (let j = i + 1; j < route.length; j++) {
+        const next = [...route.slice(0, i), ...route.slice(i, j + 1).reverse(), ...route.slice(j + 1)];
+        if (pathLengthFrom(start, next) < pathLengthFrom(start, route)) { route = next; improved = true; }
+      }
+    }
+  }
+  return route;
+}
+
+// The route actually drawn on the map: the exact-optimal stop order for up
+// to 8 stops (brute-force over every permutation — 8! = 40,320, trivial at
+// this scale) so "optimal" is a literal claim, not an approximation. Above
+// that size — MAX_STOPS in CrimeMap.js caps candidates at 8, so this is a
+// defensive fallback, not the normal path — nearest-neighbour construction
+// plus 2-opt cleanup takes over, since brute force stops being practical.
+const BRUTE_FORCE_LIMIT = 8;
+export function optimalOrder(stops, start) {
+  if (!stops.length) return [];
+  if (stops.length === 1) return [...stops];
+  if (stops.length > BRUTE_FORCE_LIMIT) return twoOpt(nearestNeighborOrder(stops, start), start);
+  let best = null;
+  let bestLen = Infinity;
+  for (const perm of permutations(stops)) {
+    const len = pathLengthFrom(start, perm);
+    if (len < bestLen) { bestLen = len; best = perm; }
+  }
+  return best;
+}
+
+// Splits an already-optimal route into `carCount` contiguous legs, one per
+// patrol car, so multiple cars can cover the same district at once. Each car
+// gets a consecutive stretch of the SAME optimal tour — not a separately
+// re-optimized zone — so the split costs nothing over the single-car route;
+// it only divides who drives which part of it. Segment sizes are as even as
+// possible, with any remainder going to the earliest cars. A car count above
+// the stop count is clamped down to one stop per car.
+export function splitIntoSegments(order, carCount) {
+  if (!order.length) return [];
+  const n = Math.max(1, Math.min(Math.floor(carCount) || 1, order.length));
+  const base = Math.floor(order.length / n);
+  let rem = order.length % n;
+  const segments = [];
+  let idx = 0;
+  for (let i = 0; i < n; i++) {
+    const size = base + (rem > 0 ? 1 : 0);
+    if (rem > 0) rem -= 1;
+    segments.push(order.slice(idx, idx + size));
+    idx += size;
+  }
+  return segments;
 }
 
 // Deterministic PRNG (mulberry32 — the same generator utils/financial.js
