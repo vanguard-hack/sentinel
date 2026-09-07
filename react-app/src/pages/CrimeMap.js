@@ -10,7 +10,7 @@ import 'leaflet.heat';
 import { feature } from 'topojson-client';
 import {
   ArrowLeft, Home, Plus, Minus, Maximize2, Flame, Shield, X, Phone, Mail, ExternalLink, Layers,
-  AlertTriangle, Route, Shuffle, Car,
+  Route, Shuffle, Car,
 } from 'lucide-react';
 import { H, CRIME, STATE, DISTRICT, refreshAllData } from '../data/hierarchyStore';
 import { loadPersonnel } from '../utils/personnel';
@@ -230,7 +230,6 @@ export default function CrimeMap() {
   const [districtMode, setDistrictMode] = useState('crime'); // 'crime' choropleth | 'zones'
   const [policeOn, setPoliceOn] = useState(true);
   const [policeCount, setPoliceCount] = useState(0);
-  const [corridorsOn, setCorridorsOn] = useState(false);
   const [patrolOn, setPatrolOn] = useState(false);
   const [patrolCars, setPatrolCarsState] = useState(1);
   const [patrolCarsInput, setPatrolCarsInput] = useState('1'); // free-typed text, committed on blur/Enter
@@ -425,9 +424,7 @@ export default function CrimeMap() {
     let pulseLayer = null;
     let policeLayer = null;
     let policeOnLocal = true;
-    let corridorLayer = null;
-    let corridorsOnLocal = false;
-    let corridors = []; // raw corridor records, once loaded
+    let corridors = []; // raw corridor records, once loaded — feeds computePatrolRoute's candidates only, no visual layer
     let patrolLayer = null;
     let patrolOnLocal = false;
     let patrolSegments = []; // latest computed per-car stop sequences, for the "Navigate" handoff
@@ -544,28 +541,22 @@ export default function CrimeMap() {
 
     const setDistrictMode2 = (m) => { districtModeLocal = m; if (districtsLayer) districtsLayer.setStyle(districtStyleFn); };
 
-    // ── Smuggling / trafficking corridors ──
-    // Show only over Karnataka, same gate as the police layer.
-    const applyCorridors = (stateName) => {
-      remove(corridorLayer);
-      if (corridorLayer && corridorsOnLocal && stateName === POLICE_STATE) corridorLayer.addTo(map);
-    };
-    const toggleCorridors = () => {
-      corridorsOnLocal = !corridorsOnLocal;
-      setCorridorsOn(corridorsOnLocal);
-      applyCorridors(current.state);
-    };
-
     // ── Patrol route ──
     // Tour over the current district's hottest points plus any
     // smuggling-corridor waypoint that touches this district, so the
     // suggested route covers both crime density and flagged corridor
-    // segments. High enough to cover the large majority of a district's
-    // hotspots rather than just a handful — optimalOrder's exact brute force
-    // only applies up to 8 stops (BRUTE_FORCE_LIMIT in utils/patrol.js);
-    // above that it automatically switches to the nearest-neighbour + 2-opt
-    // heuristic, which is the normal path at this size, not a rare fallback.
-    const MAX_STOPS = 40;
+    // segments. Deliberately small: a real patrol route is a short list of
+    // the highest-priority hotspots in an efficient order, not a tour of
+    // every hotspot in the district — the hot-spots-policing literature this
+    // feature is built on (Kim et al. 2023, the Braga et al. 2019 Campbell
+    // review) is about concentrating patrol on a handful of top locations,
+    // not visiting dozens of them. 8 also keeps optimalOrder's brute-force
+    // search exact rather than falling back to the nearest-neighbour + 2-opt
+    // heuristic — "optimal" is a literal claim at this size, not an
+    // approximation. Covering MORE of a district's hotspots is a job for the
+    // hotspot display itself (ensureDistrictCoverage, above), not for the
+    // route — those are different concerns that used to be conflated here.
+    const MAX_STOPS = 8;
     // Which stop anchors the walk. 0 = the district centre (the default,
     // "shortest overall" route); every click of "New shift" moves this to the
     // next stop instead — see the note on predictability below.
@@ -774,7 +765,7 @@ export default function CrimeMap() {
 
     ctrlRef.current = {
       showIndia, showState, showDistrict, back, setHotspots, togglePolice, setDistrictMode: setDistrictMode2,
-      toggleCorridors, setPatrol, shufflePatrolShift, setPatrolCars,
+      setPatrol, shufflePatrolShift, setPatrolCars,
       zoomIn:  () => map.setZoom(map.getZoom() + 0.6, { animate: true }),
       zoomOut: () => map.setZoom(map.getZoom() - 0.6, { animate: true }),
     };
@@ -825,22 +816,12 @@ export default function CrimeMap() {
       })
       .catch(() => { /* police layer optional — ignore load failure */ });
 
-    // ── Load smuggling / trafficking corridors (independent of boundaries) ──
+    // ── Load smuggling / trafficking corridor data (no visual toggle — this
+    // only feeds computePatrolRoute's corridor-waypoint candidates) ──
     fetch(CORRIDOR_URL)
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((list) => {
-        corridors = list;
-        corridorLayer = L.layerGroup();
-        list.forEach((c) => {
-          L.polyline(c.waypoints, {
-            color: css('--rp-cat-2'), weight: 2 + c.severity * 3, opacity: 0.55 + c.severity * 0.35, dashArray: '8 6',
-          })
-            .bindPopup(`<b>${c.label}</b><br/>${c.districts.join(' → ')}<br/><span style="color:var(--text-3)">${fmt(c.caseCount)} Narcotics cases</span>`)
-            .addTo(corridorLayer);
-        });
-        applyCorridors(current.state); // show now if Karnataka is already selected and toggle is on
-      })
-      .catch(() => { /* corridor layer optional — ignore load failure */ });
+      .then((list) => { corridors = list; })
+      .catch(() => { /* corridor data optional — ignore load failure */ });
 
     return () => {
       window.removeEventListener('resize', onResize);
@@ -858,7 +839,6 @@ export default function CrimeMap() {
   };
   const hotspotLabel = { heat: 'Heatmap', markers: 'Markers', pulse: 'Pulse', off: 'Off' }[hotspotMode];
   const togglePolice = () => { ctrlRef.current?.togglePolice(); };
-  const toggleCorridors = () => { ctrlRef.current?.toggleCorridors(); };
   const togglePatrol = () => { ctrlRef.current?.setPatrol(!patrolOn); };
   const shufflePatrol = () => { ctrlRef.current?.shufflePatrolShift(); };
   const changePatrolCars = (n) => {
@@ -1097,11 +1077,6 @@ export default function CrimeMap() {
           {hasPolice && (
             <button className={`map-ctrl map-ctrl-police ${policeOn ? 'on' : ''}`} onClick={togglePolice} title="Toggle police stations">
               <Shield size={15} /> <span>Police {policeCount ? `(${policeCount})` : ''}</span>
-            </button>
-          )}
-          {hasPolice && (
-            <button className={`map-ctrl map-ctrl-corridor ${corridorsOn ? 'on' : ''}`} onClick={toggleCorridors} title="Toggle smuggling / trafficking corridors">
-              <AlertTriangle size={15} /> <span>Corridors</span>
             </button>
           )}
           {level === 'district' && (

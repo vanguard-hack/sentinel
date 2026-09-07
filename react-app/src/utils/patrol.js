@@ -3,12 +3,14 @@
 // SAME stops in an optimized order help, compared to a random order?
 //
 // The route actually drawn (optimalOrder, below) is exact-optimal — found by
-// brute force — for up to BRUTE_FORCE_LIMIT (8) stops. CrimeMap's MAX_STOPS
-// is well above that, to cover most of a district's hotspots rather than a
-// handful, so at real-world sizes optimalOrder normally takes its
-// nearest-neighbour + 2-opt fallback, not the brute-force path.
-// nearestNeighborOrder also remains as the construction step for
-// validatePatrolRoute's random-baseline comparison.
+// brute force — for up to BRUTE_FORCE_LIMIT (8) stops, which CrimeMap's
+// MAX_STOPS matches deliberately: a real patrol route is a short list of the
+// highest-priority hotspots in an efficient order, not a tour of every
+// hotspot in a district, so brute force is the normal path here, not a
+// best-case fallback. nearestNeighborOrder remains as optimalOrder's own
+// fallback if that cap is ever raised past what brute force can cover, and
+// as the construction step for validatePatrolRoute's random-baseline
+// comparison.
 //
 // The random-baseline method mirrors Kim et al. 2023, "Hotspots-based patrol
 // route optimization for smart policing" (Heliyon) — they validate their

@@ -1236,7 +1236,6 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .map-ctrl-hotspot.on { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 40%, transparent); }
 .map-ctrl-hotspot.on svg { color: var(--red); }
 .map-ctrl-police.on { color: var(--rp-cat-4); border-color: color-mix(in srgb, var(--rp-cat-4) 40%, transparent); }
-.map-ctrl-corridor,
 .map-ctrl-patrol {
   width: auto;
   gap: 6px;
@@ -1244,8 +1243,6 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   font-size: 13px;
   font-weight: 500;
 }
-.map-ctrl-corridor.on { color: var(--rp-cat-2); border-color: color-mix(in srgb, var(--rp-cat-2) 40%, transparent); }
-.map-ctrl-corridor.on svg { color: var(--rp-cat-2); }
 .map-ctrl-patrol.on { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 40%, transparent); }
 .map-ctrl-patrol.on svg { color: var(--primary); }
 .map-ctrl-police.on svg { color: var(--rp-cat-4); }
