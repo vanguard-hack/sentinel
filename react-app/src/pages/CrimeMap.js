@@ -15,7 +15,7 @@ import {
 import { H, CRIME, STATE, DISTRICT, refreshAllData } from '../data/hierarchyStore';
 import { loadPersonnel } from '../utils/personnel';
 import { optimalOrder, tourLength, validatePatrolRoute, fetchRoadRoute, buildGoogleMapsNavUrl, currentLocation, splitIntoSegments, mapWithConcurrency } from '../utils/patrol';
-import { pointInFeature } from '../utils/geo';
+import { pointInFeature, randomPointInFeature } from '../utils/geo';
 import TopBar from '../components/TopBar';
 
 const fmtN = (n) => (n == null ? '—' : n.toLocaleString('en-IN'));
@@ -144,6 +144,38 @@ function generateHotspots() {
         category: CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)],
         city,
       });
+    }
+  });
+  return pts;
+}
+
+// generateHotspots() only seeds points around 12 named cities — Karnataka
+// has 31 districts, so most districts got zero hotspots by construction,
+// regardless of hotspot display mode. This tops up every district that
+// falls short of `minPerDistrict`, placing new points via
+// randomPointInFeature so they're guaranteed to actually be inside that
+// district's real shape (not just its bounding box — see utils/geo.js).
+function ensureDistrictCoverage(pts, districtFeatures, minPerDistrict) {
+  let id = 9000;
+  districtFeatures.forEach((f) => {
+    const name = f.properties.district;
+    const existing = pts.filter((p) => pointInFeature(p.lat, p.lng, f)).length;
+    let need = minPerDistrict - existing;
+    if (need <= 0) return;
+    const b = L.geoJSON(f).getBounds();
+    const bbox = { south: b.getSouth(), north: b.getNorth(), west: b.getWest(), east: b.getEast() };
+    while (need > 0) {
+      const pt = randomPointInFeature(f, bbox);
+      if (!pt) break; // pathologically thin/concave shape — stop rather than looping forever
+      pts.push({
+        id: id++,
+        lat: pt.lat,
+        lng: pt.lng,
+        intensity: 0.35 + Math.random() * 0.65,
+        category: CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)],
+        city: name,
+      });
+      need--;
     }
   });
   return pts;
@@ -472,7 +504,7 @@ export default function CrimeMap() {
     };
 
     // ── Hotspots ──
-    const points = generateHotspots();
+    let points = generateHotspots(); // topped up per-district once boundaries load, below
     const buildHotspots = () => {
       heatLayer = L.heatLayer(
         points.map((p) => [p.lat, p.lng, p.intensity]),
@@ -755,6 +787,13 @@ export default function CrimeMap() {
           states: feature(topo, topo.objects.states),
           districts: feature(topo, topo.objects.districts),
         };
+        // Every Karnataka district gets at least 3 hotspots, not just the 12
+        // named cities generateHotspots() seeds around — see
+        // ensureDistrictCoverage. data.districts covers all of India; this
+        // map never shows anything outside Karnataka, so it's the only scope
+        // that needs (or should get) topped up.
+        const karnatakaDistricts = data.districts.features.filter((f) => f.properties.st_nm === POLICE_STATE);
+        points = ensureDistrictCoverage(points, karnatakaDistricts, 3);
         // Karnataka only — boot straight into the state's district view.
         showState(POLICE_STATE);
 

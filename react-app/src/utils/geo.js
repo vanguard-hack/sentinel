@@ -36,3 +36,20 @@ export function pointInFeature(lat, lng, feature) {
   if (geom.type === 'MultiPolygon') return geom.coordinates.some((poly) => polygonContains(poly, lat, lng));
   return false;
 }
+
+// Picks a uniformly-random point inside a feature's actual shape: sample the
+// bounding box, keep the first sample that lands inside via pointInFeature,
+// resampling for the (usual) case where the shape doesn't fill its bbox.
+// `bbox` is a plain {south, north, west, east} — not a Leaflet LatLngBounds —
+// so this stays framework-agnostic. Gives up after `maxTries` and returns
+// null rather than looping forever on a pathologically thin or concave shape
+// a random bbox sample keeps missing.
+export function randomPointInFeature(feature, bbox, maxTries = 30) {
+  const { south, north, west, east } = bbox;
+  for (let i = 0; i < maxTries; i++) {
+    const lat = south + Math.random() * (north - south);
+    const lng = west + Math.random() * (east - west);
+    if (pointInFeature(lat, lng, feature)) return { lat, lng };
+  }
+  return null;
+}

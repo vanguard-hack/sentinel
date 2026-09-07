@@ -3,7 +3,7 @@
  * bounds.contains() only tests a shape's RECTANGULAR bounding box — these
  * tests exist because a district is never actually a rectangle.
  */
-import { pointInFeature } from '../utils/geo';
+import { pointInFeature, randomPointInFeature } from '../utils/geo';
 
 const square = {
   type: 'Feature',
@@ -72,4 +72,25 @@ test('MultiPolygon: a point in either part is inside', () => {
 test('a feature with no geometry is never matched', () => {
   expect(pointInFeature(5, 5, { type: 'Feature', geometry: null })).toBe(false);
   expect(pointInFeature(5, 5, null)).toBe(false);
+});
+
+test('randomPointInFeature always lands inside the shape, not just its bbox', () => {
+  const lShape = {
+    type: 'Feature',
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[[0, 0], [0, 10], [5, 10], [5, 5], [10, 5], [10, 0], [0, 0]]],
+    },
+  };
+  const bbox = { south: 0, north: 10, west: 0, east: 10 };
+  for (let i = 0; i < 50; i++) {
+    const pt = randomPointInFeature(lShape, bbox);
+    expect(pt).not.toBeNull();
+    expect(pointInFeature(pt.lat, pt.lng, lShape)).toBe(true);
+  }
+});
+
+test('randomPointInFeature gives up and returns null rather than looping forever on an unreachable shape', () => {
+  const empty = { type: 'Feature', geometry: { type: 'Polygon', coordinates: [] } };
+  expect(randomPointInFeature(empty, { south: 0, north: 1, west: 0, east: 1 }, 10)).toBeNull();
 });
