@@ -381,6 +381,38 @@ function fromOsint({ kind, value, rdap, abuseipdb }) {
   return out;
 }
 
+// ── Lane 7: sanctions/watchlist screening ───────────────────────────────
+//
+// No stable per-record URL exists on the UN's site to deep-link a single
+// entry, so every citation points at the Consolidated List's own resource
+// page and carries the reference number and DATAID as identifiers instead
+// — the same shape fromZcql already uses for matched_record_ids rather
+// than a URL per row.
+
+const SANCTIONS_LIST_URL = 'https://main.un.org/securitycouncil/en/content/un-sc-consolidated-list';
+
+function fromSanctions(hits) {
+  return (Array.isArray(hits) ? hits : []).map((h) => {
+    const facts = [
+      h.listType ? `UN list type: ${h.listType}` : null,
+      h.referenceNumber ? `Reference: ${h.referenceNumber}` : null,
+      h.listedOn ? `Listed on: ${h.listedOn}` : null,
+      (h.designation || []).length ? `Designation: ${h.designation.join(', ')}` : null,
+      h.comments ? `Comments: ${h.comments}` : null,
+      h.matchedOn ? `Matched on: ${h.matchedOn}` : null,
+    ].filter(Boolean).join(' · ');
+    return {
+      source_type: TYPES.EXTERNAL_WEB,
+      display_name: `UN Sanctions List — ${str(h.name, 160)}`,
+      uri: SANCTIONS_LIST_URL,
+      domain: 'un.org',
+      scope: 'UN Security Council Consolidated List',
+      identifier: str(h.referenceNumber, 60) || null,
+      passages: facts ? [{ location: null, excerpt: str(facts, 800), score: null }] : [],
+    };
+  });
+}
+
 // ── Clearance ───────────────────────────────────────────────────────────────
 
 // Fields whose NAME alone discloses something — a filter clause reading
@@ -544,6 +576,7 @@ module.exports = {
   fromVision,
   fromWeb,
   fromOsint,
+  fromSanctions,
   filterSummary,
   matchedRecordIds,
   clearanceFilter,
