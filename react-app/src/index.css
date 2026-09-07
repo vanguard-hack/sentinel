@@ -1099,30 +1099,16 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 }
 
 .leaflet-div-icon.patrol-you-icon { background: transparent; border: none; }
-.patrol-you-icon { position: relative; }
-.patrol-you-ring {
-  position: absolute;
-  inset: 0;
+.patrol-you-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: var(--blue-500);
-  opacity: 0.35;
-  animation: patrol-you-pulse 2s ease-out infinite;
-}
-.patrol-you-core {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--blue-500);
+  background: #ffb300; /* Google's Street View "pegman" gold */
   border: 2.5px solid #fff;
-  box-shadow: 0 0 6px color-mix(in srgb, var(--blue-500) 80%, transparent);
-}
-@keyframes patrol-you-pulse {
-  0%   { transform: scale(0.6); opacity: 0.4; }
-  100% { transform: scale(2.2); opacity: 0; }
+  box-shadow: var(--shadow-pop);
 }
 
 .leaflet-tooltip {
@@ -1276,14 +1262,27 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .map-ctrl-cars {
   width: auto;
   gap: 6px;
-  padding: 0 12px;
+  padding: 0 8px 0 12px;
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
 }
-.map-ctrl-cars span {
-  color: var(--text-3);
+.map-ctrl-cars button {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs, 4px);
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-1);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
 }
+.map-ctrl-cars button:hover:not(:disabled) { border-color: var(--border-bright); color: var(--text-0); }
+.map-ctrl-cars button:disabled { opacity: 0.4; cursor: default; }
 .map-ctrl-cars input {
   width: 40px;
   height: 22px;

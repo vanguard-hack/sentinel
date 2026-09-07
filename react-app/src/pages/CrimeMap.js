@@ -400,11 +400,6 @@ export default function CrimeMap() {
     let patrolOnLocal = false;
     let patrolSegments = []; // latest computed per-car stop sequences, for the "Navigate" handoff
     let patrolCarsLocal = 1;
-    // Single-car only: the exact location reading the drawn route was
-    // reconciled against, reused for "Navigate" so the start point Google
-    // Maps opens on is identical to the one already drawn — not a second,
-    // possibly slightly different, GPS fix taken moments later.
-    let officerLocation = null;
     let patrolRequestId = 0; // guards the async road-route fetch against a newer route replacing it mid-flight
     const SEGMENT_COLORS = 6; // rp-cat-0 .. rp-cat-5
     const current = { level: 'india', state: null, district: null, districtBounds: null };
@@ -670,46 +665,38 @@ export default function CrimeMap() {
         shift: shiftIdx,
       });
 
-      // One geolocation read for the whole route, reused by EVERY segment
-      // (and by "Navigate" itself) — not just a single-car special case —
-      // so whichever segment's popup you check, the start point and distance
-      // it shows are the same ones Google Maps will open with.
-      currentLocation().then((origin) => {
-        if (reqId !== patrolRequestId) return; // superseded meanwhile
-        officerLocation = origin;
-        if (origin) {
-          L.marker([origin.lat, origin.lng], {
-            icon: L.divIcon({
-              className: 'patrol-you-icon',
-              html: '<span class="patrol-you-ring"></span><span class="patrol-you-core"></span>',
-              iconSize: [22, 22],
-            }),
-          }).addTo(patrolLayer);
-        }
+      // Road-snap every segment, built from ITS OWN stops only — never the
+      // device's live location (see buildGoogleMapsNavUrl in utils/patrol.js
+      // for why: that's what made this preview and the trip Google Maps
+      // opened disagree). Staggered rather than all-at-once, since firing
+      // every segment's request in parallel is what was silently losing most
+      // of them to OpenRouteService's per-minute rate limit once car count
+      // stopped being capped.
+      mapWithConcurrency(segRefs, 4, async (ref) => {
+        if (ref.segment.length < 2) return;
+        const road = await fetchRoadRoute(ref.segment);
+        if (!road || reqId !== patrolRequestId) return;
+        const roadLatLngs = road.coordinates.map(([lat, lng]) => [lat, lng]);
+        ref.segCasing.setLatLngs(roadLatLngs);
+        ref.segLine.setLatLngs(roadLatLngs);
+        ref.segLine.setPopupContent(ref.buildPopupHtml(road, tourLength(ref.segment) / 1000));
+      });
 
-        // Road-snapping every segment at once is what was silently losing
-        // most of them to OpenRouteService's per-minute rate limit once car
-        // count wasn't capped — each failure fell back to a straight line
-        // (or, for a lone-stop segment, no line at all). Staggering the
-        // requests keeps them landing instead of racing each other.
-        mapWithConcurrency(segRefs, 4, async (ref) => {
-          const fullPoints = origin ? [origin, ...ref.segment] : ref.segment;
-          const baseKm = fullPoints.length > 1 ? tourLength(fullPoints) / 1000 : null;
-          if (origin && fullPoints.length > 1) {
-            const fullLatLngs = fullPoints.map((p) => [p.lat, p.lng]);
-            ref.segCasing.setLatLngs(fullLatLngs);
-            ref.segLine.setLatLngs(fullLatLngs);
-          }
-          ref.segLine.setPopupContent(ref.buildPopupHtml(null, baseKm));
-          if (fullPoints.length > 1) {
-            const road = await fetchRoadRoute(fullPoints);
-            if (!road || reqId !== patrolRequestId) return;
-            const roadLatLngs = road.coordinates.map(([lat, lng]) => [lat, lng]);
-            ref.segCasing.setLatLngs(roadLatLngs);
-            ref.segLine.setLatLngs(roadLatLngs);
-            ref.segLine.setPopupContent(ref.buildPopupHtml(road, baseKm));
-          }
-        });
+      // Purely informational — shows where you are on the map. Never feeds
+      // into a route, a distance figure, or the "Navigate" link.
+      currentLocation().then((origin) => {
+        if (!origin || reqId !== patrolRequestId) return;
+        L.marker([origin.lat, origin.lng], {
+          icon: L.divIcon({
+            className: 'patrol-you-icon',
+            html: '<span class="patrol-you-pin">' +
+              '<svg viewBox="0 0 24 24" width="14" height="14" fill="#fff">' +
+              '<circle cx="12" cy="7.5" r="3.3"/>' +
+              '<path d="M12 11.5c-3.4 0-6.2 1.9-6.2 4.6v1a1 1 0 0 0 1 1h10.4a1 1 0 0 0 1-1v-1c0-2.7-2.8-4.6-6.2-4.6Z"/>' +
+              '</svg></span>',
+            iconSize: [28, 28],
+          }),
+        }).addTo(patrolLayer);
       });
     };
     const setPatrol = (on) => {
@@ -717,7 +704,7 @@ export default function CrimeMap() {
       shiftIdx = 0;
       setPatrolOn(on);
       if (on) computePatrolRoute();
-      else { patrolRequestId += 1; remove(patrolLayer); patrolLayer = null; patrolSegments = []; officerLocation = null; setPatrolInfo(null); }
+      else { patrolRequestId += 1; remove(patrolLayer); patrolLayer = null; patrolSegments = []; setPatrolInfo(null); }
     };
     const shufflePatrolShift = () => {
       if (!patrolOnLocal) return;
@@ -742,20 +729,14 @@ export default function CrimeMap() {
     map.on('popupopen', (e) => {
       const btn = e.popup.getElement()?.querySelector('.patrol-nav-btn');
       if (!btn) return;
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', () => {
         const segment = patrolSegments[Number(btn.dataset.seg)];
         if (!segment || segment.length < 1) return;
-        btn.disabled = true;
-        // Reuse the exact reading the drawn route was already reconciled
-        // against, when there is one, so the trip Google Maps opens starts
-        // from the SAME point already shown on the map — not a fresh GPS fix
-        // that may have drifted since.
-        btn.textContent = officerLocation ? 'Opening…' : 'Locating you…';
-        const origin = officerLocation || await currentLocation();
-        const url = buildGoogleMapsNavUrl(segment, origin);
+        // Built entirely from this segment's own stops — never the device's
+        // live location — so the trip Google Maps opens is exactly the route
+        // already drawn on the map, not that route plus an extra leg.
+        const url = buildGoogleMapsNavUrl(segment);
         if (url) window.open(url, '_blank', 'noopener');
-        btn.disabled = false;
-        btn.textContent = 'Navigate in Google Maps →';
       });
     });
 
@@ -1092,6 +1073,7 @@ export default function CrimeMap() {
           {level === 'district' && patrolOn && (
             <div className="map-ctrl map-ctrl-cars" title="How many patrol cars to split this route across">
               <Car size={15} />
+              <button type="button" onClick={() => changePatrolCars(patrolCars - 1)} disabled={patrolCars <= 1} aria-label="Fewer patrol cars">−</button>
               <input
                 type="number"
                 min="1"
@@ -1103,7 +1085,7 @@ export default function CrimeMap() {
                 onBlur={commitPatrolCarsInput}
                 onKeyDown={(e) => { if (e.key === 'Enter') { commitPatrolCarsInput(); e.target.blur(); } }}
               />
-              <span>cars</span>
+              <button type="button" onClick={() => changePatrolCars(patrolCars + 1)} aria-label="More patrol cars">+</button>
             </div>
           )}
           {level === 'district' && patrolOn && (

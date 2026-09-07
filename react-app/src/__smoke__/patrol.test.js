@@ -153,17 +153,25 @@ test('tourLength sums consecutive-leg haversine distances', () => {
   expect(tourLength(order)).toBeCloseTo(expected, 6);
 });
 
-test('the Google Maps URL puts the last stop as destination and the rest as ordered waypoints', () => {
+test('the Google Maps URL uses the route\'s own first stop as origin, never the device location', () => {
   const stops = [{ lat: 12.97, lng: 77.59 }, { lat: 12.99, lng: 77.60 }, { lat: 13.01, lng: 77.62 }];
-  const url = new URL(buildGoogleMapsNavUrl(stops, { lat: 12.90, lng: 77.50 }));
+  const url = new URL(buildGoogleMapsNavUrl(stops));
+  expect(url.searchParams.get('origin')).toBe('12.97,77.59');
+  expect(url.searchParams.get('waypoints')).toBe('12.99,77.6');
   expect(url.searchParams.get('destination')).toBe('13.01,77.62');
-  expect(url.searchParams.get('waypoints')).toBe('12.97,77.59|12.99,77.6');
-  expect(url.searchParams.get('origin')).toBe('12.9,77.5');
 });
 
-test('the Google Maps URL omits origin when none is given, so the app fills in "my location"', () => {
+test('a two-stop route has no waypoints, just an origin and a destination', () => {
   const stops = [{ lat: 12.97, lng: 77.59 }, { lat: 12.99, lng: 77.60 }];
-  const url = new URL(buildGoogleMapsNavUrl(stops, null));
+  const url = new URL(buildGoogleMapsNavUrl(stops));
+  expect(url.searchParams.get('origin')).toBe('12.97,77.59');
+  expect(url.searchParams.get('destination')).toBe('12.99,77.6');
+  expect(url.searchParams.has('waypoints')).toBe(false);
+});
+
+test('a single-stop route has just a destination, no origin', () => {
+  const url = new URL(buildGoogleMapsNavUrl([{ lat: 12.97, lng: 77.59 }]));
+  expect(url.searchParams.get('destination')).toBe('12.97,77.59');
   expect(url.searchParams.has('origin')).toBe(false);
 });
 

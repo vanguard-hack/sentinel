@@ -294,26 +294,36 @@ export async function fetchRoadRoute(stops) {
 
 // Hand off "navigate this route" to Google Maps — turn-by-turn voice
 // guidance, live traffic and rerouting are Google's job, not something to
-// rebuild in-map. Waypoints go in visiting order; the last stop becomes the
-// destination. When `originCoords` is omitted the Google Maps app fills in
-// the device's current location on its own.
-export function buildGoogleMapsNavUrl(stops, originCoords) {
+// rebuild in-map. The origin is deliberately the route's OWN first stop, not
+// the device's current location: using live location made the trip Google
+// Maps opened include a leg the Crime Map preview never showed or measured,
+// so the two disagreed on distance and start point. Building both from the
+// exact same stop list — first stop as origin, last as destination, the rest
+// as waypoints in visiting order — is what actually keeps them consistent.
+export function buildGoogleMapsNavUrl(stops) {
   if (!stops || stops.length < 1) return null;
+  if (stops.length === 1) {
+    const params = new URLSearchParams({ api: '1', destination: `${stops[0].lat},${stops[0].lng}`, travelmode: 'driving' });
+    return `https://www.google.com/maps/dir/?${params.toString()}`;
+  }
+  const origin = stops[0];
   const destination = stops[stops.length - 1];
-  const waypoints = stops.slice(0, -1).map((s) => `${s.lat},${s.lng}`).join('|');
+  const waypoints = stops.slice(1, -1).map((s) => `${s.lat},${s.lng}`).join('|');
   const params = new URLSearchParams({
     api: '1',
+    origin: `${origin.lat},${origin.lng}`,
     destination: `${destination.lat},${destination.lng}`,
     travelmode: 'driving',
   });
   if (waypoints) params.set('waypoints', waypoints);
-  if (originCoords) params.set('origin', `${originCoords.lat},${originCoords.lng}`);
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
-// Wraps the browser geolocation callback in a promise with a short timeout,
-// so a slow or denied permission prompt can't hang a "Navigate" click — it
-// resolves to null instead, and buildGoogleMapsNavUrl leaves origin unset.
+// Wraps the browser geolocation callback in a promise with a short timeout.
+// Used only to place an informational "you are here" marker on the map —
+// never as part of route math or the Google Maps handoff (see
+// buildGoogleMapsNavUrl above) — so a slow or denied prompt just means no
+// marker, resolving to null rather than hanging anything.
 export function currentLocation({ timeoutMs = 6000 } = {}) {
   return new Promise((resolve) => {
     if (!navigator.geolocation) { resolve(null); return; }
