@@ -2,7 +2,13 @@
  * a random order, on the two measures Kim et al. 2023 (Heliyon) validate
  * against — tour length and average response distance to a random incident?
  */
-import { haversineMeters, tourLength, nearestNeighborOrder, validatePatrolRoute } from '../utils/patrol';
+import {
+  haversineMeters, tourLength, nearestNeighborOrder, validatePatrolRoute,
+  fetchRoadRoute, buildGoogleMapsNavUrl,
+} from '../utils/patrol';
+
+const ok = (body) => ({ ok: true, json: async () => body });
+afterEach(() => { delete global.fetch; });
 
 test('haversine of a point to itself is zero', () => {
   const p = { lat: 12.97, lng: 77.59 };
@@ -66,4 +72,39 @@ test('tourLength sums consecutive-leg haversine distances', () => {
   const order = [{ lat: 12, lng: 77 }, { lat: 12.1, lng: 77 }, { lat: 12.1, lng: 77.1 }];
   const expected = haversineMeters(order[0], order[1]) + haversineMeters(order[1], order[2]);
   expect(tourLength(order)).toBeCloseTo(expected, 6);
+});
+
+test('the Google Maps URL puts the last stop as destination and the rest as ordered waypoints', () => {
+  const stops = [{ lat: 12.97, lng: 77.59 }, { lat: 12.99, lng: 77.60 }, { lat: 13.01, lng: 77.62 }];
+  const url = new URL(buildGoogleMapsNavUrl(stops, { lat: 12.90, lng: 77.50 }));
+  expect(url.searchParams.get('destination')).toBe('13.01,77.62');
+  expect(url.searchParams.get('waypoints')).toBe('12.97,77.59|12.99,77.6');
+  expect(url.searchParams.get('origin')).toBe('12.9,77.5');
+});
+
+test('the Google Maps URL omits origin when none is given, so the app fills in "my location"', () => {
+  const stops = [{ lat: 12.97, lng: 77.59 }, { lat: 12.99, lng: 77.60 }];
+  const url = new URL(buildGoogleMapsNavUrl(stops, null));
+  expect(url.searchParams.has('origin')).toBe(false);
+});
+
+test('fetchRoadRoute returns null when the backend has no ORS key configured', async () => {
+  global.fetch = jest.fn(async () => ok({ available: false }));
+  const stops = [{ lat: 12.97, lng: 77.59 }, { lat: 12.99, lng: 77.60 }];
+  expect(await fetchRoadRoute(stops)).toBeNull();
+});
+
+test('fetchRoadRoute returns the road geometry and distance when ORS answers', async () => {
+  global.fetch = jest.fn(async () => ok({
+    available: true, coordinates: [[12.97, 77.59], [12.99, 77.60]], distanceKm: 4.2, durationMin: 9,
+  }));
+  const stops = [{ lat: 12.97, lng: 77.59 }, { lat: 12.99, lng: 77.60 }];
+  const result = await fetchRoadRoute(stops);
+  expect(result).toEqual({ coordinates: [[12.97, 77.59], [12.99, 77.60]], distanceKm: 4.2, durationMin: 9 });
+});
+
+test('fetchRoadRoute fails soft — a network error is null, not a throw', async () => {
+  global.fetch = jest.fn(async () => { throw new Error('offline'); });
+  const stops = [{ lat: 12.97, lng: 77.59 }, { lat: 12.99, lng: 77.60 }];
+  await expect(fetchRoadRoute(stops)).resolves.toBeNull();
 });

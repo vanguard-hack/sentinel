@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { H, CRIME, STATE, DISTRICT, refreshAllData } from '../data/hierarchyStore';
 import { loadPersonnel } from '../utils/personnel';
-import { nearestNeighborOrder, validatePatrolRoute } from '../utils/patrol';
+import { nearestNeighborOrder, validatePatrolRoute, fetchRoadRoute, buildGoogleMapsNavUrl, currentLocation } from '../utils/patrol';
 import TopBar from '../components/TopBar';
 
 const fmtN = (n) => (n == null ? '—' : n.toLocaleString('en-IN'));
@@ -395,6 +395,8 @@ export default function CrimeMap() {
     let corridors = []; // raw corridor records, once loaded
     let patrolLayer = null;
     let patrolOnLocal = false;
+    let patrolOrder = []; // latest computed stop sequence, for the "Navigate" handoff
+    let patrolRequestId = 0; // guards the async road-route fetch against a newer route replacing it mid-flight
     const current = { level: 'india', state: null, district: null, districtBounds: null };
 
     const remove = (l) => { if (l) map.removeLayer(l); };
@@ -565,6 +567,41 @@ export default function CrimeMap() {
       const order = nearestNeighborOrder(stops, center);
       const validation = validatePatrolRoute(stops, { start: center });
       const km = validation ? validation.optimizedKm : 0;
+      const reqId = ++patrolRequestId;
+      patrolOrder = order;
+
+      // Popup content is rebuilt from scratch both immediately (straight-line
+      // numbers) and again if the road-snapped fetch below comes back — same
+      // function, just fed different road-distance figures.
+      const buildPopupHtml = (roadInfo) => (
+        `<b>Patrol route</b><br/>${order.length} stops · ~${(roadInfo ? roadInfo.distanceKm : km).toFixed(1)} km` +
+        (roadInfo ? ` · ~${roadInfo.durationMin} min driving` : '') +
+        `<br/><span style="color:var(--text-3)">Vs. ${validation.trials} random orderings of the same stops:</span>` +
+        `<br/>Tour ${validation.tourSavingsPct >= 0 ? Math.round(validation.tourSavingsPct) + '% shorter' : Math.round(-validation.tourSavingsPct) + '% longer'}` +
+        ` (${km.toFixed(1)} km vs ${validation.randomAvgKm.toFixed(1)} km avg)` +
+        `<br/>${validation.responseSavingsPct >= 0 ? Math.round(validation.responseSavingsPct) + '% closer' : Math.round(-validation.responseSavingsPct) + '% farther'}` +
+        ` to a random incident on average, over ${validation.incidentSamples} sampled points` +
+        `<br/><span style="color:var(--text-3)">${roadInfo
+          ? 'Route follows roads (OpenRouteService); the savings figures above are still against straight-line random orderings.'
+          : 'Straight-line distance, not road/traffic time — no navigation data behind this map.'}</span>` +
+        `<button type="button" class="patrol-nav-btn">Navigate in Google Maps →</button>` +
+        `<hr style="border-color:var(--border);margin:8px 0 6px"/>` +
+        `<b>Why patrol hotspots at all?</b><br/><span style="color:var(--text-3)">` +
+        `Concentrating patrol at high-activity places is one of the better-evidenced tactics in policing: a ` +
+        `Campbell Collaboration systematic review of 65 studies (78 tests, 27 of them randomized trials) found a ` +
+        `small but statistically significant crime reduction overall — largest for drug and disorder offenses, ` +
+        `smaller (though still real) for property and violent crime — and, across 40 direct tests, a small but ` +
+        `significant <i>diffusion</i> of crime-control benefit into nearby areas, not displacement (Braga, ` +
+        `Turchan, Papachristos &amp; Hureau, 2019).</span>` +
+        `<br/><span style="color:var(--text-3)">Effects vary a lot by context, though — a randomized trial in Medellín found real drops in car theft but ` +
+        `no significant effect on robbery, homicide or assault, and warned that what works in the U.S. "is not as ` +
+        `responsive" elsewhere (Collazos, García, Mejía, Ortega &amp; Tobón, 2019). Karnataka is neither.</span>` +
+        `<br/><span style="color:var(--text-3)">More presence isn't automatically better, either: the same systematic review cautions that hot-spots ` +
+        `tactics can tip into zero-tolerance, indiscriminate enforcement that strains community trust — and only ` +
+        `7 of the 65 studies even measured that effect. Dosage beats duration: brief, frequent, unpredictable ` +
+        `visits (~15 min, several times a day — Koper, 1995) outperform one long, fixed stay. Vary the start with ` +
+        `"New shift" below.</span>`
+      );
 
       patrolLayer = L.layerGroup();
       const routeLatLngs = order.map((s) => [s.lat, s.lng]);
@@ -572,7 +609,7 @@ export default function CrimeMap() {
       // clearly against any basemap colour, then a bold solid line on top —
       // the same construction turn-by-turn apps use so the route reads at a
       // glance instead of blending into the tile colours.
-      L.polyline(routeLatLngs, {
+      const routeCasing = L.polyline(routeLatLngs, {
         color: '#ffffff', weight: 9, opacity: 0.85, lineCap: 'round', lineJoin: 'round',
         className: 'patrol-route-casing',
       }).addTo(patrolLayer);
@@ -580,33 +617,7 @@ export default function CrimeMap() {
         color: css('--primary'), weight: 6, opacity: 1, lineCap: 'round', lineJoin: 'round',
         className: 'patrol-route-line',
       }).addTo(patrolLayer);
-      if (validation) {
-        routeLine.bindPopup(
-          `<b>Patrol route</b><br/>${order.length} stops · ~${km.toFixed(1)} km` +
-          `<br/><span style="color:var(--text-3)">Vs. ${validation.trials} random orderings of the same stops:</span>` +
-          `<br/>Tour ${validation.tourSavingsPct >= 0 ? Math.round(validation.tourSavingsPct) + '% shorter' : Math.round(-validation.tourSavingsPct) + '% longer'}` +
-          ` (${km.toFixed(1)} km vs ${validation.randomAvgKm.toFixed(1)} km avg)` +
-          `<br/>${validation.responseSavingsPct >= 0 ? Math.round(validation.responseSavingsPct) + '% closer' : Math.round(-validation.responseSavingsPct) + '% farther'}` +
-          ` to a random incident on average, over ${validation.incidentSamples} sampled points` +
-          `<br/><span style="color:var(--text-3)">Straight-line distance, not road/traffic time — no navigation data behind this map.</span>` +
-          `<hr style="border-color:var(--border);margin:6px 0"/>` +
-          `<b>Why patrol hotspots at all?</b><br/><span style="color:var(--text-3)">` +
-          `Concentrating patrol at high-activity places is one of the better-evidenced tactics in policing: a ` +
-          `Campbell Collaboration systematic review of 65 studies (78 tests, 27 of them randomized trials) found a ` +
-          `small but statistically significant crime reduction overall — largest for drug and disorder offenses, ` +
-          `smaller (though still real) for property and violent crime — and, across 40 direct tests, a small but ` +
-          `significant <i>diffusion</i> of crime-control benefit into nearby areas, not displacement (Braga, ` +
-          `Turchan, Papachristos &amp; Hureau, 2019).</span>` +
-          `<br/><span style="color:var(--text-3)">Effects vary a lot by context, though — a randomized trial in Medellín found real drops in car theft but ` +
-          `no significant effect on robbery, homicide or assault, and warned that what works in the U.S. "is not as ` +
-          `responsive" elsewhere (Collazos, García, Mejía, Ortega &amp; Tobón, 2019). Karnataka is neither.</span>` +
-          `<br/><span style="color:var(--text-3)">More presence isn't automatically better, either: the same systematic review cautions that hot-spots ` +
-          `tactics can tip into zero-tolerance, indiscriminate enforcement that strains community trust — and only ` +
-          `7 of the 65 studies even measured that effect. Dosage beats duration: brief, frequent, unpredictable ` +
-          `visits (~15 min, several times a day — Koper, 1995) outperform one long, fixed stay. Vary the start with ` +
-          `"New shift" below.</span>`
-        );
-      }
+      if (validation) routeLine.bindPopup(buildPopupHtml(null));
       order.forEach((s, i) => {
         L.marker([s.lat, s.lng], {
           icon: L.divIcon({ className: 'patrol-stop-icon', html: `<span>${i + 1}</span>`, iconSize: [22, 22] }),
@@ -618,20 +629,62 @@ export default function CrimeMap() {
         km: Math.round(km * 10) / 10,
         tourSavingsPct: validation ? Math.round(validation.tourSavingsPct) : null,
         shift: shiftIdx,
+        roadSnapped: false,
+        durationMin: null,
       });
+
+      // Best-effort upgrade: try to snap the same stop order to actual roads.
+      // No key configured, a timeout, or any ORS error resolves to null, and
+      // the straight-line route above is simply left as the final result.
+      if (validation) {
+        fetchRoadRoute(order).then((road) => {
+          if (!road || reqId !== patrolRequestId) return; // superseded by a newer shift/district
+          const roadLatLngs = road.coordinates.map(([lat, lng]) => [lat, lng]);
+          routeCasing.setLatLngs(roadLatLngs);
+          routeLine.setLatLngs(roadLatLngs);
+          routeLine.setPopupContent(buildPopupHtml(road));
+          setPatrolInfo({
+            stops: order.length,
+            km: road.distanceKm,
+            tourSavingsPct: Math.round(validation.tourSavingsPct),
+            shift: shiftIdx,
+            roadSnapped: true,
+            durationMin: road.durationMin,
+          });
+        });
+      }
     };
     const setPatrol = (on) => {
       patrolOnLocal = on;
       shiftIdx = 0;
       setPatrolOn(on);
       if (on) computePatrolRoute();
-      else { remove(patrolLayer); patrolLayer = null; setPatrolInfo(null); }
+      else { patrolRequestId += 1; remove(patrolLayer); patrolLayer = null; patrolOrder = []; setPatrolInfo(null); }
     };
     const shufflePatrolShift = () => {
       if (!patrolOnLocal) return;
       shiftIdx += 1;
       computePatrolRoute();
     };
+
+    // The route popup is rebuilt as raw HTML every time (see buildPopupHtml
+    // above), so its "Navigate" button is wired once, here, via delegation —
+    // reading `patrolOrder` fresh on each click rather than a snapshot taken
+    // when the popup was built, so it's correct even after a "New shift".
+    map.on('popupopen', (e) => {
+      const btn = e.popup.getElement()?.querySelector('.patrol-nav-btn');
+      if (!btn) return;
+      btn.addEventListener('click', async () => {
+        if (patrolOrder.length < 1) return;
+        btn.disabled = true;
+        btn.textContent = 'Locating you…';
+        const origin = await currentLocation();
+        const url = buildGoogleMapsNavUrl(patrolOrder, origin);
+        if (url) window.open(url, '_blank', 'noopener');
+        btn.disabled = false;
+        btn.textContent = 'Navigate in Google Maps →';
+      });
+    });
 
     ctrlRef.current = {
       showIndia, showState, showDistrict, back, setHotspots, togglePolice, setDistrictMode: setDistrictMode2,
@@ -972,6 +1025,7 @@ export default function CrimeMap() {
           {level === 'district' && patrolInfo && (
             <>
               {`Patrol route${patrolInfo.shift ? ` · shift ${patrolInfo.shift + 1}` : ''} · ${patrolInfo.stops} stops · ~${patrolInfo.km} km`}
+              {patrolInfo.roadSnapped ? ` via roads${patrolInfo.durationMin != null ? ` (~${patrolInfo.durationMin} min)` : ''}` : ' (straight-line est.)'}
               {patrolInfo.tourSavingsPct != null && (patrolInfo.tourSavingsPct >= 0
                 ? ` · ${patrolInfo.tourSavingsPct}% shorter than random order (click route)`
                 : ` · ${-patrolInfo.tourSavingsPct}% longer than random order (click route)`)}

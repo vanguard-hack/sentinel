@@ -160,3 +160,58 @@ export function validatePatrolRoute(stops, { start, trials = 20, incidentSamples
     trials, incidentSamples,
   };
 }
+
+// Road-snapped preview: ask the backend (which proxies OpenRouteService) for
+// the actual road geometry between these stops, in the same order the
+// nearest-neighbour heuristic already picked. Best-effort — no key
+// configured, a timeout, or any ORS error all resolve to `null`, and the
+// caller keeps drawing the straight-line route it already has.
+export async function fetchRoadRoute(stops) {
+  if (!stops || stops.length < 2) return null;
+  try {
+    const res = await fetch('/server/rag/patrol/directions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stops: stops.map((s) => ({ lat: s.lat, lng: s.lng })) }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (!data || !data.available) return null;
+    return { coordinates: data.coordinates, distanceKm: data.distanceKm, durationMin: data.durationMin };
+  } catch {
+    return null;
+  }
+}
+
+// Hand off "navigate this route" to Google Maps — turn-by-turn voice
+// guidance, live traffic and rerouting are Google's job, not something to
+// rebuild in-map. Waypoints go in visiting order; the last stop becomes the
+// destination. When `originCoords` is omitted the Google Maps app fills in
+// the device's current location on its own.
+export function buildGoogleMapsNavUrl(stops, originCoords) {
+  if (!stops || stops.length < 1) return null;
+  const destination = stops[stops.length - 1];
+  const waypoints = stops.slice(0, -1).map((s) => `${s.lat},${s.lng}`).join('|');
+  const params = new URLSearchParams({
+    api: '1',
+    destination: `${destination.lat},${destination.lng}`,
+    travelmode: 'driving',
+  });
+  if (waypoints) params.set('waypoints', waypoints);
+  if (originCoords) params.set('origin', `${originCoords.lat},${originCoords.lng}`);
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+// Wraps the browser geolocation callback in a promise with a short timeout,
+// so a slow or denied permission prompt can't hang a "Navigate" click — it
+// resolves to null instead, and buildGoogleMapsNavUrl leaves origin unset.
+export function currentLocation({ timeoutMs = 6000 } = {}) {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      { timeout: timeoutMs, maximumAge: 60_000 }
+    );
+  });
+}

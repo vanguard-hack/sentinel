@@ -1962,7 +1962,7 @@ function rateLimited(key, max) {
 
 // Routes that cost money per call: Zoho transcription and OCR, SmartBrowz PDF
 // rendering, and every lane that reaches an LLM.
-const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|predict\/[a-z]+|forecast(\/refresh)?|digitise\/(upload|ingest)|financial\/narrative)$/;
+const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|predict\/[a-z]+|forecast(\/refresh)?|digitise\/(upload|ingest)|financial\/narrative|patrol\/directions)$/;
 const isAdminUser = (u) => /admin/i.test(u?.role_details?.role_name || '');
 
 /* ── Case prediction (QuickML) ───────────────────────────────────────────────
@@ -3384,6 +3384,51 @@ async function handleFinancialNarrative(req, res) {
   return json(res, 200, { narrative: (prose || 'Narrative unavailable right now — try again shortly.').trim() });
 }
 
+// Crime Map → patrol route: snap the client's already-computed stop order to
+// actual roads via OpenRouteService, so the drawn line follows streets
+// instead of straight segments between hotspots. Only lat/lng pairs the
+// client already has cross this endpoint — no case data, no clearance
+// filtering — so the router's session gate is all the access control this
+// needs. ORS_API_KEY is optional: with none configured (or on any ORS
+// failure) this reports `available:false` and the map keeps the straight-line
+// route it already draws, rather than erroring the feature out.
+async function handlePatrolDirections(req, res) {
+  const key = process.env.ORS_API_KEY;
+  if (!key) return json(res, 200, { available: false });
+
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const stops = Array.isArray(body.stops) ? body.stops : [];
+  if (stops.length < 2 || stops.length > 8) {
+    return json(res, 400, { error: 'Provide 2-8 stops.' });
+  }
+  const coordinates = stops.map((s) => [Number(s.lng), Number(s.lat)]);
+  if (coordinates.some(([lng, lat]) => !Number.isFinite(lng) || !Number.isFinite(lat))) {
+    return json(res, 400, { error: 'Invalid coordinates.' });
+  }
+
+  try {
+    const orsRes = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+      method: 'POST',
+      headers: { Authorization: key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coordinates }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!orsRes.ok) return json(res, 200, { available: false });
+    const data = await orsRes.json();
+    const feat = data?.features?.[0];
+    const coords = feat?.geometry?.coordinates;
+    if (!Array.isArray(coords) || !coords.length) return json(res, 200, { available: false });
+    return json(res, 200, {
+      available: true,
+      coordinates: coords.map(([lng, lat]) => [lat, lng]),
+      distanceKm: Math.round((feat.properties.summary.distance / 1000) * 10) / 10,
+      durationMin: Math.round(feat.properties.summary.duration / 60),
+    });
+  } catch {
+    return json(res, 200, { available: false });
+  }
+}
+
 // ── Records Digitisation (paper files → searchable digital records) ─────────
 // Police records still live largely on paper. Officers photograph or scan a
 // document here; Zia OCR lifts the text, an LLM pass classifies it and pulls
@@ -4552,6 +4597,7 @@ module.exports = async (req, res) => {
           order: PROVIDER_ORDER,
         },
         rag: !!(process.env.RAG_REFRESH_TOKEN || process.env.RAG_ACCESS_TOKEN),
+        routing: { ors: !!process.env.ORS_API_KEY },
         /* Which QuickML endpoints have a key, as booleans — never the keys.
            These live only in the Catalyst console (CI strips env_variables so
            a deploy cannot overwrite them), which makes "did the console value
@@ -4651,6 +4697,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/investigation/reorder')) return await handleInvestigation(req, res, 'reorder');
     if (path.endsWith('/investigation/summarize')) return await handleInvestigationSummary(req, res);
     if (path.endsWith('/financial/narrative')) return await handleFinancialNarrative(req, res);
+    if (path.endsWith('/patrol/directions')) return await handlePatrolDirections(req, res);
     if (path.endsWith('/investigation/media/upload')) return await handleMediaUpload(req, res);
     if (path.endsWith('/investigation/media/get')) return await handleMediaGet(req, res);
     if (path.endsWith('/investigation/ocr')) return await handleOcr(req, res);
