@@ -5,6 +5,7 @@ const zcql = require('./zcql');
 const redaction = require('./redaction');
 const vision = require('./vision');
 const attribution = require('./sources');
+const sanctions = require('./sanctions');
 const memory = require('./memory');
 const assistantTools = require('./tools');
 const integrity = require('./integrity');
@@ -478,6 +479,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
   const rowSets = [];    // Data Store rows, for citations
   const scanHits = [];   // digitised records, for citations
   const osintHits = [];  // RDAP/AbuseIPDB lookups, for citations
+  const sanctionsHits = []; // UN sanctions-list matches, for citations
   const toolThreats = []; // injection markers found in retrieved content
   let usedKnowledgeBase = false;
 
@@ -520,6 +522,40 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
         name: [u?.first_name, u?.last_name].filter(Boolean).join(' '),
       });
     },
+    // Cache-backed, not a live call per question: the source updates once
+    // a day, so a 2.5MB fetch-and-parse on every turn would waste the tool
+    // budget on data that has not changed. Same shape handleForecast
+    // already uses for the forecast bundle — check the cache, rebuild if
+    // stale or missing, fall back to a stale cache on a failed rebuild
+    // rather than failing the tool outright.
+    sanctionsCheck: async (query) => {
+      let index;
+      try {
+        const cached = JSON.parse((await streamToString(await bucket.getObject(sanctions.CACHE_KEY))) || 'null');
+        if (cached && Array.isArray(cached.records) && Date.now() - cached.fetchedAt < sanctions.STALE_MS) {
+          index = cached;
+        }
+      } catch { /* no cache yet — fall through and build one */ }
+      if (!index) {
+        try {
+          const built = await sanctions.buildIndex();
+          index = built;
+          try {
+            await bucket.putObject(sanctions.CACHE_KEY, Buffer.from(JSON.stringify(built), 'utf8'));
+          } catch (e) {
+            console.error('sanctions cache write failed (non-fatal):', e && e.message);
+          }
+        } catch (e) {
+          try {
+            const stale = JSON.parse((await streamToString(await bucket.getObject(sanctions.CACHE_KEY))) || 'null');
+            if (stale && Array.isArray(stale.records)) index = stale;
+          } catch { /* nothing cached at all */ }
+          if (!index) return { error: `Sanctions list unavailable: ${(e && e.message) || e}` };
+        }
+      }
+      const result = sanctions.search(index.records, query);
+      return { ...result, indexAgeMs: Date.now() - index.fetchedAt };
+    },
   };
 
   try {
@@ -558,7 +594,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           .join('')
           .trim();
         if (!text) return null;
-        return { text, used, rowSets, scanHits, osintHits, usedKnowledgeBase, protectedAccess, toolThreats, iterations: i + 1 };
+        return { text, used, rowSets, scanHits, osintHits, sanctionsHits, usedKnowledgeBase, protectedAccess, toolThreats, iterations: i + 1 };
       }
 
       messages.push({ role: 'assistant', content: res.content });
@@ -579,6 +615,9 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           }
           if (c.name === 'osint_lookup' && out && !out.error && (out.rdap || out.abuseipdb)) {
             osintHits.push(out);
+          }
+          if (c.name === 'sanctions_check' && out && !out.error && Array.isArray(out.matches) && out.matches.length) {
+            sanctionsHits.push(...out.matches);
           }
           // Internal bookkeeping never goes back to the model.
           const { _redactions, _hits, _protectedAccess, _threat, ...clean } = out || {};
@@ -5586,6 +5625,7 @@ module.exports = async (req, res) => {
             cites.push(attribution.fromDigitised(looped.scanHits));
           }
           for (const hit of looped.osintHits) cites.push(attribution.fromOsint(hit));
+          if (looped.sanctionsHits.length) cites.push(attribution.fromSanctions(looped.sanctionsHits));
           // The knowledge-base fallback is only worth showing when nothing else
           // answered — otherwise a model that (wrongly, or as a first attempt)
           // also called search_knowledge_base leaves an empty, unopenable chip

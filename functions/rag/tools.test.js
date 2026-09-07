@@ -168,6 +168,16 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /c\.name === 'osint_lookup'[\s\S]{0,80}osintHits\.push\(out\)/.test(loop));
   check('osintHits travels out of the loop in its return value',
     /return \{ text, used, rowSets, scanHits, osintHits,/.test(loop));
+  check('a sanctions_check result is collected for citations',
+    /c\.name === 'sanctions_check'[\s\S]{0,160}sanctionsHits\.push/.test(loop));
+  check('sanctionsHits travels out of the loop in its return value',
+    /return \{ text, used, rowSets, scanHits, osintHits, sanctionsHits,/.test(loop));
+  check('the sanctions cache is checked for staleness before rebuilding',
+    /Date\.now\(\) - cached\.fetchedAt < sanctions\.STALE_MS/.test(loop));
+  check('a failed rebuild falls back to the stale cache rather than failing outright',
+    /stale && Array\.isArray\(stale\.records\)/.test(loop));
+  check('a successful rebuild is written back to the cache',
+    /bucket\.putObject\(sanctions\.CACHE_KEY/.test(loop));
 
   const route = src.slice(src.indexOf("if (routed === 'TOOLS')"), src.indexOf("if (routed && /chat/i.test(routed))"));
   check('a failed loop falls through to the lanes that were already there',
@@ -178,6 +188,10 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /for \(const hit of looped\.osintHits\)/.test(route));
   check('  built by the same fromOsint attribution function sources.js exports',
     /attribution\.fromOsint\(hit\)/.test(route));
+  check('every sanctions match the loop found becomes a citation too',
+    /looped\.sanctionsHits\.length/.test(route));
+  check('  built by the same fromSanctions attribution function sources.js exports',
+    /attribution\.fromSanctions\(looped\.sanctionsHits\)/.test(route));
   check('the knowledge-base fallback only appears when nothing else answered',
     /looped\.usedKnowledgeBase && !cites\.length/.test(route),
     'a real citation must not sit next to a dead "Knowledge base" chip from a redundant call');
