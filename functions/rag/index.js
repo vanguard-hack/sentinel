@@ -477,6 +477,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
   const used = [];       // what ran, for the audit trail
   const rowSets = [];    // Data Store rows, for citations
   const scanHits = [];   // digitised records, for citations
+  const osintHits = [];  // RDAP/AbuseIPDB lookups, for citations
   const toolThreats = []; // injection markers found in retrieved content
   let usedKnowledgeBase = false;
 
@@ -557,7 +558,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           .join('')
           .trim();
         if (!text) return null;
-        return { text, used, rowSets, scanHits, usedKnowledgeBase, protectedAccess, toolThreats, iterations: i + 1 };
+        return { text, used, rowSets, scanHits, osintHits, usedKnowledgeBase, protectedAccess, toolThreats, iterations: i + 1 };
       }
 
       messages.push({ role: 'assistant', content: res.content });
@@ -575,6 +576,9 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           if (out && out._threat) toolThreats.push(...out._threat);
           if (c.name === 'query_records' && out && Array.isArray(out.rows) && out.rows.length) {
             rowSets.push({ rows: out.rows, query: (c.input && c.input.zcql) || '' });
+          }
+          if (c.name === 'osint_lookup' && out && !out.error && (out.rdap || out.abuseipdb)) {
+            osintHits.push(out);
           }
           // Internal bookkeeping never goes back to the model.
           const { _redactions, _hits, _protectedAccess, _threat, ...clean } = out || {};
@@ -5581,7 +5585,12 @@ module.exports = async (req, res) => {
             evidence.add(looped.scanHits);
             cites.push(attribution.fromDigitised(looped.scanHits));
           }
-          if (looped.usedKnowledgeBase) cites.push(attribution.knowledgeBaseFallback());
+          for (const hit of looped.osintHits) cites.push(attribution.fromOsint(hit));
+          // The knowledge-base fallback is only worth showing when nothing else
+          // answered — otherwise a model that (wrongly, or as a first attempt)
+          // also called search_knowledge_base leaves an empty, unopenable chip
+          // sitting next to a real citation that already answered the question.
+          if (looped.usedKnowledgeBase && !cites.length) cites.push(attribution.knowledgeBaseFallback());
           const v = extractAgui(looped.text);
           return await respondWith(v.text || looped.text, {
             components: v.components,

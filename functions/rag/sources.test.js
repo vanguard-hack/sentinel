@@ -106,6 +106,42 @@ check('a refused URL produces no citation at all',
 check('an allowed URL is cited with its domain',
   a.fromWeb([{ url: 'https://mha.gov.in/g', page_title: 'Guidelines' }])[0].domain === 'mha.gov.in');
 
+// ── OSINT lookups ────────────────────────────────────────────────────────
+const osintBoth = a.fromOsint({
+  kind: 'ip', value: '8.8.8.8',
+  rdap: { available: true, name: 'Google LLC', country: 'US', handle: 'NET-8-8-8-0-1', status: ['active'] },
+  abuseipdb: { available: true, abuseConfidenceScore: 0, totalReports: 0, isp: 'Google LLC', usageType: 'Data Center/Web Hosting' },
+});
+check('both sources answering produces two citations', osintBoth.length === 2);
+check('the RDAP citation names the real, checkable URL',
+  osintBoth[0].uri === 'https://rdap.org/ip/8.8.8.8' && osintBoth[0].domain === 'rdap.org');
+check('  and carries the registration facts as its passage',
+  /Registered to: Google LLC/.test(osintBoth[0].passages[0].excerpt));
+check('the AbuseIPDB citation points at the public check page, not the keyed API endpoint',
+  osintBoth[1].uri === 'https://www.abuseipdb.com/check/8.8.8.8');
+check('  and carries the reputation facts as its passage',
+  /Abuse confidence: 0%/.test(osintBoth[1].passages[0].excerpt));
+
+const rdapOnly = a.fromOsint({
+  kind: 'domain', value: 'example.com',
+  rdap: { available: true, name: null, country: null, handle: 'example.com', status: [] },
+  abuseipdb: { available: false, note: 'AbuseIPDB covers IP addresses only.' },
+});
+check('a source that did not answer produces no citation for itself',
+  rdapOnly.length === 1 && rdapOnly[0].domain === 'rdap.org');
+check('a domain RDAP citation points at the domain path, not the ip path',
+  rdapOnly[0].uri === 'https://rdap.org/domain/example.com');
+
+check('neither source answering produces no citations at all',
+  a.fromOsint({ kind: 'ip', value: '1.2.3.4', rdap: { available: false }, abuseipdb: { available: false } }).length === 0);
+
+// A real, checkable citation — never dropped by the clearance filter, since
+// public registration/reputation data about an internet identifier is not a
+// case record and names no one.
+const osintCited = a.merge(osintBoth);
+check('an analyst can see an OSINT citation — it names no one and no case',
+  a.clearanceFilter(osintCited, 'analyst').sources.length === 2);
+
 // ── Merge & dedupe ─────────────────────────────────────────────────────────
 const merged = a.merge(
   a.fromRagNodes([{ document_title: 'SOP.pdf', page_label: 3, text: 'a' }]),

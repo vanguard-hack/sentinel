@@ -164,12 +164,23 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /catch \(e\)[\s\S]{0,160}?return null;/.test(loop));
   check('it stays dormant without a key',
     /if \(!process\.env\.ANTHROPIC_API_KEY\) return null;/.test(loop));
+  check('an osint_lookup result is collected for citations, the same way query_records rows are',
+    /c\.name === 'osint_lookup'[\s\S]{0,80}osintHits\.push\(out\)/.test(loop));
+  check('osintHits travels out of the loop in its return value',
+    /return \{ text, used, rowSets, scanHits, osintHits,/.test(loop));
 
   const route = src.slice(src.indexOf("if (routed === 'TOOLS')"), src.indexOf("if (routed && /chat/i.test(routed))"));
   check('a failed loop falls through to the lanes that were already there',
     /if \(looped\) \{/.test(route) && !/return await respondWith\([\s\S]{0,40}null/.test(route));
   check('every Data Store result the loop read becomes a citation',
     /for \(const set of looped\.rowSets\)/.test(route));
+  check('every OSINT lookup the loop read becomes a citation too',
+    /for \(const hit of looped\.osintHits\)/.test(route));
+  check('  built by the same fromOsint attribution function sources.js exports',
+    /attribution\.fromOsint\(hit\)/.test(route));
+  check('the knowledge-base fallback only appears when nothing else answered',
+    /looped\.usedKnowledgeBase && !cites\.length/.test(route),
+    'a real citation must not sit next to a dead "Knowledge base" chip from a redundant call');
   check('which tools ran is recorded for the audit trail',
     /validatorChecks\.push\(`tools:/.test(route));
 
@@ -262,6 +273,18 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   check('the OSINT tool discloses that the lookup leaves Sentinel and India',
     /outside Sentinel and outside India/.test(
       tools.DEFINITIONS.find((d) => d.name === 'osint_lookup').description));
+  // A real bug, caught by testing this end to end rather than just in
+  // isolation: the model reached for search_knowledge_base on an IP
+  // question, which cannot answer it and left an empty, unopenable
+  // "Knowledge base" citation standing in for a real one. Each tool now
+  // names the other by name so the boundary is not left for the model to
+  // infer.
+  check('the OSINT tool tells the model it is the ONLY source for IP/domain data',
+    /ONLY tool that knows anything about an IP address/.test(
+      tools.DEFINITIONS.find((d) => d.name === 'osint_lookup').description));
+  check('the knowledge-base tool explicitly rules out IP/domain questions',
+    /osint_lookup/.test(
+      tools.DEFINITIONS.find((d) => d.name === 'search_knowledge_base').description));
 
   // Deliberately malformed values below: the gate must pass THROUGH to
   // osint.js's own validation (proving the tool is actually wired up) without

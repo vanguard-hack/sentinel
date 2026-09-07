@@ -326,6 +326,61 @@ function fromWeb(observations) {
   return out;
 }
 
+// ── Lane 6: OSINT lookups (RDAP / AbuseIPDB) ────────────────────────────────
+//
+// osint.js's result carries two independent sections, each of which is its
+// own citation when it answered — an officer who asked about an IP gets one
+// chip for who it is registered to and a separate chip for its abuse
+// history, because those are two different services and two different
+// claims. Unlike fromWeb, these URLs are not attacker-influenceable: they
+// are built here from a fixed hostname plus the value the officer or the
+// model supplied, never taken from a page or a model observation, so no
+// allowlist check applies — there is nothing here for a hostile document to
+// have injected.
+//
+// AbuseIPDB's citation points at its public check page, not the API
+// endpoint the tool actually called — the API needs a key header a browser
+// GET cannot send, so linking it would open to an auth error. The check
+// page shows the same data a human can verify without one.
+
+function fromOsint({ kind, value, rdap, abuseipdb }) {
+  const out = [];
+  const v = str(value, 200);
+  if (rdap && rdap.available) {
+    const facts = [
+      rdap.name ? `Registered to: ${rdap.name}` : null,
+      rdap.country ? `Country: ${rdap.country}` : null,
+      rdap.handle ? `Handle: ${rdap.handle}` : null,
+      (rdap.status || []).length ? `Status: ${rdap.status.join(', ')}` : null,
+    ].filter(Boolean).join(' · ');
+    out.push({
+      source_type: TYPES.EXTERNAL_WEB,
+      display_name: `RDAP registration — ${v}`,
+      uri: `https://rdap.org/${kind === 'ip' ? 'ip' : 'domain'}/${encodeURIComponent(v)}`,
+      domain: 'rdap.org',
+      scope: kind === 'ip' ? 'IP address registration data' : 'Domain registration data',
+      passages: facts ? [{ location: null, excerpt: str(facts, 600), score: null }] : [],
+    });
+  }
+  if (abuseipdb && abuseipdb.available) {
+    const facts = [
+      `Abuse confidence: ${abuseipdb.abuseConfidenceScore}%`,
+      `Reports: ${abuseipdb.totalReports}`,
+      abuseipdb.isp ? `ISP: ${abuseipdb.isp}` : null,
+      abuseipdb.usageType ? `Usage: ${abuseipdb.usageType}` : null,
+    ].filter(Boolean).join(' · ');
+    out.push({
+      source_type: TYPES.EXTERNAL_WEB,
+      display_name: `AbuseIPDB reputation — ${v}`,
+      uri: `https://www.abuseipdb.com/check/${encodeURIComponent(v)}`,
+      domain: 'abuseipdb.com',
+      scope: 'IP abuse-reputation check',
+      passages: [{ location: null, excerpt: str(facts, 600), score: null }],
+    });
+  }
+  return out;
+}
+
 // ── Clearance ───────────────────────────────────────────────────────────────
 
 // Fields whose NAME alone discloses something — a filter clause reading
@@ -488,6 +543,7 @@ module.exports = {
   fromZcql,
   fromVision,
   fromWeb,
+  fromOsint,
   filterSummary,
   matchedRecordIds,
   clearanceFilter,

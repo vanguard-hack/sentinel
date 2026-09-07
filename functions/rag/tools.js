@@ -130,7 +130,9 @@ const DEFINITIONS = [
       'Search the written knowledge base — BNSS and IPC procedure, standing orders, ' +
       'investigation practice, departmental circulars. Use this for "how do I", "what ' +
       'does the law require", "what is the procedure for". It holds no case records; ' +
-      'use query_records for those.',
+      'use query_records for those. It holds nothing about IP addresses, domains or ' +
+      'any other external/internet identifier either — use osint_lookup for those. ' +
+      'Do not call this tool as a fallback for a question that names an IP or domain.',
     input_schema: {
       type: 'object',
       properties: {
@@ -323,7 +325,10 @@ const DEFINITIONS = [
       'IP addresses. Use this when an officer asks about an IP or domain ' +
       'found in evidence — who it is registered to, whether it has a ' +
       'history of abuse reports — not for anything already in the Data ' +
-      'Store.\n\n' +
+      'Store. This is the ONLY tool that knows anything about an IP address ' +
+      'or domain — never call search_knowledge_base or query_records for ' +
+      'one instead; neither holds this data and both will answer as if ' +
+      'nothing is known, which is wrong, not merely unhelpful.\n\n' +
       'This sends the identifier to external services (rdap.org, and ' +
       'api.abuseipdb.com for IP addresses), outside Sentinel and outside ' +
       'India. State that plainly in your answer — do not let the officer ' +
