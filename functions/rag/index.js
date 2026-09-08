@@ -765,10 +765,19 @@ const SLASH_ROLES = {
   hotspot: ['admin', 'supervisor', 'investigator', 'analyst', 'policymaker'],
   wanted: ['admin', 'supervisor', 'investigator'],
   missing: ['admin', 'supervisor', 'investigator'],
+  // Same role gate as each tool's own inline check in tools.js — kept
+  // identical deliberately, so the shortcut can never reach further than
+  // typing the question out in full would.
+  osint: ['admin', 'supervisor', 'investigator', 'analyst'],
+  sanctions: ['admin', 'supervisor', 'investigator', 'analyst'],
+  crypto: ['admin', 'supervisor', 'investigator', 'analyst'],
   help: null,
 };
 // Commands touching person or case records — logged on every execution.
-const SLASH_SENSITIVE = new Set(['fir', 'case', 'suspect', 'vehicle', 'person', 'wanted', 'missing']);
+const SLASH_SENSITIVE = new Set([
+  'fir', 'case', 'suspect', 'vehicle', 'person', 'wanted', 'missing',
+  'osint', 'sanctions', 'crypto',
+]);
 
 const SLASH_HELP = [
   ['/fir [FIR number]', 'Get FIR details and current status'],
@@ -780,6 +789,9 @@ const SLASH_HELP = [
   ['/hotspot [area]', 'Crime hotspot data for a location'],
   ['/wanted [name or area]', 'Search wanted/absconding offenders list'],
   ['/missing [name or ID]', 'Missing person case lookup'],
+  ['/osint [IP address or domain]', 'External registration & abuse-reputation check'],
+  ['/sanctions [name]', 'Screen a name against the UN sanctions/watchlist'],
+  ['/crypto [wallet address]', 'Bitcoin/Ethereum wallet balance & activity'],
   ['/help', 'List all available commands'],
   ['/clear', 'Clear current chat context'],
 ];
@@ -818,6 +830,12 @@ function slashToQuery(name, arg) {
       return arg
         ? `List accused persons connected to ${arg} who have no arrest or surrender record, with their crime numbers and case status.`
         : 'List accused persons who have no arrest or surrender record, with their crime numbers and case status.';
+    case 'osint':
+      return `Check the IP address or domain ${arg} for registration and abuse-reputation data.`;
+    case 'sanctions':
+      return `Check whether ${arg} appears on the UN sanctions or watchlist.`;
+    case 'crypto':
+      return `Check the crypto wallet address ${arg} — balance and transaction activity.`;
     default:
       return arg || name;
   }
