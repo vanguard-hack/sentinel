@@ -3,10 +3,10 @@ import {
   COMMANDS, visibleCommands, slashQuery, filterCommands, parseCommand, closestCommand,
 } from '../utils/slashCommands';
 
-test('the approved set is exactly the eleven commands, and stays that size', () => {
+test('the approved set is exactly the fourteen commands, and stays that size', () => {
   expect(COMMANDS.map((c) => c.name).sort()).toEqual([
-    'case', 'clear', 'crime-stats', 'fir', 'help', 'hotspot',
-    'missing', 'person', 'suspect', 'vehicle', 'wanted',
+    'case', 'clear', 'crime-stats', 'crypto', 'fir', 'help', 'hotspot',
+    'missing', 'osint', 'person', 'sanctions', 'suspect', 'vehicle', 'wanted',
   ]);
 });
 
@@ -21,7 +21,7 @@ test('the menu opens only on a leading slash', () => {
 
 test('filtering narrows as the officer types', () => {
   expect(filterCommands('admin', 'fi').map((c) => c.name)).toEqual(['fir']);
-  expect(filterCommands('admin', 'c').map((c) => c.name)).toEqual(['case', 'crime-stats', 'clear']);
+  expect(filterCommands('admin', 'c').map((c) => c.name)).toEqual(['case', 'crypto', 'crime-stats', 'clear']);
   expect(filterCommands('admin', 'zz')).toEqual([]);
 });
 
@@ -32,6 +32,12 @@ test('role gates which commands are offered', () => {
   // record lookups are not an analyst's to run
   expect(analyst).not.toContain('fir');
   expect(analyst).not.toContain('suspect');
+  // the four external-service tools ARE an analyst's to run — same gate as
+  // each tool's own inline check in tools.js, which includes analyst
+  expect(analyst).toContain('vehicle');
+  expect(analyst).toContain('osint');
+  expect(analyst).toContain('sanctions');
+  expect(analyst).toContain('crypto');
   // system commands are open to everyone
   expect(analyst).toContain('help');
   expect(visibleCommands('investigator').map((c) => c.name)).toContain('fir');
@@ -58,7 +64,10 @@ test('commands that need a value are marked, so submitting bare prompts inline',
   const fir = COMMANDS.find((c) => c.name === 'fir');
   expect(fir.needsArg).toBe(true);
   expect(COMMANDS.find((c) => c.name === 'help').needsArg).toBe(false);
-  // every sensitive command is one that reaches person or case records
+  // every sensitive command is one that reaches person or case records, or
+  // (for the External group) a specific external identifier being checked
   const sensitive = COMMANDS.filter((c) => c.sensitive).map((c) => c.name).sort();
-  expect(sensitive).toEqual(['case', 'fir', 'missing', 'person', 'suspect', 'vehicle', 'wanted']);
+  expect(sensitive).toEqual([
+    'case', 'crypto', 'fir', 'missing', 'osint', 'person', 'sanctions', 'suspect', 'vehicle', 'wanted',
+  ]);
 });

@@ -1,14 +1,20 @@
 // Slash commands for the assistant.
 //
-// The set is deliberately fixed at eleven — a focused shortcut list for the
-// queries officers repeat, not a general command palette. Adding to it should
-// be a scoping decision, so the registry lives here as the single source of
-// truth for the UI, the parser and /help.
+// The set was fixed at eleven until the assistant grew four tools backed by
+// external services (osint_lookup, sanctions_check, crypto_lookup,
+// vehicle_lookup in functions/rag/tools.js) — adding their shortcuts here was
+// exactly the kind of deliberate scoping decision that comment asked for, not
+// scope creep, so the registry stays the single source of truth for the UI,
+// the parser and /help rather than growing unboundedly.
 //
 // `roles` mirrors utils/access.js: a command is only offered, and only
 // executed, for roles that may already reach that data by navigating the app.
-// `sensitive` marks the ones that touch person or case records and must be
-// written to the audit trail on every execution.
+// For the four External commands this is copied from each tool's own inline
+// gate in tools.js, deliberately, so the shortcut can never reach further
+// than typing the question out in full would.
+// `sensitive` marks the ones that touch person or case records — or, for the
+// External group, a specific external identifier an officer is checking —
+// and must be written to the audit trail on every execution.
 export const COMMANDS = [
   {
     name: 'fir', arg: '[FIR number]', category: 'Lookup',
@@ -26,14 +32,29 @@ export const COMMANDS = [
     roles: ['admin', 'supervisor', 'investigator'], sensitive: true, needsArg: true,
   },
   {
-    name: 'vehicle', arg: '[registration no]', category: 'Lookup',
-    descKey: 'slash.vehicle', desc: 'Vehicle ownership & crime linkage check',
-    roles: ['admin', 'supervisor', 'investigator'], sensitive: true, needsArg: true,
-  },
-  {
     name: 'person', arg: '[name or phone]', category: 'Lookup',
     descKey: 'slash.person', desc: 'Person search across connected records',
     roles: ['admin', 'supervisor', 'investigator'], sensitive: true, needsArg: true,
+  },
+  {
+    name: 'vehicle', arg: '[registration no]', category: 'External',
+    descKey: 'slash.vehicle', desc: 'RC lookup: owner, RC status, insurance validity',
+    roles: ['admin', 'supervisor', 'investigator', 'analyst'], sensitive: true, needsArg: true,
+  },
+  {
+    name: 'osint', arg: '[IP address or domain]', category: 'External',
+    descKey: 'slash.osint', desc: 'External registration & abuse-reputation check',
+    roles: ['admin', 'supervisor', 'investigator', 'analyst'], sensitive: true, needsArg: true,
+  },
+  {
+    name: 'sanctions', arg: '[name]', category: 'External',
+    descKey: 'slash.sanctions', desc: 'Screen a name against the UN sanctions/watchlist',
+    roles: ['admin', 'supervisor', 'investigator', 'analyst'], sensitive: true, needsArg: true,
+  },
+  {
+    name: 'crypto', arg: '[wallet address]', category: 'External',
+    descKey: 'slash.crypto', desc: 'Bitcoin/Ethereum wallet balance & activity',
+    roles: ['admin', 'supervisor', 'investigator', 'analyst'], sensitive: true, needsArg: true,
   },
   {
     name: 'crime-stats', arg: '[district/PS] [date range]', category: 'Analytics',
