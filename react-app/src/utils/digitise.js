@@ -86,10 +86,15 @@ export async function pdfToImages(file, onProgress) {
   // a scanned page renders fast enough without one. disableWorker only skips
   // spawning that background thread though: pdf.js still dynamically imports
   // the worker module's own code to run it inline, so workerSrc must point
-  // at a real, fetchable copy. Vendored to public/pdf.worker.min.mjs (kept
+  // at a real, fetchable copy. Vendored to public/pdf.worker.min.js (kept
   // in sync with the pdfjs-dist version pinned in package.json) since CRA
-  // does not emit it as a bundled asset.
-  pdfjs.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL || ''}/pdf.worker.min.mjs`;
+  // does not emit it as a bundled asset. A .js extension, not pdfjs-dist's
+  // own .mjs: verified live against the deployed static host — it serves
+  // .js as application/javascript but .mjs as application/octet-stream,
+  // which a browser's dynamic import() strictly refuses to run as a
+  // module. Content is unchanged; only the extension the server
+  // recognises differs.
+  pdfjs.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL || ''}/pdf.worker.min.js`;
   const data = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjs.getDocument({ data, disableWorker: true, isEvalSupported: false }).promise;
   const out = [];
