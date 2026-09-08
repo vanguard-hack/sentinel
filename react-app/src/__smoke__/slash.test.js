@@ -29,12 +29,14 @@ test('role gates which commands are offered', () => {
   const analyst = visibleCommands('analyst').map((c) => c.name);
   expect(analyst).toContain('crime-stats');
   expect(analyst).toContain('hotspot');
-  // record lookups are not an analyst's to run
+  // record lookups are not an analyst's to run — vehicle stayed in that
+  // group (no verification provider is configured, so it's the honest "no
+  // registry" command, not a tool with its own gate)
   expect(analyst).not.toContain('fir');
   expect(analyst).not.toContain('suspect');
-  // the four external-service tools ARE an analyst's to run — same gate as
+  expect(analyst).not.toContain('vehicle');
+  // the three external-service tools ARE an analyst's to run — same gate as
   // each tool's own inline check in tools.js, which includes analyst
-  expect(analyst).toContain('vehicle');
   expect(analyst).toContain('osint');
   expect(analyst).toContain('sanctions');
   expect(analyst).toContain('crypto');

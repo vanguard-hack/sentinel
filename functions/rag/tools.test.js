@@ -206,10 +206,6 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /c\.name === 'crypto_lookup'[\s\S]{0,80}cryptoHits\.push\(out\)/.test(loop));
   check('cryptoHits travels out of the loop in its return value',
     /return \{ text, used, rowSets, scanHits, osintHits, sanctionsHits, cryptoHits,/.test(loop));
-  check('a vehicle_lookup result is collected for citations, the same way crypto_lookup results are',
-    /c\.name === 'vehicle_lookup'[\s\S]{0,80}vehicleHits\.push\(out\)/.test(loop));
-  check('vehicleHits travels out of the loop in its return value',
-    /return \{ text, used, rowSets, scanHits, osintHits, sanctionsHits, cryptoHits, vehicleHits,/.test(loop));
 
   const route = src.slice(src.indexOf("if (routed === 'TOOLS')"), src.indexOf("if (routed && /chat/i.test(routed))"));
   check('a failed loop falls through to the lanes that were already there',
@@ -228,10 +224,6 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /for \(const hit of looped\.cryptoHits\)/.test(route));
   check('  built by the same fromCrypto attribution function sources.js exports',
     /attribution\.fromCrypto\(hit\)/.test(route));
-  check('every vehicle RC lookup the loop read becomes a citation too',
-    /for \(const hit of looped\.vehicleHits\)/.test(route));
-  check('  built by the same fromVehicle attribution function sources.js exports',
-    /attribution\.fromVehicle\(hit\)/.test(route));
   check('the knowledge-base fallback only appears when nothing else answered',
     /looped\.usedKnowledgeBase && !cites\.length/.test(route),
     'a real citation must not sit next to a dead "Knowledge base" chip from a redundant call');
@@ -417,34 +409,6 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   const cryptoNoRole = await run('crypto_lookup', { address: 'not an address' }, {});
   check('an uncleared caller cannot reach crypto lookups either',
     /limited to investigators, supervisors, analysts and admin/.test(cryptoNoRole.error || ''));
-
-  // ── vehicle_lookup ───────────────────────────────────────────────────
-  //
-  // A malformed registration number is refused by vehicle.js's own
-  // validation, proving the call reached the module without ever touching
-  // the network — same technique as the other gate tests.
-
-  check('the vehicle tool discloses it stays inside India, unlike the other external lookups',
-    /does not\s*\n?\s*leave India/.test(
-      tools.DEFINITIONS.find((d) => d.name === 'vehicle_lookup').description.replace(/\n/g, ' ')));
-  check('the vehicle tool requires sandbox/test data to be disclosed plainly',
-    /sandbox\/test data/.test(
-      tools.DEFINITIONS.find((d) => d.name === 'vehicle_lookup').description));
-  check('the knowledge-base tool also rules out vehicle registration questions',
-    /vehicle_lookup/.test(
-      tools.DEFINITIONS.find((d) => d.name === 'search_knowledge_base').description));
-
-  for (const role of ['investigator', 'supervisor', 'admin', 'analyst']) {
-    const ok = await run('vehicle_lookup', { vehicleNumber: 'not a plate' }, { role });
-    check(`${role} can reach the vehicle lookup (gate passes)`,
-      /not a recognisable Indian vehicle registration number/.test(ok.error || ''), JSON.stringify(ok));
-  }
-  const vehicleDenied = await run('vehicle_lookup', { vehicleNumber: 'not a plate' }, { role: 'policymaker' });
-  check('policymaker cannot reach vehicle lookups through the assistant',
-    /limited to investigators, supervisors, analysts and admin/.test(vehicleDenied.error || ''));
-  const vehicleNoRole = await run('vehicle_lookup', { vehicleNumber: 'not a plate' }, {});
-  check('an uncleared caller cannot reach vehicle lookups either',
-    /limited to investigators, supervisors, analysts and admin/.test(vehicleNoRole.error || ''));
 
   // The page and the tool must be one engine, not two implementations.
   const idx = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');

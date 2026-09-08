@@ -191,28 +191,6 @@ check('a chain that did not answer produces no citation', a.fromCrypto(unavailab
 check('an analyst can see a crypto citation — it names a public address, not a case',
   a.clearanceFilter(a.merge(btcCited), 'analyst').sources.length === 1);
 
-// ── Vehicle RC citations ────────────────────────────────────────────────
-const vehicleHit = {
-  vehicleNumber: 'HJ01ME5678', found: true, owner: 'JOHN DOE',
-  manufacturer: 'HYUNDAI MOTOR INDIA LTD', model: 'P20 1.0TURBO GDI DCT',
-  rcStatus: 'ACTIVE', rcExpiryDate: '2089-12-23', insuranceValidUpto: '2029-12-14',
-  blacklistStatus: 'NA', isSandboxData: true,
-};
-const vehicleCited = a.fromVehicle(vehicleHit);
-check('a found vehicle produces one citation', vehicleCited.length === 1);
-check('no public per-vehicle page exists, so it carries no uri', !vehicleCited[0].uri);
-check('it names Eko as the source and flags sandbox data plainly',
-  vehicleCited[0].domain === 'eko.in' && /sandbox/i.test(vehicleCited[0].scope));
-check('it carries owner, vehicle and RC status facts as its passage',
-  /Owner: JOHN DOE/.test(vehicleCited[0].passages[0].excerpt)
-  && /RC status: ACTIVE/.test(vehicleCited[0].passages[0].excerpt));
-check('a normal (non-sandbox) result is not flagged as sandbox data',
-  !/sandbox/i.test(a.fromVehicle({ ...vehicleHit, isSandboxData: false })[0].scope));
-check('a not-found vehicle produces no citation',
-  a.fromVehicle({ vehicleNumber: 'ZZ99ZZ9999', found: false, message: 'x' }).length === 0);
-check('an analyst can see a vehicle citation — the tool\'s own role gate already covers who may ask',
-  a.clearanceFilter(a.merge(vehicleCited), 'analyst').sources.length === 1);
-
 // ── Merge & dedupe ─────────────────────────────────────────────────────────
 const merged = a.merge(
   a.fromRagNodes([{ document_title: 'SOP.pdf', page_label: 3, text: 'a' }]),

@@ -65,8 +65,8 @@ const { SLASH_ROLES, SLASH_SENSITIVE, SLASH_HELP, parseSlash, slashToQuery } = n
   '\nreturn { SLASH_ROLES, SLASH_SENSITIVE, SLASH_HELP, parseSlash, slashToQuery };'
 )();
 
-// ── The four tool-backed commands ───────────────────────────────────────
-for (const name of ['osint', 'sanctions', 'crypto', 'vehicle']) {
+// ── The three tool-backed commands ───────────────────────────────────────
+for (const name of ['osint', 'sanctions', 'crypto']) {
   check(`/${name} is a recognised command`, name in SLASH_ROLES);
   check(`/${name} carries the same role gate as its tool`,
     Array.isArray(SLASH_ROLES[name])
@@ -75,6 +75,19 @@ for (const name of ['osint', 'sanctions', 'crypto', 'vehicle']) {
   check(`/${name} is audit-logged as sensitive`, SLASH_SENSITIVE.has(name));
   check(`/${name} is documented in /help`, SLASH_HELP.some(([cmd]) => cmd.startsWith(`/${name} `)));
 }
+
+// ── /vehicle: no tool backs it — vehicle_lookup (Eko Platform Services) was
+// built, then removed. Eko never got past its sandbox tier, and every
+// unofficial alternative investigated was unsafe to build on (an unverified
+// scraper, a header-forging impersonation of a real company's private API,
+// and an anonymous stranger's unaudited endpoint). /vehicle is back to its
+// original honest "no registry connected" command — narrower role gate than
+// the three tool-backed ones, since it isn't gated by a tool's own check.
+check('/vehicle is still a recognised command', 'vehicle' in SLASH_ROLES);
+check('/vehicle does NOT carry the wider tool role gate — no analyst',
+  Array.isArray(SLASH_ROLES.vehicle) && !SLASH_ROLES.vehicle.includes('analyst'));
+check('/vehicle is still audit-logged as sensitive', SLASH_SENSITIVE.has('vehicle'));
+check('/vehicle is still documented in /help', SLASH_HELP.some(([cmd]) => cmd.startsWith('/vehicle ')));
 
 check('parseSlash recognises /osint with an argument',
   JSON.stringify(parseSlash('/osint 185.220.101.45')) === JSON.stringify({ name: 'osint', arg: '185.220.101.45' }));
@@ -104,11 +117,12 @@ check('/crypto expands to a question naming the address and asking about balance
   /bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh/.test(cryptoQ)
   && /balance/i.test(cryptoQ) && /transaction/i.test(cryptoQ));
 
-const vehicleQ = slashToQuery('vehicle', 'HJ01ME5678');
-check('/vehicle expands to a question naming the registration number and asking about owner/RC status',
-  /HJ01ME5678/.test(vehicleQ) && /owner/i.test(vehicleQ) && /RC status/i.test(vehicleQ));
-check('/vehicle no longer returns the old "no registry connected" bypass message',
-  !/no vehicle registry connected/i.test(vehicleQ));
+// slashToQuery has no case for 'vehicle' — it's intercepted earlier, by a
+// hardcoded early return in the route handler (the same pattern /missing
+// uses), before slashToQuery is ever reached for it. Falling through to the
+// default (bare arg) here is the correct, expected shape.
+check('slashToQuery has no special case for vehicle — it is intercepted before this point',
+  slashToQuery('vehicle', 'HJ01ME5678') === 'HJ01ME5678');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
