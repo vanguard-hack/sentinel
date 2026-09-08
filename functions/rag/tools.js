@@ -33,6 +33,7 @@ const legal = require('./legal');
 const guard = require('./guard');
 const osint = require('./osint');
 const crypto = require('./crypto');
+const vehicle = require('./vehicle');
 
 // Per-result caps. Generous enough to answer, small enough that a loop of
 // tool calls cannot fill the context window with rows.
@@ -135,8 +136,10 @@ const DEFINITIONS = [
       'any other external/internet identifier either — use osint_lookup for those. ' +
       'It holds nothing about sanctions or watchlists either — use sanctions_check for ' +
       'those. It holds nothing about crypto wallet addresses either — use crypto_lookup ' +
-      'for those. Do not call this tool as a fallback for a question that names an IP, a ' +
-      'domain, a sanctions listing, or a Bitcoin/Ethereum address.',
+      'for those. It holds no vehicle registry either — use vehicle_lookup for a ' +
+      'registration number. Do not call this tool as a fallback for a question that ' +
+      'names an IP, a domain, a sanctions listing, a Bitcoin/Ethereum address, or a ' +
+      'vehicle registration number.',
     input_schema: {
       type: 'object',
       properties: {
@@ -407,6 +410,36 @@ const DEFINITIONS = [
         },
       },
       required: ['address'],
+    },
+  },
+  {
+    name: 'vehicle_lookup',
+    description:
+      'Look up a vehicle by its registration number: owner, make and ' +
+      'model, RC status, registration and insurance validity, and ' +
+      'blacklist status. Use this when an officer asks about a vehicle ' +
+      'found in evidence — a stolen vehicle, a getaway vehicle, one ' +
+      'seized or connected to a suspect. This is the ONLY tool that knows ' +
+      'anything about vehicle registration — never call ' +
+      'search_knowledge_base or query_records for this instead; ' +
+      'Sentinel\'s own Data Store has no vehicle registry.\n\n' +
+      'This sends the registration number to Eko Platform Services, an ' +
+      'external Indian verification provider. State that plainly in your ' +
+      'answer — but unlike other external lookups here, this does not ' +
+      'leave India.\n\n' +
+      'If the result is marked as sandbox/test data, say so plainly in ' +
+      'your answer — it is real API behaviour exercised for testing, not ' +
+      'a real vehicle record, and must never be presented to the officer ' +
+      'as if it were one.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        vehicleNumber: {
+          type: 'string',
+          description: 'The vehicle registration number to look up.',
+        },
+      },
+      required: ['vehicleNumber'],
     },
   },
 ];
@@ -982,6 +1015,15 @@ async function run(name, input, deps) {
           return { error: 'Crypto wallet lookups are limited to investigators, supervisors, analysts and admin.' };
         }
         return await crypto.lookup(input || {});
+      }
+
+      case 'vehicle_lookup': {
+        // Same gate as osint_lookup: checked inline at dispatch so a new
+        // tool cannot forget it.
+        if (!['admin', 'supervisor', 'investigator', 'analyst'].includes(role)) {
+          return { error: 'Vehicle lookups are limited to investigators, supervisors, analysts and admin.' };
+        }
+        return await vehicle.lookup(input || {});
       }
 
       default:
