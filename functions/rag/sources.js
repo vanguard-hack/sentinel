@@ -383,31 +383,25 @@ function fromOsint({ kind, value, rdap, abuseipdb }) {
 
 // ── Lane 7: sanctions/watchlist screening ───────────────────────────────
 //
-// No stable per-record URL exists on the UN's site to deep-link a single
-// entry, so every citation points at the Consolidated List's own resource
-// page and carries the reference number and DATAID as identifiers instead
-// — the same shape fromZcql already uses for matched_record_ids rather
-// than a URL per row.
-
-const SANCTIONS_LIST_URL = 'https://main.un.org/securitycouncil/en/content/un-sc-consolidated-list';
+// Unlike the UN Consolidated List this replaced, OpenSanctions gives every
+// match a stable per-entity profile page, so each citation links straight
+// to that entity rather than one shared resource page for the whole list.
 
 function fromSanctions(hits) {
   return (Array.isArray(hits) ? hits : []).map((h) => {
     const facts = [
-      h.listType ? `UN list type: ${h.listType}` : null,
-      h.referenceNumber ? `Reference: ${h.referenceNumber}` : null,
-      h.listedOn ? `Listed on: ${h.listedOn}` : null,
-      (h.designation || []).length ? `Designation: ${h.designation.join(', ')}` : null,
-      h.comments ? `Comments: ${h.comments}` : null,
-      h.matchedOn ? `Matched on: ${h.matchedOn}` : null,
+      h.schema ? `Type: ${h.schema}` : null,
+      (h.datasets || []).length ? `Listed in: ${h.datasets.join(', ')}` : null,
+      (h.topics || []).length ? `Topics: ${h.topics.join(', ')}` : null,
+      (h.countries || []).length ? `Countries: ${h.countries.join(', ')}` : null,
     ].filter(Boolean).join(' · ');
     return {
       source_type: TYPES.EXTERNAL_WEB,
-      display_name: `UN Sanctions List — ${str(h.name, 160)}`,
-      uri: SANCTIONS_LIST_URL,
-      domain: 'un.org',
-      scope: 'UN Security Council Consolidated List',
-      identifier: str(h.referenceNumber, 60) || null,
+      display_name: `OpenSanctions — ${str(h.name, 160)}`,
+      uri: h.profileUrl || null,
+      domain: 'opensanctions.org',
+      scope: 'OpenSanctions aggregated watchlists',
+      identifier: str(h.id, 60) || null,
       passages: facts ? [{ location: null, excerpt: str(facts, 800), score: null }] : [],
     };
   });

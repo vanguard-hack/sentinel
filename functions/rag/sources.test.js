@@ -142,25 +142,25 @@ const osintCited = a.merge(osintBoth);
 check('an analyst can see an OSINT citation — it names no one and no case',
   a.clearanceFilter(osintCited, 'analyst').sources.length === 2);
 
-// ── Sanctions/watchlist citations ──────────────────────────────────────
+// ── Sanctions/watchlist citations (OpenSanctions) ────────────────────────
 const sanctionsHits = [{
-  kind: 'entity', dataId: '110326', name: 'YAZD METALLURGY INDUSTRIES (YMI)',
-  aliases: ['Yazd Ammunition Manufacturing and Metallurgy Industries'],
-  referenceNumber: 'IRe.078', listType: 'Iran', listedOn: '2010-06-09',
-  comments: 'YMI is a subordinate of DIO.', designation: [], matchedOn: 'name',
+  id: 'Q7747', name: 'Vladimir Putin', schema: 'Person',
+  datasets: ['un_ga_protocol', 'us_ofac_sdn', 'eu_fsf'],
+  topics: ['role.pol', 'sanction'], countries: ['ru'],
+  profileUrl: 'https://www.opensanctions.org/entities/Q7747/',
 }];
 const sanctionsCited = a.fromSanctions(sanctionsHits);
 check('a sanctions match produces one citation', sanctionsCited.length === 1);
-check('it names the real, checkable UN Consolidated List page',
-  sanctionsCited[0].uri === 'https://main.un.org/securitycouncil/en/content/un-sc-consolidated-list'
-  && sanctionsCited[0].domain === 'un.org');
-check('it carries the reference number as an identifier',
-  sanctionsCited[0].identifier === 'IRe.078');
+check('it names the real, checkable per-entity OpenSanctions page',
+  sanctionsCited[0].uri === 'https://www.opensanctions.org/entities/Q7747/'
+  && sanctionsCited[0].domain === 'opensanctions.org');
+check('it carries the entity id as an identifier',
+  sanctionsCited[0].identifier === 'Q7747');
 check('it carries the concrete facts as its passage',
-  /Reference: IRe\.078/.test(sanctionsCited[0].passages[0].excerpt)
-  && /Listed on: 2010-06-09/.test(sanctionsCited[0].passages[0].excerpt));
+  /Listed in: un_ga_protocol, us_ofac_sdn, eu_fsf/.test(sanctionsCited[0].passages[0].excerpt)
+  && /Topics: role\.pol, sanction/.test(sanctionsCited[0].passages[0].excerpt));
 check('no hits produces no citations', a.fromSanctions([]).length === 0);
-check('an analyst can see a sanctions citation — it names a public UN record, not a case',
+check('an analyst can see a sanctions citation — it names a public record, not a case',
   a.clearanceFilter(a.merge(sanctionsCited), 'analyst').sources.length === 1);
 
 // ── Crypto wallet citations ─────────────────────────────────────────────

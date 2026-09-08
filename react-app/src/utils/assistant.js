@@ -402,3 +402,79 @@ export async function generateReply(history, vision = [], attachments = [], sess
     };
   }
 }
+
+// Username lookup (Sherlock via Apify) — start + poll, not the normal
+// generateReply() pipeline. A run genuinely takes 60-110+ seconds (see
+// functions/rag/sherlock.js for why), so this polls the status endpoint on
+// an interval rather than making one request and waiting on it. `onProgress`
+// is called with a short status line each poll, for a "still running" label
+// next to the composer instead of the generic thinking phrases, which would
+// be actively misleading over a wait this long.
+const SHERLOCK_POLL_MS = 4000;
+const SHERLOCK_MAX_POLLS = 45; // ~3 minutes before giving up client-side
+
+export async function runSherlockLookup(username, onProgress) {
+  const post = async (path, body) => {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+  };
+
+  try {
+    const start = await post('/server/rag/sherlock/start', { username });
+    if (!start.ok || start.data.error) {
+      return {
+        text: `⚠️ Could not start the username lookup: ${start.data.error || `HTTP ${start.status}`}`,
+        components: [],
+      };
+    }
+    const { runId } = start.data;
+
+    for (let i = 0; i < SHERLOCK_MAX_POLLS; i++) {
+      if (onProgress) {
+        onProgress(i === 0
+          ? 'Running Sherlock — this can take a minute or more…'
+          : `Still running Sherlock — ~${Math.round((i * SHERLOCK_POLL_MS) / 1000)}s so far…`);
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => { setTimeout(r, SHERLOCK_POLL_MS); });
+      // eslint-disable-next-line no-await-in-loop
+      const poll = await post('/server/rag/sherlock/status', { runId });
+      if (!poll.ok || poll.data.error) {
+        return {
+          text: `⚠️ The username lookup failed: ${poll.data.error || `HTTP ${poll.status}`}`,
+          components: [],
+        };
+      }
+      if (poll.data.status === 'failed') {
+        return { text: `⚠️ ${poll.data.error}`, components: [] };
+      }
+      if (poll.data.status === 'done') {
+        const links = Array.isArray(poll.data.links) ? poll.data.links : [];
+        const CAP = 60;
+        const shown = links.slice(0, CAP);
+        const text =
+          `**Sherlock username lookup — "${poll.data.username}"**\n\n` +
+          (shown.length
+            ? `Found ${links.length} possible match${links.length === 1 ? '' : 'es'}` +
+              (links.length > CAP ? ` (showing the first ${CAP})` : '') + ':\n\n' +
+              shown.map((l) => `- ${l}`).join('\n')
+            : 'No accounts found for this username.') +
+          `\n\n${poll.data.sovereignty}\n\n` +
+          'These are possible matches by username only, not verified identity — each link must be checked before being treated as a lead.';
+        return { text, components: [], sources: [] };
+      }
+      // status === 'running' — poll again
+    }
+    return {
+      text: '⚠️ The username lookup is taking longer than expected. It may still finish on Apify\'s side — try again in a few minutes.',
+      components: [],
+    };
+  } catch (e) {
+    return { text: `⚠️ Couldn't run the username lookup: ${e.message || e}`, components: [] };
+  }
+}

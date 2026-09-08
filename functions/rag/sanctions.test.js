@@ -1,6 +1,5 @@
-// Sanctions/watchlist lookup: XML parsing against a fixture (not the live
-// 2.5MB file, so this suite runs offline and fast) and text matching.
-// Run: node functions/rag/sanctions.test.js
+// Sanctions/watchlist lookup: OpenSanctions' live search API, mocked so this
+// suite runs offline and fast. Run: node functions/rag/sanctions.test.js
 
 const sanctions = require('./sanctions');
 
@@ -10,131 +9,75 @@ const check = (name, cond, detail) => {
   else { fail++; console.log('FAIL ' + name + (detail ? ` — ${detail}` : '')); }
 };
 
-// A fixture in the REAL schema, verified directly against the live file
-// before this was written (see the design spec) — not guessed at.
-const FIXTURE_XML = `<?xml version='1.0' encoding='UTF-8'?>
-<CONSOLIDATED_LIST xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' xsi:noNamespaceSchemaLocation='https://www.un.org/sc/resources/sc-sanctions.xsd' dateGenerated='2026-09-05T23:00:04.811Z'>
-    <INDIVIDUALS>
-        <INDIVIDUAL>
-            <DATAID>110404</DATAID>
-            <VERSIONNUM>1</VERSIONNUM>
-            <FIRST_NAME>MOHAMMAD BAQER</FIRST_NAME>
-            <SECOND_NAME>ZOLQADR</SECOND_NAME>
-            <UN_LIST_TYPE>Iran</UN_LIST_TYPE>
-            <REFERENCE_NUMBER>IRi.043</REFERENCE_NUMBER>
-            <LISTED_ON>2007-03-24</LISTED_ON>
-            <COMMENTS1>[Old Reference # I.47.D.7]</COMMENTS1>
-            <HAS_INTERPOL_LINK>NO</HAS_INTERPOL_LINK>
-            <INTERPOL_LINK/>
-            <DESIGNATION>
-                <VALUE>General</VALUE>
-                <VALUE>IRGC officer</VALUE>
-            </DESIGNATION>
-            <LIST_TYPE>
-                <VALUE>UN List</VALUE>
-            </LIST_TYPE>
-            <INDIVIDUAL_ALIAS>
-                <QUALITY>Good</QUALITY>
-                <ALIAS_NAME>Mohammad Bakr Zolqadr</ALIAS_NAME>
-            </INDIVIDUAL_ALIAS>
-            <INDIVIDUAL_ADDRESS>
-                <COUNTRY/>
-            </INDIVIDUAL_ADDRESS>
-        </INDIVIDUAL>
-        <INDIVIDUAL>
-            <DATAID>110405</DATAID>
-            <FIRST_NAME>MOHAMMAD REZA</FIRST_NAME>
-            <SECOND_NAME>ZAHEDI</SECOND_NAME>
-            <UN_LIST_TYPE>Iran</UN_LIST_TYPE>
-            <REFERENCE_NUMBER>IRi.042</REFERENCE_NUMBER>
-            <LISTED_ON>2007-03-24</LISTED_ON>
-            <COMMENTS1></COMMENTS1>
-            <DESIGNATION>
-                <VALUE>Brigadier General</VALUE>
-            </DESIGNATION>
-        </INDIVIDUAL>
-    </INDIVIDUALS>
-    <ENTITIES>
-        <ENTITY>
-            <DATAID>110326</DATAID>
-            <FIRST_NAME>YAZD METALLURGY INDUSTRIES (YMI)</FIRST_NAME>
-            <UN_LIST_TYPE>Iran</UN_LIST_TYPE>
-            <REFERENCE_NUMBER>IRe.078</REFERENCE_NUMBER>
-            <LISTED_ON>2010-06-09</LISTED_ON>
-            <COMMENTS1>YMI is a subordinate of DIO. [Old Reference #E.29.I.22].</COMMENTS1>
-            <ENTITY_ALIAS>
-                <QUALITY>a.k.a.</QUALITY>
-                <ALIAS_NAME>Yazd Ammunition Manufacturing and Metallurgy Industries</ALIAS_NAME>
-            </ENTITY_ALIAS>
-        </ENTITY>
-    </ENTITIES>
-</CONSOLIDATED_LIST>`;
-
-const records = sanctions.parseIndex(FIXTURE_XML);
-
-// ── Parsing ─────────────────────────────────────────────────────────────
-check('every fixture record is parsed', records.length === 3);
-check("an individual's name is FIRST_NAME + SECOND_NAME",
-  records[0].name === 'MOHAMMAD BAQER ZOLQADR');
-check('an individual is tagged by kind', records[0].kind === 'individual');
-check('an entity is tagged by kind', records.find((r) => r.dataId === '110326').kind === 'entity');
-check('the reference number is captured', records[0].referenceNumber === 'IRi.043');
-check('the listing date is captured', records[0].listedOn === '2007-03-24');
-check('aliases are captured', records[0].aliases.includes('Mohammad Bakr Zolqadr'));
-check('a record with no alias still parses with an empty list',
-  Array.isArray(records[1].aliases) && records[1].aliases.length === 0);
-check('repeated DESIGNATION values are all captured',
-  records[0].designation.includes('General') && records[0].designation.includes('IRGC officer'));
-check('designation does not pick up unrelated VALUE tags from LIST_TYPE',
-  !records[0].designation.includes('UN List'));
-check("an entity's single-name field is still read as \"name\"",
-  records.find((r) => r.dataId === '110326').name === 'YAZD METALLURGY INDUSTRIES (YMI)');
-check("an entity's own alias tag is read, not the individual one",
-  records.find((r) => r.dataId === '110326').aliases
-    .includes('Yazd Ammunition Manufacturing and Metallurgy Industries'));
-
-// ── Matching ────────────────────────────────────────────────────────────
-check('an exact name match is found',
-  sanctions.search(records, 'Mohammad Baqer Zolqadr').found);
-check('matching is case-insensitive',
-  sanctions.search(records, 'mohammad baqer zolqadr').found);
-check('punctuation in the query does not defeat the match',
-  sanctions.search(records, 'Yazd Metallurgy Industries (YMI)').found);
-check('a match on the primary name is labelled as such',
-  sanctions.search(records, 'Zolqadr').matches[0].matchedOn === 'name');
-check('a match found only in an alias is labelled with that alias',
-  /alias: Mohammad Bakr Zolqadr/.test(
-    sanctions.search(records, 'Mohammad Bakr Zolqadr').matches[0].matchedOn));
-check('word order does not matter, since every query token must simply appear',
-  sanctions.search(records, 'Zolqadr Mohammad').found);
-check('a name that is not in the list is a clean no-match',
-  sanctions.search(records, 'Some Unrelated Person').found === false);
-check('an empty query is refused rather than matching everything',
-  sanctions.search(records, '').found === false);
-check('the cap constant is 10', sanctions.MAX_MATCHES === 10);
-check('the true count is reported even when results are capped',
-  typeof sanctions.search(records, 'Iran').total === 'number');
-
-// ── Fetch (mocked) ──────────────────────────────────────────────────────
 const originalFetch = global.fetch;
+const originalKey = process.env.OPENSANCTIONS_API_KEY;
+function mockFetch(handler) { global.fetch = handler; }
+function restore() {
+  global.fetch = originalFetch;
+  if (originalKey === undefined) delete process.env.OPENSANCTIONS_API_KEY;
+  else process.env.OPENSANCTIONS_API_KEY = originalKey;
+}
+
+// A response shaped like the real API — verified live against a real query
+// before this was written: a "Vladimir Putin" search returned a match
+// spanning 28 source datasets under exactly these field names.
+const REAL_SHAPE_RESULT = {
+  id: 'Q7747',
+  caption: 'Vladimir Putin',
+  schema: 'Person',
+  datasets: ['un_ga_protocol', 'us_ofac_sdn', 'eu_fsf', 'wd_peps'],
+  properties: { topics: ['role.pol', 'sanction', 'role.pep'], country: ['ru'] },
+};
 
 (async () => {
-  let sawUserAgent = false;
-  global.fetch = async (url, opts) => {
-    sawUserAgent = !!(opts && opts.headers && opts.headers['User-Agent']);
-    return { ok: true, text: async () => FIXTURE_XML };
-  };
-  const built = await sanctions.buildIndex();
-  check('the fetch carries a distinguishing User-Agent', sawUserAgent);
-  check('buildIndex fetches and parses in one call', built.records.length === 3);
-  check('buildIndex stamps when it ran', typeof built.fetchedAt === 'number' && built.fetchedAt > 0);
+  process.env.OPENSANCTIONS_API_KEY = 'test-key';
 
-  global.fetch = async () => ({ ok: false, status: 403 });
+  // ── Input validation — no network call for an empty query ──────────────
+  const empty = await sanctions.search({ query: '' });
+  check('an empty query is rejected without a network call', !!empty.error);
+  const missing = await sanctions.search({});
+  check('a missing query is rejected the same way', !!missing.error);
+
+  // ── Missing key reports unavailable, not a thrown error ─────────────────
+  delete process.env.OPENSANCTIONS_API_KEY;
+  const noKey = await sanctions.search({ query: 'anyone' });
+  check('no configured key reports unavailable, no network call', !!noKey.error);
+  process.env.OPENSANCTIONS_API_KEY = 'test-key';
+
+  // ── A real match, shaped exactly like the live API's response ──────────
+  mockFetch(async (url, opts) => {
+    check('the query is URL-encoded into the search endpoint', String(url).includes('opensanctions.org/search/default'));
+    check('the API key travels as an ApiKey auth header, not in the URL', opts.headers.Authorization === 'ApiKey test-key');
+    return {
+      ok: true,
+      json: async () => ({ total: { value: 1252 }, results: [REAL_SHAPE_RESULT] }),
+    };
+  });
+  const hit = await sanctions.search({ query: 'Vladimir Putin' });
+  check('a real match is reported found', hit.found === true);
+  check('the match carries the name', hit.matches[0].name === 'Vladimir Putin');
+  check('the match carries every dataset it appears in, not just one', hit.matches[0].datasets.length === 4);
+  check('the match carries its topics', hit.matches[0].topics.includes('sanction'));
+  check('the match links to a real per-entity profile page', hit.matches[0].profileUrl === 'https://www.opensanctions.org/entities/Q7747/');
+  check('the sovereignty line names the actual destination', /api\.opensanctions\.org/.test(hit.sovereignty));
+  check('total reflects the API\'s own reported total, not just this page\'s length', hit.total === 1252);
+
+  // ── No match ──────────────────────────────────────────────────────────
+  mockFetch(async () => ({ ok: true, json: async () => ({ total: { value: 0 }, results: [] }) }));
+  const noMatch = await sanctions.search({ query: 'Nobody At All Xyzzy' });
+  check('a genuine no-match is reported as found:false, not an error', noMatch.error === undefined && noMatch.found === false);
+
+  // ── Failure modes fail soft, as a result, never a throw ──────────────────
+  mockFetch(async () => ({ ok: false, status: 503 }));
+  const httpFail = await sanctions.search({ query: 'anyone' });
+  check('an HTTP failure is reported as an error result, not thrown', !!httpFail.error);
+
+  mockFetch(async () => { throw new Error('network down'); });
   let threw = false;
-  try { await sanctions.buildIndex(); } catch { threw = true; }
-  check('a failed fetch throws rather than silently returning an empty index', threw);
+  try { await sanctions.search({ query: 'anyone' }); } catch { threw = true; }
+  check('a network exception is caught, not left to throw out of search()', !threw);
 
-  global.fetch = originalFetch;
+  restore();
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

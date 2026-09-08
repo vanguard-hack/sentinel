@@ -15,11 +15,26 @@
 // owner PII on a police platform. /vehicle stays as the honest "no registry
 // connected" command it was before any of this.
 //
+// sanctions_check's own backing data was later swapped from the UN-only
+// Consolidated List to OpenSanctions' much broader aggregation (28+ source
+// lists) — same command, same shape here, just a richer answer.
+//
+// sherlock is different in kind from the rest of this list: every other
+// entry here (needsArg or not) expands into a normal assistant question that
+// generateReply() sends through the usual pipeline. Sherlock is registered
+// here only so it appears in the menu/autocomplete/`/help` and gets the same
+// role-gate/typo-correction handling as everything else — Assistant.js's
+// send() special-cases parsed.cmd.name === 'sherlock' to call
+// runSherlockLookup() (start + poll two dedicated endpoints) instead of
+// generateReply(), because a single run takes 60-110+ seconds, far past
+// what any one chat request should block on. See functions/rag/sherlock.js.
+//
 // `roles` mirrors utils/access.js: a command is only offered, and only
 // executed, for roles that may already reach that data by navigating the app.
-// For the three External commands this is copied from each tool's own inline
-// gate in tools.js, deliberately, so the shortcut can never reach further
-// than typing the question out in full would.
+// For the External commands this is copied from each tool's own inline gate
+// in tools.js (or, for sherlock, the same gate handleSherlock applies
+// server-side), deliberately, so the shortcut can never reach further than
+// typing the question out in full would.
 // `sensitive` marks the ones that touch person or case records — or, for the
 // External group, a specific external identifier an officer is checking —
 // and must be written to the audit trail on every execution.
@@ -56,12 +71,17 @@ export const COMMANDS = [
   },
   {
     name: 'sanctions', arg: '[name]', category: 'External',
-    descKey: 'slash.sanctions', desc: 'Screen a name against the UN sanctions/watchlist',
+    descKey: 'slash.sanctions', desc: 'Screen a name against global sanctions/watchlists',
     roles: ['admin', 'supervisor', 'investigator', 'analyst'], sensitive: true, needsArg: true,
   },
   {
     name: 'crypto', arg: '[wallet address]', category: 'External',
     descKey: 'slash.crypto', desc: 'Bitcoin/Ethereum wallet balance & activity',
+    roles: ['admin', 'supervisor', 'investigator', 'analyst'], sensitive: true, needsArg: true,
+  },
+  {
+    name: 'sherlock', arg: '[username]', category: 'External',
+    descKey: 'slash.sherlock', desc: 'Hunt down social media accounts by username (slow — a minute or more)',
     roles: ['admin', 'supervisor', 'investigator', 'analyst'], sensitive: true, needsArg: true,
   },
   {

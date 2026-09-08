@@ -33,6 +33,7 @@ const legal = require('./legal');
 const guard = require('./guard');
 const osint = require('./osint');
 const crypto = require('./crypto');
+const sanctions = require('./sanctions');
 
 // Per-result caps. Generous enough to answer, small enough that a loop of
 // tool calls cannot fill the context window with rows.
@@ -357,20 +358,22 @@ const DEFINITIONS = [
   {
     name: 'sanctions_check',
     description:
-      'Check a name — a person or an organisation — against the UN Security ' +
-      'Council Consolidated List of sanctioned individuals and entities. Use ' +
-      'this when an officer asks whether a name is on a sanctions or ' +
-      'watchlist, or when a name surfacing in a financial or network ' +
-      'investigation is worth screening. This is the ONLY tool that knows ' +
-      'anything about international sanctions listings — never call ' +
+      'Check a name — a person or an organisation — against OpenSanctions\' ' +
+      'aggregated sanctions and watchlist data: UN, OFAC, EU, UK and other ' +
+      'national sanctions lists, PEP registers, wanted lists, debarment and ' +
+      'export-control lists, kept current on OpenSanctions\' own ' +
+      'infrastructure. Use this when an officer asks whether a name is on a ' +
+      'sanctions or watchlist, or when a name surfacing in a financial or ' +
+      'network investigation is worth screening. This is the ONLY tool that ' +
+      'knows anything about international sanctions listings — never call ' +
       'search_knowledge_base or query_records for this instead; neither ' +
       'holds this data.\n\n' +
       'This is text matching against a name, not verified identity — a hit ' +
       'means the name matched, nothing more, and must be reported to the ' +
       'officer as a lead to verify, never as a confirmed identification. ' +
-      'The list is refreshed roughly daily from the UN\'s own published ' +
-      'source; this does not send the officer\'s question anywhere — the ' +
-      'lookup runs against a copy already held by Sentinel.',
+      'This is a live lookup: the name being screened is sent to ' +
+      'api.opensanctions.org, outside Sentinel and outside India — state ' +
+      'that plainly, the same as for osint_lookup and crypto_lookup.',
     input_schema: {
       type: 'object',
       properties: {
@@ -859,7 +862,7 @@ async function queryRecords(app, { zcql: statement, rollup, district }, role, ac
  * turn ending.
  */
 async function run(name, input, deps) {
-  const { app, role, ragSearch, digitisedSearch, access, caseObligations, sanctionsCheck } = deps;
+  const { app, role, ragSearch, digitisedSearch, access, caseObligations } = deps;
   try {
     switch (name) {
       case 'lookup_reference':
@@ -971,8 +974,7 @@ async function run(name, input, deps) {
         if (!['admin', 'supervisor', 'investigator', 'analyst'].includes(role)) {
           return { error: 'Sanctions checks are limited to investigators, supervisors, analysts and admin.' };
         }
-        if (typeof sanctionsCheck !== 'function') return { error: 'Sanctions list unavailable.' };
-        return await sanctionsCheck((input && input.query) || '');
+        return await sanctions.search(input || {});
       }
 
       case 'crypto_lookup': {

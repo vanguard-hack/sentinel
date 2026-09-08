@@ -190,12 +190,6 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /c\.name === 'sanctions_check'[\s\S]{0,160}sanctionsHits\.push/.test(loop));
   check('sanctionsHits travels out of the loop in its return value',
     /return \{ text, used, rowSets, scanHits, osintHits, sanctionsHits,/.test(loop));
-  check('the sanctions cache is checked for staleness before rebuilding',
-    /Date\.now\(\) - cached\.fetchedAt < sanctions\.STALE_MS/.test(loop));
-  check('a failed rebuild falls back to the stale cache rather than failing outright',
-    /stale && Array\.isArray\(stale\.records\)/.test(loop));
-  check('a successful rebuild is written back to the cache',
-    /bucket\.putObject\(sanctions\.CACHE_KEY/.test(loop));
   // A negative answer must carry no source, not a placeholder one — this was
   // the actual bug behind the "Knowledge base" chip showing next to an
   // answer that found nothing: the flag went true on every call to
@@ -365,23 +359,24 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /sanctions_check/.test(
       tools.DEFINITIONS.find((d) => d.name === 'search_knowledge_base').description));
 
-  const fakeSanctionsCheck = async () => ({ found: false, matches: [], total: 0 });
+  // Deliberately empty query below: the gate must pass THROUGH to
+  // sanctions.js's own validation (proving the tool is actually wired up)
+  // without ever reaching the network, same convention osint_lookup's gate
+  // test above uses.
   for (const role of ['investigator', 'supervisor', 'admin', 'analyst']) {
-    const ok = await run('sanctions_check', { query: 'Test Name' },
-      { role, sanctionsCheck: fakeSanctionsCheck });
-    check(`${role} can reach the sanctions check (gate passes)`, ok.found === false);
+    const ok = await run('sanctions_check', { query: '' }, { role });
+    check(`${role} can reach the sanctions check (gate passes)`,
+      /name is required/.test(ok.error || ''), JSON.stringify(ok));
   }
-  const sanctionsDenied = await run('sanctions_check', { query: 'Test Name' },
-    { role: 'policymaker', sanctionsCheck: fakeSanctionsCheck });
+  const sanctionsDenied = await run('sanctions_check', { query: 'Test Name' }, { role: 'policymaker' });
   check('policymaker cannot reach sanctions checks through the assistant',
     /limited to investigators, supervisors, analysts and admin/.test(sanctionsDenied.error || ''));
-  const sanctionsNoRole = await run('sanctions_check', { query: 'Test Name' },
-    { sanctionsCheck: fakeSanctionsCheck });
+  const sanctionsNoRole = await run('sanctions_check', { query: 'Test Name' }, {});
   check('an uncleared caller cannot reach sanctions checks either',
     /limited to investigators, supervisors, analysts and admin/.test(sanctionsNoRole.error || ''));
 
-  check('with no sanctions index available the tool says so instead of throwing',
-    /unavailable/i.test(
+  check('with no API key configured the tool says so instead of throwing',
+    /not configured/i.test(
       (await run('sanctions_check', { query: 'x' }, { role: 'investigator' })).error || ''));
 
   // ── crypto_lookup ────────────────────────────────────────────────────

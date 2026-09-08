@@ -5,8 +5,8 @@ const zcql = require('./zcql');
 const redaction = require('./redaction');
 const vision = require('./vision');
 const attribution = require('./sources');
-const sanctions = require('./sanctions');
 const crypto = require('./crypto');
+const sherlock = require('./sherlock');
 const memory = require('./memory');
 const assistantTools = require('./tools');
 const integrity = require('./integrity');
@@ -480,7 +480,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
   const rowSets = [];    // Data Store rows, for citations
   const scanHits = [];   // digitised records, for citations
   const osintHits = [];  // RDAP/AbuseIPDB lookups, for citations
-  const sanctionsHits = []; // UN sanctions-list matches, for citations
+  const sanctionsHits = []; // OpenSanctions matches, for citations
   const cryptoHits = []; // crypto wallet lookups, for citations
   const toolThreats = []; // injection markers found in retrieved content
   // Referenced at the return below and pushed to when a tool result carries
@@ -537,40 +537,6 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
         email: String(u?.email_id || '').toLowerCase(),
         name: [u?.first_name, u?.last_name].filter(Boolean).join(' '),
       });
-    },
-    // Cache-backed, not a live call per question: the source updates once
-    // a day, so a 2.5MB fetch-and-parse on every turn would waste the tool
-    // budget on data that has not changed. Same shape handleForecast
-    // already uses for the forecast bundle — check the cache, rebuild if
-    // stale or missing, fall back to a stale cache on a failed rebuild
-    // rather than failing the tool outright.
-    sanctionsCheck: async (query) => {
-      let index;
-      try {
-        const cached = JSON.parse((await streamToString(await bucket.getObject(sanctions.CACHE_KEY))) || 'null');
-        if (cached && Array.isArray(cached.records) && Date.now() - cached.fetchedAt < sanctions.STALE_MS) {
-          index = cached;
-        }
-      } catch { /* no cache yet — fall through and build one */ }
-      if (!index) {
-        try {
-          const built = await sanctions.buildIndex();
-          index = built;
-          try {
-            await bucket.putObject(sanctions.CACHE_KEY, Buffer.from(JSON.stringify(built), 'utf8'));
-          } catch (e) {
-            console.error('sanctions cache write failed (non-fatal):', e && e.message);
-          }
-        } catch (e) {
-          try {
-            const stale = JSON.parse((await streamToString(await bucket.getObject(sanctions.CACHE_KEY))) || 'null');
-            if (stale && Array.isArray(stale.records)) index = stale;
-          } catch { /* nothing cached at all */ }
-          if (!index) return { error: `Sanctions list unavailable: ${(e && e.message) || e}` };
-        }
-      }
-      const result = sanctions.search(index.records, query);
-      return { ...result, indexAgeMs: Date.now() - index.fetchedAt };
     },
   };
 
@@ -801,8 +767,16 @@ const SLASH_HELP = [
   ['/wanted [name or area]', 'Search wanted/absconding offenders list'],
   ['/missing [name or ID]', 'Missing person case lookup'],
   ['/osint [IP address or domain]', 'External registration & abuse-reputation check'],
-  ['/sanctions [name]', 'Screen a name against the UN sanctions/watchlist'],
+  ['/sanctions [name]', 'Screen a name against global sanctions/watchlists'],
   ['/crypto [wallet address]', 'Bitcoin/Ethereum wallet balance & activity'],
+  // /sherlock is deliberately absent from SLASH_ROLES/SLASH_SENSITIVE above
+  // and slashToQuery below — a run takes 74-110+ seconds (see sherlock.js),
+  // so unlike every other command here it is never expanded into a question
+  // routed through this pipeline. The composer calls /sherlock/start and
+  // /sherlock/status directly instead; those routes carry their own role
+  // gate and audit logging (handleSherlock). This line exists purely so
+  // /help still tells an officer it exists.
+  ['/sherlock [username]', 'Hunt down social media accounts by username (slow — can take a minute or more)'],
   ['/help', 'List all available commands'],
   ['/clear', 'Clear current chat context'],
 ];
@@ -844,7 +818,7 @@ function slashToQuery(name, arg) {
     case 'osint':
       return `Check the IP address or domain ${arg} for registration and abuse-reputation data.`;
     case 'sanctions':
-      return `Check whether ${arg} appears on the UN sanctions or watchlist.`;
+      return `Check whether ${arg} appears on any sanctions or watchlist.`;
     case 'crypto':
       return `Check the crypto wallet address ${arg} — balance and transaction activity.`;
     default:
@@ -2044,7 +2018,7 @@ function rateLimited(key, max) {
 
 // Routes that cost money per call: Zoho transcription and OCR, SmartBrowz PDF
 // rendering, and every lane that reaches an LLM.
-const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|predict\/[a-z]+|forecast(\/refresh)?|digitise\/(upload|ingest)|financial\/narrative|patrol\/directions)$/;
+const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|predict\/[a-z]+|forecast(\/refresh)?|digitise\/(upload|ingest)|financial\/narrative|patrol\/directions|sherlock\/start)$/;
 const isAdminUser = (u) => /admin/i.test(u?.role_details?.role_name || '');
 
 /* ── Case prediction (QuickML) ───────────────────────────────────────────────
@@ -2601,6 +2575,41 @@ async function sealDayIfClosed(bucket, day, files, opts) {
     Buffer.from(JSON.stringify({ day, seq: seal.seq, sealHash: seal.sealHash, sealedAt: seal.sealedAt }))
   );
   return seal;
+}
+
+// Username lookup (Sherlock via Apify) — start + poll, not tool-loop-routed.
+// See sherlock.js's header for why: a single run takes 74-110+ seconds,
+// far past the 30-second ceiling one Catalyst function invocation has, so
+// this is deliberately two fast requests rather than one slow one. Every
+// started lookup is audit-logged the same way the tool loop's own external
+// lookups are (see writeAuditEvents' callers) — this route bypasses that
+// loop entirely, so nothing else would log it.
+async function handleSherlock(req, res, action) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!['admin', 'supervisor', 'investigator', 'analyst'].includes(role)) {
+    return json(res, 403, { error: 'Username lookups are limited to investigators, supervisors, analysts and admin.' });
+  }
+
+  if (action === 'start') {
+    const out = await sherlock.startRun({ username: body.username });
+    if (!out.error) {
+      await storeAuditEvents(req, app, bucket, [{
+        action: 'lookup', feature: 'Sherlock', path: '/sherlock',
+        detail: `username lookup started: ${out.username}`,
+      }], caller);
+    }
+    return json(res, out.error ? 400 : 200, out);
+  }
+
+  if (action === 'status') {
+    const out = await sherlock.pollRun({ runId: body.runId });
+    return json(res, out.error ? 400 : 200, out);
+  }
+
+  return json(res, 400, { error: `Unknown action "${action}".` });
 }
 
 async function handleAudit(req, res, action) {
@@ -4737,6 +4746,8 @@ module.exports = async (req, res) => {
         tools: {
           abuseipdb: !!process.env.ABUSEIPDB_API_KEY,
           etherscan: !!process.env.ETHERSCAN_API_KEY,
+          opensanctions: !!process.env.OPENSANCTIONS_API_KEY,
+          apify: !!process.env.APIFY_API_TOKEN,
         },
       });
     }
@@ -4791,6 +4802,8 @@ module.exports = async (req, res) => {
     if (path.endsWith('/access/me')) return await handleAccess(req, res, 'me');
     if (path.endsWith('/access/users')) return await handleAccess(req, res, 'users');
     if (path.endsWith('/access/save')) return await handleAccess(req, res, 'save');
+    if (path.endsWith('/sherlock/start')) return await handleSherlock(req, res, 'start');
+    if (path.endsWith('/sherlock/status')) return await handleSherlock(req, res, 'status');
     // Deliberately bland paths: "/audit/log" matches ad-blocker privacy lists,
     // which silently kill the fetch in the browser.
     if (path.endsWith('/access/record')) return await handleAudit(req, res, 'log');

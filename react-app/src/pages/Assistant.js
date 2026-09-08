@@ -7,7 +7,7 @@ import {
   Star, Pencil, FileDown, CheckSquare, AlertTriangle, ShieldAlert,
 } from 'lucide-react';
 import {
-  loadSessions, saveSessions, makeTitle, newSession, generateReply, uid,
+  loadSessions, saveSessions, makeTitle, newSession, generateReply, runSherlockLookup, uid,
   transcribeAudio, loadSessionsRemote, saveSessionRemote, saveSessionBeacon, deleteSessionRemote,
   consolidateMemory,
 } from '../utils/assistant';
@@ -180,6 +180,10 @@ export default function Assistant() {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState([]); // { id, name, size, type, url? }
   const [sending, setSending] = useState(false);
+  // Non-null only while a /sherlock lookup is polling — a run genuinely
+  // takes 60-110+ seconds, so this replaces Thinking's generic cycling
+  // phrases with an honest "still running" label for that one command.
+  const [sherlockLabel, setSherlockLabel] = useState(null);
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
@@ -572,7 +576,12 @@ export default function Assistant() {
             .map((r) => (r.status === 'fulfilled' ? r.value : null))
             .filter((d) => d && d.ok)
         : [];
-      const reply = await generateReply(history, digests, docs, sessionId, accessReason);
+      // /sherlock bypasses the normal generateReply() pipeline entirely — see
+      // runSherlockLookup's header for why (a run takes far longer than any
+      // single chat turn should block on).
+      const reply = parsed && parsed.cmd && parsed.cmd.name === 'sherlock'
+        ? await runSherlockLookup(parsed.arg, setSherlockLabel)
+        : await generateReply(history, digests, docs, sessionId, accessReason);
       const botMsg = {
         id: uid(),
         role: 'assistant',
@@ -623,6 +632,7 @@ export default function Assistant() {
       );
     } finally {
       setSending(false);
+      setSherlockLabel(null);
     }
   }, [listening, input, attachments, sending, activeId, sessions, pushSession, appRole, startNewChat]);
 
@@ -1114,7 +1124,7 @@ export default function Assistant() {
                   <div className="as-msg as-msg-assistant">
                     <div className="as-avatar"><Shield size={16} /></div>
                     <div className="as-msg-body">
-                      <Thinking />
+                      <Thinking label={sherlockLabel} />
                     </div>
                   </div>
                 )}

@@ -9,8 +9,8 @@ import { filterCommands, visibleCommands } from '../utils/slashCommands';
 test('while roles are still loading the full command set is offered', () => {
   // role null + showAll false was the bug: only help and clear survived
   expect(visibleCommands(null).length).toBe(2);
-  expect(visibleCommands(null, true).length).toBe(14);
-  expect(filterCommands(null, '', true).length).toBe(14);
+  expect(visibleCommands(null, true).length).toBe(15);
+  expect(filterCommands(null, '', true).length).toBe(15);
 });
 
 test('the menu renders every command with its description and argument hint', () => {
