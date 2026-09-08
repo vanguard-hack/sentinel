@@ -82,9 +82,14 @@ const toHex = (buf) => {
 // at least as often as images, and Zia OCR only accepts images.
 export async function pdfToImages(file, onProgress) {
   const pdfjs = await import('pdfjs-dist');
-  // Run the parser on the main thread: the worker is a separate asset that
-  // CRA does not emit, and a scanned page renders fast enough without it.
-  pdfjs.GlobalWorkerOptions.workerSrc = '';
+  // Run the parser on the main thread rather than a real background Worker —
+  // a scanned page renders fast enough without one. disableWorker only skips
+  // spawning that background thread though: pdf.js still dynamically imports
+  // the worker module's own code to run it inline, so workerSrc must point
+  // at a real, fetchable copy. Vendored to public/pdf.worker.min.mjs (kept
+  // in sync with the pdfjs-dist version pinned in package.json) since CRA
+  // does not emit it as a bundled asset.
+  pdfjs.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL || ''}/pdf.worker.min.mjs`;
   const data = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjs.getDocument({ data, disableWorker: true, isEvalSupported: false }).promise;
   const out = [];

@@ -66,9 +66,14 @@ export function unusableReason(file) {
 // waiting on something that is not happening.
 async function pdfText(file, onProgress) {
   const pdfjs = await import('pdfjs-dist');
-  // Same as the Records pipeline: CRA does not emit the worker as a separate
-  // asset, and text extraction is fast enough on the main thread.
-  pdfjs.GlobalWorkerOptions.workerSrc = '';
+  // Same as the Records pipeline: run on the main thread rather than a real
+  // background Worker (fast enough for text extraction, and one less moving
+  // part). disableWorker only skips spawning that background thread though —
+  // pdf.js still dynamically imports the worker module's own code to run it
+  // inline, so workerSrc must point at a real, fetchable copy. Vendored to
+  // public/pdf.worker.min.mjs (kept in sync with the pdfjs-dist version
+  // pinned in package.json) since CRA does not emit it as a bundled asset.
+  pdfjs.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL || ''}/pdf.worker.min.mjs`;
   const data = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjs.getDocument({ data, disableWorker: true, isEvalSupported: false }).promise;
   const pages = Math.min(doc.numPages, MAX_PDF_PAGES);
