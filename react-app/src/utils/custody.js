@@ -332,6 +332,50 @@ export function finalize(people) {
   const convicts = people.filter((p) => p.status === 'Convicted').length;
   const inCustody = people.filter((p) => p.status === 'Undertrial' || p.status === 'Convicted');
   const avgCustodyDays = inCustody.length ? Math.round(inCustody.reduce((s, p) => s + (p.custodyDays || 0), 0) / inCustody.length) : 0;
+
+  // Age distribution — who is actually being held, not the whole registry
+  // (a released or absconding person isn't occupying a cell today).
+  const AGE_BUCKETS = [
+    { label: '18–25', from: 18, to: 25 }, { label: '26–35', from: 26, to: 35 },
+    { label: '36–45', from: 36, to: 45 }, { label: '46–60', from: 46, to: 60 },
+    { label: '60+', from: 61, to: 200 },
+  ];
+  const ageDistribution = AGE_BUCKETS.map((b) => ({
+    label: b.label, value: inCustody.filter((p) => p.age >= b.from && p.age <= b.to).length,
+  }));
+
+  // Custody duration ageing — same bucket boundaries as the Home dashboard's
+  // pendency-ageing chart, so "long-pending" reads the same way in both
+  // places. This is the one that flags an undertrial quietly stacking up
+  // years with no clock anyone is watching.
+  const AGEING = [
+    { label: '< 3 months', to: 91 }, { label: '3–6 months', to: 183 },
+    { label: '6–12 months', to: 366 }, { label: '1–2 years', to: 731 },
+    { label: '2+ years', to: Infinity },
+  ];
+  const custodyAgeing = AGEING.map((b) => ({ label: b.label, value: 0 }));
+  inCustody.forEach((p) => {
+    custodyAgeing[AGEING.findIndex((b) => (p.custodyDays || 0) <= b.to)].value += 1;
+  });
+
+  // Offense category breakdown — what the registry is actually holding people
+  // for, grouped by the crime head of each person's primary (most recent) case.
+  const OFFENSE_CAP = 6;
+  const catMap = new Map();
+  inCustody.forEach((p) => {
+    const label = p.primary?.head || 'Unclassified';
+    catMap.set(label, (catMap.get(label) || 0) + 1);
+  });
+  const catSorted = [...catMap.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+  const offenseCategories = catSorted.length > OFFENSE_CAP
+    ? [
+        ...catSorted.slice(0, OFFENSE_CAP),
+        { label: 'Other', value: catSorted.slice(OFFENSE_CAP).reduce((s, d) => s + d.value, 0) },
+      ]
+    : catSorted;
+
   const analytics = {
     statusCounts,
     undertrials,
@@ -339,6 +383,9 @@ export function finalize(people) {
     ratio: convicts ? (undertrials / convicts) : undertrials,
     avgCustodyDays,
     facilities,
+    ageDistribution,
+    custodyAgeing,
+    offenseCategories,
     total: people.length,
   };
 

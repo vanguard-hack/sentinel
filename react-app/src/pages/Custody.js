@@ -6,6 +6,9 @@ import {
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import Donut from '../components/charts/Ring';
+import BarList from '../components/charts/BarColumns';
+import HBarList from '../components/charts/BarRows';
+import { Pyramid } from '../components/Charts';
 import { useAccess } from '../context/AccessContext';
 import {
   getRegistry, seedCustody, STATUS, STATUS_ORDER, fmtDate,
@@ -260,11 +263,28 @@ export default function Custody() {
                 </div>
               </section>
             </div>
+
+            <div className="cust-an-top">
+              <section className="rp-card">
+                <div className="rp-card-head"><h2>Age distribution in custody</h2><span className="rp-card-sub">Undertrials and convicts currently held, by age band</span></div>
+                <div className="rp-card-body"><BarList data={a.ageDistribution} height={260} ariaLabel="Age distribution in custody" /></div>
+              </section>
+              <section className="rp-card">
+                <div className="rp-card-head"><h2>Offense category breakdown</h2><span className="rp-card-sub">What the registry is holding people for, by primary case</span></div>
+                <div className="rp-card-body"><HBarList data={a.offenseCategories} /></div>
+              </section>
+            </div>
+
+            <section className="rp-card">
+              <div className="rp-card-head"><h2>Custody duration ageing</h2><span className="rp-card-sub">How long the currently-held population has been in custody — green fresh, red long-held</span></div>
+              <div className="rp-card-body"><Pyramid data={a.custodyAgeing} /></div>
+            </section>
+
             <section className="rp-card">
               <div className="rp-card-head cust-fac-head">
                 <div>
                   <h2>Overcrowding by facility</h2>
-                  <span className="rp-card-sub">Occupancy against sanctioned capacity — bars past 100% are over capacity</span>
+                  <span className="rp-card-sub">Occupancy against sanctioned capacity — % occupied past 100% is over capacity</span>
                 </div>
                 <select className="cf-select" value={facLimit} onChange={(e) => setFacLimit(e.target.value)} title="Facilities shown">
                   {[5, 10, 15, 20].map((n) => <option key={n} value={n}>Top {n}</option>)}
@@ -272,17 +292,34 @@ export default function Custody() {
                 </select>
               </div>
               <div className="rp-card-body">
-                <div className="cust-fac-list">
-                  {(facLimit === 'all' ? a.facilities : a.facilities.slice(0, Number(facLimit))).map((f) => (
-                    <div key={f.facility} className="cust-fac-row">
-                      <div className="cust-fac-name">{f.facility}</div>
-                      <div className="cust-fac-bar"><div className={`cust-fac-fill ${f.pct > 100 ? 'over' : ''}`} style={{ width: `${Math.min(100, f.pct)}%` }} /></div>
-                      <div className={`cust-fac-pct ${f.pct > 100 ? 'over' : ''}`}>{f.pct}%</div>
-                      <div className="cust-fac-cap">{f.occupancy}/{f.capacity}</div>
-                    </div>
-                  ))}
-                  {!a.facilities.length && <div className="rp-empty">No occupied facilities.</div>}
-                </div>
+                {a.facilities.length ? (
+                  <div className="aa-table-wrap">
+                    <table className="aa-table cust-fac-table">
+                      <thead>
+                        <tr>
+                          <th>Facility</th>
+                          <th>Occupancy</th>
+                          <th>Capacity</th>
+                          <th>% occupied</th>
+                          <th>Undertrials</th>
+                          <th>Convicts</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(facLimit === 'all' ? a.facilities : a.facilities.slice(0, Number(facLimit))).map((f) => (
+                          <tr key={f.facility}>
+                            <td>{f.facility}</td>
+                            <td>{f.occupancy.toLocaleString()}</td>
+                            <td>{f.capacity.toLocaleString()}</td>
+                            <td className={f.pct > 100 ? 'cust-tbl-over' : ''}>{f.pct}%</td>
+                            <td>{f.undertrials.toLocaleString()}</td>
+                            <td>{f.convicts.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <div className="rp-empty">No occupied facilities.</div>}
               </div>
             </section>
           </div>

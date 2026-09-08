@@ -6756,15 +6756,11 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .cust-ratio-split { display: flex; gap: 16px; font-size: 13px; font-weight: 500; }
 .t-under { color: var(--gold); } .t-conv { color: var(--red); }
 .cust-ratio-note { font-size: 12px; color: var(--text-3); margin: 0; }
-.cust-fac-list { display: flex; flex-direction: column; gap: 10px; }
-.cust-fac-row { display: grid; grid-template-columns: minmax(160px, 2fr) 3fr 48px 70px; align-items: center; gap: 12px; }
-.cust-fac-name { font-size: 12.5px; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cust-fac-bar { height: 12px; border-radius: 9999px; background: var(--bg-3); overflow: hidden; }
-.cust-fac-fill { height: 100%; background: var(--blue-500); border-radius: 9999px; }
-.cust-fac-fill.over { background: var(--red); }
-.cust-fac-pct { font-size: 12.5px; font-weight: 600; color: var(--text-1); text-align: right; }
-.cust-fac-pct.over { color: var(--red); }
-.cust-fac-cap { font-size: 11.5px; color: var(--text-4); text-align: right; font-variant-numeric: tabular-nums; }
+/* Overcrowding by facility: a table now, not a bar list — four numbers per
+   row (occupancy, capacity, % occupied, undertrial/convict split) read as
+   columns, not as a name+bar+percent+fraction crammed into one line. */
+.cust-fac-table td:not(:first-child) { font-variant-numeric: tabular-nums; }
+.cust-tbl-over { color: var(--red); font-weight: 600; }
 
 /* detail: identity card */
 .cust-idcard { flex-direction: row; align-items: flex-start; gap: 18px; }
@@ -6820,8 +6816,6 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .cust-alerts { align-items: start; }
 .cust-ratio { gap: 8px; padding: 6px 0; }
 .cust-ratio-big { font-size: 38px; }
-.cust-fac-list { gap: 7px; }
-.cust-fac-row { grid-template-columns: minmax(150px, 1.6fr) 3fr 44px 64px; gap: 10px; }
 .cust-analytics-note { font-size: 11.5px; color: var(--text-4); }
 /* clickable breadcrumb parent */
 .crumb-link { background: none; border: none; padding: 0; cursor: pointer; }
@@ -6836,9 +6830,17 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 /* alerts: equal height across the three cards */
 .cust-alerts { align-items: stretch; }
 .cust-alert-card { height: 100%; }
-/* bigger centred total on the custody-status donut */
-.cust-status-donut .rp-donut-total { font-size: 30px; font-weight: 600; }
+/* Custody-status donut: the centre total was set to 30px, which is wider
+   than the ring's hole can hold for a 5-figure count ("19,379") — it read as
+   crammed against the ring itself. Sized instead to comfortably clear the
+   hole with the "Total" caption above it. The legend defaults to a 340px cap
+   shared with every other donut in the app; on this card's wide 2-column
+   tile that left "Undertrial" and "43%" pinned to opposite edges of the row
+   (the label's flex:1 fills the row, the value trails at its end) — capped
+   tighter here so label and share read as the pair they are. */
+.cust-status-donut .rp-donut-total { font-size: 22px; font-weight: 600; }
 .cust-status-donut .rp-donut-cap { font-size: 12px; }
+.cust-status-donut .rp-legend { max-width: 200px; }
 /* wider registry search bar so it fills the row */
 .cust-filters .cf-search { flex: 1 1 340px; max-width: 620px; }
 
