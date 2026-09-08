@@ -13,7 +13,7 @@ framework and running end-to-end on **Zoho Catalyst**.
 ![React](https://img.shields.io/badge/React-19-61dafb?style=for-the-badge&logo=react&logoColor=white)
 ![Node](https://img.shields.io/badge/Node-20-3c873a?style=for-the-badge&logo=node.js&logoColor=white)
 ![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088ff?style=for-the-badge&logo=githubactions&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1%2C565%20passing-0f9d58?style=for-the-badge)
+![Tests](https://img.shields.io/badge/tests-1%2C789%20passing-0f9d58?style=for-the-badge)
 
 </div>
 
@@ -156,12 +156,18 @@ one-tap `tel:` call links, so a map lookup ends in a phone call rather than a se
 A full chat workspace at `/assistant`, not a corner widget. An officer asks a question in plain
 English, Hindi or Kannada and a router decides how to answer it:
 
-- **Tool loop** — the model is given **eight clearance-filtered tools** and runs as many
+- **Tool loop** — the model is given **eleven clearance-filtered tools** and runs as many
   lookups as one question needs before answering, batching independent ones into a single
   turn. This is the lane that answers questions the single-lane paths structurally cannot:
   ZCQL has no joins, so *"which FIRs were filed in Belagavi last month and who is accused in
-  them"* is two dependent lookups, and *"who has this man offended with"* is a graph walk.
-  See [Assistant tools](#assistant-tools) for the full set.
+  them"* is two dependent lookups, *"who has this man offended with"* is a graph walk, and
+  *"any abuse reports against this IP"* or *"check this crypto wallet"* is data nowhere in the
+  Data Store at all — three tools reach outside Sentinel for exactly that. Two are live
+  per-query calls that disclose plainly in their answer that the identifier just left the
+  platform; the third (sanctions screening) queries a locally cached, periodically refreshed
+  copy of a public list, so the officer's question itself never leaves — a real distinction the
+  answer states honestly rather than blurring. See [Assistant tools](#assistant-tools) for the
+  full set.
 - **ZCQL lane** — the question is compiled to a validated, single-table ZCQL query against the
   live FIR schema, then enriched with master-table names and district rollups in code.
 - **RAG lane** — legal, procedural and SOP questions are answered from a QuickML knowledge base.
@@ -555,7 +561,7 @@ sequenceDiagram
 
     alt TOOLS — bounded tool loop (max 6 turns / 45 s)
         loop until answered, or the bound is reached
-            F->>L: prompt with 8 clearance-filtered tools
+            F->>L: prompt with 11 clearance-filtered tools
             L-->>F: one or more tool calls, batched
             F->>D: records, joins, network walk, law, obligations
             D-->>F: rows — filtered, capped and nonce-fenced
@@ -944,13 +950,16 @@ sentinel/
 │       │   ├── hierarchyStore.js    # Unit/rank hierarchy used by the org chart
 │       │   └── socioeconomic.js     # District socio-economic indicators
 │       │
-│       └── __smoke__/               # 50 front-end suites (citations, extraction, PDF, i18n, sign-out, graphs, …)
+│       └── __smoke__/               # 56 front-end suites (citations, extraction, PDF, i18n, sign-out, graphs, …)
 │
 ├── functions/
 │   └── rag/                         # ── BACKEND ── the single Catalyst Advanced I/O function
 │       ├── index.js                 # Router gate + all 58 routes + the assistant lanes and tool loop
 │       ├── zcql.js                  # Natural language → ZCQL compiler, validator and row enrichment
-│       ├── tools.js                 # The eight clearance-filtered tools the model may call
+│       ├── tools.js                 # The eleven clearance-filtered tools the model may call
+│       ├── osint.js                 # IP/domain lookup — RDAP + AbuseIPDB, live per query
+│       ├── sanctions.js             # UN sanctions-list fetch/parse/match — cached index, not live
+│       ├── crypto.js                # Bitcoin/Ethereum wallet lookup — blockstream.info + Etherscan
 │       ├── memory.js                # Officer memory over Cache + NoSQL + QuickML KB
 │       ├── sources.js               # The unified citation contract, server side
 │       ├── redaction.js             # Two-tier clearance filter — pre-prompt and post-generation
@@ -967,7 +976,7 @@ sentinel/
 │       ├── vision.js                # Fast attachment pre-parser over Zia vision services
 │       ├── masters.json             # Snapshot of master tables, for enriching ZCQL results in code
 │       ├── catalyst-config.template.json  # Env-var template — copy to catalyst-config.json
-│       └── *.test.js                # 25 backend suites — no framework, one node script each
+│       └── *.test.js                # 29 backend suites — no framework, one node script each
 │
 ├── ksp/                             # ── DATASET ── synthetic Karnataka FIR data, generators, importers
 │   ├── fir/                         # The 26-table CCTNS-aligned schema (the live dataset)
@@ -1340,7 +1349,7 @@ POST /server/rag/<path>
 
 ### Assistant tools
 
-Within the TOOLS lane the model may call **eight** tools. Each is dispatched through one
+Within the TOOLS lane the model may call **eleven** tools. Each is dispatched through one
 function ([`functions/rag/tools.js`](functions/rag/tools.js)), and that single choke point is
 where the caller's clearance filter and the result cap are applied — so a tool added later
 cannot forget either.
@@ -1355,6 +1364,26 @@ cannot forget either.
 | `case_obligations` | What is outstanding or running out of time on the officer's own cases — statutory deadlines, perishable evidence, procedural gaps — each with what the law does when the clock runs out. | Reads the investigation diaries, not the Data Store. It calls the **same builder** the Action Queue page calls, so "what's urgent?" asked in chat and the page an officer opens cannot disagree. |
 | `search_knowledge_base` | Semantic retrieval from the QuickML legal/SOP corpus. | — |
 | `search_scanned_records` | Searches the station's own digitised paper — scanned FIRs, statements, seizure memos, transcripts. | The Data Store has no column for what an officer wrote in free text. |
+| `osint_lookup` | IP address / domain registration (RDAP, keyless) and IP abuse-reputation (AbuseIPDB, free-tier keyed) — a live call per question. | The Data Store has no column for an IP or a domain. States plainly in every answer that the identifier just left Sentinel and left India. |
+| `sanctions_check` | Text-matches a name against the UN Security Council Consolidated List — a locally cached, ~daily-refreshed index, **not** a live call per question. | Same reason as above, plus: the officer's actual question never leaves Sentinel, only the periodic background refresh does — a real distinction the answer states rather than blurs. |
+| `crypto_lookup` | Bitcoin (blockstream.info, keyless) or Ethereum (Etherscan, free-tier keyed) wallet balance and transaction activity — chain auto-detected from the address format. | The Data Store has no concept of a wallet address at all. |
+
+> **Verified, not assumed.** All three external tools were built against contracts confirmed by
+> live calls during development, not by trusting documentation — Etherscan's own docs still
+> describe a V1 endpoint their API has retired in favour of V2, and rdap.org's edge silently
+> 403s a request carrying no distinguishing `User-Agent`. Each tool also has a matching `/`
+> shortcut (`/osint`, `/sanctions`, `/crypto`) that expands to the same precisely-worded
+> question, for an officer who would rather not phrase it themselves.
+>
+> A fourth external tool — vehicle RC (registration certificate) verification — was built,
+> tested working end to end, and then removed. The one provider found that did not require a
+> registered business never got production data access beyond its fixed sandbox test record, and
+> every unofficial alternative investigated as a replacement was unsafe to build a police feature
+> on: one scraped an unverified re-publisher of government vehicle data, one forged HTTP headers
+> to impersonate a real company's website against what is very likely a private API, and the
+> third routed every query through an anonymous stranger's unaudited endpoint. `/vehicle` is back
+> to stating plainly that no registry is connected, rather than shipping a feature built on
+> unauthorised access to regulated PII.
 
 **The loop is bounded on four axes**, because a model that decides how many lookups to run must
 not also decide how much of the Data Store enters the prompt:
@@ -1370,10 +1399,12 @@ Independent calls come back in one turn and their results go back in **one** use
 splitting them teaches the model to stop batching.
 
 **Every tool result is fenced before the model reads it.** Two tools fence their own passages;
-the other six return record fields, and record fields are not system-generated — a `BriefFacts`
-narrative is prose a member of the public partly dictated by walking in to file a complaint. So
-the fence is applied at dispatch, in the per-request random nonce a hostile document cannot
-close, covering all eight tools and any tool added later. Injection markers found in retrieved
+the other nine return record fields (or, for the three external lookups, a third party's data),
+and neither is system-generated — a `BriefFacts` narrative is prose a member of the public
+partly dictated by walking in to file a complaint, and an external API's response is text
+Sentinel does not control either. So the fence is applied at dispatch, in the per-request random
+nonce a hostile document cannot close, covering all eleven tools and any tool added later.
+Injection markers found in retrieved
 content go to the audit trail; the model is given the fenced text and never the fact that it was
 suspected, which would only invite it to argue the point.
 
@@ -1605,8 +1636,8 @@ CI runs all three automatically on every push to `main`.
 
 ## Testing
 
-**1,565 checks across 75 suites** — 1,101 backend checks in 25 suites and 464 frontend tests in
-50 — all passing as of the last run on `main`. Everything runs locally in well under a minute
+**1,789 checks across 85 suites** — 1,266 backend checks in 29 suites and 523 frontend tests in
+56 — all passing as of the last run on `main`. Everything runs locally in well under a minute
 and needs no database, no network and no credentials: the tests that cover platform behaviour
 assert against the *source* and against injected fakes rather than a live Catalyst project.
 
@@ -1636,10 +1667,10 @@ deliberate: **a guard tested by regex is a guard that passes while doing nothing
 | --- | :-: | --- |
 | `statutory.test.js` | 116 | Statutory citation and the BNS/BNSS mapping — the legal text an answer is allowed to assert. |
 | `analytics.test.js` | 113 | The snapshot endpoint: columnar encoding, per-table paging, clearance, and retrying a refused page instead of failing the whole build. |
-| `tools.test.js` | 88 | Tool schemas, dispatch and the bounded loop. Every tool must declare a name, description and schema with required inputs; `query_records` must warn the model that joins fail *and* tell it to use an `IN` clause instead; and the clearance filter must run on every tool result. |
+| `tools.test.js` | 133 | Tool schemas, dispatch and the bounded loop. Every tool must declare a name, description and schema with required inputs; `query_records` must warn the model that joins fail *and* tell it to use an `IN` clause instead; the clearance filter must run on every tool result; and — the one caught by reading a live server's own logs, not by anything testable from outside — every bare identifier the loop returns must actually be declared somewhere in it, not just the one name that happened to be missing once. |
 | `guard.test.js` | 77 | Prompt-injection defence. The threat model is **indirect** injection — attachments, OCR, seized documents — so retrieved content is fenced in a per-request random nonce a hostile document cannot close. |
 | `forecast.test.js` | 66 | The QuickML bundle: response-shape parsing per pipeline, band derivation from measured error, cache keying by origin month, and one model's outage never blanking the others. |
-| `sources.test.js` | 50 | The unified citation contract — how a database row, a knowledge-base passage and a digitised record are each labelled, deduplicated and ordered, including the rule that a record whose title came from its filename is not printed twice. |
+| `sources.test.js` | 72 | The unified citation contract — how a database row, a knowledge-base passage, a digitised record and the three external lookups are each labelled, deduplicated and ordered, including the rule that a record whose title came from its filename is not printed twice, and that a lookup which found nothing produces no citation at all rather than an empty placeholder one. |
 | `protected.test.js` | 42 | Protected attributes (religion, caste, gender) stay out of every risk model and every prompt. |
 | `integrity.test.js` | 42 | Tamper-evidence on the audit trail — per-day seals, and a broken chain that reports itself. |
 | `apigate.test.js` | 41 | The security gate. Asserts on the router source itself that the session check is dispatched **before the first route**, that a missing session returns rather than falls through, and that the route count hasn't grown past what the gate covers — so a newly added endpoint cannot quietly land outside it. |
@@ -1648,11 +1679,11 @@ deliberate: **a guard tested by regex is a guard that passes while doing nothing
 | `noanswer.test.js` | 13 | One rule: if the assistant did not answer, it attributes nothing. A source chip beside *"the records don't hold this"* reads as though something was found and invites an officer to open a record that does not exist. |
 
 …plus `solar`, `bench`, `network`, `legal`, `i18n`, `purgeseeded`, `grounding`, `vision`,
-`router`, `keys`, `csrf`, `join` and `memory`.
+`router`, `keys`, `csrf`, `join`, `memory`, `sanctions`, `slash`, `osint` and `crypto`.
 
 ### Frontend suites (`react-app/src/__smoke__/`)
 
-50 suites, 464 tests. Beyond rendering, several pin behaviour that had already gone wrong once
+56 suites, 523 tests. Beyond rendering, several pin behaviour that had already gone wrong once
 and would go wrong silently again:
 
 | Suite | Holds the line on |
@@ -1665,12 +1696,13 @@ and would go wrong silently again:
 | `analyticscache.test.js` · `tabresponsive.test.js` | A model is built once and shared; a rejection is never cached as an answer; long work yields instead of blocking. |
 | `maplabels.test.js` | The class of bug, not the literal: a map never paints label text in a surface colour. |
 | `forecastaxes.test.js` | Both axes exist, the y ceiling covers the confidence band rather than clipping it, and hovering reads out *on* the chart. |
+| `slash.test.js` · `slashui.test.js` | The slash-command registry — role gates, typo suggestions, argument requirements — and that the input bar actually offers what the registry approves. The composer's role gate must match each tool's own inline check exactly, never wider. |
 
 ### What CI runs
 
 Every push and pull request: install both workspaces → syntax-check the function → **regenerate
 the whole FIR dataset from the seeded generators** and assert `forecast_features.json` still
-matches it → run all 25 backend suites → run the 50 frontend suites → lint `src` as a hard gate
+matches it → run all 29 backend suites → run the 56 frontend suites → lint `src` as a hard gate
 (`__smoke__` is advisory) → the accessibility gate → production build → assert `build/404.html`
 exists. Only a green run on
 `main` proceeds to deploy, and the deploy then asserts three things against the **live** site:
@@ -1769,6 +1801,12 @@ which is the single source of truth.
   per-day objects and exportable to CSV/XLSX.
 - **AI guardrails.** Outputs are advisory and cited. Protected attributes — religion, caste,
   gender — are excluded from every risk model. A human officer stays in the loop throughout.
+- **External lookups are disclosed, and scoped by role.** `osint_lookup` and `crypto_lookup`
+  state plainly, in the answer itself, that an identifier just left Sentinel's infrastructure;
+  `sanctions_check` queries a locally cached index, so it says so instead — the officer's own
+  question never leaves. All three are limited to admin, supervisor, investigator and analyst,
+  the same inline gate the tool and its `/` shortcut both enforce, never widened to reach further
+  than typing the question out in full already would.
 - **Rate limiting by cost.** Routes that cost money per call (Zia transcription and OCR,
   SmartBrowz rendering, every LLM lane) are metered separately from general reads.
 - Aligns with **DPDP Act** and *Puttaswamy* principles of need-to-know, proportionality and
