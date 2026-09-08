@@ -164,6 +164,24 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /catch \(e\)[\s\S]{0,160}?return null;/.test(loop));
   check('it stays dormant without a key',
     /if \(!process\.env\.ANTHROPIC_API_KEY\) return null;/.test(loop));
+  // A real production bug, caught only by reading a live server's own logs:
+  // protectedAccess was referenced and pushed to here, but never declared
+  // anywhere in the function — a ReferenceError on every single completed
+  // loop turn, silently swallowed by the catch above and logged as "tool
+  // loop failed (non-fatal)", which fell through to a weaker lane. No
+  // existing test caught it because none of them run a live, full turn of
+  // the loop end to end — this checks the PROPERTY that failure depends on
+  // (every shorthand return-value has a matching declaration), rather than
+  // just pinning the one name that happened to be missing this time.
+  {
+    const returnStmt = loop.match(/return \{ text, used[\s\S]*? \};/)[0];
+    const shorthand = returnStmt.slice('return { '.length, -' };'.length)
+      .split(',').map((s) => s.trim()).filter((s) => s && !s.includes(':'));
+    const undeclared = shorthand.filter((name) =>
+      !new RegExp(`\\b(?:const|let)\\s+${name}\\b`).test(loop));
+    check('every bare identifier the loop returns is actually declared somewhere in it',
+      undeclared.length === 0, `undeclared: ${undeclared.join(', ')}`);
+  }
   check('an osint_lookup result is collected for citations, the same way query_records rows are',
     /c\.name === 'osint_lookup'[\s\S]{0,80}osintHits\.push\(out\)/.test(loop));
   check('osintHits travels out of the loop in its return value',

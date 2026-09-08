@@ -485,6 +485,15 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
   const cryptoHits = []; // crypto wallet lookups, for citations
   const vehicleHits = []; // vehicle RC lookups, for citations
   const toolThreats = []; // injection markers found in retrieved content
+  // Referenced at the return below and pushed to when a tool result carries
+  // _protectedAccess — was missing entirely, a ReferenceError on every single
+  // completed loop turn, silently caught by the catch below and reported as
+  // "tool loop failed (non-fatal)". This is what made every tool-based
+  // question fall through to a weaker lane in production, undetected by any
+  // test here because none of them execute a full, real turn of the loop —
+  // they exercise routing and per-tool dispatch, never this function's own
+  // successful-completion path end to end.
+  const protectedAccess = [];
   let usedKnowledgeBase = false;
 
   const deps = {
