@@ -4712,6 +4712,15 @@ module.exports = async (req, res) => {
           district: !!process.env.QUICKML_KEY_DISTRICT,
           chargesheet: !!process.env.QUICKML_KEY_CHARGESHEET,
         },
+        // Same reasoning as models above, for the assistant's external-lookup
+        // tools: each optional key lives only in the console, so whether a
+        // console addition actually reached the running function is otherwise
+        // unanswerable without a signed-in session.
+        tools: {
+          abuseipdb: !!process.env.ABUSEIPDB_API_KEY,
+          etherscan: !!process.env.ETHERSCAN_API_KEY,
+          vehicleRc: !!(process.env.EKO_DEVELOPER_KEY && process.env.EKO_ACCESS_KEY && process.env.EKO_INITIATOR_ID),
+        },
       });
     }
 
