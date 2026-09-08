@@ -2393,23 +2393,36 @@ async function handleAccess(req, res, action) {
   return json(res, 200, { ok: true });
 }
 
-// IP → rough location via ip-api.com. Best-effort: private/unknown IPs and
-// lookup failures record an empty location; results are cached per instance.
+// IP → rough location + anonymisation signal via ip-api.com. Best-effort:
+// private/unknown IPs and lookup failures record an empty location and
+// vpn: false; results are cached per instance.
+//
+// `vpn` is true when ip-api.com's `proxy` (known VPN/public-proxy/Tor exit)
+// or `hosting` (datacenter/VPS range) flag is set — this is "does the
+// request's IP look anonymised", not "is the officer's device running VPN
+// software", which no server or browser can observe.
 const geoCache = new Map();
 async function geoLocate(ip) {
-  if (!ip || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|::1|f[ce])/.test(ip)) return '';
+  if (!ip || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|::1|f[ce])/.test(ip)) {
+    return { location: '', vpn: false };
+  }
   if (geoCache.has(ip)) return geoCache.get(ip);
-  let loc = '';
+  let result = { location: '', vpn: false };
   try {
     const r = await fetch(
-      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,regionName,city`,
+      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,regionName,city,proxy,hosting`,
       { signal: AbortSignal.timeout(1500) }
     );
     const j = await r.json();
-    if (j.status === 'success') loc = [j.city, j.regionName, j.country].filter(Boolean).join(', ');
+    if (j.status === 'success') {
+      result = {
+        location: [j.city, j.regionName, j.country].filter(Boolean).join(', '),
+        vpn: Boolean(j.proxy || j.hosting),
+      };
+    }
   } catch {}
-  geoCache.set(ip, loc);
-  return loc;
+  geoCache.set(ip, result);
+  return result;
 }
 
 const clientIp = (req) =>
@@ -2436,7 +2449,7 @@ async function storeAuditEvents(req, app, bucket, events, sessionUser) {
 async function writeAuditEvents(req, app, bucket, events, sessionUser) {
   if (!events.length) return;
   const ip = clientIp(req);
-  const [location, roles, user] = await Promise.all([
+  const [{ location, vpn }, roles, user] = await Promise.all([
     geoLocate(ip),
     loadRolesBlob(bucket),
     sessionUser ? Promise.resolve(sessionUser) : requestUser(app),
@@ -2468,6 +2481,7 @@ async function writeAuditEvents(req, app, bucket, events, sessionUser) {
       session: String(e.session || '').slice(0, 40),
       ip,
       location,
+      vpn,
       device,
       // The complete attribution array, stored beside the one-line detail.
       // An answer's sources are part of the immutable record, not a display

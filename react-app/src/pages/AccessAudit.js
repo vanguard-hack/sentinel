@@ -102,6 +102,7 @@ const AUDIT_COLUMNS = [
   ['detail', 'Detail'],
   ['ip', 'IP address'],
   ['location', 'Location'],
+  ['vpn', 'VPN'],
   ['device', 'Device'],
 ];
 
@@ -330,7 +331,11 @@ function AuditTab() {
   const exportRows = () => [
     AUDIT_COLUMNS.map(([, label]) => label),
     ...shown.map((e) =>
-      AUDIT_COLUMNS.map(([k]) => (k === 'role' ? roleName(e) : String(e[k] ?? '')))
+      AUDIT_COLUMNS.map(([k]) => (
+        k === 'role' ? roleName(e)
+          : k === 'vpn' ? (e.vpn ? 'Yes' : 'No')
+            : String(e[k] ?? '')
+      ))
     ),
   ];
 
@@ -402,7 +407,7 @@ function AuditTab() {
               <thead>
                 <tr>
                   <th>Time (IST)</th><th>Officer</th><th>Role</th>
-                  <th>Feature</th><th>Action</th><th>IP</th><th>Location</th>
+                  <th>Feature</th><th>Action</th><th>IP</th><th>Location</th><th>VPN</th>
                 </tr>
               </thead>
               <tbody>
@@ -429,6 +434,11 @@ function AuditTab() {
                     </td>
                     <td className="aa-mono">{e.ip || '—'}</td>
                     <td>{e.location || '—'}</td>
+                    <td>
+                      {e.vpn
+                        ? <span className="aa-chip act-denied">VPN</span>
+                        : <span className="aa-muted">—</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
