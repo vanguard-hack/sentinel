@@ -1,19 +1,16 @@
 // Slash commands for the assistant.
 //
-// The set was fixed at eleven until the assistant grew three tools backed by
-// external services (osint_lookup, sanctions_check, crypto_lookup in
-// functions/rag/tools.js) — adding their shortcuts here was exactly the kind
-// of deliberate scoping decision that comment asked for, not scope creep, so
-// the registry stays the single source of truth for the UI, the parser and
-// /help rather than growing unboundedly. A fourth, vehicle_lookup, was tried
-// and removed — the only verification provider found that didn't require a
-// registered business (Eko Platform Services) never got past its sandbox
-// tier, and every unofficial alternative investigated either scraped an
-// unverified re-publisher of government data, forged HTTP headers to
-// impersonate a real company's site, or routed queries through an anonymous
-// stranger's unaudited endpoint — none acceptable for regulated vehicle-
-// owner PII on a police platform. /vehicle stays as the honest "no registry
-// connected" command it was before any of this.
+// The set was fixed at eleven until the assistant grew four tools backed by
+// external services (osint_lookup, sanctions_check, crypto_lookup,
+// vehicle_lookup in functions/rag/tools.js) — adding their shortcuts here was
+// exactly the kind of deliberate scoping decision that comment asked for, not
+// scope creep, so the registry stays the single source of truth for the UI,
+// the parser and /help rather than growing unboundedly. vehicle_lookup itself
+// was built, removed (Eko Platform Services never got past its sandbox tier,
+// and every unofficial alternative investigated was unsafe to build regulated
+// vehicle-owner PII on), then restored once Eko's own support confirmed this
+// account's production credentials and the corrected production endpoint —
+// see functions/rag/vehicle.js for the full account of both.
 //
 // sanctions_check's own backing data was later swapped from the UN-only
 // Consolidated List to OpenSanctions' much broader aggregation (28+ source
@@ -55,11 +52,6 @@ export const COMMANDS = [
     roles: ['admin', 'supervisor', 'investigator'], sensitive: true, needsArg: true,
   },
   {
-    name: 'vehicle', arg: '[registration no]', category: 'Lookup',
-    descKey: 'slash.vehicle', desc: 'Vehicle ownership & crime linkage check',
-    roles: ['admin', 'supervisor', 'investigator'], sensitive: true, needsArg: true,
-  },
-  {
     name: 'person', arg: '[name or phone]', category: 'Lookup',
     descKey: 'slash.person', desc: 'Person search across connected records',
     roles: ['admin', 'supervisor', 'investigator'], sensitive: true, needsArg: true,
@@ -77,6 +69,11 @@ export const COMMANDS = [
   {
     name: 'crypto', arg: '[wallet address]', category: 'External',
     descKey: 'slash.crypto', desc: 'Bitcoin/Ethereum wallet balance & activity',
+    roles: ['admin', 'supervisor', 'investigator', 'analyst'], sensitive: true, needsArg: true,
+  },
+  {
+    name: 'vehicle', arg: '[registration no]', category: 'External',
+    descKey: 'slash.vehicle', desc: 'RC lookup: owner, RC status, insurance validity',
     roles: ['admin', 'supervisor', 'investigator', 'analyst'], sensitive: true, needsArg: true,
   },
   {

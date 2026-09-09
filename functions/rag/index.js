@@ -6,6 +6,7 @@ const redaction = require('./redaction');
 const vision = require('./vision');
 const attribution = require('./sources');
 const crypto = require('./crypto');
+const vehicle = require('./vehicle');
 const sherlock = require('./sherlock');
 const memory = require('./memory');
 const assistantTools = require('./tools');
@@ -482,6 +483,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
   const osintHits = [];  // RDAP/AbuseIPDB lookups, for citations
   const sanctionsHits = []; // OpenSanctions matches, for citations
   const cryptoHits = []; // crypto wallet lookups, for citations
+  const vehicleHits = []; // vehicle RC lookups, for citations
   const toolThreats = []; // injection markers found in retrieved content
   // Referenced at the return below and pushed to when a tool result carries
   // _protectedAccess — was missing entirely, a ReferenceError on every single
@@ -576,7 +578,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           .join('')
           .trim();
         if (!text) return null;
-        return { text, used, rowSets, scanHits, osintHits, sanctionsHits, cryptoHits, usedKnowledgeBase, protectedAccess, toolThreats, iterations: i + 1 };
+        return { text, used, rowSets, scanHits, osintHits, sanctionsHits, cryptoHits, vehicleHits, usedKnowledgeBase, protectedAccess, toolThreats, iterations: i + 1 };
       }
 
       messages.push({ role: 'assistant', content: res.content });
@@ -603,6 +605,9 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           }
           if (c.name === 'crypto_lookup' && out && !out.error && (out.bitcoin || out.ethereum)) {
             cryptoHits.push(out);
+          }
+          if (c.name === 'vehicle_lookup' && out && !out.error && out.found) {
+            vehicleHits.push(out);
           }
           // Internal bookkeeping never goes back to the model.
           const { _redactions, _hits, _protectedAccess, _threat, ...clean } = out || {};
@@ -726,17 +731,14 @@ function parseRouteReply(raw) {
 // rather than a parallel query stack: the same ZCQL guardrails, the same role
 // checks, the same audit trail.
 //
-// Where Sentinel genuinely has no such data — there is no vehicle registry in
-// the Data Store, and no verification provider configured — the command says
-// so plainly instead of returning something invented. A fabricated ownership
-// record in a police tool is worse than no answer at all. /missing is the
-// other example of this: no structured missing-person registry, only
-// digitised paper.
+// Where Sentinel genuinely has no such data, the command says so plainly
+// instead of returning something invented — /missing is the remaining
+// example (no structured missing-person registry, only digitised paper).
+// A fabricated record in a police tool is worse than no answer at all.
 const SLASH_ROLES = {
   fir: ['admin', 'supervisor', 'investigator'],
   case: ['admin', 'supervisor', 'investigator'],
   suspect: ['admin', 'supervisor', 'investigator'],
-  vehicle: ['admin', 'supervisor', 'investigator'],
   person: ['admin', 'supervisor', 'investigator'],
   'crime-stats': ['admin', 'supervisor', 'investigator', 'analyst', 'policymaker'],
   hotspot: ['admin', 'supervisor', 'investigator', 'analyst', 'policymaker'],
@@ -748,6 +750,7 @@ const SLASH_ROLES = {
   osint: ['admin', 'supervisor', 'investigator', 'analyst'],
   sanctions: ['admin', 'supervisor', 'investigator', 'analyst'],
   crypto: ['admin', 'supervisor', 'investigator', 'analyst'],
+  vehicle: ['admin', 'supervisor', 'investigator', 'analyst'],
   help: null,
 };
 // Commands touching person or case records — logged on every execution.
@@ -760,7 +763,6 @@ const SLASH_HELP = [
   ['/fir [FIR number]', 'Get FIR details and current status'],
   ['/case [case ID]', 'Case summary, IO assigned, current stage'],
   ['/suspect [name or ID]', 'Criminal record / antecedents check'],
-  ['/vehicle [registration no]', 'Vehicle ownership & crime linkage check'],
   ['/person [name or phone]', 'Person search across connected records'],
   ['/crime-stats [district/PS] [date range]', 'Crime count summary by type'],
   ['/hotspot [area]', 'Crime hotspot data for a location'],
@@ -769,6 +771,7 @@ const SLASH_HELP = [
   ['/osint [IP address or domain]', 'External registration & abuse-reputation check'],
   ['/sanctions [name]', 'Screen a name against global sanctions/watchlists'],
   ['/crypto [wallet address]', 'Bitcoin/Ethereum wallet balance & activity'],
+  ['/vehicle [registration no]', 'RC lookup: owner, RC status, insurance validity'],
   // /sherlock is deliberately absent from SLASH_ROLES/SLASH_SENSITIVE above
   // and slashToQuery below — a run takes 74-110+ seconds (see sherlock.js),
   // so unlike every other command here it is never expanded into a question
@@ -821,6 +824,8 @@ function slashToQuery(name, arg) {
       return `Check whether ${arg} appears on any sanctions or watchlist.`;
     case 'crypto':
       return `Check the crypto wallet address ${arg} — balance and transaction activity.`;
+    case 'vehicle':
+      return `Look up the vehicle with registration number ${arg} — owner, RC status, insurance validity.`;
     default:
       return arg || name;
   }
@@ -4748,6 +4753,7 @@ module.exports = async (req, res) => {
           etherscan: !!process.env.ETHERSCAN_API_KEY,
           opensanctions: !!process.env.OPENSANCTIONS_API_KEY,
           apify: !!process.env.APIFY_API_TOKEN,
+          vehicleRc: !!(process.env.EKO_DEVELOPER_KEY && process.env.EKO_ACCESS_KEY && process.env.EKO_INITIATOR_ID),
         },
       });
     }
@@ -5377,17 +5383,6 @@ module.exports = async (req, res) => {
         });
       }
 
-      // No vehicle registry is connected to Sentinel. Saying so is the honest
-      // answer; inventing an ownership record would be far worse than none.
-      if (slash.name === 'vehicle') {
-        return await respondWith(
-          `Sentinel has no vehicle registry connected, so \`/vehicle\` cannot look up ownership for **${slash.arg}**.\n\n` +
-            'The case records do hold vehicle details inside FIR brief facts where an officer recorded them — ' +
-            `try asking "which FIRs mention ${slash.arg}" to search that text instead.`,
-          { components: [], source: 'command' }
-        );
-      }
-
       // Missing-person cases are not a structured registry either; they live in
       // digitised paper and drafted reports, which is where this searches.
       if (slash.name === 'missing') {
@@ -5701,6 +5696,7 @@ module.exports = async (req, res) => {
           for (const hit of looped.osintHits) cites.push(attribution.fromOsint(hit));
           if (looped.sanctionsHits.length) cites.push(attribution.fromSanctions(looped.sanctionsHits));
           for (const hit of looped.cryptoHits) cites.push(attribution.fromCrypto(hit));
+          for (const hit of looped.vehicleHits) cites.push(attribution.fromVehicle(hit));
           // The knowledge-base fallback is only worth showing when nothing else
           // answered — otherwise a model that (wrongly, or as a first attempt)
           // also called search_knowledge_base leaves an empty, unopenable chip

@@ -445,6 +445,37 @@ function fromCrypto(hit) {
   return [];
 }
 
+// ── Lane 9: vehicle RC lookups ──────────────────────────────────────────
+//
+// No public page exists to link — this is a paid verification API, not a
+// public database — so the citation carries no uri, just the provider name
+// and the concrete facts. The scope line states plainly when the answer is
+// the provider's own sandbox test data, so it can never be mistaken for a
+// real record — the same "no source for a negative answer" shape the other
+// lanes already follow: a lookup the provider itself rejected produces no
+// citation at all.
+
+function fromVehicle(hit) {
+  if (!hit || !hit.found) return [];
+  const facts = [
+    hit.owner ? `Owner: ${hit.owner}` : null,
+    (hit.manufacturer || hit.model) ? `Vehicle: ${[hit.manufacturer, hit.model].filter(Boolean).join(' ')}` : null,
+    hit.rcStatus ? `RC status: ${hit.rcStatus}` : null,
+    hit.rcExpiryDate ? `RC valid until: ${hit.rcExpiryDate}` : null,
+    hit.insuranceValidUpto ? `Insurance valid until: ${hit.insuranceValidUpto}` : null,
+    (hit.blacklistStatus && hit.blacklistStatus !== 'NA') ? `Blacklist status: ${hit.blacklistStatus}` : null,
+  ].filter(Boolean).join(' · ');
+  return [{
+    source_type: TYPES.EXTERNAL_WEB,
+    display_name: `Vehicle RC — ${str(hit.vehicleNumber, 20)}`,
+    domain: 'eko.in',
+    scope: hit.isSandboxData
+      ? 'Eko Platform Services — sandbox test data, not a real vehicle record'
+      : 'Eko Platform Services — Vehicle RC verification',
+    passages: facts ? [{ location: null, excerpt: str(facts, 500), score: null }] : [],
+  }];
+}
+
 // ── Clearance ───────────────────────────────────────────────────────────────
 
 // Fields whose NAME alone discloses something — a filter clause reading
@@ -610,6 +641,7 @@ module.exports = {
   fromOsint,
   fromSanctions,
   fromCrypto,
+  fromVehicle,
   filterSummary,
   matchedRecordIds,
   clearanceFilter,
