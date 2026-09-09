@@ -88,7 +88,8 @@ const REAL_FAILURE_RESPONSE = {
     /not configured/.test(unconfigured.error || ''));
 
   // A successful lookup against the default (staging) endpoint, mocked with
-  // the real captured response shape.
+  // the real captured response shape. The body is read via .text() now, not
+  // .json() — the mock reflects that.
   setEnv({ EKO_DEVELOPER_KEY: 'dk', EKO_ACCESS_KEY: 'ak', EKO_INITIATOR_ID: '9999999999' });
   global.fetch = async (url, opts) => {
     check('the request hits the default staging endpoint when EKO_VEHICLE_RC_URL is unset',
@@ -98,7 +99,7 @@ const REAL_FAILURE_RESPONSE = {
     const body = JSON.parse(opts.body);
     check('the request body carries initiator_id, client_ref_id and vehicle_number',
       body.initiator_id === '9999999999' && !!body.client_ref_id && body.vehicle_number === 'HJ01ME5678');
-    return { ok: true, json: async () => REAL_SUCCESS_RESPONSE };
+    return { status: 200, text: async () => JSON.stringify(REAL_SUCCESS_RESPONSE) };
   };
   const found = await vehicle.lookup({ vehicleNumber: 'hj01me5678' });
   check('a found vehicle reports found:true', found.found === true);
@@ -113,10 +114,22 @@ const REAL_FAILURE_RESPONSE = {
   check('the default staging endpoint is flagged as sandbox data', found.isSandboxData === true);
 
   // A verification the provider itself rejects — the real captured shape.
-  global.fetch = async () => ({ ok: true, json: async () => REAL_FAILURE_RESPONSE });
+  global.fetch = async () => ({ status: 200, text: async () => JSON.stringify(REAL_FAILURE_RESPONSE) });
   const notFound = await vehicle.lookup({ vehicleNumber: 'ZZ99ZZ9999' });
   check('a rejected verification reports found:false, not an error', notFound.found === false);
   check('the provider\'s own message is carried through', /test data/.test(notFound.message || ''));
+  check('a rejection is flagged as sandbox data too, not just a match',
+    notFound.isSandboxData === true);
+
+  // A non-JSON body (e.g. an HTML error page from a wrong port/path, or a
+  // plain-text rejection) must surface the real HTTP status and a snippet
+  // of what actually came back, not a generic parse-error message.
+  global.fetch = async () => ({ status: 403, text: async () => 'Kindly use registered credentials to access this API' });
+  const nonJson = await vehicle.lookup({ vehicleNumber: 'HJ01ME5678' });
+  check('a non-JSON body is reported as an error carrying the real HTTP status',
+    /HTTP 403/.test(nonJson.error || ''));
+  check('  and the actual response body, not a generic parse error',
+    /Kindly use registered credentials/.test(nonJson.error || ''));
 
   // A network outage is reported as an error, never thrown.
   global.fetch = async () => { throw new Error('network down'); };
@@ -130,7 +143,7 @@ const REAL_FAILURE_RESPONSE = {
   setEnv({ EKO_DEVELOPER_KEY: 'dk', EKO_ACCESS_KEY: 'ak', EKO_INITIATOR_ID: '9999999999', EKO_VEHICLE_RC_URL: PROD_URL });
   global.fetch = async (url) => {
     check('a configured EKO_VEHICLE_RC_URL is used verbatim, port and all', url === PROD_URL);
-    return { ok: true, json: async () => REAL_SUCCESS_RESPONSE };
+    return { status: 200, text: async () => JSON.stringify(REAL_SUCCESS_RESPONSE) };
   };
   const prod = await vehicle.lookup({ vehicleNumber: 'HJ01ME5678' });
   check('the configured production endpoint is not flagged as sandbox data', prod.isSandboxData === false);
@@ -139,7 +152,7 @@ const REAL_FAILURE_RESPONSE = {
     const american = { ...REAL_SUCCESS_RESPONSE, data: { ...REAL_SUCCESS_RESPONSE.data } };
     delete american.data.vehicle_colour;
     american.data.vehicle_color = 'SLATE BLUE';
-    return { ok: true, json: async () => american };
+    return { status: 200, text: async () => JSON.stringify(american) };
   };
   const americanSpelling = await vehicle.lookup({ vehicleNumber: 'HJ01ME5678' });
   check('vehicle_color (American spelling, production) is read when vehicle_colour is absent',

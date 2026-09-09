@@ -78,8 +78,14 @@ async function lookup({ vehicleNumber }) {
   const secretKey = computeSecretKey(accessKey, ts);
   const clientRefId = `${ts}${Math.floor(Math.random() * 1000)}`;
   const url = endpointUrl();
+  const isSandbox = url.includes('staging.eko.in');
 
-  let data;
+  // Read the body as text first, then parse it ourselves — res.json() throws
+  // on a non-JSON body with no access to what was actually returned, which
+  // makes a wrong port/path/auth failure indistinguishable from "no record".
+  // Surfacing the real HTTP status and a body snippet turns a silent dead
+  // end into something an officer (or whoever configured this) can act on.
+  let status, rawText;
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -92,13 +98,31 @@ async function lookup({ vehicleNumber }) {
       body: JSON.stringify({ initiator_id: initiatorId, client_ref_id: clientRefId, vehicle_number: v }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    data = await res.json();
+    status = res.status;
+    rawText = await res.text();
   } catch (e) {
     return { error: `Vehicle RC lookup failed: ${(e && e.message) || e}` };
   }
 
+  let data;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    return {
+      error: `Vehicle RC lookup failed: Eko returned HTTP ${status} with a non-JSON body: "${rawText.slice(0, 300)}"`,
+    };
+  }
+
   if (!data || data.response_status_id !== 0 || !data.data) {
-    return { vehicleNumber: v, found: false, message: (data && data.message) || 'No RC record found.' };
+    return {
+      vehicleNumber: v,
+      found: false,
+      message: (data && data.message) || `No RC record found (HTTP ${status}).`,
+      // Present on every outcome, not just a match — a rejection needs this
+      // just as much as a hit does, so the caller never has to guess which
+      // environment actually answered from the message text alone.
+      isSandboxData: isSandbox,
+    };
   }
 
   const d = data.data;
@@ -130,7 +154,7 @@ async function lookup({ vehicleNumber }) {
     // be shown that as if it were a real record. Derived from which
     // endpoint is actually configured, not a separate toggle that could
     // drift out of sync with it.
-    isSandboxData: url.includes('staging.eko.in'),
+    isSandboxData: isSandbox,
   };
 }
 
