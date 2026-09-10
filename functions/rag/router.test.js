@@ -112,9 +112,6 @@ check('  and it generalises to sanctions screening, not just IP/domain',
 check('  and to crypto wallet lookups too',
   /Bitcoin\/\s*\n?\s*Ethereum wallet address/.test(zcql.ROUTER_PROMPT.replace(/\n/g, ' '))
   && /check this crypto wallet/.test(zcql.ROUTER_PROMPT));
-check('  and to vehicle registration lookups too',
-  /vehicle registration\s*\n?\s*number/.test(zcql.ROUTER_PROMPT.replace(/\n/g, ' '))
-  && /look up vehicle KA03MX4521/.test(zcql.ROUTER_PROMPT));
 
 console.log(fail ? `\n${fail} FAILED, ${pass} passed.` : `\nAll ${pass} router/redaction checks passed.`);
 process.exit(fail ? 1 : 0);

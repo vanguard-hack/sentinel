@@ -119,24 +119,58 @@ export function renderCell(value) {
   });
 }
 
-// Block-level parse for assistant prose: headings, quotes, bullet and numbered
-// lists, and paragraphs — so spacing is structural rather than a pile of divs.
+// A markdown table row — the same test the backend's own stripMarkdownTables
+// uses, so a table that slipped past that safety net is still recognised the
+// same way here. A cell is a separator ("---", ":--:") when every cell in
+// the row matches; that row is dropped rather than shown as data.
+const isTableRow = (ln) => /^\s*\|.*\|\s*$/.test(ln);
+const isSeparatorRow = (cells) => cells.every((c) => /^:?-{2,}:?$/.test(c) || c === '');
+const splitRow = (ln) => ln.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+
+// Block-level parse for assistant prose: headings, quotes, tables, nested
+// bullet/numbered lists, and paragraphs — so spacing is structural rather
+// than a pile of divs.
+//
+// This is defense in depth, not the primary control — the backend's own
+// sanitizeForDisplay (functions/rag/index.js) is what should convert a
+// model's stray markdown table into a real `table` agui component before it
+// ever reaches here. This exists for whatever gets past that anyway: a
+// knowledge-base excerpt quoted verbatim, a future call site that forgets.
 export function parseBlocks(text) {
   const lines = normaliseText(text).split('\n');
   const blocks = [];
   let para = [];
-  let list = null; // { ordered, items: [] }
+  // Nested lists are tracked as a stack of open frames, one per indent level
+  // seen so far; `topList` is the single top-level list object the whole
+  // chain eventually becomes one block for. An item earns a nested list by
+  // being the most recent item at the level a deeper indent attaches to.
+  let topList = null; // { ordered, items: [{ text, children }] }
+  let stack = []; // [{ indent, list }]
+  let tableRun = []; // consecutive raw lines that look like `| a | b |`
 
   const flushPara = () => {
     if (para.length) { blocks.push({ type: 'p', lines: para }); para = []; }
   };
   const flushList = () => {
-    if (list && list.items.length) blocks.push({ type: 'list', ...list });
-    list = null;
+    if (topList && topList.items.length) blocks.push({ type: 'list', ...topList });
+    topList = null;
+    stack = [];
+  };
+  const flushTable = () => {
+    if (tableRun.length < 2) { para.push(...tableRun); tableRun = []; return; }
+    const rows = tableRun.map(splitRow);
+    if (!isSeparatorRow(rows[1])) { para.push(...tableRun); tableRun = []; return; }
+    const dataRows = rows.slice(2).filter((cells) => !isSeparatorRow(cells));
+    blocks.push({ type: 'table', columns: rows[0], rows: dataRows });
+    tableRun = [];
   };
 
   lines.forEach((raw) => {
     const ln = raw.replace(/\s+$/, '');
+
+    if (isTableRow(ln)) { flushPara(); flushList(); tableRun.push(ln); return; }
+    flushTable();
+
     if (!ln.trim()) { flushPara(); flushList(); return; }
 
     const heading = ln.match(/^(#{1,4})\s+(.*)$/);
@@ -163,18 +197,35 @@ export function parseBlocks(text) {
       blocks.push({ type: 'hr' });
       return;
     }
-    const ordered = ln.match(/^\s*(\d+)[.)]\s+(.*)$/);
-    const bullet = ln.match(/^\s*[-*•]\s+(.*)$/);
+    const ordered = ln.match(/^(\s*)(\d+)[.)]\s+(.*)$/);
+    const bullet = ln.match(/^(\s*)[-*•]\s+(.*)$/);
     if (ordered || bullet) {
       flushPara();
+      const indent = (ordered || bullet)[1].length;
       const isOrdered = !!ordered;
-      if (!list || list.ordered !== isOrdered) { flushList(); list = { ordered: isOrdered, items: [] }; }
-      list.items.push(ordered ? ordered[2] : bullet[1]);
+      const itemText = ordered ? ordered[3] : bullet[2];
+      const item = { text: itemText, children: null };
+      if (!stack.length) {
+        topList = { ordered: isOrdered, items: [item] };
+        stack.push({ indent, list: topList });
+      } else {
+        while (stack.length > 1 && indent < stack[stack.length - 1].indent) stack.pop();
+        const top = stack[stack.length - 1];
+        if (indent > top.indent) {
+          const parentItem = top.list.items[top.list.items.length - 1];
+          const nested = { ordered: isOrdered, items: [item] };
+          parentItem.children = nested;
+          stack.push({ indent, list: nested });
+        } else {
+          top.list.items.push(item);
+        }
+      }
       return;
     }
     flushList();
     para.push(ln);
   });
+  flushTable();
   flushPara();
   flushList();
   return blocks;

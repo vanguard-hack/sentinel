@@ -35,6 +35,9 @@ describe('the vocabulary', () => {
     cards: { items: [{ title: 'One' }] },
     'geo-map': { data: [{ district: 'Mysuru', value: 3 }] },
     'network-graph': { nodes: [{ id: 'a', label: 'A' }], links: [] },
+    checklist: { items: [{ label: 'File chargesheet', tone: 'critical' }] },
+    'stat-tiles': { items: [{ label: 'Open cases', value: '222' }] },
+    timeline: { events: [{ date: '2026-01-04', label: 'FIR registered' }] },
   };
 
   test.each(Object.keys(GOOD))('%s renders', (type) => {
@@ -42,7 +45,7 @@ describe('the vocabulary', () => {
   });
 
   test('the vocabulary is materially wider than the original six', () => {
-    expect(Object.keys(GOOD).length).toBeGreaterThanOrEqual(14);
+    expect(Object.keys(GOOD).length).toBeGreaterThanOrEqual(17);
   });
 });
 
@@ -108,5 +111,41 @@ describe('a malformed spec draws nothing', () => {
   test('a null component list renders nothing at all', () => {
     expect(render(<AguiRenderer components={null} />).container.innerHTML).toBe('');
     expect(render(<AguiRenderer components={[]} />).container.innerHTML).toBe('');
+  });
+
+  test('a checklist with no items draws nothing', () => {
+    expect(drew({ type: 'checklist', items: [] })).toBe(false);
+    expect(drew({ type: 'checklist' })).toBe(false);
+  });
+
+  test('a checklist item with no label is dropped, not shown blank', () => {
+    const c = draw({ type: 'checklist', items: [{ tone: 'critical' }, { label: 'Real one' }] });
+    expect(c.querySelectorAll('.agui-checklist-item')).toHaveLength(1);
+  });
+
+  test('stat-tiles with no items draws nothing', () => {
+    expect(drew({ type: 'stat-tiles', items: [] })).toBe(false);
+  });
+
+  test('a stat tile missing its value is dropped, not shown as zero', () => {
+    // A missing figure and a figure of nought are different claims — the
+    // same trap this codebase already guards against for chart values.
+    const c = draw({ type: 'stat-tiles', items: [
+      { label: 'No value', value: null }, { label: 'Real one', value: '5' },
+    ] });
+    expect(c.querySelectorAll('.agui-stat-tile')).toHaveLength(1);
+  });
+
+  test('a timeline with no events draws nothing', () => {
+    expect(drew({ type: 'timeline', events: [] })).toBe(false);
+  });
+
+  test('a timeline event with no label is dropped', () => {
+    const c = draw({ type: 'timeline', events: [{ date: '2026-01-01' }, { label: 'Real one' }] });
+    expect(c.querySelectorAll('.agui-timeline-event')).toHaveLength(1);
+  });
+
+  test('a timeline event with no date still renders — a date is not fabricated', () => {
+    expect(drew({ type: 'timeline', events: [{ label: 'Undated step' }] })).toBe(true);
   });
 });

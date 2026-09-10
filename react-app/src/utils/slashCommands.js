@@ -1,16 +1,11 @@
 // Slash commands for the assistant.
 //
-// The set was fixed at eleven until the assistant grew four tools backed by
-// external services (osint_lookup, sanctions_check, crypto_lookup,
-// vehicle_lookup in functions/rag/tools.js) — adding their shortcuts here was
-// exactly the kind of deliberate scoping decision that comment asked for, not
-// scope creep, so the registry stays the single source of truth for the UI,
-// the parser and /help rather than growing unboundedly. vehicle_lookup itself
-// was built, removed (Eko Platform Services never got past its sandbox tier,
-// and every unofficial alternative investigated was unsafe to build regulated
-// vehicle-owner PII on), then restored once Eko's own support confirmed this
-// account's production credentials and the corrected production endpoint —
-// see functions/rag/vehicle.js for the full account of both.
+// The set was fixed at eleven until the assistant grew tools backed by
+// external services (osint_lookup, sanctions_check, crypto_lookup in
+// functions/rag/tools.js) — adding their shortcuts here was exactly the kind
+// of deliberate scoping decision that comment asked for, not scope creep, so
+// the registry stays the single source of truth for the UI, the parser and
+// /help rather than growing unboundedly.
 //
 // sanctions_check's own backing data was later swapped from the UN-only
 // Consolidated List to OpenSanctions' much broader aggregation (28+ source
@@ -69,11 +64,6 @@ export const COMMANDS = [
   {
     name: 'crypto', arg: '[wallet address]', category: 'External',
     descKey: 'slash.crypto', desc: 'Bitcoin/Ethereum wallet balance & activity',
-    roles: ['admin', 'supervisor', 'investigator', 'analyst'], sensitive: true, needsArg: true,
-  },
-  {
-    name: 'vehicle', arg: '[registration no]', category: 'External',
-    descKey: 'slash.vehicle', desc: 'RC lookup: owner, RC status, insurance validity',
     roles: ['admin', 'supervisor', 'investigator', 'analyst'], sensitive: true, needsArg: true,
   },
   {

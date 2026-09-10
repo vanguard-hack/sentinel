@@ -39,6 +39,9 @@ import NetworkGraph from './NetworkGraph';
 //   { type: 'cards',             title, items: [{ title, subtitle, body, badge }] }
 //   { type: 'geo-map',           title, data: [{ district, value }] }
 //   { type: 'network-graph',     title, nodes: [{ id, label, group }], links: [{ source, target }] }
+//   { type: 'checklist',         title, items: [{ label, detail, tone, meta }] }
+//   { type: 'stat-tiles',        title, items: [{ label, value, hint, tone }] }
+//   { type: 'timeline',          title, events: [{ date, label, detail }] }
 
 /**
  * Is this a number the chart may plot?
@@ -196,6 +199,101 @@ const cleanGrid = (spec) => {
   return { rows, cols, values };
 };
 
+// Shared with ActionQueue.js's own severity vocabulary (overdue/critical/
+// high) so a checklist or stat-tile drawn here reads exactly like the page
+// an officer already knows, rather than inventing a second color language.
+// An unrecognised or absent tone is neutral, never a guess.
+const TONES = new Set(['overdue', 'critical', 'high', 'ok']);
+const cleanTone = (t) => (TONES.has(t) ? t : 'neutral');
+
+const hasText = (v) => typeof v === 'string' && v.trim() !== '';
+// Same trap as `plottable`, for a value that is text rather than a chart
+// number: a missing stat and a stat of "0" are different claims.
+const hasValue = (v) => v !== null && v !== undefined && typeof v !== 'boolean' && String(v).trim() !== '';
+
+const cleanChecklistItems = (items) =>
+  (Array.isArray(items) ? items : [])
+    .filter((it) => it && hasText(it.label))
+    .map((it) => ({
+      label: it.label,
+      detail: hasText(it.detail) ? it.detail : null,
+      tone: cleanTone(it.tone),
+      meta: hasText(it.meta) ? it.meta : null,
+    }));
+
+const cleanStatTiles = (items) =>
+  (Array.isArray(items) ? items : [])
+    .filter((it) => it && hasText(it.label) && hasValue(it.value))
+    .map((it) => ({
+      label: it.label,
+      value: String(it.value),
+      hint: hasText(it.hint) ? it.hint : null,
+      tone: cleanTone(it.tone),
+    }));
+
+// A date is never fabricated: an event with no date still renders, it just
+// carries no date line, rather than inventing one to keep a column full.
+const cleanTimelineEvents = (events) =>
+  (Array.isArray(events) ? events : [])
+    .filter((e) => e && hasText(e.label))
+    .map((e) => ({
+      label: e.label,
+      date: hasText(e.date) ? e.date : null,
+      detail: hasText(e.detail) ? e.detail : null,
+    }));
+
+function AguiChecklist({ items }) {
+  return (
+    <ul className="agui-checklist">
+      {items.map((it, i) => (
+        <li className={`agui-checklist-item tone-${it.tone}`} key={i}>
+          <span className="agui-checklist-dot" aria-hidden="true" />
+          <div className="agui-checklist-body">
+            <span className="agui-checklist-label">{renderInline(normaliseText(it.label), `cl${i}`)}</span>
+            {it.detail && (
+              <span className="agui-checklist-detail">{renderInline(normaliseText(it.detail), `cd${i}`)}</span>
+            )}
+          </div>
+          {it.meta && <span className="agui-checklist-meta">{normaliseText(it.meta)}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function AguiStatTiles({ items }) {
+  return (
+    <div className="agui-stat-tiles">
+      {items.map((it, i) => (
+        <div className={`agui-stat-tile tone-${it.tone}`} key={i}>
+          <span className="agui-stat-tile-value">{it.value}</span>
+          <span className="agui-stat-tile-label">{normaliseText(it.label)}</span>
+          {it.hint && <span className="agui-stat-tile-hint">{normaliseText(it.hint)}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AguiTimeline({ events }) {
+  return (
+    <ol className="agui-timeline">
+      {events.map((e, i) => (
+        <li className="agui-timeline-event" key={i}>
+          {e.date && <span className="agui-timeline-date">{normaliseText(e.date)}</span>}
+          <span className="agui-timeline-dot" aria-hidden="true" />
+          <div className="agui-timeline-body">
+            <span className="agui-timeline-label">{renderInline(normaliseText(e.label), `tl${i}`)}</span>
+            {e.detail && (
+              <span className="agui-timeline-detail">{renderInline(normaliseText(e.detail), `td${i}`)}</span>
+            )}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function AguiComponent({ spec }) {
   let body = null;
   if (spec.type === 'bar-chart') {
@@ -247,6 +345,15 @@ function AguiComponent({ spec }) {
     body = Array.isArray(spec.data) && spec.data.length ? <GeoHeatMap spec={spec} /> : null;
   } else if (spec.type === 'network-graph') {
     body = Array.isArray(spec.nodes) && spec.nodes.length ? <NetworkGraph spec={spec} /> : null;
+  } else if (spec.type === 'checklist') {
+    const items = cleanChecklistItems(spec.items);
+    body = items.length ? <AguiChecklist items={items} /> : null;
+  } else if (spec.type === 'stat-tiles') {
+    const items = cleanStatTiles(spec.items);
+    body = items.length ? <AguiStatTiles items={items} /> : null;
+  } else if (spec.type === 'timeline') {
+    const events = cleanTimelineEvents(spec.events);
+    body = events.length ? <AguiTimeline events={events} /> : null;
   }
   if (!body) return null;
   return (

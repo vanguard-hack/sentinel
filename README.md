@@ -1398,17 +1398,7 @@ cannot forget either.
 > leaves Sentinel per search, the same as `osint_lookup` and `crypto_lookup` always have, and the
 > tool's own disclosure was updated to say so rather than continuing to claim otherwise.
 >
-> A fourth external tool — vehicle RC (registration certificate) verification — was built,
-> tested working end to end, and then removed. The one provider found that did not require a
-> registered business never got production data access beyond its fixed sandbox test record, and
-> every unofficial alternative investigated as a replacement was unsafe to build a police feature
-> on: one scraped an unverified re-publisher of government vehicle data, one forged HTTP headers
-> to impersonate a real company's website against what is very likely a private API, and the
-> third routed every query through an anonymous stranger's unaudited endpoint. `/vehicle` is back
-> to stating plainly that no registry is connected, rather than shipping a feature built on
-> unauthorised access to regulated PII.
->
-> **A fifth external capability, Sherlock (username enumeration via its Apify actor), is not a
+> **A fourth external capability, Sherlock (username enumeration via its Apify actor), is not a
 > tool at all** — it is `/sherlock`-only, reachable solely by an officer typing the command,
 > never by the model. A single run was measured live at 74-110+ seconds; Zoho Catalyst's
 > Advanced I/O functions have a hard **30-second** execution ceiling (confirmed against

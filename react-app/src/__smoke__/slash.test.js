@@ -3,10 +3,10 @@ import {
   COMMANDS, visibleCommands, slashQuery, filterCommands, parseCommand, closestCommand,
 } from '../utils/slashCommands';
 
-test('the approved set is exactly the fifteen commands, and stays that size', () => {
+test('the approved set is exactly the fourteen commands, and stays that size', () => {
   expect(COMMANDS.map((c) => c.name).sort()).toEqual([
     'case', 'clear', 'crime-stats', 'crypto', 'fir', 'help', 'hotspot',
-    'missing', 'osint', 'person', 'sanctions', 'sherlock', 'suspect', 'vehicle', 'wanted',
+    'missing', 'osint', 'person', 'sanctions', 'sherlock', 'suspect', 'wanted',
   ]);
 });
 
@@ -38,7 +38,6 @@ test('role gates which commands are offered', () => {
   expect(analyst).toContain('osint');
   expect(analyst).toContain('sanctions');
   expect(analyst).toContain('crypto');
-  expect(analyst).toContain('vehicle');
   expect(analyst).toContain('sherlock');
   // system commands are open to everyone
   expect(analyst).toContain('help');
@@ -70,6 +69,6 @@ test('commands that need a value are marked, so submitting bare prompts inline',
   // (for the External group) a specific external identifier being checked
   const sensitive = COMMANDS.filter((c) => c.sensitive).map((c) => c.name).sort();
   expect(sensitive).toEqual([
-    'case', 'crypto', 'fir', 'missing', 'osint', 'person', 'sanctions', 'sherlock', 'suspect', 'vehicle', 'wanted',
+    'case', 'crypto', 'fir', 'missing', 'osint', 'person', 'sanctions', 'sherlock', 'suspect', 'wanted',
   ]);
 });

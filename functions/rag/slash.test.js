@@ -65,8 +65,8 @@ const { SLASH_ROLES, SLASH_SENSITIVE, SLASH_HELP, parseSlash, slashToQuery } = n
   '\nreturn { SLASH_ROLES, SLASH_SENSITIVE, SLASH_HELP, parseSlash, slashToQuery };'
 )();
 
-// ── The four tool-backed commands ───────────────────────────────────────
-for (const name of ['osint', 'sanctions', 'crypto', 'vehicle']) {
+// ── The three tool-backed commands ──────────────────────────────────────
+for (const name of ['osint', 'sanctions', 'crypto']) {
   check(`/${name} is a recognised command`, name in SLASH_ROLES);
   check(`/${name} carries the same role gate as its tool`,
     Array.isArray(SLASH_ROLES[name])
@@ -83,8 +83,6 @@ check('parseSlash recognises /sanctions with a multi-word argument',
 check('parseSlash recognises /crypto with an argument',
   JSON.stringify(parseSlash('/crypto bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh'))
     === JSON.stringify({ name: 'crypto', arg: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh' }));
-check('parseSlash recognises /vehicle with an argument',
-  JSON.stringify(parseSlash('/vehicle HJ01ME5678')) === JSON.stringify({ name: 'vehicle', arg: 'HJ01ME5678' }));
 
 // ── The expanded query each command produces ────────────────────────────
 //
@@ -103,12 +101,6 @@ const cryptoQ = slashToQuery('crypto', 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0w
 check('/crypto expands to a question naming the address and asking about balance/activity',
   /bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh/.test(cryptoQ)
   && /balance/i.test(cryptoQ) && /transaction/i.test(cryptoQ));
-
-const vehicleQ = slashToQuery('vehicle', 'HJ01ME5678');
-check('/vehicle expands to a question naming the registration number and asking about owner/RC status',
-  /HJ01ME5678/.test(vehicleQ) && /owner/i.test(vehicleQ) && /RC status/i.test(vehicleQ));
-check('/vehicle no longer returns the old "no registry connected" bypass message',
-  !/no vehicle registry connected/i.test(vehicleQ));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

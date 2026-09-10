@@ -200,10 +200,6 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /c\.name === 'crypto_lookup'[\s\S]{0,80}cryptoHits\.push\(out\)/.test(loop));
   check('cryptoHits travels out of the loop in its return value',
     /return \{ text, used, rowSets, scanHits, osintHits, sanctionsHits, cryptoHits,/.test(loop));
-  check('a vehicle_lookup result is collected for citations, the same way crypto_lookup results are',
-    /c\.name === 'vehicle_lookup'[\s\S]{0,80}vehicleHits\.push\(out\)/.test(loop));
-  check('vehicleHits travels out of the loop in its return value',
-    /return \{ text, used, rowSets, scanHits, osintHits, sanctionsHits, cryptoHits, vehicleHits,/.test(loop));
 
   const route = src.slice(src.indexOf("if (routed === 'TOOLS')"), src.indexOf("if (routed && /chat/i.test(routed))"));
   check('a failed loop falls through to the lanes that were already there',
@@ -222,15 +218,22 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
     /for \(const hit of looped\.cryptoHits\)/.test(route));
   check('  built by the same fromCrypto attribution function sources.js exports',
     /attribution\.fromCrypto\(hit\)/.test(route));
-  check('every vehicle RC lookup the loop read becomes a citation too',
-    /for \(const hit of looped\.vehicleHits\)/.test(route));
-  check('  built by the same fromVehicle attribution function sources.js exports',
-    /attribution\.fromVehicle\(hit\)/.test(route));
   check('the knowledge-base fallback only appears when nothing else answered',
     /looped\.usedKnowledgeBase && !cites\.length/.test(route),
     'a real citation must not sit next to a dead "Knowledge base" chip from a redundant call');
   check('which tools ran is recorded for the audit trail',
     /validatorChecks\.push\(`tools:/.test(route));
+
+  // The tool loop only draws a component when the model voluntarily appends
+  // one — a model that just wrote data-shaped prose (e.g. "counts by crime
+  // head" as a paragraph) got no chart at all, unlike the final RAG/fallback
+  // lane, which always attempts a data->component transform when it comes up
+  // component-less. This is that same pass-2 attempt, reused rather than
+  // duplicated, for the tools lane.
+  check('the tools lane falls back to the shared data->component transform when the loop drew nothing',
+    /const components = v\.components\.length \? v\.components : await transformToComponents\(v\.text \|\| looped\.text\)/.test(route));
+  check('  and that result (not the loop\'s own empty guess) is what respondWith renders',
+    /return await respondWith\(v\.text \|\| looped\.text, \{\s*\n\s*components,/.test(route));
 
   // ── case_obligations ────────────────────────────────────────────────────
   //
@@ -287,6 +290,12 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   const crit = await run('case_obligations', { severity: 'critical' }, queueDeps('investigator'));
   check('severity filters to at least that urgent',
     crit.obligations.length === 1 && crit.obligations[0].severity === 'critical');
+
+  // Each item already carries a real severity — a natural fit for the
+  // checklist component's tone, same as traverse_network is told to draw a
+  // network-graph from the edges it already returns.
+  check('the tool tells the model to draw a checklist from what it returns',
+    /checklist/.test(tools.DEFINITIONS.find((d) => d.name === 'case_obligations').description));
 
   const one = await run('case_obligations', { caseNo: '401' }, queueDeps('investigator'));
   check('a case number narrows to that case', one.obligations.length === 1 && one.obligations[0].case === '401/2026');
@@ -412,34 +421,6 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   const cryptoNoRole = await run('crypto_lookup', { address: 'not an address' }, {});
   check('an uncleared caller cannot reach crypto lookups either',
     /limited to investigators, supervisors, analysts and admin/.test(cryptoNoRole.error || ''));
-
-  // ── vehicle_lookup ───────────────────────────────────────────────────
-  //
-  // A malformed registration number is refused by vehicle.js's own
-  // validation, proving the call reached the module without ever touching
-  // the network — same technique as the other gate tests.
-
-  check('the vehicle tool discloses it stays inside India, unlike the other external lookups',
-    /does not\s*\n?\s*leave India/.test(
-      tools.DEFINITIONS.find((d) => d.name === 'vehicle_lookup').description.replace(/\n/g, ' ')));
-  check('the vehicle tool requires sandbox/test data to be disclosed plainly',
-    /sandbox\/test data/.test(
-      tools.DEFINITIONS.find((d) => d.name === 'vehicle_lookup').description));
-  check('the knowledge-base tool also rules out vehicle registration questions',
-    /vehicle_lookup/.test(
-      tools.DEFINITIONS.find((d) => d.name === 'search_knowledge_base').description));
-
-  for (const role of ['investigator', 'supervisor', 'admin', 'analyst']) {
-    const ok = await run('vehicle_lookup', { vehicleNumber: 'not a plate' }, { role });
-    check(`${role} can reach the vehicle lookup (gate passes)`,
-      /not a recognisable Indian vehicle registration number/.test(ok.error || ''), JSON.stringify(ok));
-  }
-  const vehicleDenied = await run('vehicle_lookup', { vehicleNumber: 'not a plate' }, { role: 'policymaker' });
-  check('policymaker cannot reach vehicle lookups through the assistant',
-    /limited to investigators, supervisors, analysts and admin/.test(vehicleDenied.error || ''));
-  const vehicleNoRole = await run('vehicle_lookup', { vehicleNumber: 'not a plate' }, {});
-  check('an uncleared caller cannot reach vehicle lookups either',
-    /limited to investigators, supervisors, analysts and admin/.test(vehicleNoRole.error || ''));
 
   // The page and the tool must be one engine, not two implementations.
   const idx = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');

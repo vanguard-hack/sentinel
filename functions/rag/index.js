@@ -6,7 +6,6 @@ const redaction = require('./redaction');
 const vision = require('./vision');
 const attribution = require('./sources');
 const crypto = require('./crypto');
-const vehicle = require('./vehicle');
 const sherlock = require('./sherlock');
 const memory = require('./memory');
 const assistantTools = require('./tools');
@@ -141,7 +140,16 @@ const AGUI_SHAPES =
   '{"type":"geo-map","title":s,"data":[{"district":s,"value":n}]} (Karnataka district ' +
   'names — use when the data is per-district) or ' +
   '{"type":"network-graph","title":s,"nodes":[{"id":s,"label":s,"group":s}],' +
-  '"links":[{"source":s,"target":s}]} (use for relationships between people/gangs/entities). ' +
+  '"links":[{"source":s,"target":s}]} (use for relationships between people/gangs/entities) or ' +
+  '{"type":"checklist","title":s,"items":[{"label":s,"detail":s,' +
+  '"tone":"overdue"|"critical"|"high"|"ok","meta":s}]} (outstanding items with a status each — ' +
+  'deadlines, obligations, steps still pending; NOT a plain list of facts) or ' +
+  '{"type":"stat-tiles","title":s,"items":[{"label":s,"value":s,"hint":s,' +
+  '"tone":"overdue"|"critical"|"high"|"ok"}]} (a handful of headline numbers at a glance — ' +
+  'total cases, count this quarter; NOT a breakdown across many categories, that is bar-chart) or ' +
+  '{"type":"timeline","title":s,"events":[{"date":s,"label":s,"detail":s}]} (discrete dated ' +
+  'events in order — a case\'s history, an investigation diary; NOT a numeric trend, that is ' +
+  'line-chart). ' +
   '\n';
 
 const AGUI_TRANSFORM =
@@ -153,7 +161,9 @@ const AGUI_TRANSFORM =
   'RULE: pick the shape that matches the QUESTION, not the one that is easiest. ' +
   'Ordered periods -> line-chart. Parts of a whole per category -> stacked-bar-chart. ' +
   'Two dimensions crossed -> heat-grid. Movement between things -> sankey. ' +
-  'A plain ranking -> bar-chart. Never draw a line through fewer than three points. ' +
+  'A plain ranking -> bar-chart. Deadlines/obligations/steps with a status -> checklist. ' +
+  'A handful of headline numbers -> stat-tiles. Dated events in order -> timeline. ' +
+  'Never draw a line through fewer than three points. ' +
   'Choose the 1-2 components that best fit the data. ' +
   // The renderer normalises stray markup anyway, but keeping it out of the
   // JSON in the first place gives cleaner cells and shorter payloads.
@@ -483,7 +493,6 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
   const osintHits = [];  // RDAP/AbuseIPDB lookups, for citations
   const sanctionsHits = []; // OpenSanctions matches, for citations
   const cryptoHits = []; // crypto wallet lookups, for citations
-  const vehicleHits = []; // vehicle RC lookups, for citations
   const toolThreats = []; // injection markers found in retrieved content
   // Referenced at the return below and pushed to when a tool result carries
   // _protectedAccess — was missing entirely, a ReferenceError on every single
@@ -578,7 +587,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           .join('')
           .trim();
         if (!text) return null;
-        return { text, used, rowSets, scanHits, osintHits, sanctionsHits, cryptoHits, vehicleHits, usedKnowledgeBase, protectedAccess, toolThreats, iterations: i + 1 };
+        return { text, used, rowSets, scanHits, osintHits, sanctionsHits, cryptoHits, usedKnowledgeBase, protectedAccess, toolThreats, iterations: i + 1 };
       }
 
       messages.push({ role: 'assistant', content: res.content });
@@ -605,9 +614,6 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
           }
           if (c.name === 'crypto_lookup' && out && !out.error && (out.bitcoin || out.ethereum)) {
             cryptoHits.push(out);
-          }
-          if (c.name === 'vehicle_lookup' && out && !out.error && out.found) {
-            vehicleHits.push(out);
           }
           // Internal bookkeeping never goes back to the model.
           const { _redactions, _hits, _protectedAccess, _threat, ...clean } = out || {};
@@ -750,12 +756,11 @@ const SLASH_ROLES = {
   osint: ['admin', 'supervisor', 'investigator', 'analyst'],
   sanctions: ['admin', 'supervisor', 'investigator', 'analyst'],
   crypto: ['admin', 'supervisor', 'investigator', 'analyst'],
-  vehicle: ['admin', 'supervisor', 'investigator', 'analyst'],
   help: null,
 };
 // Commands touching person or case records — logged on every execution.
 const SLASH_SENSITIVE = new Set([
-  'fir', 'case', 'suspect', 'vehicle', 'person', 'wanted', 'missing',
+  'fir', 'case', 'suspect', 'person', 'wanted', 'missing',
   'osint', 'sanctions', 'crypto',
 ]);
 
@@ -771,7 +776,6 @@ const SLASH_HELP = [
   ['/osint [IP address or domain]', 'External registration & abuse-reputation check'],
   ['/sanctions [name]', 'Screen a name against global sanctions/watchlists'],
   ['/crypto [wallet address]', 'Bitcoin/Ethereum wallet balance & activity'],
-  ['/vehicle [registration no]', 'RC lookup: owner, RC status, insurance validity'],
   // /sherlock is deliberately absent from SLASH_ROLES/SLASH_SENSITIVE above
   // and slashToQuery below — a run takes 74-110+ seconds (see sherlock.js),
   // so unlike every other command here it is never expanded into a question
@@ -824,8 +828,6 @@ function slashToQuery(name, arg) {
       return `Check whether ${arg} appears on any sanctions or watchlist.`;
     case 'crypto':
       return `Check the crypto wallet address ${arg} — balance and transaction activity.`;
-    case 'vehicle':
-      return `Look up the vehicle with registration number ${arg} — owner, RC status, insurance validity.`;
     default:
       return arg || name;
   }
@@ -1013,6 +1015,7 @@ const AGUI_TYPES = new Set([
   'bar-chart', 'pie-chart', 'line-chart', 'multi-line-chart', 'stacked-bar-chart',
   'heat-grid', 'scatter-plot', 'funnel', 'pyramid', 'sankey',
   'table', 'cards', 'geo-map', 'network-graph',
+  'checklist', 'stat-tiles', 'timeline',
 ]);
 
 // Pull a ```agui (or ```json) fenced block out of the answer text. Returns
@@ -1138,6 +1141,23 @@ function stripDuplicatedLists(text, components) {
   }
   flush();
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// The one place every lane's answer must pass through before it reaches the
+// wire. The bug this closes: stripStrayCodeBlocks/stripMarkdownTables/
+// promoteDistrictCharts/stripDuplicatedLists all worked, but only the lanes
+// that remembered to call them got the benefit — a model that left a raw
+// markdown table in its prose instead of (or alongside) a real component
+// went out as pipe-delimited text in every other lane, because the chat's
+// own renderer has no markdown-table support at all. Called from respondWith
+// itself rather than per-lane, so a new lane inherits this for free instead
+// of needing to remember it.
+function sanitizeForDisplay(text, components) {
+  let t = stripStrayCodeBlocks(text);
+  ({ text: t, components } = stripMarkdownTables(t, components));
+  components = promoteDistrictCharts(components);
+  t = stripDuplicatedLists(t, components);
+  return { text: t, components };
 }
 
 function readBody(req) {
@@ -4753,7 +4773,6 @@ module.exports = async (req, res) => {
           etherscan: !!process.env.ETHERSCAN_API_KEY,
           opensanctions: !!process.env.OPENSANCTIONS_API_KEY,
           apify: !!process.env.APIFY_API_TOKEN,
-          vehicleRc: !!(process.env.EKO_DEVELOPER_KEY && process.env.EKO_ACCESS_KEY && process.env.EKO_INITIATOR_ID),
         },
       });
     }
@@ -5061,7 +5080,21 @@ module.exports = async (req, res) => {
     // decision record with them. One exit makes that class of drift
     // impossible.
     const respondWith = async (rawText, payload = {}, citations) => {
-      let text = rawText;
+      // Every lane's answer passes through here before it reaches the wire,
+      // so this is the one place a stray markdown table or duplicated list
+      // can be caught regardless of which lane produced it — see
+      // sanitizeForDisplay's own comment for why this used to be a per-lane
+      // responsibility instead.
+      const sanitized = sanitizeForDisplay(rawText, payload.components || []);
+      let text = sanitized.text;
+      payload = { ...payload, components: sanitized.components };
+      // If every stage came up with neither prose nor a component, respond
+      // gracefully instead of sending a blank message — checked here, once,
+      // rather than in whichever lane happens to be last.
+      if (!text.trim() && !payload.components.length) {
+        text = 'I couldn’t find an answer for that. Try rephrasing, or ask about FIR data, crime statistics, law and procedure, or any part of the platform.';
+        payload.source = 'fallback';
+      }
       const merged = attribution.merge(...(citations || []));
       const guarded = attribution.clearanceFilter(merged, await resolveCaller());
       if (guarded.removed.length) {
@@ -5468,6 +5501,28 @@ module.exports = async (req, res) => {
       d.output ||
       '';
 
+    // Pass 2 (best-effort): transform data-shaped prose into agui components
+    // when a lane's own answer came back without any — a model only draws
+    // when it thinks to append a component block itself, and it does not
+    // always think to. Groq is faster and follows the schema more reliably;
+    // RAG is the fallback path. Shared by every lane that wants this rather
+    // than each re-implementing the same two-provider attempt.
+    const transformToComponents = async (text) => {
+      if (!looksDataShaped(text)) return [];
+      const viaGroq = await callLLM(
+        [{ role: 'user', content: AGUI_TRANSFORM + text }],
+        { maxTokens: 1024, temperature: 0, timeoutMs: 10_000, model: GROQ_MODEL_FAST }
+      );
+      if (viaGroq) return extractAgui(viaGroq).components;
+      try {
+        const second = await callRag(AGUI_TRANSFORM + text, [], 20_000);
+        if (second.ok) return extractAgui(pickAnswer(second.data)).components;
+      } catch {
+        /* timeout or transform failure — text-only answer is still correct */
+      }
+      return [];
+    };
+
     // ── Assembled memory context ─────────────────────────────────────────
     // Read before the router runs, so short-term buffer, long-term facts and
     // (only when the question asks for it) semantic recall reach every lane
@@ -5696,15 +5751,18 @@ module.exports = async (req, res) => {
           for (const hit of looped.osintHits) cites.push(attribution.fromOsint(hit));
           if (looped.sanctionsHits.length) cites.push(attribution.fromSanctions(looped.sanctionsHits));
           for (const hit of looped.cryptoHits) cites.push(attribution.fromCrypto(hit));
-          for (const hit of looped.vehicleHits) cites.push(attribution.fromVehicle(hit));
           // The knowledge-base fallback is only worth showing when nothing else
           // answered — otherwise a model that (wrongly, or as a first attempt)
           // also called search_knowledge_base leaves an empty, unopenable chip
           // sitting next to a real citation that already answered the question.
           if (looped.usedKnowledgeBase && !cites.length) cites.push(attribution.knowledgeBaseFallback());
           const v = extractAgui(looped.text);
+          // The loop only draws when the model thinks to append a component
+          // block itself; when it does not, fall back to the same
+          // data->component transform the RAG/fallback lane always attempts.
+          const components = v.components.length ? v.components : await transformToComponents(v.text || looped.text);
           return await respondWith(v.text || looped.text, {
-            components: v.components,
+            components,
             source: 'tools',
             route: routeDecision,
             expandedQuery: searchQuery === query ? undefined : searchQuery,
@@ -5893,13 +5951,10 @@ module.exports = async (req, res) => {
               ],
               { maxTokens: isList ? 90 : 300, temperature: 0.2, timeoutMs: 12_000, model: GROQ_MODEL_FAST }
             );
-            // Strip any table/enumeration the model emits anyway — the component
+            // Any table/enumeration the model emits anyway is cleaned up by
+            // respondWith's own sanitation pass — the component built above
             // is the single source of truth for the rows.
-            let answerText = stripStrayCodeBlocks((prose || '').trim());
-            answerText = stripDuplicatedLists(
-              stripMarkdownTables(answerText, components).text,
-              components
-            );
+            let answerText = (prose || '').trim();
             if (!answerText) answerText = `Found ${flat.length} matching record(s) — see the table below.`;
             // Merge the procedure half of a mixed-intent question. The records
             // lead (they are what was asked about specifically) and the SOP
@@ -6016,34 +6071,17 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Pass 2 (best-effort): transform the answer into agui components. Groq is
-    // faster and follows the schema more reliably; RAG is the fallback path.
-    if (!components.length && looksDataShaped(text)) {
-      const viaGroq = await callLLM(
-        [{ role: 'user', content: AGUI_TRANSFORM + text }],
-        { maxTokens: 1024, temperature: 0, timeoutMs: 10_000, model: GROQ_MODEL_FAST }
-      );
-      if (viaGroq) {
-        components = extractAgui(viaGroq).components;
-      } else {
-        try {
-          const second = await callRag(AGUI_TRANSFORM + text, [], 20_000);
-          if (second.ok) components = extractAgui(pickAnswer(second.data)).components;
-        } catch {
-          /* timeout or transform failure — text-only answer is still correct */
-        }
-      }
-    }
+    // Pass 2 (best-effort): transform the answer into agui components.
+    if (!components.length) components = await transformToComponents(text);
 
-    // Final sanitation on whichever text we ended up with (RAG or fallback):
-    // markdown tables become a component when none exists, then any list that
-    // merely repeats rendered component data is dropped from the prose.
-    text = stripStrayCodeBlocks(text);
-    ({ text, components } = stripMarkdownTables(text, components));
-    components = promoteDistrictCharts(components);
-    let answer = stripDuplicatedLists(text, components);
+    // Sanitized here, ahead of respondWith's own pass, because — unlike every
+    // other lane — an empty result here changes which citations are
+    // attached below, not just what respondWith renders.
+    ({ text, components } = sanitizeForDisplay(text, components));
+    let answer = text;
     // If every stage (text2zcql, RAG, Groq) came up empty, respond gracefully
-    // instead of returning a blank message.
+    // instead of returning a blank message, and cite nothing — a fallback
+    // has no provenance to attribute.
     if (!answer.trim() && !components.length) {
       answer = 'I couldn’t find an answer for that. Try rephrasing, or ask about FIR data, crime statistics, law and procedure, or any part of the platform.';
       source = 'fallback';

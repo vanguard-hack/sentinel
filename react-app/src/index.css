@@ -2915,6 +2915,11 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   letter-spacing: 0.01em;
 }
 .agui-block .cf-table-wrap { margin: 0; }
+/* A table that slipped past the backend's own markdown->component
+   conversion and had to be caught here instead (see richFormat.parseBlocks)
+   — same table look everywhere, in a plain block context rather than the
+   scrollable panel .cf-table-wrap is otherwise sized for. */
+.rf-prose .cf-table-wrap { flex: none; margin: 8px 0; }
 .agui-block .cf-table td, .agui-block .cf-table th { white-space: normal; }
 .agui-cards {
   display: grid;
@@ -2960,6 +2965,62 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   font-weight: 500;
   color: var(--blue-500);
 }
+
+/* checklist, stat-tiles, timeline share ActionQueue's own severity tones
+   (overdue/critical/high) rather than inventing a second color language for
+   the same "how urgent is this" question. */
+.agui-checklist { display: flex; flex-direction: column; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.agui-checklist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--bg-1);
+  padding: 10px 12px;
+}
+.agui-checklist-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; background: var(--text-3); }
+.agui-checklist-item.tone-overdue .agui-checklist-dot { background: var(--red); }
+.agui-checklist-item.tone-critical .agui-checklist-dot { background: var(--gold); }
+.agui-checklist-item.tone-high .agui-checklist-dot { background: var(--blue-500); }
+.agui-checklist-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.agui-checklist-label { font-size: 0.84rem; color: var(--text-1); }
+.agui-checklist-detail { font-size: 0.76rem; color: var(--text-3); }
+.agui-checklist-meta { font-size: 0.7rem; color: var(--text-3); white-space: nowrap; margin-top: 1px; }
+
+.agui-stat-tiles { display: flex; flex-wrap: wrap; gap: 10px; }
+.agui-stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--bg-1);
+  padding: 10px 14px;
+  min-width: 100px;
+}
+.agui-stat-tile.tone-overdue { border-color: color-mix(in srgb, var(--red) 30%, var(--border-1)); }
+.agui-stat-tile.tone-critical { border-color: color-mix(in srgb, var(--gold) 30%, var(--border-1)); }
+.agui-stat-tile-value { font-size: 1.3rem; font-weight: 600; letter-spacing: -0.02em; color: var(--text-1); }
+.agui-stat-tile.tone-overdue .agui-stat-tile-value { color: var(--red); }
+.agui-stat-tile.tone-critical .agui-stat-tile-value { color: var(--gold); }
+.agui-stat-tile-label { font-size: 0.72rem; color: var(--text-2); }
+.agui-stat-tile-hint { font-size: 0.68rem; color: var(--text-3); }
+
+.agui-timeline { display: flex; flex-direction: column; gap: 0; list-style: none; margin: 0; padding: 0; }
+.agui-timeline-event {
+  display: flex;
+  gap: 10px;
+  padding: 0 0 14px 14px;
+  border-left: 2px solid var(--border-1);
+  margin-left: 3px;
+}
+.agui-timeline-event:last-child { padding-bottom: 0; border-color: transparent; }
+.agui-timeline-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue-500); margin-top: 4px; margin-left: -19px; flex-shrink: 0; }
+.agui-timeline-body { display: flex; flex-direction: column; gap: 2px; }
+.agui-timeline-date { font-size: 0.7rem; color: var(--text-3); }
+.agui-timeline-label { font-size: 0.84rem; color: var(--text-1); }
+.agui-timeline-detail { font-size: 0.76rem; color: var(--text-3); }
 
 /* ── Assistant: markdown prose rendering ────────────────────────────────── */
 .as-msg-text .as-md-h { font-weight: 500; color: var(--text-1); margin: 10px 0 4px; }
