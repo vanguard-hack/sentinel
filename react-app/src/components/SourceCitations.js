@@ -22,10 +22,14 @@ import { provenanceOf, isPaper, isMedia, sizeOf } from '../utils/provenance';
 // actually read is highlighted inside the document's own text. Knowing which
 // file an answer came from is provenance; seeing the sentence is verification.
 //
-// Which surface a citation opens into follows what it holds, not a house
-// style. A document wants width — page images, tables, long text — so it takes
-// a centred viewer. A record is a field list read against the answer beside
-// it, so it slides in from the edge. A web page belongs to the browser.
+// Every openable type shares one centred popup, regardless of what it holds —
+// a document's page images, a record's field list, an OCR digest. A Data
+// Store citation used to slide in from the edge as a drawer instead, on the
+// theory that a record is read against the answer beside it; in practice
+// that read as two different features for the same "here is the source"
+// question, so it now opens exactly like everything else. A web page is the
+// one exception: it belongs to the browser, so its chip is a real link
+// straight to the URL rather than a popup around it.
 
 const ICONS = {
   [TYPES.RAG_DOCUMENT]: FileText,
@@ -163,7 +167,6 @@ export function SourceViewer({ source, onClose }) {
   }, [onClose]);
 
   if (!source) return null;
-  const drawer = source.source_type === TYPES.DATABASE_RECORD;
   const Icon = iconFor(source);
   const href = externalUri(source);
 
@@ -176,7 +179,7 @@ export function SourceViewer({ source, onClose }) {
         role="dialog"
         aria-modal="true"
         aria-label={`Source ${source.n}: ${source.display_name}`}
-        className={drawer ? 'as-src-drawer' : 'as-src-modal'}
+        className="as-src-modal"
       >
         <header className="as-src-head">
           <span className="as-src-n">{source.n}</span>

@@ -8228,23 +8228,9 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   backdrop-filter: blur(2px);
 }
 
-/* Records slide in from the edge so the answer they support stays readable
-   beside them. */
-.as-src-drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 81;
-  width: min(460px, 94vw);
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-1);
-  border-left: 1px solid var(--border);
-  box-shadow: -18px 0 40px rgba(0, 0, 0, 0.18);
-}
-
-/* Documents take the centre: page images and long passages want the width. */
+/* Every citation type opens centred: page images, a record's field list, an
+   OCR digest all get the same treatment rather than each source type having
+   its own surface. */
 .as-src-modal {
   position: fixed;
   z-index: 81;
@@ -8261,7 +8247,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
   overflow: hidden;
 }
-.as-src-drawer:focus-visible, .as-src-modal:focus-visible { outline: none; }
+.as-src-modal:focus-visible { outline: none; }
 
 .as-src-head {
   display: flex;

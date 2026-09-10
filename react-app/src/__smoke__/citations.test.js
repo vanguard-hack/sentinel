@@ -105,12 +105,24 @@ test('a legacy string citation is shown but is not a button', () => {
   expect(container.querySelectorAll('button').length).toBe(0);
 });
 
-test('the record drawer shows the filter, the matched ids and the rows', () => {
+test('a Data Store citation shows the filter, the matched ids and the rows', () => {
   render(<SourceViewer source={sources[1]} onClose={() => {}} />);
   expect(screen.getByText("District = 'Bengaluru City'")).toBeTruthy();
   expect(screen.getByText('4029, 4030')).toBeTruthy();
   expect(screen.getByText('Catalyst DataStore (ZCQL Read-Only)')).toBeTruthy();
   expect(screen.getByText('Bengaluru City')).toBeTruthy();
+});
+
+test('every citation type opens in the same centered popup, not a sidebar', () => {
+  // A Data Store citation used to slide in from the edge as a drawer while
+  // every other type opened centered — one inconsistent treatment for the
+  // same "here is the source" question. All five types share one popup now.
+  sources.forEach((s) => {
+    const { container, unmount } = render(<SourceViewer source={s} onClose={() => {}} />);
+    expect(container.querySelector('.as-src-modal')).not.toBeNull();
+    expect(container.querySelector('.as-src-drawer')).toBeNull();
+    unmount();
+  });
 });
 
 test('a saved conversation says its rows were not kept, not that none matched', () => {
