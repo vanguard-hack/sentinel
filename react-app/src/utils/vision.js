@@ -9,7 +9,10 @@
 
 const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
 
-async function toHex(blob) {
+// Exported so the composer can re-encode the same file for the Qwen VLM
+// pass — the same hex encoding /vision/parse already accepts, reused rather
+// than introducing a second one.
+export async function toHex(blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let s = '';
   for (let i = 0; i < bytes.length; i++) s += HEX[bytes[i]];

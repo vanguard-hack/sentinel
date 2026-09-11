@@ -191,6 +191,29 @@ check('a chain that did not answer produces no citation', a.fromCrypto(unavailab
 check('an analyst can see a crypto citation — it names a public address, not a case',
   a.clearanceFilter(a.merge(btcCited), 'analyst').sources.length === 1);
 
+// ── Web search citations (Tavily) ───────────────────────────────────────
+const webHits = [
+  {
+    title: 'BENGALURU CITY POLICE - Commissioner\'s-message',
+    url: 'https://bcp.karnataka.gov.in/25/commissioner%27s-message/en',
+    description: 'SRI. SEEMANT KUMAR SINGH, IPS Commissioner of Police Bangalore city.',
+  },
+  { title: 'No description here', url: 'https://example.com/x' },
+];
+const webCited = a.fromWebSearch(webHits);
+check('each web result produces its own citation', webCited.length === 2);
+check('it links the actual page it came from, not a generic search resource',
+  webCited[0].uri === webHits[0].url && webCited[0].domain === 'bcp.karnataka.gov.in');
+check('it carries the result\'s own description as its passage',
+  /SEEMANT KUMAR SINGH/.test(webCited[0].passages[0].excerpt));
+check('a result with no description still produces a citation, just with no passage',
+  webCited[1].uri === webHits[1].url && webCited[1].passages.length === 0);
+check('no hits produces no citations', a.fromWebSearch([]).length === 0);
+check('a malformed url degrades to a null domain rather than throwing',
+  a.fromWebSearch([{ title: 'x', url: 'not a url' }])[0].domain === null);
+check('an analyst can see a web search citation — it names a public page, not a case',
+  a.clearanceFilter(a.merge(webCited), 'analyst').sources.length === 2);
+
 // ── Merge & dedupe ─────────────────────────────────────────────────────────
 const merged = a.merge(
   a.fromRagNodes([{ document_title: 'SOP.pdf', page_label: 3, text: 'a' }]),

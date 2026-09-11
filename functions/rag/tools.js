@@ -34,6 +34,7 @@ const guard = require('./guard');
 const osint = require('./osint');
 const crypto = require('./crypto');
 const sanctions = require('./sanctions');
+const websearch = require('./websearch');
 
 // Per-result caps. Generous enough to answer, small enough that a loop of
 // tool calls cannot fill the context window with rows.
@@ -136,8 +137,11 @@ const DEFINITIONS = [
       'any other external/internet identifier either — use osint_lookup for those. ' +
       'It holds nothing about sanctions or watchlists either — use sanctions_check for ' +
       'those. It holds nothing about crypto wallet addresses either — use crypto_lookup ' +
-      'for those. Do not call this tool as a fallback for a question that ' +
-      'names an IP, a domain, a sanctions listing, or a Bitcoin/Ethereum address.',
+      'for those. It holds nothing about real-world facts outside Sentinel either — a ' +
+      'current office-holder, a public event, an organisation — use web_search for ' +
+      'those. Do not call this tool as a fallback for a question that names an IP, a ' +
+      'domain, a sanctions listing, a Bitcoin/Ethereum address, or asks about something ' +
+      'true in the outside world rather than in Sentinel\'s own records.',
     input_schema: {
       type: 'object',
       properties: {
@@ -340,8 +344,9 @@ const DEFINITIONS = [
       'nothing is known, which is wrong, not merely unhelpful.\n\n' +
       'This sends the identifier to external services (rdap.org, and ' +
       'api.abuseipdb.com for IP addresses), outside Sentinel and outside ' +
-      'India. State that plainly in your answer — do not let the officer ' +
-      'assume this came from an internal record. Nothing besides the bare ' +
+      'India — that is disclosed automatically via this result\'s citation, ' +
+      'so do not also narrate it in the answer text; just do not present it ' +
+      'as though it came from an internal record. Nothing besides the bare ' +
       'identifier travels with the request.',
     input_schema: {
       type: 'object',
@@ -376,8 +381,10 @@ const DEFINITIONS = [
       'means the name matched, nothing more, and must be reported to the ' +
       'officer as a lead to verify, never as a confirmed identification. ' +
       'This is a live lookup: the name being screened is sent to ' +
-      'api.opensanctions.org, outside Sentinel and outside India — state ' +
-      'that plainly, the same as for osint_lookup and crypto_lookup.',
+      'api.opensanctions.org, outside Sentinel and outside India — that is ' +
+      'disclosed automatically via this result\'s citation, the same as for ' +
+      'osint_lookup and crypto_lookup, so do not also narrate it in the ' +
+      'answer text.',
     input_schema: {
       type: 'object',
       properties: {
@@ -403,8 +410,9 @@ const DEFINITIONS = [
       'address format — do not ask the officer which chain it is.\n\n' +
       'This sends the address to external services (blockstream.info for ' +
       'Bitcoin, api.etherscan.io for Ethereum), outside Sentinel and ' +
-      'outside India. State that plainly in your answer. Nothing besides ' +
-      'the bare address travels with the request.',
+      'outside India — that is disclosed automatically via this result\'s ' +
+      'citation, so do not also narrate it in the answer text. Nothing ' +
+      'besides the bare address travels with the request.',
     input_schema: {
       type: 'object',
       properties: {
@@ -414,6 +422,34 @@ const DEFINITIONS = [
         },
       },
       required: ['address'],
+    },
+  },
+  {
+    name: 'web_search',
+    description:
+      'Search the open web for a real-world fact that is true outside Sentinel entirely ' +
+      '— a current office-holder, a public event, an organisation, general knowledge. ' +
+      'Use this when a question asks about something Sentinel was never going to have ' +
+      'recorded, rather than answering "the database does not record that" and stopping. ' +
+      'This is the ONLY tool that reaches the open web — never call search_knowledge_base ' +
+      'or query_records for this instead; neither holds anything outside Sentinel\'s own ' +
+      'records, and both will answer as if nothing is known, which is wrong, not merely ' +
+      'unhelpful.\n\n' +
+      'This sends the query to Tavily, outside Sentinel and outside India — that is ' +
+      'disclosed automatically via this result\'s citation, the same as for osint_lookup, ' +
+      'sanctions_check and crypto_lookup, so do not also narrate it in the answer text; ' +
+      'just do not present it as though it came from an internal record. If the search ' +
+      'itself returns nothing, say so honestly rather than guessing; this tool finding no ' +
+      'result is not licence to invent one.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'A self-contained search query. Resolve pronouns before calling.',
+        },
+      },
+      required: ['query'],
     },
   },
 ];
@@ -988,6 +1024,17 @@ async function run(name, input, deps) {
           return { error: 'Crypto wallet lookups are limited to investigators, supervisors, analysts and admin.' };
         }
         return await crypto.lookup(input || {});
+      }
+
+      case 'web_search': {
+        // Same gate as osint_lookup: checked inline at dispatch so a new
+        // tool cannot forget it. Same category as the other three — a
+        // public external lookup, not a case record — so the same roles
+        // that can reach those can reach this.
+        if (!['admin', 'supervisor', 'investigator', 'analyst'].includes(role)) {
+          return { error: 'Web search is limited to investigators, supervisors, analysts and admin.' };
+        }
+        return await websearch.search(input || {});
       }
 
       default:

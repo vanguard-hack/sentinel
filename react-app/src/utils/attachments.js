@@ -146,17 +146,21 @@ export async function readForContext(file, { onProgress, transcribe } = {}) {
 }
 
 // The chip's status line — what this file is doing for this question.
+// Silent on the default/expected outcome (a file that reads fine): that's
+// not worth a label. Still speaks up for anything the officer needs to
+// know — still loading, unreadable, or (for audio) transcribed — because a
+// file the assistant will not see must not look like one it will.
 export function contextLabel(a) {
   if (!a) return '';
   if (a.reading) return 'reading…';
   if (a.kind === 'image') {
     if (!a.parsed) return 'reading…';
-    return a.digest ? 'read as context' : 'not readable';
+    return a.digest ? '' : 'not readable';
   }
   if (a.kind === 'document' || a.kind === 'audio') {
     if (!a.context) return 'not readable';
     if (!a.context.ok) return 'not readable';
-    return a.kind === 'audio' ? 'transcribed and read as context' : 'read as context';
+    return a.kind === 'audio' ? 'transcribed' : '';
   }
   return 'not sent as context';
 }
@@ -191,29 +195,4 @@ export function attachState(a) {
   if (a.kind === 'image') return a.digest ? 'ready' : 'skipped';
   if (a.kind === 'document') return a.context && a.context.ok ? 'ready' : 'skipped';
   return 'skipped';
-}
-
-// One line for the whole tray: what the assistant will actually receive.
-// Written for the moment before send, which is when it matters.
-export function contextSummary(list) {
-  const all = list || [];
-  if (!all.length) return null;
-  const reading = all.filter((a) => attachState(a) === 'reading').length;
-  const ready = all.filter((a) => attachState(a) === 'ready').length;
-  const skipped = all.length - reading - ready;
-  if (reading) {
-    return { tone: 'reading', text: `Reading ${reading} file${reading === 1 ? '' : 's'}…` };
-  }
-  if (!ready) {
-    return {
-      tone: 'skipped',
-      text: `${skipped === 1 ? 'This file' : `These ${skipped} files`} can't be read, so `
-        + `${skipped === 1 ? 'it' : 'they'} won't be sent as context.`,
-    };
-  }
-  return {
-    tone: skipped ? 'partial' : 'ready',
-    text: `${ready} file${ready === 1 ? '' : 's'} will be sent as context with your question`
-      + (skipped ? `; ${skipped} can't be read.` : '.'),
-  };
 }

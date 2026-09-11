@@ -1,5 +1,5 @@
 import {
-  contextKind, unusableReason, contextLabel, contextDetail, attachState, contextSummary,
+  contextKind, unusableReason, contextLabel, contextDetail, attachState,
 } from '../utils/attachments';
 
 // An attachment in the composer has to say, before the officer hits send,
@@ -29,9 +29,9 @@ test('an attached recording is read as context, not treated as the officer speak
   expect(contextKind(file('voicenote.ogg', 'audio/ogg'))).toBe('audio');
 });
 
-test('and the chip says the recording was transcribed and read', () => {
+test('and the chip says the recording was transcribed', () => {
   const a = { kind: 'audio', context: { ok: true, text: 'the accused said…' } };
-  expect(contextLabel(a)).toBe('transcribed and read as context');
+  expect(contextLabel(a)).toBe('transcribed');
 });
 
 test('a recording still being transcribed says so', () => {
@@ -65,7 +65,7 @@ test('a document being read says so, then says it was read', () => {
   expect(attachState(reading)).toBe('reading');
 
   const done = { kind: 'document', reading: false, context: { ok: true, text: 'x'.repeat(1200) } };
-  expect(contextLabel(done)).toBe('read as context');
+  expect(contextLabel(done)).toBe('');
   expect(attachState(done)).toBe('ready');
   expect(contextDetail(done)).toMatch(/1,200 characters sent with your question/);
 });
@@ -90,31 +90,4 @@ test('a file type nothing can read is explicit about being carried by name only'
   const a = { kind: 'unusable', reason: 'video — file it in Records to transcribe it' };
   expect(contextLabel(a)).toBe('not sent as context');
   expect(contextDetail(a)).toMatch(/Not sent as context — video/);
-});
-
-// ── What the tray says ─────────────────────────────────────────────────────
-
-const ready = { kind: 'document', context: { ok: true, text: 'x' } };
-const skipped = { kind: 'unusable' };
-
-test('the tray counts what is going and what is not', () => {
-  expect(contextSummary([ready, ready]).text)
-    .toBe('2 files will be sent as context with your question.');
-  expect(contextSummary([ready, skipped]))
-    .toEqual({ tone: 'partial', text: "1 file will be sent as context with your question; 1 can't be read." });
-});
-
-test('the tray does not claim context when nothing can be read', () => {
-  const s = contextSummary([skipped]);
-  expect(s.tone).toBe('skipped');
-  expect(s.text).toMatch(/won't be sent as context/);
-});
-
-test('a read still in flight is reported as such, not as ready', () => {
-  expect(contextSummary([{ kind: 'document', reading: true }, ready]))
-    .toEqual({ tone: 'reading', text: 'Reading 1 file…' });
-});
-
-test('an empty tray says nothing at all', () => {
-  expect(contextSummary([])).toBeNull();
 });

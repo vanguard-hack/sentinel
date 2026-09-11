@@ -11,10 +11,10 @@ import {
   transcribeAudio, loadSessionsRemote, saveSessionRemote, saveSessionBeacon, deleteSessionRemote,
   consolidateMemory,
 } from '../utils/assistant';
-import { preParseImage, canPreParse } from '../utils/vision';
+import { preParseImage, canPreParse, toHex } from '../utils/vision';
 import {
   contextKind, unusableReason, readForContext, contextLabel, contextDetail,
-  attachState, contextSummary,
+  attachState,
 } from '../utils/attachments';
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
@@ -550,8 +550,11 @@ export default function Assistant() {
     });
     setActiveId(sessionId);
     // Grab the in-flight parses before the composer is cleared — the state
-    // reset below would otherwise drop the promises we still need.
-    const pendingVision = attachments.filter((a) => a.parsing).map((a) => a.parsing);
+    // reset below would otherwise drop the promises we still need. Kept
+    // paired with the source file so a VLM-worthy question can be answered
+    // against the actual image, not just its OCR digest — see the hex step
+    // below.
+    const visionAttachments = attachments.filter((a) => a.parsing);
     const pendingDocs = attachments.filter((a) => a.readingPromise).map((a) => a.readingPromise);
     setInput('');
     setAttachments([]);
@@ -563,11 +566,29 @@ export default function Assistant() {
       // Usually already resolved (parsing started on attach). A send that beats
       // the parse waits here instead of racing it; allSettled so one unreadable
       // image never blocks the question.
-      const digests = pendingVision.length
-        ? (await Promise.allSettled(pendingVision))
-            .map((r) => (r.status === 'fulfilled' ? r.value : null))
-            .filter(Boolean)
+      const digestResults = visionAttachments.length
+        ? await Promise.allSettled(visionAttachments.map((a) => a.parsing))
         : [];
+      // The image bytes travel alongside the digest ONLY for this message —
+      // never resent on a later turn about the same attachment, matching the
+      // digest's own one-shot scope. Kept under the server's VLM size cap so
+      // this never encodes bytes the assistant would just discard; the OCR
+      // digest above is unaffected either way, so this is best-effort.
+      const VLM_MAX_BYTES = 500 * 1024;
+      const digests = [];
+      for (let i = 0; i < digestResults.length; i++) {
+        const r = digestResults[i];
+        if (r.status !== 'fulfilled' || !r.value) continue;
+        const digest = { ...r.value };
+        const file = visionAttachments[i].file;
+        if (file && file.size <= VLM_MAX_BYTES) {
+          try {
+            digest.imageHex = await toHex(file);
+            digest.imageMime = file.type;
+          } catch { /* best-effort — the VLM pass is simply skipped server-side */ }
+        }
+        digests.push(digest);
+      }
       // Documents read in the browser travel as text. allSettled for the same
       // reason as the images: one file that would not parse must never cost
       // the officer their question.
@@ -769,6 +790,12 @@ export default function Assistant() {
           type: f.type,
           kind,
           url: f.type.startsWith('image/') ? URL.createObjectURL(f) : null,
+          // Kept only for images, only long enough to be re-encoded for the
+          // VLM pass at send time (see onSend) — the officer's browser
+          // already holds these bytes for the thumbnail above, so this adds
+          // no new footprint, and it never survives past the send that
+          // clears `attachments`.
+          file: kind === 'image' ? f : null,
           parsing,
           parsed: kind === 'image' ? !parsing : true,
           reading: !!reading,
@@ -782,8 +809,6 @@ export default function Assistant() {
 
   const removeAttachment = (id) =>
     setAttachments((prev) => prev.filter((a) => a.id !== id));
-
-  const summary = contextSummary(attachments);
 
   const copyMessage = (m) => {
     if (!navigator.clipboard) return;
@@ -1166,24 +1191,18 @@ export default function Assistant() {
                         <FileText size={13} />
                       )}
                       <span className="as-attach-name">{a.name}</span>
-                      {/* Every attachment says what it is doing — not only the
-                          ones that worked. A file the assistant will not see
-                          must not look like one it will. */}
-                      <span className="as-attach-tag">{contextLabel(a)}</span>
+                      {/* Silent when a file reads fine — only worth a tag when
+                          there's something the officer needs to know: still
+                          loading, unreadable, or (for audio) transcribed. A
+                          file the assistant will not see must not look like
+                          one it will. */}
+                      {contextLabel(a) && <span className="as-attach-tag">{contextLabel(a)}</span>}
                       <button onClick={() => removeAttachment(a.id)} title="Remove">
                         <X size={12} />
                       </button>
                     </span>
                   ))}
                 </div>
-              )}
-              {summary && (
-                <p className={`as-attach-summary ${summary.tone}`}>
-                  {summary.tone === 'ready' || summary.tone === 'partial'
-                    ? <Paperclip size={11} />
-                    : <AlertTriangle size={11} />}
-                  {summary.text}
-                </p>
               )}
               <div className="as-composer-main">
                 <button

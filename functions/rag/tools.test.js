@@ -422,6 +422,47 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   check('an uncleared caller cannot reach crypto lookups either',
     /limited to investigators, supervisors, analysts and admin/.test(cryptoNoRole.error || ''));
 
+  // ── web_search ────────────────────────────────────────────────────────
+  //
+  // The one tool that reaches outside Sentinel for a fact that was never
+  // going to be in the Data Store or the knowledge base — a current
+  // office-holder, a public event. Added after an officer asked "who is
+  // the Bangalore City Police Commissioner" and got a flat "the database
+  // does not record that" instead of an actual attempt to find out.
+
+  check('the web search tool discloses that it leaves Sentinel and India',
+    /outside Sentinel and outside India/.test(
+      tools.DEFINITIONS.find((d) => d.name === 'web_search').description));
+  check('the web search tool tells the model it is the ONLY tool that reaches the open web',
+    /ONLY tool that reaches the open web/.test(
+      tools.DEFINITIONS.find((d) => d.name === 'web_search').description));
+  check('the web search tool still forbids inventing an answer when the search finds nothing',
+    /not licence to invent/.test(
+      tools.DEFINITIONS.find((d) => d.name === 'web_search').description));
+  check('the knowledge-base tool also rules out real-world questions in favour of web_search',
+    /web_search/.test(
+      tools.DEFINITIONS.find((d) => d.name === 'search_knowledge_base').description));
+
+  // Deliberately empty query below, same convention sanctions_check's gate
+  // test above uses: the gate must pass THROUGH to websearch.js's own
+  // validation (proving the tool is actually wired up) without ever
+  // reaching the network.
+  for (const role of ['investigator', 'supervisor', 'admin', 'analyst']) {
+    const ok = await run('web_search', { query: '' }, { role });
+    check(`${role} can reach web search (gate passes)`,
+      /A query is required/.test(ok.error || ''), JSON.stringify(ok));
+  }
+  const searchDenied = await run('web_search', { query: 'Test Query' }, { role: 'policymaker' });
+  check('policymaker cannot reach web search through the assistant',
+    /limited to investigators, supervisors, analysts and admin/.test(searchDenied.error || ''));
+  const searchNoRole = await run('web_search', { query: 'Test Query' }, {});
+  check('an uncleared caller cannot reach web search either',
+    /limited to investigators, supervisors, analysts and admin/.test(searchNoRole.error || ''));
+
+  check('with no API key configured the tool says so instead of throwing',
+    /not configured/i.test(
+      (await run('web_search', { query: 'x' }, { role: 'investigator' })).error || ''));
+
   // The page and the tool must be one engine, not two implementations.
   const idx = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
   check('the tool and the Action Queue page share one builder',

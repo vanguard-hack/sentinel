@@ -445,6 +445,28 @@ function fromCrypto(hit) {
   return [];
 }
 
+// ── Lane 9: general web search ──────────────────────────────────────────
+//
+// Same shape as fromSanctions: one citation per result, each linking straight
+// to the page it came from rather than one shared "web search" resource —
+// an officer reading the answer needs to be able to open the actual source,
+// the same as any other citation here.
+
+function fromWebSearch(hits) {
+  return (Array.isArray(hits) ? hits : []).map((h) => {
+    let domain = null;
+    try { domain = h.url ? new URL(h.url).hostname : null; } catch { /* malformed url — omit rather than guess */ }
+    return {
+      source_type: TYPES.EXTERNAL_WEB,
+      display_name: str(h.title, 160) || domain || 'Web search result',
+      uri: h.url || null,
+      domain,
+      scope: 'Open web search (Tavily)',
+      passages: h.description ? [{ location: null, excerpt: str(h.description, 800), score: null }] : [],
+    };
+  });
+}
+
 // ── Clearance ───────────────────────────────────────────────────────────────
 
 // Fields whose NAME alone discloses something — a filter clause reading
@@ -610,6 +632,7 @@ module.exports = {
   fromOsint,
   fromSanctions,
   fromCrypto,
+  fromWebSearch,
   filterSummary,
   matchedRecordIds,
   clearanceFilter,
