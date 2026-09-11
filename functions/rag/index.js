@@ -3278,6 +3278,47 @@ async function handleInvestigationPurgeSeeded(req, res) {
   return json(res, 200, { deleted: matched.length, cases: matched });
 }
 
+// ── One-time read-only row-count check ──────────────────────────────────────
+// TEMPORARY, and deliberately read-only — no delete/update path exists here
+// at all, unlike the reset endpoint this replaces for diagnosis. Used once to
+// see actual live row counts during the dataset reimport, then removed.
+const FIR_CHECK_TABLES = new Set([
+  'CaseMaster', 'ComplainantDetails', 'Victim', 'Accused',
+  'ActSectionAssociation', 'ArrestSurrender', 'ChargesheetDetails', 'Employee', 'Act',
+]);
+
+async function handleAdminCheckFirTable(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || role !== 'admin') return json(res, 403, { error: 'Admin access required' });
+
+  const tableName = String(body.table || '');
+  if (!FIR_CHECK_TABLES.has(tableName)) {
+    return json(res, 400, { error: `table must be one of: ${[...FIR_CHECK_TABLES].join(', ')}` });
+  }
+
+  const zcql = app.zcql();
+  const countRows = await zcql.executeZCQLQuery(`SELECT COUNT(ROWID) AS total FROM ${tableName}`);
+  const total = Number((countRows[0] && countRows[0][tableName] && countRows[0][tableName].total) || 0);
+
+  // A cheap sample of the min/max business-level id column, when the table
+  // has one named "<Table>ID" — the exact thing worth seeing for a
+  // duplicate-key mystery, without pulling any row content.
+  let idRange = null;
+  const idCol = `${tableName}ID`;
+  try {
+    const range = await zcql.executeZCQLQuery(
+      `SELECT MIN(${idCol}) AS lo, MAX(${idCol}) AS hi FROM ${tableName}`
+    );
+    const r = range[0] && range[0][tableName];
+    if (r) idRange = { column: idCol, min: r.lo, max: r.hi };
+  } catch { /* not every table has this column shape; fine to omit */ }
+
+  return json(res, 200, { table: tableName, rowCount: total, idRange });
+}
+
 /* POST /server/rag/investigation/remove   { caseMasterId }
 
    Delete a WHOLE case diary, not one entry.
@@ -4926,6 +4967,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/access/records')) return await handleAudit(req, res, 'list');
     if (path.endsWith('/investigation/actions')) return await handleActionQueue(req, res);
     if (path.endsWith('/investigation/purge-seeded')) return await handleInvestigationPurgeSeeded(req, res);
+    if (path.endsWith('/admin/check-fir-table')) return await handleAdminCheckFirTable(req, res);
     if (path.endsWith('/investigation/remove')) return await handleInvestigationRemove(req, res);
     if (path.endsWith('/investigation/obligation-ack')) return await handleObligationAck(req, res);
     if (path.endsWith('/investigation/list')) return await handleInvestigation(req, res, 'list');
