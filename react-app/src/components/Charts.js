@@ -521,12 +521,55 @@ export function MultiLine({ series, height = 250, labelEvery = 1 }) {
 
 // Heat grid — rows × cols intensity matrix (e.g. crime head × month).
 // Hovering a cell shows its count inside the cell.
-export function HeatGrid({ rows, cols, values }) {
+// Which granularities a caller can offer, in display order. HeatGrid only
+// draws a switcher for the ones actually present in `periods` — a caller
+// passing a single { rows, cols, values } shape (no `periods` wrapper) still
+// works, just with no switcher, so this is not a breaking change for a
+// simpler caller.
+const HEAT_PERIODS = [
+  { key: 'week', label: 'Week' },
+  { key: 'month', label: 'Month' },
+  { key: 'year', label: 'Year' },
+];
+
+export function HeatGrid(props) {
+  const periods = props.periods || (props.rows ? { month: props } : null);
+  const available = HEAT_PERIODS.filter((p) => periods && periods[p.key]?.rows?.length);
+  const [period, setPeriod] = useState(
+    (periods && periods[props.defaultPeriod] && props.defaultPeriod)
+    || available[0]?.key
+    || 'month'
+  );
   const [hover, setHover] = useState(null); // { r, c }
-  if (!rows?.length) return <div className="rp-empty">No data</div>;
+  const active = periods && periods[period];
+  if (!active || !active.rows?.length) return <div className="rp-empty">No data</div>;
+  const { rows, cols, values } = active;
   const max = Math.max(1, ...values.flat());
+
+  // Sequential: one hue (the app's own accent), light -> dark, mixed in
+  // OKLab so the steps read as evenly spaced rather than the washed-out
+  // midtones a plain RGB mix produces. A zero cell gets a floor shade, not
+  // zero opacity — an empty cell should still read as part of the grid.
+  const shade = (v) => `color-mix(in oklab, var(--blue-500) ${Math.round((v ? Math.max(0.08, v / max) : 0.03) * 100)}%, var(--bg-2))`;
+
   return (
-    <div>
+    <div className="rp-heat-wrap">
+      {available.length > 1 && (
+        <div className="rp-seg rp-heat-switch" role="tablist" aria-label="Time granularity">
+          {available.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              role="tab"
+              aria-selected={period === p.key}
+              className={period === p.key ? 'active' : ''}
+              onClick={() => { setPeriod(p.key); setHover(null); }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="rp-heat" onMouseLeave={() => setHover(null)}>
         <div className="rp-heat-row rp-heat-head">
           <span className="rp-heat-label" />
@@ -535,18 +578,27 @@ export function HeatGrid({ rows, cols, values }) {
         {rows.map((r, ri) => (
           <div key={r} className="rp-heat-row">
             <span className="rp-heat-label" title={r}>{r}</span>
-            {values[ri].map((v, ci) => (
-              <span
-                key={ci}
-                className={`rp-heat-cell ${hover && hover.r === ri && hover.c === ci ? 'hot' : ''}`}
-                style={{ opacity: v ? 0.15 + 0.85 * (v / max) : 0.04 }}
-                onMouseEnter={() => setHover({ r: ri, c: ci })}
-              >
-                {hover && hover.r === ri && hover.c === ci ? v : ''}
-              </span>
-            ))}
+            {values[ri].map((v, ci) => {
+              const isHot = hover && hover.r === ri && hover.c === ci;
+              return (
+                <span
+                  key={ci}
+                  className={`rp-heat-cell ${isHot ? 'hot' : ''}`}
+                  style={{ background: shade(v) }}
+                  title={`${r} · ${cols[ci]}: ${v.toLocaleString()}`}
+                  onMouseEnter={() => setHover({ r: ri, c: ci })}
+                >
+                  {isHot ? v.toLocaleString() : ''}
+                </span>
+              );
+            })}
           </div>
         ))}
+      </div>
+      <div className="rp-heat-legend">
+        <span className="rp-heat-legend-label">Fewer</span>
+        <span className="rp-heat-legend-bar" aria-hidden="true" />
+        <span className="rp-heat-legend-label">More</span>
       </div>
     </div>
   );

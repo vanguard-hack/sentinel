@@ -47,6 +47,10 @@ export const TREND_RANGES = [
 ];
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MON_FULL = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
 const pad = (n) => String(n).padStart(2, '0');
 
 // A custom range is { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' } (inclusive).
@@ -146,6 +150,20 @@ export function buildTrend(dates, rangeKey, custom) {
   return out;
 }
 
+// A trailing run of zero-value points is not "zero crimes recorded" — it's
+// "no data reaches this far yet" (the window extends past whatever the
+// underlying dataset was generated up to, or into a not-yet-complete period).
+// Drawing that as a hard drop to zero at the right edge reads as a real
+// finding — a cliff in crime — when it is actually just the edge of the
+// data. Trimmed rather than zero-filled, so the chart's last visible point
+// is the last one anything actually happened on. Never trims to nothing: an
+// honestly all-zero window still shows as one.
+function trimTrailingZeros(points) {
+  let end = points.length;
+  while (end > 0 && !points[end - 1].value) end--;
+  return end > 0 ? points.slice(0, end) : points;
+}
+
 // ── Standalone trend chart (independent of the global card filter) ─────────
 // Multi-year windows overlay one line per calendar year (Jan–Dec, nulls for
 // months outside the window/data); shorter windows are a single line, daily
@@ -165,7 +183,7 @@ export function trendSeries(dates, from, to) {
       name: String(y),
       points: MON.map((m, i) => {
         const mid = Date.UTC(y, i, 15);
-        return { label: m, value: mid >= from && mid <= to ? 0 : null };
+        return { label: m, value: mid >= from && mid <= to ? 0 : null, dateLabel: `${MON_FULL[i]} ${y}` };
       }),
     }));
     const idx = new Map(years.map((y, i) => [y, i]));
@@ -185,9 +203,15 @@ export function trendSeries(dates, from, to) {
     const points = [];
     for (let t = from; t <= to; t += 86400000) {
       const iso = new Date(t).toISOString().slice(0, 10);
-      points.push({ label: `${+iso.slice(8, 10)}/${+iso.slice(5, 7)}`, value: counts.get(iso) || 0 });
+      points.push({
+        label: `${+iso.slice(8, 10)}/${+iso.slice(5, 7)}`,
+        value: counts.get(iso) || 0,
+        // The axis label is deliberately terse (DD/M) so daily ticks don't
+        // collide; the tooltip can afford to spell the date out in full.
+        dateLabel: new Date(t).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+      });
     }
-    return { multi: false, points };
+    return { multi: false, points: trimTrailingZeros(points) };
   }
 
   const counts = new Map();
@@ -200,10 +224,11 @@ export function trendSeries(dates, from, to) {
     points.push({
       label: `${MON[d0.getUTCMonth()]} ${String(d0.getUTCFullYear()).slice(2)}`,
       value: counts.get(k) || 0,
+      dateLabel: `${MON_FULL[d0.getUTCMonth()]} ${d0.getUTCFullYear()}`,
     });
     d0.setUTCMonth(d0.getUTCMonth() + 1);
   }
-  return { multi: false, points };
+  return { multi: false, points: trimTrailingZeros(points) };
 }
 
 // Earliest registered date in the data (ms) — the "All time" window start.
@@ -559,18 +584,36 @@ export function computeReport(raw, masters, rangeKey, custom) {
     if (bi != null) arrestSeries[row].points[bi].value++;
   });
 
-  // Seasonality: calendar month × top 6 crime heads.
+  // Seasonality: top 6 crime heads × three time granularities, switched in
+  // the UI rather than three separate charts. Month is the original
+  // behaviour (calendar month, merged across every year in the window —
+  // genuine seasonality). Week and year answer different questions off the
+  // same rows: which day of the week a crime type clusters on, and whether
+  // it's trending up or down year over year.
   const seasonHeads = groupCount(wcases, (c) => c.major, (id) => headName(id)).slice(0, 6);
   const seasonIdx = new Map(seasonHeads.map((h, i) => [h.label, i]));
-  const seasonality = {
-    rows: seasonHeads.map((h) => h.label),
-    cols: MON,
-    values: seasonHeads.map(() => Array(12).fill(0)),
+  const seasonRows = seasonHeads.map((h) => h.label);
+
+  const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const seasonYears = [...new Set(wcases.map((c) => new Date(c.ts).getUTCFullYear()))].sort();
+  const yearIdx = new Map(seasonYears.map((y, i) => [y, i]));
+
+  const seasonMonth = { rows: seasonRows, cols: MON, values: seasonRows.map(() => Array(12).fill(0)) };
+  const seasonWeek = { rows: seasonRows, cols: DOW, values: seasonRows.map(() => Array(7).fill(0)) };
+  const seasonYear = {
+    rows: seasonRows,
+    cols: seasonYears.map(String),
+    values: seasonRows.map(() => Array(Math.max(1, seasonYears.length)).fill(0)),
   };
   wcases.forEach((c) => {
     const r = seasonIdx.get(headName(c.major));
-    if (r != null) seasonality.values[r][new Date(c.ts).getUTCMonth()]++;
+    if (r == null) return;
+    const d = new Date(c.ts);
+    seasonMonth.values[r][d.getUTCMonth()]++;
+    seasonWeek.values[r][d.getUTCDay()]++;
+    seasonYear.values[r][yearIdx.get(d.getUTCFullYear())]++;
   });
+  const seasonality = { month: seasonMonth, week: seasonWeek, year: seasonYear };
 
   // Chargesheet filing lag + average investigation time by head.
   const LAG_BUCKETS = [

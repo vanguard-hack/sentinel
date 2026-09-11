@@ -12,7 +12,7 @@
    measurement. Those are drawn dashed and with no fill under them.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { curveNatural } from '@visx/curve';
 import { ParentSize } from '@visx/responsive';
 import { scaleLinear } from '@visx/scale';
@@ -24,6 +24,11 @@ import {
 import './chart-tokens.css';
 
 const MARGIN = { top: 12, right: 16, bottom: 28, left: 40 };
+// Below this many points a brush has nothing useful to narrow — it would
+// just be a decoration sitting over four or five bars' worth of range.
+const MIN_POINTS_FOR_BRUSH = 14;
+const BRUSH_HEIGHT = 44;
+const BRUSH_MARGIN = { top: 4, right: 16, bottom: 18, left: 40 };
 
 // A forecast tail is a different kind of claim from a measurement, so it is
 // drawn dashed and carries no fill. A LEADING run of `illustrative: true`
@@ -71,9 +76,18 @@ function Plot({ width, height, data, ariaLabel }) {
   );
 
   const cursorX = useSpring(0, SPRING);
+  // The marker's vertical position used to jump straight to the next point
+  // while cursorX eased smoothly across — a spring on one axis and none on
+  // the other reads as a stutter, not a glide, exactly the "not smooth"
+  // complaint the reference chart doesn't have. Springing both together is
+  // what makes the dot look like it's travelling along the curve.
+  const cursorY = useSpring(0, SPRING);
   React.useEffect(() => {
-    if (active != null) cursorX.set(xScale(active));
-  }, [active, cursorX, xScale]);
+    if (active == null) return;
+    cursorX.set(xScale(active));
+    const v = data[active]?.value;
+    if (v != null) cursorY.set(yScale(v));
+  }, [active, cursorX, cursorY, xScale, yScale, data]);
 
   const onMove = useCallback((e) => {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -217,7 +231,7 @@ function Plot({ width, height, data, ariaLabel }) {
           {hovering && data[active]?.value != null && (
             <motion.circle
               cx={cursorX}
-              cy={yScale(data[active].value)}
+              cy={cursorY}
               r={4.5}
               fill={cat(0)}
               stroke="var(--chart-background)"
@@ -245,7 +259,7 @@ function Plot({ width, height, data, ariaLabel }) {
         <Tip
           x={xScale(active) + MARGIN.left}
           width={width}
-          title={data[active].label}
+          title={data[active].dateLabel || data[active].label}
           rows={[{
             name: data[active].forecast ? 'Forecast' : data[active].illustrative ? 'Illustrative' : 'Recorded',
             value: (data[active].value ?? 0).toLocaleString(),
@@ -257,21 +271,174 @@ function Plot({ width, height, data, ariaLabel }) {
   );
 }
 
-export default function TrendArea({ data, height = 320, ariaLabel = 'Trend over time' }) {
-  if (!data || !data.length) return <div className="rp-empty">No data</div>;
+/**
+ * The mini chart-with-handles under the main plot. Drawn against the FULL
+ * series regardless of the current selection — it is the map, not the view
+ * — with two draggable edges and a draggable middle that pans both together.
+ * Pointer listeners are attached to `window`, not the SVG, because a drag
+ * that leaves the narrow 44px strip (which happens constantly — this is a
+ * short target) must not silently stop tracking the mouse.
+ */
+function RangeBrush({ data, width, range, onChange }) {
+  const svgRef = useRef(null);
+  const drag = useRef(null); // { mode: 'start' | 'end' | 'pan', anchorIdx?, origRange? }
+  const rangeRef = useRef(range);
+  rangeRef.current = range;
+  const n = data.length;
+  const innerW = Math.max(0, width - BRUSH_MARGIN.left - BRUSH_MARGIN.right);
+  const innerH = Math.max(0, BRUSH_HEIGHT - BRUSH_MARGIN.top - BRUSH_MARGIN.bottom);
+
+  const maxV = useMemo(() => Math.max(1, ...data.map((d) => d.value ?? 0)), [data]);
+  const xScale = useMemo(
+    () => scaleLinear({ range: [0, innerW], domain: [0, Math.max(1, n - 1)] }),
+    [innerW, n]
+  );
+  const yScale = useMemo(
+    () => scaleLinear({ range: [innerH, 2], domain: [0, maxV] }),
+    [innerH, maxV]
+  );
+
+  const idxAt = useCallback((clientX) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return 0;
+    const rel = clientX - rect.left - BRUSH_MARGIN.left;
+    return Math.min(n - 1, Math.max(0, Math.round((rel / Math.max(1, innerW)) * (n - 1))));
+  }, [innerW, n]);
+
+  useEffect(() => {
+    const onMove = (e) => {
+      const d = drag.current;
+      if (!d) return;
+      const i = idxAt(e.clientX);
+      if (d.mode === 'start') onChange([Math.min(i, rangeRef.current[1]), rangeRef.current[1]]);
+      else if (d.mode === 'end') onChange([rangeRef.current[0], Math.max(i, rangeRef.current[0])]);
+      else if (d.mode === 'pan') {
+        const span = d.origRange[1] - d.origRange[0];
+        const s = Math.max(0, Math.min(n - 1 - span, d.origRange[0] + (i - d.anchorIdx)));
+        onChange([s, s + span]);
+      }
+    };
+    const onUp = () => { drag.current = null; };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [idxAt, onChange, n]);
+
+  const pathD = useMemo(() => {
+    if (innerW <= 0 || n < 2) return '';
+    const top = data.map((d, i) => `${i === 0 ? 'M' : 'L'}${xScale(i)},${yScale(d.value ?? 0)}`).join(' ');
+    return `${top} L${xScale(n - 1)},${innerH} L${xScale(0)},${innerH} Z`;
+  }, [data, xScale, yScale, n, innerH, innerW]);
+
+  if (innerW <= 0 || n < 2) return null;
+  const x0 = xScale(range[0]);
+  const x1 = xScale(range[1]);
+  const startLabel = data[range[0]]?.dateLabel || data[range[0]]?.label;
+  const endLabel = data[range[1]]?.dateLabel || data[range[1]]?.label;
+
   return (
-    <div className="bk-chart" style={{ height }}>
-      {/* ParentSize reports height as well as width. Taking it lets a chart
-          fill a bento tile that is taller than its default, while a caller
-          that just passes `height` still gets exactly that — the wrapper's
-          own height is what ParentSize ends up measuring. */}
-      <ParentSize debounceTime={0}>
-        {({ width, height: mh }) =>
-          width < 10 ? null : (
-            <Plot width={width} height={mh || height} data={data} ariaLabel={ariaLabel} />
-          )
-        }
-      </ParentSize>
+    <svg
+      ref={svgRef}
+      className="bk-brush-svg"
+      width={width}
+      height={BRUSH_HEIGHT}
+      role="slider"
+      aria-label="Visible date range"
+      aria-valuemin={0}
+      aria-valuemax={n - 1}
+      aria-valuenow={range[1]}
+      aria-valuetext={`${startLabel} to ${endLabel}`}
+    >
+      <g transform={`translate(${BRUSH_MARGIN.left},${BRUSH_MARGIN.top})`}>
+        <path d={pathD} className="bk-brush-area" />
+        <rect x={0} y={0} width={Math.max(0, x0)} height={innerH} className="bk-brush-mask" />
+        <rect x={x1} y={0} width={Math.max(0, innerW - x1)} height={innerH} className="bk-brush-mask" />
+        <rect
+          x={x0}
+          y={0}
+          width={Math.max(1, x1 - x0)}
+          height={innerH}
+          className="bk-brush-window"
+          onPointerDown={(e) => {
+            drag.current = { mode: 'pan', anchorIdx: idxAt(e.clientX), origRange: [...rangeRef.current] };
+          }}
+        />
+        <rect
+          x={x0 - 4}
+          y={0}
+          width={8}
+          height={innerH}
+          rx={3}
+          className="bk-brush-handle"
+          onPointerDown={(e) => { e.stopPropagation(); drag.current = { mode: 'start' }; }}
+        />
+        <rect
+          x={x1 - 4}
+          y={0}
+          width={8}
+          height={innerH}
+          rx={3}
+          className="bk-brush-handle"
+          onPointerDown={(e) => { e.stopPropagation(); drag.current = { mode: 'end' }; }}
+        />
+      </g>
+      <text x={BRUSH_MARGIN.left} y={BRUSH_HEIGHT - 4} className="bk-brush-label" textAnchor="start">
+        {startLabel}
+      </text>
+      <text x={BRUSH_MARGIN.left + innerW} y={BRUSH_HEIGHT - 4} className="bk-brush-label" textAnchor="end">
+        {endLabel}
+      </text>
+    </svg>
+  );
+}
+
+export default function TrendArea({ data, height = 320, ariaLabel = 'Trend over time', brush }) {
+  // A brush over four or five points has nothing to narrow — it would just
+  // be decoration sitting on top of the whole chart, so it only appears once
+  // there's a real range worth cutting down. Overridable either way.
+  const showBrush = brush ?? (data && data.length >= MIN_POINTS_FOR_BRUSH);
+  const [range, setRange] = useState(() => [0, Math.max(0, (data?.length || 1) - 1)]);
+  const dataRef = useRef(data);
+  useEffect(() => {
+    // A brand new series (a different range preset, a different card) makes
+    // any prior selection meaningless — indices from the old series would
+    // silently slice the new one at the wrong points.
+    if (dataRef.current !== data) {
+      dataRef.current = data;
+      setRange([0, Math.max(0, (data?.length || 1) - 1)]);
+    }
+  }, [data]);
+
+  if (!data || !data.length) return <div className="rp-empty">No data</div>;
+  const visible = showBrush ? data.slice(range[0], range[1] + 1) : data;
+
+  return (
+    <div className="bk-chart-wrap">
+      <div className="bk-chart" style={{ height }}>
+        {/* ParentSize reports height as well as width. Taking it lets a chart
+            fill a bento tile that is taller than its default, while a caller
+            that just passes `height` still gets exactly that — the wrapper's
+            own height is what ParentSize ends up measuring. */}
+        <ParentSize debounceTime={0}>
+          {({ width, height: mh }) =>
+            width < 10 ? null : (
+              <Plot width={width} height={mh || height} data={visible} ariaLabel={ariaLabel} />
+            )
+          }
+        </ParentSize>
+      </div>
+      {showBrush && (
+        <ParentSize debounceTime={0}>
+          {({ width }) =>
+            width < 10 ? null : (
+              <RangeBrush data={data} width={width} range={range} onChange={setRange} />
+            )
+          }
+        </ParentSize>
+      )}
     </div>
   );
 }

@@ -29,15 +29,46 @@ const GAP = 7;        // vertical gap between nodes in a layer
 const PAD_T = 14;
 const PAD_B = 14;
 
-/* Label gutters are a SHARE of the drawing, not a constant.
+/* Label gutters used to be a SHARE of the drawing width with a fixed floor —
+ * which is exactly why long labels ("Crimes Against Body", "Under
+ * investigation") got clipped by the SVG's own viewport edge: the floor was
+ * tuned against whatever labels existed at the time, not measured against
+ * the ones actually being drawn. SVG text does not wrap or ellipsize on
+ * overflow, so a gutter even a few px too narrow clips silently.
  *
- * 170 and 158 were units of a 1000-wide viewBox — about a sixth and a seventh
- * of it — and read as such only because the whole thing was scaled to the
- * tile. Drawn at 1:1 those become 170 and 158 real pixels, which is right on a
- * 900px hero and eats half the chart on a 480px phone. Proportional with a
- * floor keeps the ribbons the widest thing on the card at every size, and the
- * floor is what the longest crime-head label actually needs at 12px. */
+ * Gutters are now sized from the real rendered width of the longest label in
+ * each outer layer, via a cached canvas measurement — the same technique a
+ * browser uses internally, just done once up front instead of guessed. */
 const clamp = (lo, v, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+
+const LABEL_FONT = "12px 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+// Average glyph width for 12px Inter (~0.52em, typical for a sans-serif at
+// this weight) — this only runs when canvas 2D genuinely isn't available
+// (jsdom in tests; conceivably a locked-down real browser). Real browsers
+// measure the actual glyphs via canvas; this is only ever an approximation
+// for the fallback path.
+const FALLBACK_CHAR_WIDTH = 6.3;
+let measureCtx;
+function textWidth(s) {
+  const str = String(s || '');
+  if (measureCtx === undefined) {
+    const c = document.createElement('canvas');
+    measureCtx = c.getContext && c.getContext('2d');
+    if (measureCtx) measureCtx.font = LABEL_FONT;
+  }
+  return measureCtx ? measureCtx.measureText(str).width : str.length * FALLBACK_CHAR_WIDTH;
+}
+// Cached per unique label string — the same crime-head/outcome names repeat
+// across every render of every report, so this fills once and stays warm.
+const widthCache = new Map();
+function cachedTextWidth(s) {
+  if (widthCache.has(s)) return widthCache.get(s);
+  const w = textWidth(s);
+  widthCache.set(s, w);
+  return w;
+}
+const LABEL_GAP = 8;   // space between the node bar and its label, each side
+const LABEL_MARGIN = 6; // breathing room past the widest label
 
 export default function Sankey({ spec, width = 1000, height = 460 }) {
   const [wrapRef, box] = useMeasuredBox(width, height);
@@ -45,8 +76,17 @@ export default function Sankey({ spec, width = 1000, height = 460 }) {
   // wrapper scrolls rather than drawing something that cannot be read.
   const W = Math.max(520, box.w);
   const drawH = Math.max(260, box.h);
-  const PAD_L = clamp(92, W * 0.175, 210);
-  const PAD_R = clamp(84, W * 0.155, 195);
+  // Measured against the actual labels being drawn, not guessed as a share
+  // of width — the bug this replaces. Still clamped: a floor so a short
+  // label set doesn't starve the ribbons of space, a ceiling so one
+  // pathological label can't eat half the chart (title tooltip covers that
+  // case instead).
+  const leftNodes = (spec?.nodes || []).filter((n) => n.layer === 0);
+  const rightNodes = (spec?.nodes || []).filter((n) => n.layer === 2);
+  const maxLeftLabel = Math.max(0, ...leftNodes.map((n) => cachedTextWidth(n.label)));
+  const maxRightLabel = Math.max(0, ...rightNodes.map((n) => cachedTextWidth(n.label)));
+  const PAD_L = clamp(92, NW + LABEL_GAP + maxLeftLabel + LABEL_MARGIN, W * 0.4);
+  const PAD_R = clamp(84, NW + LABEL_GAP + maxRightLabel + LABEL_MARGIN, W * 0.4);
   const [hover, setHover] = useState(null); // node id or link idx
   const layout = useMemo(() => {
     const nodes = spec?.nodes || [];

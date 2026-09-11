@@ -5418,7 +5418,22 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   min-width: 0;
   height: 28px;
   border-radius: 4px;
-  background: var(--blue-500);
+  background: var(--bg-2); /* fallback only — the sequential ramp is set inline per cell */
+  transition: background 0.15s ease;
+}
+
+.rp-heat-wrap { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rp-heat-switch { align-self: flex-start; }
+.rp-heat-legend { display: flex; align-items: center; gap: 8px; align-self: flex-end; }
+.rp-heat-legend-label { font-size: 10.5px; color: var(--text-4); }
+.rp-heat-legend-bar {
+  width: 88px;
+  height: 8px;
+  border-radius: 4px;
+  /* Same one-hue ramp the cells use, so the legend is never a lie about
+     what the grid is actually showing. */
+  background: linear-gradient(90deg, var(--bg-2), var(--blue-500));
+  border: 1px solid var(--border);
 }
 
 /* Funnel */

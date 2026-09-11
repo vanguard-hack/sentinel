@@ -428,7 +428,7 @@ case_rows, complainants, victims, accused_rows = [], [], [], []
 act_assoc, arrests, chargesheets = [], [], []
 serials = {}
 comp_id = vict_id = acc_id = arr_id = cs_id = 50001
-today = date(2026, 7, 1)
+today = date(2026, 9, 11)
 
 # A pool of candidate registration days, each repeated in proportion to its
 # seasonal x weekday x trend weight. Drawing uniformly FROM THIS POOL gives a

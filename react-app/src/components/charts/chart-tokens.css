@@ -70,3 +70,27 @@
 @media (prefers-reduced-motion: reduce) {
   .bk-bars .rp-bar-fill { transition: none; }
 }
+
+/* ── Range brush ──────────────────────────────────────────────────────────
+   The mini chart-with-handles under the main plot that narrows which slice
+   of the series is drawn above. A sibling of .bk-chart, not a child, so its
+   own tokens are named directly against the app's base palette rather than
+   through the --chart-* bridge above. */
+.bk-chart-wrap { display: flex; flex-direction: column; width: 100%; }
+.bk-brush-svg { display: block; width: 100%; overflow: visible; margin-top: 2px; }
+.bk-brush-area { fill: var(--text-4); opacity: 0.5; stroke: none; }
+/* TrendLine's brush preview: N open strokes, not a filled area — a separate
+   class so it never inherits .bk-brush-area's fill (an open path filled in
+   would draw a closed wedge, not a line). */
+.bk-brush-line { opacity: 0.55; }
+.bk-brush-mask { fill: var(--bg-1); opacity: 0.72; pointer-events: none; }
+.bk-brush-window {
+  fill: var(--primary-tint, var(--blue-glow));
+  stroke: var(--blue-500);
+  stroke-width: 1;
+  cursor: grab;
+}
+.bk-brush-window:active { cursor: grabbing; }
+.bk-brush-handle { fill: var(--blue-500); cursor: ew-resize; touch-action: none; }
+.bk-brush-window { touch-action: none; }
+.bk-brush-label { font-size: 10px; fill: var(--text-4); font-variant-numeric: tabular-nums; }

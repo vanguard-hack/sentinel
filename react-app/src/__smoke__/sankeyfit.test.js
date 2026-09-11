@@ -57,16 +57,42 @@ test('a box too small to label legibly is drawn at the floor and scrolls', () =>
   expect(draw(300, 120).getAttribute('viewBox')).toBe('0 0 520 260');
 });
 
-test('the label gutters are a share of the width, not the old constants', () => {
-  // Layer 0's bar sits at the left gutter, so its x IS the gutter.
+test('the label gutters are measured from the actual label text, not a share of the width', () => {
+  // Layer 0's bar sits at the left gutter, so its x IS the gutter. Gutters
+  // used to be a proportional guess ("a share of the drawing width") — the
+  // bug that clipped "Crimes Against Body" and "Under investigation" in
+  // production, because a proportional guess has no relationship to what the
+  // labels actually need. They're measured from the real label text now, so
+  // the SAME labels get the SAME gutter whether the card is narrow or wide —
+  // a wider card buys the ribbons more room, not the (already-sufficient)
+  // label column more room it doesn't need.
   const gutter = (svg) => Number(svg.querySelector('rect').getAttribute('x'));
   const narrow = gutter(draw(560, 400));
   const wide = gutter(draw(1200, 400));
-  expect(wide).toBeGreaterThan(narrow);
-  // A flat 170 would have taken a third of the narrow tile...
-  expect(narrow).toBeLessThan(560 * 0.22);
-  // ...and the wide one is capped so the ribbons stay the widest thing on it.
-  expect(wide).toBeLessThanOrEqual(210);
+  expect(wide).toBe(narrow);
+  // Still floored so a short label set doesn't starve the ribbons of space...
+  expect(narrow).toBeGreaterThanOrEqual(92);
+  // ...and still capped, so one pathological label can't eat the chart.
+  expect(wide).toBeLessThanOrEqual(1200 * 0.4);
+});
+
+test('a longer label earns a wider gutter than a shorter one, at the same card width', () => {
+  const gutter = (s) => {
+    global.ResizeObserver = class {
+      constructor(cb) { this.cb = cb; }
+
+      observe(target) { this.cb([{ target, contentRect: { width: 560, height: 400 } }], this); }
+
+      unobserve() {}
+
+      disconnect() {}
+    };
+    const { container } = render(<Sankey spec={s} />);
+    return Number(container.querySelector('svg').querySelector('rect').getAttribute('x'));
+  };
+  const short = { ...spec, nodes: [{ ...spec.nodes[0], label: 'Theft' }, ...spec.nodes.slice(1)] };
+  const long = { ...spec, nodes: [{ ...spec.nodes[0], label: 'Offences Against the Human Body' }, ...spec.nodes.slice(1)] };
+  expect(gutter(long)).toBeGreaterThan(gutter(short));
 });
 
 test('the flow spans the height it was given', () => {

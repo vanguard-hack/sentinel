@@ -478,8 +478,8 @@ export default function Reports() {
                 subtitle="Districts shaded by indicator, circles sized by cases" hero section="Socio-economic & seasonality">
                 <SocioCrimeMap crimeByDistrict={data.crimeByDistrict} />
               </Card>
-              <Card title="Seasonality" subtitle="Registrations by calendar month × crime head" wide section="Socio-economic & seasonality">
-                <HeatGrid rows={data.seasonality.rows} cols={data.seasonality.cols} values={data.seasonality.values} />
+              <Card title="Seasonality" subtitle="Registrations by crime head, over time" wide section="Socio-economic & seasonality">
+                <HeatGrid periods={data.seasonality} defaultPeriod="month" />
               </Card>
               <Card id="chart-case-status" title={t('charts.caseStatus')} subtitle={t('charts.caseStatusSub')} section="Socio-economic & seasonality">
                 <Donut data={data.byStatus} />
