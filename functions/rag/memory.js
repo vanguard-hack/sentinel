@@ -203,8 +203,9 @@ async function queryPartition(app, tableName, attribute, value, { limit = 100, f
     });
     tableMissingAt.delete(tableName);
     return rowsOf(resp);
-  } catch {
+  } catch (e) {
     // Table not created yet, or NoSQL not enabled — memory degrades to none.
+    console.error('[memory-diag] queryPartition', tableName, e && (e.message || e));
     tableMissingAt.set(tableName, now());
     return [];
   }
@@ -239,7 +240,8 @@ async function appendTurns(app, sessionId, badgeId, turns) {
   try {
     await app.nosql().table(TURNS_TABLE).insertItems(...items);
     return true;
-  } catch {
+  } catch (e) {
+    console.error('[memory-diag] appendTurns', TURNS_TABLE, e && (e.message || e));
     tableMissingAt.set(TURNS_TABLE, now());
     return false;
   }
@@ -280,7 +282,8 @@ async function writeFacts(app, badgeId, facts) {
   try {
     await app.nosql().table(FACTS_TABLE).insertItems(...items);
     return items.length;
-  } catch {
+  } catch (e) {
+    console.error('[memory-diag] writeFacts', FACTS_TABLE, e && (e.message || e));
     tableMissingAt.set(FACTS_TABLE, now());
     return 0;
   }
