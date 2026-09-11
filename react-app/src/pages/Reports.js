@@ -15,7 +15,6 @@ import TrendArea from '../components/charts/TrendArea';
 import BarList from '../components/charts/BarColumns';
 import HBarList from '../components/charts/BarRows';
 import Donut from '../components/charts/Ring';
-import Pie from '../components/charts/Pie';
 import StatTile from '../components/charts/StatTile';
 import SocioCrimeMap from '../components/SocioCrimeMap';
 import Sankey from '../components/Sankey';
@@ -311,7 +310,6 @@ export default function Reports() {
                 value={data.kpis.solvedPct}
                 format={(v) => `${v.toFixed(1)}%`}
                 share={data.kpis.solvedPct}
-                gauge
                 sub="chargesheeted, on trial or decided"
               />
               <StatTile
@@ -484,7 +482,7 @@ export default function Reports() {
                 <HeatGrid rows={data.seasonality.rows} cols={data.seasonality.cols} values={data.seasonality.values} />
               </Card>
               <Card id="chart-case-status" title={t('charts.caseStatus')} subtitle={t('charts.caseStatusSub')} section="Socio-economic & seasonality">
-                <Pie data={data.byStatus} ariaLabel={t('charts.caseStatus')} />
+                <Donut data={data.byStatus} />
               </Card>
               <Card title="Heinous vs non-heinous" subtitle="Gravity of registered offences" section="Socio-economic & seasonality">
                 <Donut data={data.gravitySplit} />

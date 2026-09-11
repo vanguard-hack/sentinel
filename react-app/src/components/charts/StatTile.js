@@ -23,7 +23,6 @@
 import React, { useEffect, useRef } from 'react';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 import { animate, useMotionValue, useReducedMotion } from 'motion/react';
-import Gauge from './Gauge';
 
 /**
  * Counts from zero to `value` once, writing straight to the DOM node so the
@@ -58,7 +57,6 @@ export default function StatTile({
   sub,
   trend,
   share,
-  gauge,
 }) {
   const ref = useCountUp(value, format);
   return (
@@ -76,18 +74,11 @@ export default function StatTile({
 
       <span className="st-value" ref={ref}>{format(0)}</span>
 
-      {/* Only drawn when the figure is a share of something real. `gauge`
-          swaps the bar for the same number drawn as a Bklit-style arc. */}
+      {/* Only drawn when the figure is a share of something real. */}
       {share != null && (
-        gauge ? (
-          <div className="st-gauge" aria-hidden="true">
-            <Gauge value={share} />
-          </div>
-        ) : (
-          <div className="st-share" aria-hidden="true">
-            <span className="st-share-fill" style={{ width: `${Math.max(2, Math.min(100, share))}%` }} />
-          </div>
-        )
+        <div className="st-share" aria-hidden="true">
+          <span className="st-share-fill" style={{ width: `${Math.max(2, Math.min(100, share))}%` }} />
+        </div>
       )}
 
       {sub && <span className="st-sub">{sub}</span>}

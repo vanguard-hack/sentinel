@@ -2170,14 +2170,8 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 }
 .st-sub { font-size: 11px; color: var(--text-4); }
 
-/* Gauge. The `gauge` alternative to the share bar above — same figure, drawn
-   as a Bklit-style arc. Width capped so it doesn't stretch full tile width. */
-.st-gauge { display: flex; justify-content: center; margin-top: 1px; }
-.st-gauge-svg { display: block; width: 84px; max-width: 100%; height: auto; }
-
 @media (prefers-reduced-motion: reduce) {
   .st-share-fill { transition: none; }
-  .st-gauge-svg path { transition: none !important; }
 }
 .rp-kpi {
   display: flex;
