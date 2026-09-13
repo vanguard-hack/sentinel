@@ -62,59 +62,19 @@ feature — including the **Access & Audit** console and role management — is 
 ## Overview
 
 Police forces sit on vast volumes of data and paperwork that stay locked and hard to use —
-hard to query, slow to investigate, impossible to forecast from, and weakly audited. A station
-writer who wants to know *"which districts saw the sharpest rise in vehicle theft last quarter"*
-has no way to ask; an investigating officer maintaining a Case Diary under **BNSS S.172** is
-still writing longhand; a supervisor reviewing who looked at what has no trail to review.
+hard to query, slow to investigate, impossible to forecast from, and weakly audited.
 
 Sentinel closes all four gaps on one platform:
 
 | From | To |
 | --- | --- |
-| **Data locked in tables** | FIR data queryable in plain English, and visible as trends, maps and risk boards |
-| **Paper investigation** | A full digital Case Diary with voice-to-text and scan-OCR testimony capture |
+| **Data locked in tables** | FIR data queryable in plain English, and visible as interactive visualizations |
+| **Paper investigation** | A fully digital Case Diary that lets officers track and manage every aspect of an investigation in one place; a Report Studio offering 12 structured report types for officers to fill in; and a Records module that digitizes unstructured documents into text, powering an AI assistant that can answer questions about their contents. |
 | **Reactive policing** | Forecasting, district-risk scoring, cross-case linkage and co-offending networks |
 | **Weak oversight** | Rank-based access control and a tamper-evident audit trail on every action |
 
-Everything runs on a realistic **synthetic** Karnataka FIR dataset built on a 26-table
-CCTNS-aligned schema, with production use on real citizen data explicitly gated behind legal
-sign-off. The frontend browses the Data Store directly from the browser over ZCQL and pulls
-whole tables for analytics as one columnar snapshot each; everything that writes, calls a model,
-handles media or renders a PDF goes through a single serverless function that holds every
-credential server-side and enforces role and audit checks.
-
----
-
-## Objectives
-
-1. **Make FIR data answerable in plain language.** An officer should get a cited, chart-backed
-   answer to a natural-language question in seconds, without knowing SQL or the schema — in
-   English, Hindi or Kannada.
-2. **Replace the paper Case Diary with a compliant digital one.** Full **BNSS S.172** diary
-   proceedings mapped onto the CCTNS **IIF1–IIF5** integrated forms, including S.161 statements,
-   evidence with chain-of-custody, and court-ready PDF export.
-3. **Shift the department from reactive to proactive.** Surface crime forecasts with confidence
-   bands, district risk scores, repeat-offender networks and cross-case linkage *before* the
-   next incident, not after.
-4. **Cut the clerical load on investigating officers.** Testimony captured by voice or by
-   scanning a page; legacy paper records digitised and made searchable; statutory reports drafted
-   from templates with AI narrative assistance.
-5. **Turn physical paper into a knowledge base the AI can answer from.** Through **Report Studio**
-   and **Records**, an officer uploads any physical material — a handwritten statement, a typed
-   FIR, a seizure memo, a scanned court order, even an interview recording. Zia OCR and
-   speech-to-text lift the text, an AI pass structures it into a searchable record, and it is
-   indexed into the RAG knowledge base. From that point the material is not just archived: the
-   assistant can cite it in an answer, and the officer can search across every page the station
-   has ever scanned.
-6. **Make every access accountable.** Enforce a rank-based access model end-to-end and record
-   every view, edit, export, sign-in and denial — with user, role, IP, location and IST timestamp
-   — in an exportable audit trail.
-7. **Keep AI advisory, cited and fair.** Every model output carries its sources, protected
-   attributes are excluded from risk models, and a human officer stays in the loop on every
-   decision.
-8. **Prove it can run on managed Indian infrastructure.** The entire platform — hosting, data,
-   storage, auth, OCR, speech, PDF and retrieval — runs on Zoho Catalyst's `zoho.in` data centre
-   with no self-managed servers.
+Everything runs on a  **synthetic** Karnataka FIR dataset built on a 26-table
+CCTNS-aligned schema based on the ERD provided by the Hack2Skill team.
 
 ---
 
@@ -122,23 +82,12 @@ credential server-side and enforces role and audit checks.
 
 ### 🏠 Home Dashboard
 
-The department's daily situational picture on one screen: **eight headline KPIs** — FIRs
-registered with period-on-period change, open investigations, solved rate, heinous share,
-accused, victims, arrests & surrenders and chargesheet rate — above a **26-card bento** ordered
-into bands that each fill the row exactly.
-
-| Band | Cards |
-| --- | --- |
-| **Where** | District geo-heatmap, station load, socio-economic correlation choropleth (districts shaded by indicator, circles sized by cases, with a Pearson *r* readout) |
-| **What** | Crime category, most-charged legal sections, seasonality (calendar month × crime head), heinous vs non-heinous, and a **crime-flow Sankey** tracing category → type → outcome with ribbon width as case volume |
-| **Who** | Accused and complainant age profiles, gender split, repeat offenders, complainant occupations, victim profile, force rank distribution |
-| **How well** | Case-status funnel, pendency ageing (green fresh → red long-pending), chargesheet filing lag, average investigation time per crime head, IO caseload, court load |
+A single-screen command view combining **8 headline KPIs with a 26-card bento grid**, giving a comprehensive snapshot of the crime situation across Karnataka.
 
 **Time is a control, not a setting.** Today / Month / Year / 5 Years, or any custom date range,
-re-derives every KPI and every chart — so the same twenty-six questions can be asked of any
+re-derives every KPI and every chart — so the same 25 questions can be asked of any
 window. A headline crime-trend chart carries its own independent range for comparison. The whole
-page exports to **PDF** in one click, as the briefing document a senior officer walks into a
-meeting with.
+page exports to **PDF** in one click.
 
 ![Home dashboard](docs/screenshots/01-dashboard.png)
 
@@ -146,17 +95,17 @@ meeting with.
 
 A custom SVG + `d3-geo` map of India that drills **state → district → police station**. Districts
 are shaded by incident density; drilling into a district reveals station boundaries, beat-level
-hotspots and clustered incident pins. Each station card carries its jurisdiction officers with
+hotspots, and optimized patrol routes. Each station card carries its jurisdiction officers with
 one-tap `tel:` call links, so a map lookup ends in a phone call rather than a second search.
 
 ![Crime Map](docs/screenshots/02-crime-map.png)
 
 ### 🤖 AI Assistant
 
-A full chat workspace at `/assistant`, not a corner widget. An officer asks a question in plain
+A full chat workspace at `/assistant`. An officer asks a question in plain
 English, Hindi or Kannada and a router decides how to answer it:
 
-- **Tool loop** — the model is given **eleven clearance-filtered tools** and runs as many
+- **Tool loop** — The model is given **11tools** and runs as many
   lookups as one question needs before answering, batching independent ones into a single
   turn. This is the lane that answers questions the single-lane paths structurally cannot:
   ZCQL has no joins, so *"which FIRs were filed in Belagavi last month and who is accused in
@@ -165,27 +114,18 @@ English, Hindi or Kannada and a router decides how to answer it:
   Data Store at all — three tools reach outside Sentinel for exactly that, each a live
   per-query call that discloses plainly in its answer that the identifier just left the
   platform. See [Assistant tools](#assistant-tools) for the full set.
-- **ZCQL lane** — the question is compiled to a validated, single-table ZCQL query against the
+- **ZCQL lane** — The question is compiled to a validated, single-table ZCQL query against the
   live FIR schema, then enriched with master-table names and district rollups in code.
-- **RAG lane** — legal, procedural and SOP questions are answered from a QuickML knowledge base.
+- **RAG lane** — Legal, procedural and SOP questions are answered from a QuickML knowledge base.
 - **Hybrid** — a question that is both ("what does S.41 require, and how many arrests did
   Belagavi make under it") fans out to both lanes and merges the answers.
 
-Around that: per-officer **memory** (a live conversation buffer, durable long-term facts, and
-semantic recall of older sessions), **voice input** via Zia speech-to-text, **document
+Around that: Per-officer **Memory** (a live conversation buffer, durable long-term facts, and
+semantic recall of older sessions), **Voice input** via Zia speech-to-text, **document
 attachments** (PDF/Office files read as context, with each chip stating plainly whether the
-assistant can actually see the file), **slash commands**, ↑/↓ prompt history, saved
+assistant can actually see the file), **Slash commands**, ↑/↓ prompt history, saved
 conversations, and replies rendered as charts, tables, maps and record cards. Every answer
-carries interactive **source citations** you can click through to the exact row or document.
-
-One slash command, `/sherlock [username]`, sits outside the tool loop entirely rather than
-being a twelfth tool. A Sherlock (username-enumeration) run against its Apify actor takes
-74-110+ seconds measured live — far past the 30-second hard execution ceiling on a Zoho
-Catalyst Advanced I/O function, so no single request can hold it open. It runs as a start
-call plus a status poll instead (each under a second on its own), with the composer showing
-a "still running" label rather than the usual cycling thinking-phrases, and it is never
-offered to the model as something it can invoke itself — only an officer typing the command
-starts one.
+carries interactive **Source citations** you can click through to the exact row or document.
 
 ![AI Assistant](docs/screenshots/03-assistant.png)
 
@@ -227,7 +167,7 @@ the AUC above it is unchanged by it.
 
 #### Forecasts — three deployed models
 
-Not a trend line: **live QuickML models** covering force-wide FIR volume, ten crime heads and
+Not a trend line: **live QuickML models** covering force-wide FIR volume, 10 crime heads and
 thirty-one districts — 42 series from **3 pipelines**, in the *direct multi-horizon* form used
 for global forecasting models (one row = series × origin × horizon, so the series is a feature
 and one pipeline covers them all).
@@ -236,10 +176,7 @@ and one pipeline covers them all).
   error rather than from the endpoint, which returns a point estimate only.
 - **Scored against the baseline a forecaster actually has to beat** — each series' own
   historical average, because for noisy counts the mean beats both naive and seasonal-naive:
-  **+65% force-wide (4.1% MAPE), +12% by crime head, +7% by district**. These are the
-  rolling-origin numbers, not the optimistic console metric from a random split.
-- Monthly, and that is not a detail: weekly, every one of these lost to a flat average, because
-  Poisson noise grows as √level while the seasonal signal grows with the level.
+  **+65% force-wide (4.1% MAPE), +12% by crime head, +7% by district**. 
 
 Alongside: a **district risk board** for next month, **repeat-offender risk scoring** with a
 visible frequency / recency / severity / network breakdown, and **anomaly alerts** for any week
@@ -247,19 +184,17 @@ running ≥2σ above its trailing baseline.
 
 #### Financial trails — money-laundering typologies
 
-A transaction graph screened against **nine standard AML typologies**: structuring, layering,
+A transaction graph screened against **9 standard AML typologies**: structuring, layering,
 fan-in (mule hub), fan-out (dispersal), round-tripping, pass-through, high-value cash, high-risk
 channel, and shell/mule routing.
 
-- **Prioritised alerts** — entities ranked by composite laundering risk, each with the
+- **Prioritised alerts** — Entities ranked by composite laundering risk, each with the
   typologies that triggered it and a plain-language assessment an analyst can act on.
 - An interactive **money-flow map** on the same canvas renderer as the ring map: entities of
   interest, mule and shell accounts, one edge per counterparty relationship, node size by value
   moved, colour by account kind. The graph is deliberately *uneven* — shared accounts, chains of
   varying depth and hubs with a long tail — because a field of identical stars would say nothing
   about where two chains meet, which is the finding.
-- **The accounts are synthetic; the branches are real.** Every IFSC resolves live through the
-  public directory, so layering acquires a geography: which districts the money actually crossed.
 
 All outputs are advisory, cited and guardrail-bound: protected attributes (religion, caste,
 gender) are excluded from every risk model.
@@ -276,8 +211,7 @@ gender) are excluded from every risk model.
 
 ### 📓 Investigation Diary
 
-A digital **Case Diary under BNSS S.172**, mapped onto the CCTNS integrated forms **IIF1–IIF5**.
-Each case carries dated diary entries, S.161 witness statements, evidence with a
+Each case carries dated diary entries, witness statements, evidence with a
 chain-of-custody log, persons (accused / victim / complainant / witness), a case timeline and
 investigator findings.
 
@@ -286,7 +220,7 @@ handwritten page** and running Zia OCR — with the source scan and the source r
 in object storage, so extracted text is always traceable back to the artefact it came from.
 Rule-based logic flags cold cases and suggests next investigative steps; an AI **case summary**
 drafts a "state of the investigation" brief using *only* the case's own entries, with numbered
-citations back to each one. The whole case exports as a court-ready PDF.
+citations back to each one. The whole case exports as a PDF.
 
 ![Investigation Diary — case overview](docs/screenshots/08-investigation-diary.png)
 
@@ -294,7 +228,7 @@ citations back to each one. The whole case exports as a court-ready PDF.
 
 ### 📝 Report Studio
 
-Twelve statutory report templates derived from the CCTNS Integrated Investigation Forms — FIR
+12 statutory report templates derived from the CCTNS Integrated Investigation Forms (IIF) — FIR
 (IIF-1), Case Diary, Arrest/Surrender Memo (IIF-3), Charge Sheet / Final Form (IIF-5), Seizure
 Memo (IIF-4), Unnatural Death Report, Missing Person Report, General Diary, Law & Order Report,
 Crime Analysis Report, Performance Report and Case Status Report.
@@ -312,8 +246,9 @@ Legacy paper and media brought into the system. An officer uploads a scan, a pho
 spreadsheet, a document, a deck or an interview recording; Sentinel extracts the text — Zia OCR
 for images, Zia speech-to-text for audio, in-browser extraction for office formats — runs an AI
 structuring pass, and files the result as a searchable record linked to a case. Large recordings
-upload **directly** to object storage through a short-lived pre-signed PUT rather than through
-the function. The original file is always kept alongside the text it produced.
+upload **directly** to object storage. The original file is always kept alongside the text it produced. 
+These records are stored in the knowledge base so that the AI assistant can directly answer questions related 
+to these digitzed records.
 
 ### 🔒 Inmate Registry (Custody & Corrections)
 
@@ -346,7 +281,7 @@ every dashboard on the platform.
 
 ### 🛡️ Access & Audit
 
-Rank-based access control over five roles, assigned by an admin (the `admin` role itself comes
+Rank-based access control over five roles (Investigator, Analyst, Policymaker, Supervisor, Admin), assigned by an admin (the `admin` role itself comes
 from Catalyst's own *App Administrator* project role and can never be self-assigned). The
 sidebar hides what the router blocks, and the block is verified server-side from the session,
 not the client.
@@ -806,14 +741,6 @@ Vision separately — and there is no self-managed server anywhere in the system
 | **SmartBrowz** | Renders the composed HTML of a statutory report or a full case file into a court-ready PDF, server-side. |
 | **QuickML** | Three distinct jobs. **Forecasting:** three deployed pipelines (force-wide volume, ten crime heads, thirty-one districts) served through prediction endpoints, one key per model so a leaked key is one model rather than all of them. **Classification:** a chargesheet-likelihood model over 21 case features, which returns its own measured accuracy with every prediction. **Retrieval:** the RAG knowledge base behind legal and procedural answers, and the semantic-recall tier of officer memory. |
 
-> **Graceful degradation is deliberate.** Cache segments and NoSQL tables cannot be created from
-> code — only from the console. Every memory read returns empty and every write returns `false`
-> when the backing store is absent, so the assistant behaves exactly as it did before memory
-> existed rather than erroring. The same applies to QuickML: no knowledge base means the RAG lane
-> falls through, not fails, and a forecast model with no key is reported as unconfigured by
-> `/health` rather than drawn as a flat line. A model outage blanks its own card and nothing
-> else on the page.
-
 ---
 
 ## Project Structure
@@ -1015,7 +942,7 @@ sentinel/
 
 ## The Dataset
 
-Real FIR data cannot leave a police network, so Sentinel runs on a **synthetic Karnataka FIR
+Sentinel runs on a **synthetic Karnataka FIR
 dataset** built specifically for this project. It is not random filler: the schema is modelled
 on the CCTNS Integrated Investigation Forms, the values are drawn from real Karnataka
 geography and the Karnataka Police rank ladder, and the relationships between tables were
@@ -1057,41 +984,6 @@ Live in the Catalyst **Data Store**; column types and lengths are in
 
 **222,925 rows in total** — 219,104 case-linked records over 3,821 rows of reference data.
 
-The CSVs are gitignored and the seeded generators are the tracked source of truth, so these
-counts are reproducible rather than remembered. They are what CI builds on every push:
-
-```bash
-cd ksp/fir
-rm -f Employee.base.csv
-N_CASES=30000 STAFF_PER_PS=26 python3 generate_fir_dataset.py
-python3 generate_accused_network.py
-python3 enrich_personnel.py
-```
-
-Both environment variables move the numbers, and `STAFF_PER_PS` moves them further than it
-looks: it sets the station roster (six per station gives 888 officers, twenty-six gives 3,368),
-and because it draws from the same seeded stream, changing it shifts every table generated after
-it by a few dozen rows. `rm -f Employee.base.csv` is not optional — the enrichment reads that
-file as its pristine input, so a stale one silently carries the previous roster forward.
-
-### Why 30,000 cases, and what it changed
-
-The dataset was built at 2,200 FIRs and scaled to **30,000** — a realistic year of registrations
-for a force this size, and the point at which the analytics stop being a demo.
-
-The size is not cosmetic; it broke things that a small dataset hid, and each break is now a test:
-
-- **Row ceilings that never bit.** Three separate paths carried their own limit — 6,000 rows in
-  the analytics builder, 10,000 in the generic fetch, 30,000 in crime links. At 2,200 cases none
-  of them ever fired. At 30,000 all three truncated silently, drawing every chart on the first
-  fifth of the data rather than failing loudly.
-- **Paging arithmetic.** ZCQL returns 300 rows a query, so a full scan is 100 round trips; those
-  now run concurrently and land in one shared snapshot per table instead of each analytics tab
-  re-reading the same 30,000 rows for itself.
-- **Comparisons that grew quadratically.** Case linkage scores an index offence against ~30,000
-  candidates — 3.6 million comparisons — which is why the ranking streams a top-10 rather than
-  scoring everything into an array first.
-
 ### How it was built
 
 - **[`generate_fir_dataset.py`](ksp/fir/generate_fir_dataset.py)** — seeded generator for the
@@ -1129,7 +1021,7 @@ first usable origin, a 6-month horizon, and the same **12 features** — `series
 `month`, `quarter`, `lag_1`, `lag_2`, `lag_3`, `lag_12`, `seasonal_lag_12`, `roll_3`, `roll_6`,
 `roll_12` — predicting `target_count`.
 
-QuickML's *forecasting* pipelines are per-target — one series each, so forty-two pipelines built
+QuickML's *forecasting* pipelines are per-target — one series each, so 42 pipelines built
 and maintained by hand. These are **regression tables in the direct multi-horizon form** used for
 global forecasting models:
 
@@ -1137,29 +1029,6 @@ global forecasting models:
 one row = (series s, origin t, horizon h)  →  target y_s[t+h]
 features = calendar(t+h) + h + lags/rollings of s observed up to t + s
 ```
-
-The series is a **feature**, so one pipeline covers every series in its table — three pipelines,
-not forty-two — and a district with a thin, noisy history borrows the seasonal shape from the
-other thirty. *Direct* rather than recursive (`h` is a feature and lags always come from real
-observed history, never from the model's own output), so there is no compounding error along the
-horizon and each horizon is an independent row the backend never has to chain.
-
-### Monthly, and why that is not a detail
-
-This started weekly and every model lost to a flat per-series average. The cause is arithmetic,
-not modelling: registrations are counts, so their noise grows as √level while the seasonal signal
-grows *with* the level. A district averaging 5 FIRs a week carries Poisson noise of ±2.2 against
-a seasonal swing of ±1.7 — the signal sits underneath the noise and no model can recover it.
-Bucketing to months multiplies the level by ~4.3 and the signal-to-noise by ~2.
-
-Measured the same way (pooled rolling-origin, leak-free), the switch is the difference between a
-product and a decoration:
-
-| | Weekly | Monthly |
-| --- | :-: | :-: |
-| Force-wide | +11% | **+65%** (MAPE 4.1%) |
-| Crime head | −5% | **+12%** (MAPE 15.6%) |
-| District | −2% | **+7%** (MAPE 22.0%) |
 
 ### Every measured number, per pipeline
 
@@ -1177,45 +1046,6 @@ rolling-origin, leak-free** — the model is scored only on months it never saw.
 | Relative MAE (MAE ÷ level) | 0.041 | 0.116 | 0.172 |
 | 95% band at the forecast value | ±10.1% | ±28.5% | ±42.3% |
 | Forecast horizon | 6 months | 6 months | 6 months |
-
-The band row is derived, not reported: a QuickML regression endpoint returns a point estimate
-and nothing else, so the interval comes from measured error — MAE → σ as `MAE × √(π/2)`, then
-`1.96σ`, i.e. `relMae × 2.4565`, scaled with the predicted value and floored at ±1 FIR, the
-resolution of a count. A large district therefore gets a wider band in absolute FIRs than a
-small one, and the widths above are what that works out to as a percentage.
-
-**Two design choices the numbers paid for:**
-
-- *A dedicated total, rather than summing the districts.* Summing the 31 district forecasts does
-  work — **+46% to +59%** — but the dedicated pipeline lands **+64% to +67% across three
-  learners**, and is steadier, because the aggregate is where the seasonal swing most clearly
-  clears the noise. Its 6-month horizon (rather than 3) is also what makes its table large
-  enough to train on, and is needed anyway: the dataset ends in June while the dashboard has to
-  forecast past today.
-- *Skill against the mean, not against naive.* Skill is reported over **each series' own
-  historical average**, never naive or seasonal-naive. For noisy counts the mean beats both, so
-  a model scored only against those can look strong while adding nothing.
-
-### Why these are not QuickML's console scores
-
-QuickML's console reports a metric from a **random split**, and on a table of lag features
-adjacent rows share history — an origin's `lag_1` is a neighbouring row's target — so a random
-split leaks the answer across the boundary and the score is optimistic by construction. It is
-the right default for i.i.d. tabular data and the wrong one for a time series flattened into a
-table.
-
-The figures above were therefore measured offline in [`ksp/ml`](ksp/ml/) by pooled
-rolling-origin validation, which is the only way to score a month the model has never seen. They
-are lower than the console's, and they are the ones on the card.
-
-### Two honest limitations, surfaced rather than hidden
-
-- A QuickML regression endpoint returns a **point estimate and nothing else**, so the interval on
-  the chart is inferred from held-out error rather than reported by the model — see the band row
-  above. It is an honest width, not a model-supplied one.
-- The features are **exactly the twelve that were measured**. Nothing is added at serving time
-  that was not in the backtest, and a trend counter is deliberately absent because a tree cannot
-  extrapolate one.
 
 ### The fourth model: chargesheet likelihood
 
@@ -1361,7 +1191,7 @@ POST /server/rag/<path>
 
 ### Assistant tools
 
-Within the TOOLS lane the model may call **eleven** tools. Each is dispatched through one
+Within the TOOLS lane the model may call **11** tools. Each is dispatched through one
 function ([`functions/rag/tools.js`](functions/rag/tools.js)), and that single choke point is
 where the caller's clearance filter and the result cap are applied — so a tool added later
 cannot forget either.
@@ -1380,24 +1210,7 @@ cannot forget either.
 | `sanctions_check` | Screens a name against OpenSanctions' aggregated watchlist API — UN, OFAC, EU, UK and other national sanctions lists, PEP registers, wanted lists, debarment and export-control lists (28+ source datasets), a live call per question. | The Data Store has no concept of a sanctions or watchlist hit. States plainly that the name just left Sentinel and left India, the same as the other two. |
 | `crypto_lookup` | Bitcoin (blockstream.info, keyless) or Ethereum (Etherscan, free-tier keyed) wallet balance and transaction activity — chain auto-detected from the address format. | The Data Store has no concept of a wallet address at all. |
 
-> **Verified, not assumed.** All three external tools were built against contracts confirmed by
-> live calls during development, not by trusting documentation — Etherscan's own docs still
-> describe a V1 endpoint their API has retired in favour of V2, rdap.org's edge silently 403s a
-> request carrying no distinguishing `User-Agent`, and a real OpenSanctions search was run
-> before committing to it as `sanctions_check`'s replacement backend (see below). Each tool also
-> has a matching `/` shortcut (`/osint`, `/sanctions`, `/crypto`) that expands to the same
-> precisely-worded question, for an officer who would rather not phrase it themselves.
->
-> `sanctions_check` originally matched names against a daily-cached copy of the UN Security
-> Council Consolidated List — the only sanctions data source in this codebase that did **not**
-> reach outside Sentinel per query, since the whole list was refreshed in the background rather
-> than searched live. It was replaced once OpenSanctions was confirmed live to cover the same UN
-> data as one of 28+ source lists it aggregates (OFAC, EU, UK, PEPs, wanted lists, debarment,
-> export control among them) — a strict superset, not just a different vendor for the same
-> narrower data. The trade-off that came with switching: the officer's actual question now
-> leaves Sentinel per search, the same as `osint_lookup` and `crypto_lookup` always have, and the
-> tool's own disclosure was updated to say so rather than continuing to claim otherwise.
->
+
 > **A fourth external capability, Sherlock (username enumeration via its Apify actor), is not a
 > tool at all** — it is `/sherlock`-only, reachable solely by an officer typing the command,
 > never by the model. A single run was measured live at 74-110+ seconds; Zoho Catalyst's
@@ -1424,26 +1237,6 @@ not also decide how much of the Data Store enters the prompt:
 | Wall clock | `TOOL_BUDGET_MS` = 45 s (30 s per model call) | A slow lookup turning into an unbounded chat request. |
 | Rows per result | 60 | A loop of calls filling the context window with rows. |
 | Bytes per result | 12,000 | One wide row set crowding out the question. |
-
-Independent calls come back in one turn and their results go back in **one** user message —
-splitting them teaches the model to stop batching.
-
-**Every tool result is fenced before the model reads it.** Two tools fence their own passages;
-the other nine return record fields (or, for the three external lookups, a third party's data),
-and neither is system-generated — a `BriefFacts` narrative is prose a member of the public
-partly dictated by walking in to file a complaint, and an external API's response is text
-Sentinel does not control either. So the fence is applied at dispatch, in the per-request random
-nonce a hostile document cannot close, covering all eleven tools and any tool added later.
-Injection markers found in retrieved
-content go to the audit trail; the model is given the fenced text and never the fact that it was
-suspected, which would only invite it to argue the point.
-
-**Failure falls through, it does not surface.** If the loop cannot run — no `ANTHROPIC_API_KEY`,
-no answer produced, budget spent — the question drops into the ZCQL or RAG lane it would have
-taken before this route existed, so the worst case is the behaviour that was already there. What
-ran is recorded either way: the audit entry carries `tools:<names>|iterations=<n>`, and rows the
-loop read become the answer's citations.
-
 ---
 
 ## Prerequisites
@@ -1774,10 +1567,6 @@ no separate docs site, wiki or handbook to fall out of date.
 | Deployment pipeline | [↑ Deployment pipeline](#deployment-pipeline) | — |
 | Screen wireframes | — | [`docs/sentinel-wireframes.png`](docs/sentinel-wireframes.png) |
 
-The Mermaid diagrams are the source of truth: they live in version control and change with the
-code in the same commit. The Lucidchart documents are for slides and export — re-export them when
-the Mermaid changes.
-
 ---
 
 ## Roles & Access
@@ -1845,45 +1634,6 @@ which is the single source of truth.
   accountability.
 
 ---
-
-## Future Scope
-
-Sentinel is deliberately positioned as an **analytics and AI layer on top of existing
-CCTNS/BNSS infrastructure**, not a replacement for it. That framing shapes everything below.
-
-### Near term — from prototype to pilot
-
-| | |
-| --- | --- |
-| **Live CCTNS / ICJS integration** | Replace the synthetic dataset with a live sync connector to CCTNS and ICJS. The schema is already CCTNS-aligned, so this is a connector and a field-mapping exercise, not a re-architecture — and a sync, not a full historical re-migration. |
-| **Production hardening** | Third-party security review, VAPT, load testing at district scale, and a formal DPDP compliance assessment before a single real FIR enters the system. |
-| **Write-back to CCTNS** | Today Sentinel reads from the FIR schema and writes diary, report and record artefacts to its own store. A pilot needs a governed write-back path so a digital Case Diary is the system of record, not a parallel copy. |
-| **Native mobile app** | The web app is responsive, but testimony capture, evidence photography and hotspot navigation belong on a phone in the field. |
-
-### Medium term — deeper intelligence
-
-| | |
-| --- | --- |
-| **Multi-modal evidence analysis** | CCTV and dashcam footage, vehicle number-plate recognition, and face matching against wanted lists — each behind an explicit legal authorisation gate, none of it automated to a decision. |
-| **Real financial-intelligence feeds** | Replace the synthesised transaction trails with STR/CTR feeds from FIU-IND and authorised bank/UPI records, turning the AML typology detector from a demo into an operational tool. |
-| **Cross-state linkage** | The case-linkage and co-offending models stop at the Karnataka boundary. Offenders do not. Federated linkage across state ICJS instances is the natural extension. |
-| **Predictive resource allocation** | Move from forecasting *where* crime will occur to recommending patrol beats, shift strength and duty-roster allocation against it — with the roster and org-chart data already in place. |
-| **Victim and complainant portal** | Case-status transparency for complainants, reducing the follow-up load on station staff. |
-| **Court and prosecution integration** | Charge-sheet quality scoring against historic conviction outcomes, and case-status sync with e-Courts. |
-
-### Longer term — platform and governance
-
-| | |
-| --- | --- |
-| **Statewide rollout** | ~1,000 police stations, 31 districts, an estimated 40,000–50,000 active users. The phased cost model (pilot → regional → statewide) is documented separately in the submission pack. |
-| **Fine-tuned domain models** | An Indian-legal-domain model fine-tuned on BNSS/BNS, standing orders and departmental circulars would cut both latency and cost against the general-purpose models used today. |
-| **Full Indic language coverage** | English, Hindi and Kannada are live. Tulu, Konkani and the other languages spoken across Karnataka's districts matter for testimony capture in particular. |
-| **Continuous fairness auditing** | Scheduled re-verification that protected attributes stay excluded from every risk model, with published audit results — not a one-time check at launch. |
-| **Explainability surface for court use** | Every AI output is already cited and audited. The next step is a defensible, exportable explanation of *why* a linkage or risk score was produced, suitable for disclosure to a court. |
-| **Open API for authorised agencies** | A governed, rate-limited, fully audited API so other authorised agencies can query aggregate intelligence without direct database access. |
-
----
-
 ## Team
 
 **Team Vanguard** — built for the Karnataka State Police datathon.
