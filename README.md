@@ -1641,7 +1641,7 @@ which is the single source of truth.
 | Name | Role | GitHub |
 | --- | --- | --- |
 | **Deepu John** | Team Leader | [@vanguard-hack](https://github.com/vanguard-hack) |
-| **Riddhishwar Senthil** | Team Member | _<!-- TODO: add GitHub username -->_ |
+| **Riddhishwar Senthil** | Team Member | [@riddhishwar](https://github.com/Senthil-Riddhish)|
 
 ---
 
