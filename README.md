@@ -101,7 +101,7 @@ one-tap `tel:` call links, so a map lookup ends in a phone call rather than a se
 A full chat workspace at `/assistant`. An officer asks a question in plain
 English, Hindi or Kannada and a router decides how to answer it:
 
-- **Tool loop** — The model is given **11tools** and runs as many
+- **Tool loop** — The model is given **11 tools** and runs as many
   lookups as one question needs before answering, batching independent ones into a single
   turn. This is the lane that answers questions the single-lane paths structurally cannot:
   ZCQL has no joins, so *"which FIRs were filed in Belagavi last month and who is accused in
@@ -301,8 +301,7 @@ and an error boundary that keeps one broken panel from taking the page down.
 Sentinel is a **three-path** application, and each split is deliberate.
 
 **Browsing is direct.** Case Files and other row-level reads query the Catalyst Data Store *from
-the browser* over ZCQL, authenticated by the user's own Catalyst session. No function sits in
-the middle, so a page of records costs one round trip and no serverless cold start.
+the browser* over ZCQL, authenticated by the user's own Catalyst session. 
 
 **Analytics arrive as one snapshot per table.** ZCQL returns 300 rows a query, so at 30,000 FIRs
 the home page alone needed **437 browser round trips** before it could draw anything. Those
@@ -315,22 +314,6 @@ panel and every tab for the life of the session.
 touches media, renders a PDF or reads the audit trail is routed through the `rag` Advanced I/O
 function. That function is the only place credentials exist, the only place role checks are
 authoritative, and the single choke point where every action gets audited.
-
-### Making the analytics feel instant
-
-The snapshot fixed the network. It did not fix the *wait*, because every analytics tab turns
-those rows into a model of its own before it can draw — a co-offending graph, a synthesised
-transaction ledger, a linkage candidate set. Three rules now hold across the five tabs:
-
-| Rule | Why |
-| --- | --- |
-| **Derived models are cached for the session** (`utils/derived.js`) | The FIR data is read-only and every model is a pure function of it, so a cached model is the same model. The cache holds *promises*, so two panels mounting at once share one build; a rejection is evicted so Retry can actually retry. A second visit to a tab costs ~1 ms instead of ~370 ms. |
-| **Tabs are kept, not destroyed** | Switching away hides a tab rather than unmounting it, so filters, page positions and a laid-out map survive. Unvisited tabs are never mounted, so the first paint stays cheap. |
-| **Long work runs after the paint, in slices** | An `await` on a resolved promise resumes in a *microtask*, which runs **before** the browser paints — so a component could mount a spinner, block for half a second and never show it. Builds now wait for a real frame first, and anything measured in seconds (the linkage validation, a 190-node force layout) yields every ~10 ms so the page keeps responding. |
-
-Graph maps are drawn to a **canvas** from a layout computed once, never a live force simulation
-in the browser: one DOM node per graph node plus its label is the bottleneck past a couple of
-hundred, and a simulation that re-renders the React tree on every frame is worse than that.
 
 > **Editable diagrams (Lucidchart).** The two headline diagrams below are also maintained as
 > Lucidchart documents, so they can be exported to PNG/PDF for slides and submission packs, and
