@@ -89,16 +89,12 @@ re-derives every KPI and every chart — so the same 25 questions can be asked o
 window. A headline crime-trend chart carries its own independent range for comparison. The whole
 page exports to **PDF** in one click.
 
-![Home dashboard](docs/screenshots/01-dashboard.png)
-
 ### 🗺️ Crime Map
 
 A custom SVG + `d3-geo` map of India that drills **state → district → police station**. Districts
 are shaded by incident density; drilling into a district reveals station boundaries, beat-level
 hotspots, and optimized patrol routes. Each station card carries its jurisdiction officers with
 one-tap `tel:` call links, so a map lookup ends in a phone call rather than a second search.
-
-![Crime Map](docs/screenshots/02-crime-map.png)
 
 ### 🤖 AI Assistant
 
@@ -126,8 +122,6 @@ attachments** (PDF/Office files read as context, with each chip stating plainly 
 assistant can actually see the file), **Slash commands**, ↑/↓ prompt history, saved
 conversations, and replies rendered as charts, tables, maps and record cards. Every answer
 carries interactive **Source citations** you can click through to the exact row or document.
-
-![AI Assistant](docs/screenshots/03-assistant.png)
 
 ### 📈 AI Analytics
 
@@ -199,16 +193,6 @@ channel, and shell/mule routing.
 All outputs are advisory, cited and guardrail-bound: protected attributes (religion, caste,
 gender) are excluded from every risk model.
 
-![AI Analytics — Temporal patterns](docs/screenshots/11-ai-analytics-patterns.png)
-
-![AI Analytics — Forecasts](docs/screenshots/04-ai-analytics-forecasts.png)
-
-![AI Analytics — Case Linkage](docs/screenshots/05-ai-analytics-case-linkage.png)
-
-![AI Analytics — Financial Trails](docs/screenshots/06-ai-analytics-financial-trails.png)
-
-![AI Analytics — Crime Links](docs/screenshots/07-crime-links.png)
-
 ### 📓 Investigation Diary
 
 Each case carries dated diary entries, witness statements, evidence with a
@@ -222,10 +206,6 @@ Rule-based logic flags cold cases and suggests next investigative steps; an AI *
 drafts a "state of the investigation" brief using *only* the case's own entries, with numbered
 citations back to each one. The whole case exports as a PDF.
 
-![Investigation Diary — case overview](docs/screenshots/08-investigation-diary.png)
-
-![Case Diary — BNSS S.172](docs/screenshots/09-case-diary.png)
-
 ### 📝 Report Studio
 
 12 statutory report templates derived from the CCTNS Integrated Investigation Forms (IIF) — FIR
@@ -237,8 +217,6 @@ Reports are authored in a **paged A4 editor** (TipTap) that renders exactly as i
 with continuation sheets, tables and rich fields. AI narrative polish rewrites a drafted section
 into formal report language with the original one click away under Undo. Drafts are stored in
 object storage with soft delete, and render to PDF server-side through SmartBrowz.
-
-![Report Studio](docs/screenshots/10-report-studio.png)
 
 ### 🗄️ Records (Digitisation)
 
@@ -258,8 +236,6 @@ and analytics views, plus a per-person detail page. Correctional facts the FIR s
 carry — facility, bail history, sentence and remission, parole, reporting obligations — are
 deterministically synthesised per person so the registry is realistic and stable across reloads.
 
-![Inmate Registry](docs/screenshots/12-custody.png)
-
 ### 👮 Personnel
 
 A 3,368-officer directory across the full Karnataka rank ladder (PC → DGP, 12 ranks), with a
@@ -269,15 +245,11 @@ against `Rank`, `Unit` and `District` client-side; contact details and duty stat
 FIR schema at all, so they are derived deterministically from `EmployeeID` — the same officer
 gets the same email, phone and status on every device.
 
-![Personnel](docs/screenshots/13-personnel.png)
-
 ### 📁 Case Files
 
 Direct, paginated browse of the underlying 26-table FIR schema, grouped into Cases / People /
 Reference. Read straight from the Data Store in the browser via ZCQL — the raw evidence behind
 every dashboard on the platform.
-
-![Case Files](docs/screenshots/15-case-files.png)
 
 ### 🛡️ Access & Audit
 
@@ -297,8 +269,6 @@ has a VPN client running, which no server or browser can observe. Assistant answ
 additionally leave an immutable **decision record** describing *how* the answer was reached:
 the route taken and its confidence, what the ZCQL validator allowed or refused, what the
 clearance filter redacted, and which sources were cited.
-
-![Access & Audit](docs/screenshots/14-access-audit.png)
 
 ### 📴 Working with no signal
 
