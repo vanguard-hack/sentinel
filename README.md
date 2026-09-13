@@ -1647,8 +1647,6 @@ which is the single source of truth.
 
 ## Copyright & Licence
 
-Copyright © 2026 Deepu John and Riddhishwar Senthil (Team Vanguard). All rights reserved.
-
 Released under the **MIT Licence**.
 
 ```
@@ -1674,12 +1672,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
-
-**Third-party notices.** Sentinel builds on Zoho Catalyst, React, and the open-source
-libraries listed under [Tech Stack](#tech-stack); each remains under its own licence. The
-Karnataka State Police name, insignia and the CCTNS/BNSS forms are the property of their
-respective owners and are used here only to describe the problem domain of an academic
-prototype. The dataset is **synthetic** — see [The Dataset](#the-dataset).
 
 ---
 
