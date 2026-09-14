@@ -3924,13 +3924,6 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   background: var(--primary); color: #fff; font-weight: 500; cursor: pointer;
 }
 
-/* Conversation PDF header (injected only during export) */
-.as-pdf-header { padding: 4px 4px 16px; margin-bottom: 12px; border-bottom: 2px solid #5e6ad2; }
-/* Print artefact: the exported PDF's masthead, not app chrome. */
-.as-pdf-brand { font-size: 11px; letter-spacing: 0.08em; color: #5e6ad2; font-weight: 600; text-transform: uppercase; }
-.as-pdf-header h1 { font-size: 20px; color: var(--text-0); margin: 6px 0 4px; }
-.as-pdf-meta { font-size: 11px; color: var(--text-3); }
-
 .as-new-btn:disabled { opacity: 0.45; cursor: default; }
 
 /* ── AG-UI geo heatmap ──────────────────────────────────────────────────── */

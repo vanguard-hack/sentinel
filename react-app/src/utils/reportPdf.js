@@ -458,6 +458,13 @@ function mdToHtml(text) {
         const tag = b.ordered ? 'ol' : 'ul';
         return `<${tag}>${b.items.map((i) => `<li>${mdInline(i)}</li>`).join('')}</${tag}>`;
       }
+      if (b.type === 'table') {
+        const head = (b.columns || []).map((c) => `<th>${mdInline(String(c ?? ''))}</th>`).join('');
+        const rows = (b.rows || [])
+          .map((r) => `<tr>${r.map((c) => `<td>${mdInline(String(c ?? ''))}</td>`).join('')}</tr>`)
+          .join('');
+        return `<table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+      }
       return `<p class="narr">${b.lines.map(mdInline).join('<br/>')}</p>`;
     })
     .join('');
@@ -489,6 +496,9 @@ export async function exportInvestigationSummaryPdf(summary, citations, meta = {
     blockquote { margin: 0 0 9px; padding-left: 10px; border-left: 3px solid #d7dde8; color: #5a6473; }
     code { background: #f5f7fb; border-radius: 3px; padding: 1px 4px; font-size: 10px; }
     hr { border: 0; border-top: 1px solid #e2e7ef; margin: 12px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 0 0 9px; }
+    th, td { text-align: left; padding: 5px 7px; border-bottom: 1px solid #e2e7ef; font-size: 10px; }
+    th { background: #f5f7fb; color: #5a6473; font-size: 8.5px; text-transform: uppercase; }
     .cite { color: #5e6ad2; font-weight: 700; font-size: 8.5px; }
     .sources { list-style: none; padding: 0; font-size: 10px; }
     .sources li { padding: 4px 0; border-bottom: 1px solid #eef1f6; }
@@ -525,27 +535,158 @@ export async function exportInvestigationSummaryPdf(summary, citations, meta = {
   downloadBase64Pdf(data.pdf, `investigation-summary-${(meta.crimeNo || meta.caseMasterId || 'case')}.pdf`);
 }
 
-// Export one conversation's transcript with a titled header. Temporarily
-// injects a header into the thread element so the PDF is clearly labelled,
-// then removes it.
-export async function exportConversationPdf(threadEl, title) {
-  if (!threadEl) throw new Error('nothing to export');
-  const header = document.createElement('div');
-  header.className = 'as-pdf-header';
-  const safe = (title || 'Conversation').replace(/[<>&]/g, '');
-  header.innerHTML =
-    `<div class="as-pdf-brand">SENTINEL · Assistant Conversation</div>` +
-    `<h1>${safe}</h1>` +
-    `<div class="as-pdf-meta">Exported ${new Date().toLocaleString('en-IN')}</div>`;
-  threadEl.prepend(header);
-  const slug = (title || 'conversation')
-    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'conversation';
-  try {
-    await exportReportPdf(
-      threadEl,
-      `sentinel-${slug}-${new Date().toISOString().slice(0, 10)}.pdf`,
-    );
-  } finally {
-    header.remove();
+// ── Assistant conversation → professional PDF (server-rendered) ────────────
+// This used to screenshot the live thread DOM with exportReportPdf() — the
+// html2canvas path built for dashboards, which only ever splits a capture on
+// `.rp-grid`/`.rp-card` boundaries. A chat thread has neither, so the whole
+// transcript became ONE oversized canvas: long conversations either hit the
+// browser's canvas-size cap (silently truncated / blank) or got squeezed
+// onto a single page and came out too small to read. A transcript is text
+// plus the occasional table or chart spec, so it takes the same SmartBrowz
+// route as the case-diary and investigation-summary exports: real text, real
+// pagination, crisp at any length — and it renders straight from the
+// session's own message data, so nothing on screen has to be scrolled into
+// view first.
+
+const roleLabel = (r) => (r === 'user' ? 'Officer' : 'Assistant');
+
+// Best-effort HTML for one AG-UI component spec (see AguiRenderer.js for the
+// full vocabulary). The structured types render as real markup; chart types
+// (bar/pie/line/heat-grid/scatter/funnel/sankey/geo-map/network-graph/…)
+// have no static-HTML equivalent, so they fall back to the data they were
+// drawn from — a transcript export cares about what was found, not the SVG.
+function aguiToHtml(spec) {
+  if (!spec || !spec.type) return '';
+  const title = spec.title ? `<div class="agui-title">${esc(spec.title)}</div>` : '';
+  if (spec.type === 'table' && Array.isArray(spec.columns) && Array.isArray(spec.rows)) {
+    const head = spec.columns.map((c) => `<th>${esc(c)}</th>`).join('');
+    const rows = spec.rows
+      .map((r) => `<tr>${(r || []).map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`)
+      .join('');
+    return `<div class="agui-block">${title}<table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
   }
+  if (spec.type === 'cards' && Array.isArray(spec.items)) {
+    const cards = spec.items.map((it) => `
+      <div class="agui-card">
+        ${it.title ? `<b>${esc(it.title)}</b>` : ''}${it.badge ? ` <span class="tag">${esc(it.badge)}</span>` : ''}
+        ${it.subtitle ? `<div class="muted">${esc(it.subtitle)}</div>` : ''}
+        ${it.body ? `<p>${esc(it.body)}</p>` : ''}
+      </div>`).join('');
+    return `<div class="agui-block">${title}<div class="agui-grid">${cards}</div></div>`;
+  }
+  if (spec.type === 'checklist' && Array.isArray(spec.items)) {
+    const rows = spec.items
+      .map((it) => `<div class="entry"><b>${esc(it.label)}</b>${it.detail ? ` <span class="muted">${esc(it.detail)}</span>` : ''}</div>`)
+      .join('');
+    return `<div class="agui-block">${title}${rows}</div>`;
+  }
+  if (spec.type === 'timeline' && Array.isArray(spec.events)) {
+    const rows = spec.events.map((e) => `
+      <div class="tl-row"><div class="tl-dot"></div><div><b>${esc(e.label)}</b> <span class="muted">${esc(e.date)}</span>${e.detail ? `<p>${esc(e.detail)}</p>` : ''}</div></div>`).join('');
+    return `<div class="agui-block">${title}${rows}</div>`;
+  }
+  const flat = Array.isArray(spec.items) ? spec.items : Array.isArray(spec.data) ? spec.data : [];
+  if (flat.length && flat.every((d) => d && (d.label !== undefined || d.value !== undefined))) {
+    const rows = flat.slice(0, 40)
+      .map((d) => `<div class="stat"><span>${esc(d.label ?? '')}</span><b>${esc(d.value ?? '')}</b></div>`)
+      .join('');
+    return `<div class="agui-block">${title}<div class="agui-note">Shown as a chart in the app — data reproduced here:</div><div class="agui-grid">${rows}</div></div>`;
+  }
+  return title ? `<div class="agui-block">${title}<div class="agui-note">Chart shown in the app — not reproduced here.</div></div>` : '';
+}
+
+function buildConversationHtml(session) {
+  const messages = session.messages || [];
+  const first = messages[0]?.ts;
+  const last = messages[messages.length - 1]?.ts;
+  const range = first && last ? `${pdfDate(first)} – ${pdfDate(last)}` : '';
+
+  const body = messages.map((m) => {
+    const files = Array.isArray(m.files) && m.files.length
+      ? `<div class="files">${m.files.map((f) => `<span class="tag">${esc(f.name)}</span>`).join(' ')}</div>`
+      : '';
+    const components = Array.isArray(m.components) ? m.components.map(aguiToHtml).join('') : '';
+    const sources = Array.isArray(m.sources) && m.sources.length
+      ? `<div class="sources"><span class="muted">Sources: </span>${m.sources.map((s) => `<span class="tag">[${esc(s.n)}] ${esc(s.display_name)}</span>`).join(' ')}</div>`
+      : '';
+    return `
+      <div class="msg msg-${m.role === 'user' ? 'user' : 'assistant'}">
+        <div class="msg-head"><b>${esc(roleLabel(m.role))}</b><span>${pdfDateTime(m.ts)}</span></div>
+        ${files}
+        <div class="msg-body">${mdToHtml(m.content || '')}</div>
+        ${components}
+        ${sources}
+      </div>`;
+  }).join('');
+
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    * { box-sizing: border-box; }
+    @page { size: A4; margin: 18mm 15mm; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1a2230; font-size: 11px; line-height: 1.55; }
+    .doc-head { border-bottom: 2px solid #5e6ad2; padding-bottom: 10px; margin-bottom: 16px; }
+    .brand { font-size: 10px; letter-spacing: .12em; color: #5e6ad2; font-weight: 700; text-transform: uppercase; }
+    .doc-head h1 { font-size: 19px; margin: 6px 0 2px; }
+    .doc-head .sub { color: #5a6473; font-size: 11px; }
+    .doc-head .exp { color: #8a93a2; font-size: 9.5px; margin-top: 4px; }
+    .msg { border: 1px solid #e2e7ef; border-radius: 8px; padding: 10px 13px; margin-bottom: 10px; page-break-inside: avoid; }
+    .msg-user { background: #f5f7fb; }
+    .msg-assistant { background: #ffffff; }
+    .msg-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+    .msg-head b { font-size: 10px; color: #5e6ad2; text-transform: uppercase; letter-spacing: .03em; }
+    .msg-head span { color: #8a93a2; font-size: 9px; }
+    .msg-body p { margin: 0 0 8px; }
+    .msg-body ul, .msg-body ol { margin: 0 0 8px; padding-left: 18px; }
+    .msg-body h3 { font-size: 11.5px; margin: 10px 0 5px; }
+    .msg-body blockquote { margin: 0 0 8px; padding-left: 9px; border-left: 3px solid #d7dde8; color: #5a6473; }
+    .msg-body code { background: #eef1f6; border-radius: 3px; padding: 1px 4px; }
+    .msg-body table { width: 100%; border-collapse: collapse; margin: 0 0 8px; }
+    .msg-body th, .msg-body td { text-align: left; padding: 5px 7px; border-bottom: 1px solid #e2e7ef; font-size: 9.5px; }
+    .msg-body th { background: #eef1f6; color: #5a6473; font-size: 8.5px; text-transform: uppercase; }
+    .cite { color: #5e6ad2; font-weight: 700; font-size: 8.5px; }
+    .files { margin-bottom: 6px; }
+    .tag { display: inline-block; background: #eef1f8; color: #5e6ad2; border-radius: 20px; padding: 2px 8px; font-size: 8.5px; font-weight: 600; margin: 0 4px 4px 0; }
+    .sources { margin-top: 6px; }
+    .muted { color: #8a93a2; }
+    .agui-block { margin: 8px 0; }
+    .agui-title { font-weight: 700; font-size: 10.5px; margin-bottom: 5px; }
+    .agui-note { color: #8a93a2; font-style: italic; font-size: 9.5px; margin-bottom: 5px; }
+    .agui-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .stat { border: 1px solid #e2e7ef; border-radius: 6px; padding: 5px 9px; min-width: 90px; }
+    .stat span { display: block; font-size: 8.5px; color: #8a93a2; }
+    .stat b { font-size: 10.5px; }
+    .agui-card { border: 1px solid #e2e7ef; border-radius: 6px; padding: 7px 9px; min-width: 140px; flex: 1 1 140px; }
+    .entry { border: 1px solid #e2e7ef; border-radius: 6px; padding: 6px 9px; margin-bottom: 6px; }
+    .agui-block table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    .agui-block th, .agui-block td { text-align: left; padding: 5px 7px; border-bottom: 1px solid #e2e7ef; font-size: 9.5px; }
+    .agui-block th { background: #f5f7fb; color: #5a6473; font-size: 8.5px; text-transform: uppercase; }
+    .tl-row { display: flex; gap: 8px; padding: 0 0 8px 4px; border-left: 2px solid #d7dde8; margin-left: 3px; }
+    .tl-row .tl-dot { width: 7px; height: 7px; border-radius: 50%; background: #5e6ad2; margin-top: 3px; }
+    .empty { color: #8a93a2; font-style: italic; }
+    .foot { margin-top: 20px; border-top: 1px solid #d7dde8; padding-top: 8px; color: #8a93a2; font-size: 8.5px; }
+  </style></head><body>
+    <div class="doc-head">
+      <div class="brand">Sentinel · Karnataka State Police</div>
+      <h1>${esc(session.title || 'Conversation')}</h1>
+      <div class="sub">Assistant conversation transcript${range ? ' · ' + esc(range) : ''} · ${messages.length} message${messages.length === 1 ? '' : 's'}</div>
+      <div class="exp">Exported ${esc(new Date().toLocaleString('en-IN'))}</div>
+    </div>
+    ${body || '<p class="empty">No messages in this conversation.</p>'}
+    <div class="foot">Sentinel Assistant · AI-drafted answers are advisory only — verify before acting.</div>
+  </body></html>`;
+}
+
+export async function exportConversationPdf(session) {
+  if (!session || !Array.isArray(session.messages) || !session.messages.length) {
+    throw new Error('nothing to export');
+  }
+  const html = buildConversationHtml(session);
+  const res = await fetch('/server/rag/report-pdf', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ html, kind: 'assistant-conversation', title: session.title || 'Conversation' }),
+  });
+  const data = await readPdfResponse(res);
+  const slug = (session.title || 'conversation')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'conversation';
+  downloadBase64Pdf(data.pdf, `sentinel-${slug}-${new Date().toISOString().slice(0, 10)}.pdf`);
 }

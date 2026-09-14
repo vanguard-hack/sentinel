@@ -442,15 +442,17 @@ export default function Assistant() {
     if (s && email && s.messages.length) saveSessionRemote({ ...s, title: clean }, email);
   };
 
-  // Export one conversation's full transcript to PDF (captures the thread DOM).
+  // Export one conversation's full transcript to PDF. Renders straight from
+  // the session's own message data (server-side, via SmartBrowz) rather than
+  // screenshotting the thread DOM, so it works for any session — including
+  // ones that aren't currently open — and paginates properly at any length.
   const exportSession = async (id) => {
     setMenuId(null);
-    if (id !== activeId) { setActiveId(id); await new Promise((r) => setTimeout(r, 80)); }
-    if (!threadRef.current) return;
-    const title = sessions.find((s) => s.id === id)?.title || 'Conversation';
+    const session = sessions.find((s) => s.id === id);
+    if (!session) return;
     setExporting(true);
     try {
-      await exportConversationPdf(threadRef.current, title);
+      await exportConversationPdf(session);
     } catch (e) {
       // This used to swallow every failure. An export that vanishes without a
       // word is the one outcome this must never produce — the officer waits
