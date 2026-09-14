@@ -321,7 +321,7 @@ export default function AIAnalytics() {
                 wide
               >
                 {profile && profile.chart === 'area' ? (
-                  <TrendArea data={profile.data} height={170} />
+                  <TrendArea data={profile.data} height={170} brush={false} />
                 ) : profile ? (
                   <BarList
                     data={dim === 'dow'
@@ -421,23 +421,7 @@ export default function AIAnalytics() {
                   }
                   wide
                 >
-                  <TrendArea data={yearly.chartData} height={220} />
-                  {yearly.hasIllustrative && (
-                    <p className="ai-fc-note">
-                      2010–2022 (dashed, left) is an illustrative backdrop, not recorded history —
-                      this dataset only ever covers 2023 onward. It is anchored near the first real
-                      year's level with bounded random variation, not a modelled trend, and plays no
-                      part in the forecast below.
-                    </p>
-                  )}
-                  {yearly.hasForecast && (
-                    <p className={`ai-fc-note ${yearly.slope >= 0 ? 'up' : 'down'}`}>
-                      Trend {yearly.slope >= 0 ? '+' : '−'}{Math.abs(Math.round(yearly.slope))} cases/year
-                      · a transparent linear projection from {yearly.completeYears} complete years —
-                      not a trained model, and not a substitute for the QuickML forecasts on the
-                      Forecasts tab
-                    </p>
-                  )}
+                  <TrendArea data={yearly.chartData} height={220} brush={false} />
                 </Card>
               )}
             </div>

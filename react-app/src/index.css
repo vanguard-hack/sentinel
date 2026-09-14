@@ -3461,16 +3461,6 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 /* Shared table system owns density and headers. */
 .ai-matrix-head { color: var(--text-1); font-weight: var(--fw-medium); white-space: nowrap; }
 .ai-matrix-total { font-weight: var(--fw-display); color: var(--text-0); }
-.ai-fc-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 10px 0 0;
-  font-size: 0.8rem;
-  font-weight: 500;
-}
-.ai-fc-note.up { color: var(--red); }   /* rising crime = bad */
-.ai-fc-note.down { color: var(--green); }
 .ai-cell {
   display: inline-block;
   min-width: 44px;
