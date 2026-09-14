@@ -34,6 +34,10 @@ import random
 from datetime import datetime
 
 random.seed(1729)
+
+# Must match generate_fir_dataset.py's ID_OFFSET — Data Store refuses a
+# unique-column value it has ever seen before, even for a deleted row.
+ID_OFFSET = int(os.environ.get('ID_OFFSET', '10000000'))
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 MALE = ['Manjunath', 'Ravi', 'Suresh', 'Prakash', 'Kiran', 'Harish', 'Santosh', 'Nagaraj',
@@ -138,7 +142,7 @@ def build_population(n):
         used_names.add(nm)
         if random.random() < 0.18:
             nm = f'{nm} "{random.choice(ALIAS)}"'
-        people.append(Person(f'P{i:05d}', gender, nm, random.randint(18, 55)))
+        people.append(Person(f'P{i + ID_OFFSET:05d}', gender, nm, random.randint(18, 55)))
     return people
 
 

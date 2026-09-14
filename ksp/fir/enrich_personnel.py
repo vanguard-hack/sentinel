@@ -17,7 +17,11 @@ Deterministic: fixed RNG seed, so re-running yields identical files.
 """
 
 import csv
+import os
 import random
+
+# Must match generate_fir_dataset.py's ID_OFFSET.
+ID_OFFSET = int(os.environ.get('ID_OFFSET', '10000000'))
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -263,7 +267,7 @@ def gazetted(eid, district_id, rank_id, name=None, gender=None):
     ]
 
 
-eid = 20001
+eid = 20001 + ID_OFFSET
 # State and range seniors — real officers in their real posts.
 for rank_id, did, name, gender in REAL_SENIORS:
     rows.append(gazetted(eid, did, rank_id, name, gender))
@@ -283,5 +287,5 @@ with open(HERE / 'Employee.csv', 'w', newline='') as f:
     w.writerows(rows)
 
 print(f'Rank.csv: {len(RANKS)} ranks | Employee.csv: {len(rows)} officers '
-      f'({sum(1 for r in rows if int(r[0]) >= 20001)} gazetted added), all names unique: '
+      f'({sum(1 for r in rows if int(r[0]) >= 20001 + ID_OFFSET)} gazetted added), all names unique: '
       f'{len(used_names) == len(rows)}')

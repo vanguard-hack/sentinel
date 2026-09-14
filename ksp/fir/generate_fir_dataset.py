@@ -22,6 +22,17 @@ from datetime import date, datetime, timedelta
 random.seed(42)
 OUT = os.path.dirname(os.path.abspath(__file__))
 
+# Catalyst Data Store refuses a value for a unique-constrained column that
+# was EVER used before, even for a row deleted long ago — confirmed live: a
+# reimport of CaseMasterID 1 failed as a duplicate against a table holding
+# ZERO rows at the time, while CaseMasterID 999999999 imported clean. Every
+# regeneration therefore has to mint IDs the table has never seen, not
+# restart from 1 — this offset is that fresh floor. Shared across all three
+# generator scripts (this one, generate_accused_network.py,
+# enrich_personnel.py) so their independently-numbered ID ranges never
+# collide with each other either.
+ID_OFFSET = int(os.environ.get('ID_OFFSET', '10000000'))
+
 # ── name pools (Karnataka / South-Indian) ───────────────────────────────────
 MALE = ['Manjunath','Ravi','Suresh','Prakash','Kiran','Harish','Santosh','Nagaraj',
         'Venkatesh','Shivakumar','Girish','Mahesh','Umesh','Ramesh','Lokesh','Praveen',
@@ -173,7 +184,7 @@ write('Designation', ['DesignationID', 'DesignationName', 'Active', 'SortOrder']
 STAFF_PER_PS = int(os.environ.get('STAFF_PER_PS', '6'))
 ROSTER = [(5, 1), (6, 2), (6, 2), (7, 3), (8, 4), (9, 4)]
 
-employees, EMP_BY_PS, eid = [], {}, 10001
+employees, EMP_BY_PS, eid = [], {}, 10001 + ID_OFFSET
 for ps in ALL_PS:
     did = PS_DISTRICT[ps]
     EMP_BY_PS[ps] = []
@@ -427,7 +438,7 @@ def _logistic(x):
 case_rows, complainants, victims, accused_rows = [], [], [], []
 act_assoc, arrests, chargesheets = [], [], []
 serials = {}
-comp_id = vict_id = acc_id = arr_id = cs_id = 50001
+comp_id = vict_id = acc_id = arr_id = cs_id = 50001 + ID_OFFSET
 today = date(2026, 9, 11)
 
 # A pool of candidate registration days, each repeated in proportion to its
@@ -521,7 +532,7 @@ REG_DAYS = REG_DAYS_BY_GROUP['plains']
 # nobody knows about looks exactly like a bug in the generator.
 NO_DATA_GAP = ('Kodagu', 1002)   # (district name, CrimeMinorHeadID for Illegal Arms)
 
-for cm_id in range(1, N_CASES + 1):
+for cm_id in range(1 + ID_OFFSET, N_CASES + 1 + ID_OFFSET):
     ps = PS_RNG.choices(ALL_PS, weights=PS_WEIGHTS)[0]
     did = PS_DISTRICT[ps]
     cat = random.choices([1, 3, 4, 8], weights=[85, 8, 4, 3])[0]
