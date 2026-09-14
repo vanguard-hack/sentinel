@@ -22,6 +22,7 @@ const legalKb = require('./legal_kb.json');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { AsyncLocalStorage } = require('async_hooks');
 
 /*
  * RAG proxy — keeps OAuth credentials server-side and calls the Catalyst
@@ -357,18 +358,47 @@ async function callClaude(messages, { maxTokens = 1024, timeoutMs = 12_000, tier
 // down, rate-limited or slow returns null and the next one is asked.
 //
 // Order is configurable because which provider should lead is an operational
-// decision, not a code one: LLM_PROVIDER_ORDER=claude,groq,glm puts answer
-// quality first, the default (GLM, a Catalyst-hosted model, first) puts
-// running on the platform's own infrastructure and cost ahead of that.
+// decision, not a code one: LLM_PROVIDER_ORDER=claude,groq changes the
+// deployment-wide default. GLM is deliberately NOT in that default fallback
+// chain — it measurably mishandles structured ZCQL generation (missed entity
+// extraction, invented date constraints; see the benchmark) and a silent
+// fallback into it would surprise whoever didn't ask for it. It is reached
+// only when an officer explicitly picks it in the model switcher (see
+// MODEL_CHOICES / requestModelContext below), where that is an informed,
+// visible choice rather than an invisible degradation.
 const PROVIDERS = { glm: catalystGLM.callCatalystGLM, groq: callGroq, claude: callClaude };
-const PROVIDER_ORDER = (process.env.LLM_PROVIDER_ORDER || 'glm,groq,claude')
+const PROVIDER_ORDER = (process.env.LLM_PROVIDER_ORDER || 'groq,claude')
   .split(',').map((p) => p.trim().toLowerCase()).filter((p) => PROVIDERS[p]);
+
+// The model switcher's options, in display order. Falling back to Groq/Claude
+// (never GLM — see above) if the officer's pick turns out to be unconfigured
+// or down keeps the resilience PROVIDER_ORDER already had; only which
+// provider leads changes.
+const MODEL_CHOICES = ['groq', 'glm', 'claude'].filter((p) => PROVIDERS[p]);
+const SAFE_FALLBACK = ['groq', 'claude'].filter((p) => PROVIDERS[p]);
+function orderForModel(requested) {
+  if (requested && PROVIDERS[requested]) {
+    return [requested, ...SAFE_FALLBACK.filter((p) => p !== requested)];
+  }
+  return PROVIDER_ORDER;
+}
+
+// Carries this request's chosen provider order to every callLLM call in the
+// tree below it, however deep, without threading an extra parameter through
+// two dozen call sites. A plain module-level variable would leak between
+// requests if this function ever runs two invocations concurrently on the
+// same warm instance — Node's event loop interleaves concurrent requests at
+// every await, and there is no guarantee this platform never does that — so
+// this uses the language's actual tool for per-request-scoped state instead
+// of assuming single-flight.
+const requestModelContext = new AsyncLocalStorage();
 
 async function callLLM(messages, opts = {}) {
   // The model option is Groq's own; translate it into a provider-neutral tier
   // so a fallback provider knows whether this was a cheap call or a big one.
   const tier = opts.model === GROQ_MODEL_FAST ? 'fast' : 'main';
-  for (const name of PROVIDER_ORDER) {
+  const order = requestModelContext.getStore() || PROVIDER_ORDER;
+  for (const name of order) {
     const out = await PROVIDERS[name](messages, { ...opts, tier });
     if (out !== null && String(out).trim()) return out;
   }
@@ -5103,6 +5133,14 @@ module.exports = async (req, res) => {
     const rawQuery = (body.query || '').trim();
     if (!rawQuery) return json(res, 400, { error: 'query is required' });
 
+    // Model switcher: an officer can pick which LLM answers THIS turn (see
+    // MODEL_CHOICES) from the assistant composer; anything else — unset,
+    // invalid, a non-UI caller — uses the deployment default. Scoped for the
+    // rest of this request via requestModelContext (see its own comment for
+    // why a plain variable would not be safe here).
+    const requestedModel = MODEL_CHOICES.includes(body.model) ? body.model : null;
+    return await requestModelContext.run(orderForModel(requestedModel), async () => {
+
     // Multilingual entry point. Everything downstream — routing, ZCQL, RAG —
     // works on English; the officer's language is carried through and applied
     // to the answer at the very end.
@@ -6387,6 +6425,7 @@ module.exports = async (req, res) => {
       zcqlDebug,
       raw: first.data,
     }, citations);
+    });
   } catch (e) {
     return json(res, 500, { error: e.message || String(e) });
   }

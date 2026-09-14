@@ -149,7 +149,7 @@ check('every LLM call goes through the chain, not a single provider',
   (src.match(/\bcallLLM\(/g) || []).length > 15
   && (src.match(/\bcallGroq\(/g) || []).length === 1);
 check('the chain tries the next provider when one returns nothing',
-  /for \(const name of PROVIDER_ORDER\)[\s\S]{0,220}?if \(out !== null/.test(src));
+  /for \(const name of order\)[\s\S]{0,220}?if \(out !== null/.test(src));
 check('Claude stays dormant without a key',
   /async function callClaude[\s\S]{0,200}?if \(!process\.env\.ANTHROPIC_API_KEY\) return null;/.test(src));
 check('the system prompt is lifted out of the message array for Anthropic',

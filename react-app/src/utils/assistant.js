@@ -7,6 +7,37 @@ import { currentLang } from '../i18n';
 import { capturePageContext } from './pageContext';
 
 const STORAGE_KEY = 'sentinel-chat-sessions';
+const MODEL_STORAGE_KEY = 'sentinel-chat-model';
+
+// The assistant's model switcher. Keys and order must match MODEL_CHOICES in
+// functions/rag/index.js — the backend is the source of truth for which
+// providers actually exist; this is just how they're presented. Groq leads
+// because it's the safest default (fast, and the one every fallback chain
+// already assumes); GLM is opt-in only — see index.js for why.
+export const MODEL_OPTIONS = [
+  { key: 'groq', label: 'Groq', desc: 'Fast, default' },
+  { key: 'glm', label: 'GLM-4.7-Flash', desc: 'Zoho Catalyst-hosted' },
+  { key: 'claude', label: 'Claude', desc: 'Anthropic' },
+];
+const MODEL_KEYS = MODEL_OPTIONS.map((m) => m.key);
+const DEFAULT_MODEL = 'groq';
+
+export function loadModel() {
+  try {
+    const v = localStorage.getItem(MODEL_STORAGE_KEY);
+    return MODEL_KEYS.includes(v) ? v : DEFAULT_MODEL;
+  } catch {
+    return DEFAULT_MODEL;
+  }
+}
+
+export function saveModel(model) {
+  try {
+    localStorage.setItem(MODEL_STORAGE_KEY, model);
+  } catch {
+    /* quota / private mode — non-fatal, just means the pick doesn't persist */
+  }
+}
 
 export const uid = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -309,7 +340,9 @@ export async function transcribeAudio(input, language = 'en') {
 // { text, components } — components are AG-UI-style typed specs (bar-chart,
 // pie-chart, table, cards) rendered by AguiRenderer. Falls back to an
 // explanatory message if the backend isn't reachable/configured yet.
-export async function generateReply(history, vision = [], attachments = [], sessionId = '', accessReason = '') {
+export async function generateReply(
+  history, vision = [], attachments = [], sessionId = '', accessReason = '', model = ''
+) {
   const lastUser = [...history].reverse().find((m) => m.role === 'user');
   const query = (lastUser?.content || '').trim();
   if (!query) return { text: 'Ask me a question to get started.', components: [] };
@@ -347,6 +380,10 @@ export async function generateReply(history, vision = [], attachments = [], sess
         // one — it is recorded against their badge in the audit trail, so it
         // must never be inferred or defaulted on their behalf.
         ...(accessReason ? { access_reason: accessReason } : {}),
+        // Which LLM answers this turn — see MODEL_OPTIONS. Sent only when the
+        // officer picked something other than the backend's own default, so
+        // an empty/unrecognised value here just means "use the default".
+        ...(model ? { model } : {}),
         history: shortTerm,
         summary,
         preferred_lang: currentLang(),

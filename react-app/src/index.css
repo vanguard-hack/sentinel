@@ -2802,6 +2802,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 
 }
 .as-composer:focus-within { border-color: var(--blue-500); }
+.as-composer-tools { display: flex; align-items: center; padding: 2px 6px 6px; }
 .as-attach-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px 8px; }
 .as-attach-chip {
   display: inline-flex; align-items: center; gap: 6px;
@@ -3818,6 +3819,36 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .as-conv-menu button svg { color: var(--text-3); }
 .as-conv-menu-del { color: var(--red) !important; }
 .as-conv-menu-del svg { color: var(--red) !important; }
+
+/* ── Model switcher ── same popover shape as .as-conv-menu above, as a
+   trigger pill rather than a kebab icon, in the composer rather than a
+   session row. */
+.as-model-wrap { position: relative; }
+.as-model-trigger {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 9px; border: 1px solid var(--border-1); border-radius: 999px;
+  background: var(--bg-1); color: var(--text-2);
+  font-size: 0.78rem; font-weight: 500; cursor: pointer;
+}
+.as-model-trigger:hover { background: var(--hover-overlay); color: var(--text-1); }
+.as-model-trigger svg { color: var(--text-4); }
+.as-model-menu {
+  position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 50;
+  min-width: 220px; padding: 6px;
+  background: var(--bg-2); border: 1px solid var(--border-1);
+  border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+  display: flex; flex-direction: column;
+}
+.as-model-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 10px; border: none; background: none; text-align: left;
+  cursor: pointer; border-radius: 6px;
+}
+.as-model-item:hover { background: var(--hover-overlay); }
+.as-model-item-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.as-model-item-label { font-size: 0.85rem; color: var(--text-1); }
+.as-model-item-desc { font-size: 0.72rem; color: var(--text-4); }
+.as-model-item-check { color: var(--primary); flex-shrink: 0; }
 .as-rename-input {
   flex: 1; min-width: 0; font-size: 0.85rem;
   padding: 3px 6px; border: 1px solid var(--primary); border-radius: 4px;

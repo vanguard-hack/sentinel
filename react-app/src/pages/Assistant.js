@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import {
   loadSessions, saveSessions, makeTitle, newSession, generateReply, runSherlockLookup, uid,
+  loadModel, saveModel,
   transcribeAudio, loadSessionsRemote, saveSessionRemote, saveSessionBeacon, deleteSessionRemote,
   consolidateMemory,
 } from '../utils/assistant';
@@ -16,6 +17,7 @@ import {
   contextKind, unusableReason, readForContext, contextLabel, contextDetail,
   attachState,
 } from '../utils/attachments';
+import ModelPicker from '../components/ModelPicker';
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
 import Avatar from '../components/Avatar';
@@ -201,6 +203,10 @@ export default function Assistant() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
+  // Which LLM answers the next turn — persisted so the officer's pick
+  // survives a reload rather than silently reverting to the default.
+  const [model, setModel] = useState(loadModel);
+  const chooseModel = useCallback((m) => { setModel(m); saveModel(m); }, []);
   const menuRef = useRef(null);
 
   // Close the kebab menu on outside click.
@@ -602,7 +608,7 @@ export default function Assistant() {
       // single chat turn should block on).
       const reply = parsed && parsed.cmd && parsed.cmd.name === 'sherlock'
         ? await runSherlockLookup(parsed.arg, setSherlockLabel)
-        : await generateReply(history, digests, docs, sessionId, accessReason);
+        : await generateReply(history, digests, docs, sessionId, accessReason, model);
       const botMsg = {
         id: uid(),
         role: 'assistant',
@@ -655,7 +661,7 @@ export default function Assistant() {
       setSending(false);
       setSherlockLabel(null);
     }
-  }, [listening, input, attachments, sending, activeId, sessions, pushSession, appRole, startNewChat]);
+  }, [listening, input, attachments, sending, activeId, sessions, pushSession, appRole, startNewChat, model]);
 
   // Cycle previous/next questions with Up/Down (readline-style).
   const navigateHistory = (dir) => {
@@ -1204,6 +1210,9 @@ export default function Assistant() {
                   ))}
                 </div>
               )}
+              <div className="as-composer-tools">
+                <ModelPicker value={model} onChange={chooseModel} />
+              </div>
               <div className="as-composer-main">
                 <button
                   className="as-comp-btn"
