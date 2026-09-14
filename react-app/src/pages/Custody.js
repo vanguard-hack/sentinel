@@ -8,7 +8,6 @@ import TopBar from '../components/TopBar';
 import Donut from '../components/charts/Ring';
 import BarList from '../components/charts/BarColumns';
 import HBarList from '../components/charts/BarRows';
-import { Pyramid } from '../components/Charts';
 import { useAccess } from '../context/AccessContext';
 import {
   getRegistry, seedCustody, STATUS, STATUS_ORDER, fmtDate,
@@ -274,11 +273,6 @@ export default function Custody() {
                 <div className="rp-card-body"><HBarList data={a.offenseCategories} /></div>
               </section>
             </div>
-
-            <section className="rp-card">
-              <div className="rp-card-head"><h2>Custody duration ageing</h2><span className="rp-card-sub">How long the currently-held population has been in custody — green fresh, red long-held</span></div>
-              <div className="rp-card-body"><Pyramid data={a.custodyAgeing} /></div>
-            </section>
 
             <section className="rp-card">
               <div className="rp-card-head cust-fac-head">

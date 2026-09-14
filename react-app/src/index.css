@@ -9307,7 +9307,11 @@ span.inv-status-dot {
    chip out of the way at the moment the pointer arrives makes the row jump
    under the cursor, and covering the case's status while offering to delete it
    hides the one field worth reading first. */
-.inv-card-wrap > .inv-card .inv-card-top { padding-right: 28px; }
+/* The bin sits 8px from the wrapper's edge at 26px wide, so it needs ~34px of
+   clearance from the card's right edge; the card's own 16px padding already
+   covers part of that, so this only has to add the remainder — was 28px,
+   nearly doubling up on padding the card already had. */
+.inv-card-wrap > .inv-card .inv-card-top { padding-right: 20px; }
 .inv-card-del {
   position: absolute;
   top: 8px;

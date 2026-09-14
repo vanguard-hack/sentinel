@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import {
   getIncidents, refreshIncidents, hourlyProfile, dayOfMonthProfile, weekdayProfile,
-  peakWindow, headDaypartMatrix, DAYPARTS, weekdayHourMatrix, yearlySeries, forecastYears,
+  peakWindow, headDaypartMatrix, DAYPARTS, yearlySeries, forecastYears,
   completePartialYear, illustrativeHistory,
 } from '../utils/aianalytics';
 import TrendArea from '../components/charts/TrendArea';
@@ -148,9 +148,6 @@ export default function AIAnalytics() {
     [data]
   );
   const matrixMax = Math.max(1, ...matrix.flatMap((r) => r.cells));
-
-  const dowHourMatrix = useMemo(() => (filtered.length ? weekdayHourMatrix(filtered) : []), [filtered]);
-  const dowHourMax = Math.max(1, ...dowHourMatrix.flatMap((r) => r.cells));
 
   // Yearly volume: every complete calendar year the dataset covers, plus
   // whatever partial year it currently trails off into, plus a 2-year linear
@@ -358,43 +355,6 @@ export default function AIAnalytics() {
                                 className="ai-cell"
                                 style={{ '--heat': (v / matrixMax).toFixed(3) }}
                                 title={`${row.head} · ${DAYPARTS[i].label}: ${v}`}
-                              >
-                                {v}
-                              </span>
-                            </td>
-                          ))}
-                          <td className="ai-matrix-total">{row.total}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-
-              <Card
-                title="Day of week × hour"
-                subtitle="When incidents actually happen — darker means more incidents"
-                wide
-              >
-                <div className="cf-scroll">
-                  <table className="ai-matrix">
-                    <thead>
-                      <tr>
-                        <th>Day</th>
-                        {Array.from({ length: 24 }, (_, h) => <th key={h}>{pad2(h)}</th>)}
-                        <th>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dowHourMatrix.map((row) => (
-                        <tr key={row.day}>
-                          <td className="ai-matrix-head">{row.day}</td>
-                          {row.cells.map((v, h) => (
-                            <td key={h}>
-                              <span
-                                className="ai-cell"
-                                style={{ '--heat': (v / dowHourMax).toFixed(3) }}
-                                title={`${row.day} · ${pad2(h)}:00: ${v}`}
                               >
                                 {v}
                               </span>
