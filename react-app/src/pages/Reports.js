@@ -504,7 +504,7 @@ export default function Reports() {
               {/* Band 4 — daily calendar, full width, one row. Two rows left
                   a slab of empty space under a seven-row grid; width is what
                   the cells need, not height. */}
-              <Card title="Seasonality" subtitle="Daily registrations · past 12 months" banner section="Socio-economic & seasonality">
+              <Card title="Seasonality" subtitle="FIR registrations · past 12 months" banner section="Socio-economic & seasonality">
                 <HeatGrid periods={data.seasonality} defaultPeriod="day" />
               </Card>
 

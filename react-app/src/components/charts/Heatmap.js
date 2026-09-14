@@ -160,7 +160,7 @@ export default function CalendarHeatmap({ days, ariaLabel = 'Daily crime registr
             <text
               key={label}
               className="bk-chart-tick"
-              x={PAD_L - 6}
+              x={x0 - 6}
               y={cy(row) + bin / 2 + 3}
               textAnchor="end"
               opacity={row >= 5 ? 0.4 : 1}
