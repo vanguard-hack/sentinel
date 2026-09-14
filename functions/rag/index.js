@@ -3300,8 +3300,13 @@ async function handleAdminCheckFirTable(req, res) {
   }
 
   const zcql = app.zcql();
+  // Read the aggregate value positionally, not by its requested alias — ZCQL
+  // does not reliably hand the "AS total"/"AS lo"/"AS hi" name back as the
+  // result key, so a lookup by that name silently reads undefined and reports
+  // zero regardless of the real count (the bug the reset endpoint had too).
   const countRows = await zcql.executeZCQLQuery(`SELECT COUNT(ROWID) AS total FROM ${tableName}`);
-  const total = Number((countRows[0] && countRows[0][tableName] && countRows[0][tableName].total) || 0);
+  const countCols = countRows[0] && countRows[0][tableName];
+  const total = countCols ? Number(Object.values(countCols)[0] || 0) : 0;
 
   // A cheap sample of the min/max business-level id column, when the table
   // has one named "<Table>ID" — the exact thing worth seeing for a
@@ -3313,7 +3318,10 @@ async function handleAdminCheckFirTable(req, res) {
       `SELECT MIN(${idCol}) AS lo, MAX(${idCol}) AS hi FROM ${tableName}`
     );
     const r = range[0] && range[0][tableName];
-    if (r) idRange = { column: idCol, min: r.lo, max: r.hi };
+    if (r) {
+      const vals = Object.values(r);
+      idRange = { column: idCol, min: vals[0], max: vals[1] };
+    }
   } catch { /* not every table has this column shape; fine to omit */ }
 
   return json(res, 200, { table: tableName, rowCount: total, idRange });
@@ -3357,28 +3365,34 @@ async function handleAdminResetFirTable(req, res) {
   }
 
   const zcql = app.zcql();
-  const countRows = await zcql.executeZCQLQuery(`SELECT COUNT(ROWID) AS total FROM ${tableName}`);
-  const total = Number((countRows[0] && countRows[0][tableName] && countRows[0][tableName].total) || 0);
 
+  // Not `SELECT COUNT(ROWID) AS total` — ZCQL doesn't return that alias as a
+  // literal "total" key, so a prior version of this endpoint always read
+  // `total` as undefined/0 and silently skipped deletion on every table,
+  // every call, regardless of how much data actually existed. A plain row
+  // probe has no alias to get wrong.
   if (body.confirm !== true) {
+    const probe = await zcql.executeZCQLQuery(`SELECT ROWID FROM ${tableName} LIMIT 1`);
+    const hasRows = Array.isArray(probe) && probe.length > 0;
     return json(res, 200, {
-      dryRun: true, table: tableName, rowsRemaining: total,
+      dryRun: true, table: tableName, rowsRemaining: hasRows ? 1 : 0,
       note: 'Nothing was deleted. Send { "table": "...", "confirm": true } to delete up to '
         + `${RESET_BUDGET} rows this call. Call again while rowsRemaining > 0.`,
     });
   }
-  if (!total) return json(res, 200, { table: tableName, deleted: 0, rowsRemaining: 0 });
 
   const table = app.datastore().table(tableName);
   let deleted = 0;
+  let exhausted = false;
   while (deleted < RESET_BUDGET) {
     const page = await zcql.executeZCQLQuery(`SELECT ROWID FROM ${tableName} LIMIT ${RESET_PAGE}`);
     const ids = page.map((r) => r[tableName] && r[tableName].ROWID).filter(Boolean);
-    if (!ids.length) break;
+    if (!ids.length) { exhausted = true; break; }
     for (let i = 0; i < ids.length; i += RESET_CHUNK) {
       await table.deleteRows(ids.slice(i, i + RESET_CHUNK));
       deleted += Math.min(RESET_CHUNK, ids.length - i);
     }
+    if (ids.length < RESET_PAGE) { exhausted = true; break; }
   }
 
   await storeAuditEvents(req, app, bucket, [{
@@ -3386,8 +3400,7 @@ async function handleAdminResetFirTable(req, res) {
     detail: `${tableName}: ${deleted} rows deleted (dataset regeneration reset)`,
   }], caller);
 
-  const remaining = Math.max(0, total - deleted);
-  return json(res, 200, { table: tableName, deleted, rowsRemaining: remaining });
+  return json(res, 200, { table: tableName, deleted, rowsRemaining: exhausted ? 0 : 1 });
 }
 
 /* POST /server/rag/investigation/remove   { caseMasterId }
