@@ -5,6 +5,7 @@ const zcql = require('./zcql');
 const redaction = require('./redaction');
 const vision = require('./vision');
 const catalystVision = require('./catalystVision');
+const catalystGLM = require('./catalystGLM');
 const attribution = require('./sources');
 const crypto = require('./crypto');
 const sherlock = require('./sherlock');
@@ -52,13 +53,18 @@ const path = require('path');
  * LLM providers. Every model call goes through callLLM, which tries providers
  * in order and takes the first usable answer, so one provider being down
  * degrades an answer rather than removing it:
- *   GROQ_API_KEY          provider 1 (fast, cheap) — already in use
- *   ANTHROPIC_API_KEY     provider 2 (Claude) — dormant until set
+ *   QUICKML_KEY_GLM       provider 1 (default) — GLM-4.7-FLASH, a Catalyst
+ *                         QuickML "genai" endpoint. Unset means this provider
+ *                         is silently skipped and the chain falls straight to
+ *                         Groq, same as before it existed. Auth reuses the
+ *                         VLM self-client below — see catalystGLM.js.
+ *   GROQ_API_KEY          provider 2 (fast, cheap)
+ *   ANTHROPIC_API_KEY     provider 3 (Claude) — dormant until set
  *   CLAUDE_MODEL          default claude-opus-5
  *   CLAUDE_MODEL_FAST     default = CLAUDE_MODEL; set claude-haiku-4-5 to cut
  *                         the cost of routing/expansion calls
- *   LLM_PROVIDER_ORDER    default "groq,claude"; use "claude,groq" to put
- *                         answer quality ahead of latency and cost
+ *   LLM_PROVIDER_ORDER    default "glm,groq,claude"; reorder to change which
+ *                         provider answers first
  *
  * Vision (VLM). On top of vision.js's OCR/objects/barcode pass, a Qwen VLM
  * endpoint deployed on Catalyst QuickML (IN data center) is called for
@@ -68,7 +74,8 @@ const path = require('path');
  * default connector routes through a shared client whose allowed-scope list
  * doesn't (yet) include this endpoint's scope. Register a self-client at
  * api-console.zoho.in scoped to exactly this endpoint, nothing shared with
- * any other credential in this project:
+ * any other credential in this project. The GLM provider above reuses this
+ * same token (same scope, same self-client) rather than needing its own:
  *   QUICKML_KEY_VLM      the endpoint's x-quickml-endpoint-key secret
  *                         (Console → the endpoint's details page). Unset
  *                         means the VLM pass is silently skipped and the
@@ -350,10 +357,11 @@ async function callClaude(messages, { maxTokens = 1024, timeoutMs = 12_000, tier
 // down, rate-limited or slow returns null and the next one is asked.
 //
 // Order is configurable because which provider should lead is an operational
-// decision, not a code one: LLM_PROVIDER_ORDER=claude,groq puts answer quality
-// first, the default puts latency and cost first.
-const PROVIDERS = { groq: callGroq, claude: callClaude };
-const PROVIDER_ORDER = (process.env.LLM_PROVIDER_ORDER || 'groq,claude')
+// decision, not a code one: LLM_PROVIDER_ORDER=claude,groq,glm puts answer
+// quality first, the default (GLM, a Catalyst-hosted model, first) puts
+// running on the platform's own infrastructure and cost ahead of that.
+const PROVIDERS = { glm: catalystGLM.callCatalystGLM, groq: callGroq, claude: callClaude };
+const PROVIDER_ORDER = (process.env.LLM_PROVIDER_ORDER || 'glm,groq,claude')
   .split(',').map((p) => p.trim().toLowerCase()).filter((p) => PROVIDERS[p]);
 
 async function callLLM(messages, opts = {}) {
@@ -4962,6 +4970,7 @@ module.exports = async (req, res) => {
       return json(res, 200, {
         ok: true,
         providers: {
+          glm: !!process.env.QUICKML_KEY_GLM,
           groq: !!process.env.GROQ_API_KEY,
           claude: !!process.env.ANTHROPIC_API_KEY,
           order: PROVIDER_ORDER,
