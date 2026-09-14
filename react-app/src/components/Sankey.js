@@ -161,7 +161,7 @@ export default function Sankey({ spec, width = 1000, height = 460 }) {
 
   return (
     <div className="sk-wrap" ref={wrapRef}>
-      <svg viewBox={`0 0 ${W} ${drawH}`} className="sk-svg" role="img" aria-label="Crime category to type to outcome flow">
+      <svg viewBox={`0 0 ${W} ${drawH}`} preserveAspectRatio="none" className="sk-svg" role="img" aria-label="Crime category to type to outcome flow">
         {/* ribbons */}
         {links.map((l, i) => {
           const dim = hover != null && hover !== l.source && hover !== l.target && hover !== `l${i}`;

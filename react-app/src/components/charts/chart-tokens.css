@@ -77,6 +77,39 @@
    own tokens are named directly against the app's base palette rather than
    through the --chart-* bridge above. */
 .bk-chart-wrap { display: flex; flex-direction: column; width: 100%; }
+
+/* Sequential ramp for the calendar heatmap. Bklit names these
+   --chart-scale-01…05 (empty through hottest). Mapped onto the app accent
+   so the grid stays on the same hue as every other chart. */
+.bk-heat {
+  --chart-scale-01: color-mix(in oklab, var(--blue-500) 10%, var(--bg-2));
+  --chart-scale-02: color-mix(in oklab, var(--blue-500) 28%, var(--bg-2));
+  --chart-scale-03: color-mix(in oklab, var(--blue-500) 48%, var(--bg-2));
+  --chart-scale-04: color-mix(in oklab, var(--blue-500) 72%, var(--bg-2));
+  --chart-scale-05: var(--blue-500);
+
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bk-heat-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-end;
+  font-size: 10.5px;
+  color: var(--text-4);
+}
+.bk-heat-swatch {
+  width: 13px;
+  height: 13px;
+  border-radius: 2px;
+  display: inline-block;
+}
 .bk-brush-svg { display: block; width: 100%; overflow: visible; margin-top: 2px; }
 .bk-brush-area { fill: var(--text-4); opacity: 0.5; stroke: none; }
 /* TrendLine's brush preview: N open strokes, not a filled area — a separate

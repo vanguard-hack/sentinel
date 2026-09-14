@@ -19,7 +19,9 @@ function bentoCards() {
   expect(open).toBeGreaterThan(-1);
   const body = src.slice(open, src.indexOf('\n            </div>', open));
   return [...body.matchAll(/<Card\b([^>]*)>/gs)].map(([, attrs]) => {
-    // `hero` wins over the others, exactly as the Card component resolves it.
+    // `full` and `banner` span across all columns; `hero` spans 2x2.
+    if (/\bfull\b/.test(attrs)) return { cols: 4, rows: 2 };
+    if (/\bbanner\b/.test(attrs)) return { cols: 4, rows: 1 };
     if (/\bhero\b/.test(attrs)) return { cols: 2, rows: 2 };
     if (/\btall\b/.test(attrs)) return { cols: 1, rows: 2 };
     if (/\bwide\b/.test(attrs)) return { cols: 2, rows: 1 };
@@ -72,7 +74,7 @@ const cards = bentoCards();
 test('every card carries a span the stylesheet knows how to place', () => {
   expect(cards.length).toBeGreaterThan(20);
   for (const c of cards) {
-    expect([1, 2]).toContain(c.cols); // wider than 2 would not re-pack at 2 columns
+    expect([1, 2, 4]).toContain(c.cols); // spans are 1, 2, or 4 columns
     expect([1, 2]).toContain(c.rows);
   }
 });

@@ -487,7 +487,7 @@ function capOther(arr, limit) {
 export function computeReport(raw, masters, rangeKey, custom) {
   const {
     headName, statusName, unitName, unitDistrict, districtName, subHeadName,
-    categoryName, courtName, occupationName, sectionName, actName, rankName,
+    categoryName, courtName, sectionName, actName, rankName,
   } = masters;
   const dataMax = raw.cases.reduce((m, c) => (Number.isFinite(c.ts) && c.ts > m ? c.ts : m), 0);
   const { from, to } = windowFor(rangeKey, custom, dataMax || undefined);
@@ -584,36 +584,44 @@ export function computeReport(raw, masters, rangeKey, custom) {
     if (bi != null) arrestSeries[row].points[bi].value++;
   });
 
-  // Seasonality: top 6 crime heads × three time granularities, switched in
-  // the UI rather than three separate charts. Month is the original
-  // behaviour (calendar month, merged across every year in the window —
-  // genuine seasonality). Week and year answer different questions off the
-  // same rows: which day of the week a crime type clusters on, and whether
-  // it's trending up or down year over year.
+  // Seasonality: top 6 crime heads × week/month, plus a daily calendar of
+  // the last 365 days (Bklit-style contribution grid). Day is total FIRs
+  // per calendar day, not a head × day matrix — 365 columns of heads would
+  // not be readable. The year tab used to show head × calendar-year, which
+  // is the wrong grain for "when in the year does crime cluster".
   const seasonHeads = groupCount(wcases, (c) => c.major, (id) => headName(id)).slice(0, 6);
   const seasonIdx = new Map(seasonHeads.map((h, i) => [h.label, i]));
   const seasonRows = seasonHeads.map((h) => h.label);
 
   const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const seasonYears = [...new Set(wcases.map((c) => new Date(c.ts).getUTCFullYear()))].sort();
-  const yearIdx = new Map(seasonYears.map((y, i) => [y, i]));
-
   const seasonMonth = { rows: seasonRows, cols: MON, values: seasonRows.map(() => Array(12).fill(0)) };
   const seasonWeek = { rows: seasonRows, cols: DOW, values: seasonRows.map(() => Array(7).fill(0)) };
-  const seasonYear = {
-    rows: seasonRows,
-    cols: seasonYears.map(String),
-    values: seasonRows.map(() => Array(Math.max(1, seasonYears.length)).fill(0)),
-  };
   wcases.forEach((c) => {
     const r = seasonIdx.get(headName(c.major));
     if (r == null) return;
     const d = new Date(c.ts);
     seasonMonth.values[r][d.getUTCMonth()]++;
     seasonWeek.values[r][d.getUTCDay()]++;
-    seasonYear.values[r][yearIdx.get(d.getUTCFullYear())]++;
   });
-  const seasonality = { month: seasonMonth, week: seasonWeek, year: seasonYear };
+
+  const utcMidnight = (ts) => {
+    const d = new Date(ts);
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  };
+  const dayEnd = utcMidnight(to);
+  const dayStart = dayEnd - 364 * 86400000;
+  const dayCounts = new Map();
+  raw.cases.forEach((c) => {
+    if (!Number.isFinite(c.ts)) return;
+    const k = utcMidnight(c.ts);
+    if (k < dayStart || k > dayEnd) return;
+    dayCounts.set(k, (dayCounts.get(k) || 0) + 1);
+  });
+  const seasonDays = [];
+  for (let t = dayStart; t <= dayEnd; t += 86400000) {
+    seasonDays.push({ ts: t, value: dayCounts.get(t) || 0 });
+  }
+  const seasonality = { day: { days: seasonDays }, month: seasonMonth, week: seasonWeek };
 
   // Chargesheet filing lag + average investigation time by head.
   const LAG_BUCKETS = [
@@ -710,27 +718,12 @@ export function computeReport(raw, masters, rangeKey, custom) {
 
   // People & demographics.
   const wcompl = raw.complainants.filter((p) => idSet.has(p.caseId));
-  const complainantOccupations = capOther(
-    groupCount(wcompl, (p) => p.occupation, (id) => occupationName(id)), 8);
   const complainantAges = AGE_BUCKETS.map((b) => ({
     label: b.label,
     value: wcompl.filter((p) => p.age >= b.from && p.age <= b.to).length,
   }));
   const GENDER = { 1: 'Male', 2: 'Female' };
   const accusedGender = groupCountFixed(raw.accused, accusedRows, (a) => a.gender, (id) => GENDER[id] || 'Other');
-
-  const personAgg = new Map();
-  accusedRows.forEach((a) => {
-    if (!a.person) return;
-    const agg = personAgg.get(a.person) || { name: a.name, cases: new Set() };
-    agg.cases.add(a.caseId);
-    personAgg.set(a.person, agg);
-  });
-  const repeatOffenders = [...personAgg.entries()]
-    .map(([person, a]) => ({ label: `${a.name || person}`, value: a.cases.size }))
-    .filter((d) => d.value >= 2)
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 8);
 
   const wvictims = raw.victims.filter((v) => idSet.has(v.caseId));
   const victimPoliceSplit = groupCountFixed(
@@ -816,10 +809,8 @@ export function computeReport(raw, masters, rangeKey, custom) {
     topSections,
     statusFunnel,
     pendencyAgeing,
-    complainantOccupations,
     complainantAges,
     accusedGender,
-    repeatOffenders,
     victimPoliceSplit,
     arrestOutcome,
     ioCaseload,

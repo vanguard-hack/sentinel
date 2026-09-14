@@ -2225,17 +2225,18 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 
    Two properties are load-bearing:
 
-     1. Every span is one or two columns WIDE (hero and wide are 2, tall and
-        the default are 1). That is what lets the same source order re-pack
-        without holes when the grid drops to two columns — and it is why there
-        is no three-column step: at three, a 2+1+1 band leaves a gap.
+     1. Spans are one, two, or the full row (full is 1 / -1). Hero and wide
+        are 2, tall and the default are 1. That is what lets the same source
+        order re-pack without holes when the grid drops to two columns — and
+        it is why there is no three-column step: at three, a 2+1+1 band
+        leaves a gap. A full-row card is still a filled row at two columns.
      2. Rows have a MINIMUM height, not a fixed one. `minmax(248px, auto)`
         keeps the lattice even while letting a row grow for whatever it
         actually holds, so a card can never overflow its row. Cards are
         clipped as a last resort, which means an unexpectedly tall chart
         loses its own bottom edge rather than painting over its neighbour.
 
-   Spans: hero 2x2 · wide 2x1 · tall 1x2 · default 1x1. */
+   Spans: full 4x2 · banner 4x1 · hero 2x2 · wide 2x1 · tall 1x2 · default 1x1. */
 .rp-bento {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   /* A hero spans two of these, so this number is what decides how much room
@@ -2251,6 +2252,8 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   align-items: stretch;
 }
 .rp-bento .rp-card-hero { grid-column: span 2; grid-row: span 2; }
+.rp-bento .rp-card-full { grid-column: 1 / -1; grid-row: span 2; }
+.rp-bento .rp-card-banner { grid-column: 1 / -1; }
 .rp-bento .rp-card-tall { grid-row: span 2; }
 .rp-bento .rp-card-wide { grid-column: span 2; }
 
@@ -2258,7 +2261,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    allowed to eat the tile. The name wraps in full; the subtitle is a caption,
    so it gets two lines and then stops. A four-line subtitle on a one-row tile
    would leave the chart forty pixels of room. */
-.rp-bento .rp-card-head { flex: none; margin-bottom: 8px; }
+.rp-bento .rp-card-head { flex: none; margin-bottom: 6px; }
 .rp-bento .rp-card-head h2 { overflow-wrap: anywhere; hyphens: auto; }
 .rp-bento .rp-card-sub {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
@@ -2267,7 +2270,13 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .rp-bento .rp-card-hero .rp-card-sub { -webkit-line-clamp: 3; }
 
 /* The body takes the rest of the tile and hands that height to its chart. */
-.rp-bento .rp-card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.rp-bento .rp-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
 
 /* Charts carry an inline height from their own default prop, sized for the
    old fixed-height cards. Inside a tile the TILE decides: the chart is a flex
@@ -2280,17 +2289,35 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   min-height: 150px;
   height: auto !important;
 }
+/* TrendLine/TrendArea wrap the plot in .bk-chart-wrap (plot + optional
+   brush). Stretching only a direct .bk-chart left the wrap at its inline
+   height and the card body centred it — empty padding above and below
+   the lines. The wrap fills the tile; the plot takes whatever the brush
+   does not. */
+.rp-bento .rp-card-body > .bk-chart-wrap {
+  flex: 1 1 0;
+  min-height: 150px;
+  height: auto !important;
+}
+.rp-bento .rp-card-body > .bk-chart-wrap > .bk-chart {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto !important;
+}
 
 /* Everything that is not one of the vendored charts — rings, bar lists, the
    Sankey, the maps, the heat grid, the funnel — stretches into whatever room
    is left rather than standing at its natural height in a taller tile. */
 .rp-bento .rp-card-body > .rp-bars,
-.rp-bento .rp-card-body > .rp-donut-wrap,
-.rp-bento .rp-card-body > .rp-heat,
 .rp-bento .rp-card-body > .rp-funnel,
 .rp-bento .rp-card-body > .sk-wrap,
 .rp-bento .rp-card-body > .geo-map,
 .rp-bento .rp-card-body > .scm { flex: 1; min-height: 0; }
+/* Heatmap hugs the seven-row grid. Stretching it in a tall tile is the
+   empty band under Seasonality. */
+.rp-bento .rp-card-body > .rp-heat-wrap,
+.rp-bento .rp-card-body > .bk-heat,
+.rp-bento .rp-heat-wrap .bk-heat { flex: 0 0 auto; min-height: 0; }
 .rp-bento .rp-card-body > .rp-bars,
 .rp-bento .rp-card-body > .rp-funnel { justify-content: space-evenly; }
 
@@ -2335,10 +2362,13 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 @media (max-width: 720px) {
   .rp-bento { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
   .rp-bento .rp-card-hero,
+  .rp-bento .rp-card-full,
+  .rp-bento .rp-card-banner,
   .rp-bento .rp-card-tall,
   .rp-bento .rp-card-wide,
   .rp-bento .rp-card-2 { grid-column: auto; grid-row: auto; }
-  .rp-bento .rp-card-body > .bk-chart { min-height: 220px; }
+  .rp-bento .rp-card-body > .bk-chart,
+  .rp-bento .rp-card-body > .bk-chart-wrap { min-height: 220px; }
 }
 .rp-card {
   background: var(--bg-1);
@@ -2358,6 +2388,8 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    one. Deliberately NOT `overflow: hidden` on the card itself: chart tooltips
    are positioned absolutely inside it, and clipping would cut them off. */
 .rp-card .rp-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.rp-bento .rp-card { padding: 8px 12px 8px; }
+.rp-bento .rp-card .rp-card-body { justify-content: flex-start; }
 .rp-card .rp-card-body > * { max-width: 100%; }
 .rp-card-head { margin-bottom: 10px; min-width: 0; }
 .rp-card-head h2 { font-size: 15px; font-weight: 500; color: var(--text-0); overflow-wrap: anywhere; }
@@ -2426,18 +2458,22 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    above is what makes the extra height for it fit without spilling into the
    card below. */
 .rp-bento .rp-donut-wrap {
+  flex: 0 1 auto;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 14px;
+  justify-content: flex-start;
+  gap: 10px;
   min-height: 0;
+  padding-bottom: 0;
 }
 /* overflow-x is pinned HIDDEN on purpose. Per spec, when one axis is `visible`
    and the other is not, the visible one computes to `auto` — so `overflow-y:
    auto` alone silently gave every donut legend a horizontal scrollbar under
    its labels. The labels already ellipsis, so there is nothing to scroll to. */
 .rp-bento .rp-donut-wrap .rp-legend {
-  flex: 1 1 auto;
+  /* Must not grow. flex:1 stretched a two-row legend (Heinous / Non-heinous)
+     to the leftover tile height and read as a slab of bottom padding. */
+  flex: 0 0 auto;
   min-width: 0;
   /* Capped, because a legend row is a LABEL and its share read as a pair. On a
      two-column tile the legend was stretching to ~550px and throwing the two
@@ -5422,7 +5458,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   transition: background 0.15s ease;
 }
 
-.rp-heat-wrap { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rp-heat-wrap { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .rp-heat-switch { align-self: flex-start; }
 .rp-heat-legend { display: flex; align-items: center; gap: 8px; align-self: flex-end; }
 .rp-heat-legend-label { font-size: 10.5px; color: var(--text-4); }

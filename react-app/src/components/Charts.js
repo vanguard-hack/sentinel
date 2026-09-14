@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import CalendarHeatmap from './charts/Heatmap';
 
 // Area trend — one series over ordered periods, with reference-grade chrome:
 // dashed gridlines with y-ticks, a vertical hover cursor with a ring marker,
@@ -527,22 +528,48 @@ export function MultiLine({ series, height = 250, labelEvery = 1 }) {
 // works, just with no switcher, so this is not a breaking change for a
 // simpler caller.
 const HEAT_PERIODS = [
+  { key: 'day', label: 'Day' },
   { key: 'week', label: 'Week' },
   { key: 'month', label: 'Month' },
   { key: 'year', label: 'Year' },
 ];
 
+const hasPeriod = (g) => g && (g.rows?.length || g.days?.length);
+
 export function HeatGrid(props) {
   const periods = props.periods || (props.rows ? { month: props } : null);
-  const available = HEAT_PERIODS.filter((p) => periods && periods[p.key]?.rows?.length);
+  const available = HEAT_PERIODS.filter((p) => hasPeriod(periods && periods[p.key]));
   const [period, setPeriod] = useState(
-    (periods && periods[props.defaultPeriod] && props.defaultPeriod)
+    (hasPeriod(periods && periods[props.defaultPeriod]) && props.defaultPeriod)
     || available[0]?.key
     || 'month'
   );
   const [hover, setHover] = useState(null); // { r, c }
   const active = periods && periods[period];
-  if (!active || !active.rows?.length) return <div className="rp-empty">No data</div>;
+  if (!hasPeriod(active)) return <div className="rp-empty">No data</div>;
+  if (active.days?.length) {
+    return (
+      <div className="rp-heat-wrap">
+        {available.length > 1 && (
+          <div className="rp-seg rp-heat-switch" role="tablist" aria-label="Time granularity">
+            {available.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                role="tab"
+                aria-selected={period === p.key}
+                className={period === p.key ? 'active' : ''}
+                onClick={() => { setPeriod(p.key); setHover(null); }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <CalendarHeatmap days={active.days} />
+      </div>
+    );
+  }
   const { rows, cols, values } = active;
   const max = Math.max(1, ...values.flat());
 

@@ -133,6 +133,8 @@ export async function exportHomeReportPdf(element, meta = {}) {
       const wide =
         el.classList.contains('rp-card-wide') ||
         el.classList.contains('rp-card-hero') ||
+        el.classList.contains('rp-card-full') ||
+        el.classList.contains('rp-card-banner') ||
         el.classList.contains('rp-standalone');
       sec.items.push({ el, wide });
     }

@@ -51,6 +51,13 @@ test('the viewBox is the tile, so the drawing is never scaled', () => {
   expect(draw(900, 300).getAttribute('viewBox')).toBe('0 0 900 300');
 });
 
+test('the drawing stretches to the tile instead of letterboxing', () => {
+  // Default SVG meet-scaling would keep the viewBox aspect and leave empty
+  // bands on the sides of a wide tile — the clustered look. none is what
+  // lets a full-row card actually buy the ribbons more width.
+  expect(draw(1200, 400).getAttribute('preserveAspectRatio')).toBe('none');
+});
+
 test('a box too small to label legibly is drawn at the floor and scrolls', () => {
   // Under these the labels collide with the ribbons; the wrapper scrolls
   // rather than drawing something that cannot be read.

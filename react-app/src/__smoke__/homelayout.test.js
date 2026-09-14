@@ -41,8 +41,41 @@ describe('the donut and its legend', () => {
     expect(px(ruleFor('.rp-legend'), 'max-width')).toBeLessThanOrEqual(400);
   });
 
-  test('the ring stays centred once the legend stops stretching', () => {
-    expect(ruleFor('.rp-bento .rp-donut-wrap')).toMatch(/justify-content:\s*center/);
+  test('a two-item legend does not stretch into empty bottom padding', () => {
+    // Heinous vs non-heinous: two rows. flex:1 on the legend ate the leftover
+    // tile height under them. The wrap hugs the ring and the rows instead.
+    expect(ruleFor('.rp-bento .rp-donut-wrap .rp-legend')).toMatch(/flex:\s*0/);
+    expect(ruleFor('.rp-bento .rp-donut-wrap')).toMatch(/flex:\s*0/);
+  });
+});
+
+describe('the line chart fills its tile', () => {
+  test('the plot wrapper is what stretches, not a nested 250px box', () => {
+    // Crime trend by head is a TrendLine: card-body > .bk-chart-wrap > .bk-chart.
+    // Stretching only a direct .bk-chart left the wrap at its inline height
+    // and the card body centred it, which is the empty padding above and
+    // below the lines.
+    const wrap = ruleFor('.rp-bento .rp-card-body > .bk-chart-wrap');
+    expect(wrap).toMatch(/flex:\s*1/);
+  });
+});
+
+describe('the crime-flow Sankey takes the full row', () => {
+  test('a full card spans every column, not two of four', () => {
+    const rule = ruleFor('.rp-bento .rp-card-full');
+    expect(rule).toMatch(/grid-column:\s*1\s*\/\s*-1/);
+  });
+});
+
+describe('seasonality sits in a one-row strip, not a two-row slab', () => {
+  test('a banner card is full width and one row', () => {
+    const rule = ruleFor('.rp-bento .rp-card-banner');
+    expect(rule).toMatch(/grid-column:\s*1\s*\/\s*-1/);
+    expect(rule).not.toMatch(/grid-row:\s*span/);
+  });
+
+  test('the heatmap hugs the grid instead of stretching under it', () => {
+    expect(ruleFor('.rp-bento .rp-heat-wrap .bk-heat')).toMatch(/flex:\s*0/);
   });
 });
 

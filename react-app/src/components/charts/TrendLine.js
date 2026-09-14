@@ -39,7 +39,7 @@ import { LinePath } from '@visx/shape';
 import { motion, useReducedMotion, useSpring, useTransform } from 'motion/react';
 import './chart-tokens.css';
 
-const MARGIN = { top: 12, right: 16, bottom: 28, left: 40 };
+const MARGIN = { top: 4, right: 12, bottom: 22, left: 36 };
 const CATS = 6;
 const DRAW_MS = 900;
 const EASE = 'cubic-bezier(0.85, 0, 0.15, 1)';
@@ -124,7 +124,14 @@ export function Plot({ width, height, series, ariaLabel }) {
     [innerW, n]
   );
   const yScale = useMemo(
-    () => scaleLinear({ range: [innerH, 0], domain: [0, Math.max(1, tweenedMaxV)], nice: true }),
+    () => scaleLinear({
+      range: [innerH, 0],
+      // A small headroom so the highest point is not clipped by the stroke,
+      // without `nice` rounding the max up a whole tick — that was empty
+      // padding above the lines. Domain still starts at 0 so a count chart
+      // does not exaggerate a flat series.
+      domain: [0, Math.max(1, tweenedMaxV) * 1.04],
+    }),
     [innerH, tweenedMaxV]
   );
 

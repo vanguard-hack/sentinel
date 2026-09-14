@@ -23,12 +23,14 @@ import TopBar from '../components/TopBar';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 
-function Card({ id, title, subtitle, wide, two, hero, tall, section, children }) {
+function Card({ id, title, subtitle, wide, two, hero, full, banner, tall, section, children }) {
   const span = [
-    hero && 'rp-card-hero',
+    full && 'rp-card-full',
+    banner && 'rp-card-banner',
+    !full && !banner && hero && 'rp-card-hero',
     tall && 'rp-card-tall',
-    !hero && wide && 'rp-card-wide',
-    !hero && two && 'rp-card-2',
+    !full && !banner && !hero && wide && 'rp-card-wide',
+    !full && !banner && !hero && two && 'rp-card-2',
   ].filter(Boolean).join(' ');
   return (
     // data-pdf-section groups cards into titled, one-page-per-section spreads
@@ -421,14 +423,17 @@ export default function Reports() {
                 cards are ordered into BANDS that each fill the four columns
                 exactly:
 
-                  hero + tall + tall            2 rows   ██████░░░░
-                  hero + wide over wide         2 rows
-                  hero + wide + one + one       2 rows
-                  tall + tall + wide over wide  2 rows
-                  tall + tall + four ones       2 rows
+                  hero + tall + tall            2 rows
+                  full (crime flow)             2 rows
+                  wide + wide                   1 row
+                  hero + four ones              2 rows
+                  banner (seasonality)          1 row
+                  hero + tall + tall            2 rows
+                  wide + wide                   1 row
+                  four talls                    2 rows
                   wide + one + one              1 row
 
-                Every span is 1 or 2 columns wide, so the same bands re-pack
+                Spans are 1, 2, or the full row, so the same bands re-pack
                 without holes when the grid drops to two columns, and to one
                 on a phone. The order below IS the layout — moving a card
                 between bands breaks the tiling, so keep the band comments. */}
@@ -457,11 +462,14 @@ export default function Reports() {
                 <HBarList data={data.openByStation} />
               </Card>
 
-              {/* Band 2 — the flow, with two time series stacked beside it. */}
+              {/* Band 2 — the flow on its own full-width row, then the two
+                  time series side by side. The Sankey was a 2-column hero
+                  and the three layers sat on top of each other; giving it
+                  the whole lattice is what spreads the ribbons apart. */}
               <Card
                 id="chart-crime-types"
                 title="Crime flow"
-                subtitle="Category → type → outcome · ribbon width is case volume" hero section="Case flow & time trends">
+                subtitle="Category → type → outcome · ribbon width is case volume" full section="Case flow & time trends">
                 <Sankey spec={data.crimeSankey} />
               </Card>
               <Card id="chart-age-profile" title="Accused age profile" subtitle="Accused on record by age band" wide section="Case flow & time trends">
@@ -471,15 +479,14 @@ export default function Reports() {
                 <TrendLine series={data.arrestSeries} height={250} ariaLabel="Arrests and surrenders" />
               </Card>
 
-              {/* Band 3 — the second map, then the seasonality strip over two rings. */}
+              {/* Band 3 — the socio map with four composition rings filling
+                  the other two columns. A donut in a tall tile is a ring
+                  floating in empty padding; 1x1 is the size it actually is. */}
               <Card
                 id="chart-socio"
                 title="Socio-economic correlation"
                 subtitle="Districts shaded by indicator, circles sized by cases" hero section="Socio-economic & seasonality">
                 <SocioCrimeMap crimeByDistrict={data.crimeByDistrict} />
-              </Card>
-              <Card title="Seasonality" subtitle="Registrations by crime head, over time" wide section="Socio-economic & seasonality">
-                <HeatGrid periods={data.seasonality} defaultPeriod="month" />
               </Card>
               <Card id="chart-case-status" title={t('charts.caseStatus')} subtitle={t('charts.caseStatusSub')} section="Socio-economic & seasonality">
                 <Donut data={data.byStatus} />
@@ -487,8 +494,21 @@ export default function Reports() {
               <Card title="Heinous vs non-heinous" subtitle="Gravity of registered offences" section="Socio-economic & seasonality">
                 <Donut data={data.gravitySplit} />
               </Card>
+              <Card title="Case category" subtitle="FIR · UDR · PAR · Zero FIR" section="Socio-economic & seasonality">
+                <Donut data={data.categorySplit} />
+              </Card>
+              <Card title="Accused gender split" subtitle="Accused on record" section="Socio-economic & seasonality">
+                <Donut data={data.accusedGender} />
+              </Card>
 
-              {/* Band 4 — the trend, flanked by two legal lists. */}
+              {/* Band 4 — daily calendar, full width, one row. Two rows left
+                  a slab of empty space under a seven-row grid; width is what
+                  the cells need, not height. */}
+              <Card title="Seasonality" subtitle="Daily registrations · past 12 months" banner section="Socio-economic & seasonality">
+                <HeatGrid periods={data.seasonality} defaultPeriod="day" />
+              </Card>
+
+              {/* Band 5 — the trend, flanked by two legal lists. */}
               <Card id="chart-trend-head" title="Crime trend by head" subtitle="Monthly registrations · top 5 crime heads" hero section="Legal trends & investigation time">
                 <TrendLine series={data.trendByHead} height={250} ariaLabel="Crime trend by head" />
               </Card>
@@ -499,13 +519,7 @@ export default function Reports() {
                 <HBarList data={data.investTimeByHead} suffix=" days" percent={false} />
               </Card>
 
-              {/* Band 5 — two lists about people, two distributions beside them. */}
-              <Card title="Complainant occupations" subtitle="Who is filing FIRs" tall section="People">
-                <HBarList data={data.complainantOccupations} />
-              </Card>
-              <Card title="Repeat offenders" subtitle="Distinct FIRs per offender (2+ cases)" tall section="People">
-                <HBarList data={data.repeatOffenders} suffix=" FIRs" percent={false} />
-              </Card>
+              {/* Band 6 — two distributions about people, side by side. */}
               <Card title="Complainant age profile" subtitle="Complainants by age band" wide section="People">
                 <BarList data={data.complainantAges} height={300} />
               </Card>
@@ -513,27 +527,22 @@ export default function Reports() {
                 <BarList data={data.csLag} height={300} straightLabels caption={false} />
               </Card>
 
-              {/* Band 6 — two workload lists, and the four small shapes. */}
+              {/* Band 7 — four ranked / staged charts, all tall. Funnel and
+                  pyramid can fill a two-row tile; a donut cannot. */}
               <Card title="IO caseload" subtitle="Cases per investigating officer (top 8)" tall section="Workload & case outcomes">
                 <HBarList data={data.ioCaseload} />
               </Card>
               <Card title="Court load" subtitle="Chargesheets filed per court (top 8)" tall section="Workload & case outcomes">
                 <HBarList data={data.courtLoad} />
               </Card>
-              <Card title="Case category" subtitle="FIR · UDR · PAR · Zero FIR" section="Workload & case outcomes">
-                <Donut data={data.categorySplit} />
-              </Card>
-              <Card title="Case status funnel" subtitle="Registered → chargesheeted → decided" section="Workload & case outcomes">
+              <Card title="Case status funnel" subtitle="Registered → chargesheeted → decided" tall section="Workload & case outcomes">
                 <Funnel data={data.statusFunnel} />
               </Card>
-              <Card title="Pendency ageing" subtitle="Open cases by age · green fresh, red long-pending" section="Workload & case outcomes">
+              <Card title="Pendency ageing" subtitle="Open cases by age · green fresh, red long-pending" tall section="Workload & case outcomes">
                 <Pyramid data={data.pendencyAgeing} />
               </Card>
-              <Card title="Accused gender split" subtitle="Accused on record" section="Workload & case outcomes">
-                <Donut data={data.accusedGender} />
-              </Card>
 
-              {/* Band 7 — the closing row. Rank distribution takes the wide
+              {/* Band 8 — the closing row. Rank distribution takes the wide
                   slot because its legend is a twelve-rank ladder. */}
               <Card title="Rank distribution" subtitle="Force composition by rank" wide section="Force composition">
                 <Donut data={data.rankDistribution} />
