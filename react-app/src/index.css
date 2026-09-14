@@ -3838,20 +3838,20 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
      the mic button), so a menu opening from its LEFT edge would run past the
      composer's own right boundary. */
   position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 50;
-  min-width: 220px; padding: 6px;
+  min-width: 180px; padding: 4px;
   background: var(--bg-2); border: 1px solid var(--border-1);
   border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.3);
   display: flex; flex-direction: column;
 }
 .as-model-item {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 8px 10px; border: none; background: none; text-align: left;
-  cursor: pointer; border-radius: 6px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 8px; border: none; background: none; text-align: left;
+  cursor: pointer; border-radius: 5px;
 }
 .as-model-item:hover { background: var(--hover-overlay); }
 .as-model-item-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.as-model-item-label { font-size: 0.85rem; color: var(--text-1); }
-.as-model-item-desc { font-size: 0.72rem; color: var(--text-4); }
+.as-model-item-label { font-size: 0.78rem; color: var(--text-1); }
+.as-model-item-desc { font-size: 0.67rem; color: var(--text-4); }
 .as-model-item-check { color: var(--primary); flex-shrink: 0; }
 .as-rename-input {
   flex: 1; min-width: 0; font-size: 0.85rem;
