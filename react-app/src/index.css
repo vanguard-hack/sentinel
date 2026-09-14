@@ -2239,16 +2239,17 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    Spans: full 4x2 · banner 4x1 · hero 2x2 · wide 2x1 · tall 1x2 · default 1x1. */
 .rp-bento {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  /* A hero spans two of these, so this number is what decides how much room
-     the Sankey and the socio map actually get: 248 gave them a ~420px body,
-     and the map — which is limited by height, not width — could not fill it.
-     Rows still grow past this when their content needs it.
-
-     Bumped from 280 to give a plain 1x1 donut tile room to stack its ring
-     above its legend (see .rp-donut-wrap below) — stacked wants ~240px of
-     body height and a 280px row left it 8px short, which is what forced the
-     ring and legend into a side-by-side row too narrow for either. */
-  grid-auto-rows: minmax(304px, auto);
+  /* This is a FLOOR, not a target — grid track sizing already refuses to
+     shrink a row below what its tallest card actually needs (that's what
+     "rows still grow past this" below means), so a floor tuned to the
+     densest card (a 4-item legend needing ~304px) forced that same 304px
+     onto every OTHER row too, including a plain two-item donut that only
+     needs ~245px. That gap between "what this row needs" and "the floor
+     every row shares" is exactly the bottom padding that read as excessive.
+     Set low enough that essentially every card's own content decides its
+     row's height; only a genuinely empty/near-empty tile still falls back
+     to this number. */
+  grid-auto-rows: minmax(220px, auto);
   align-items: stretch;
 }
 .rp-bento .rp-card-hero { grid-column: span 2; grid-row: span 2; }
@@ -2389,7 +2390,11 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    are positioned absolutely inside it, and clipping would cut them off. */
 .rp-card .rp-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
 .rp-bento .rp-card { padding: 8px 12px 8px; }
-.rp-bento .rp-card .rp-card-body { justify-content: flex-start; }
+/* No override here any more: the base rule above already centers, which is
+   what a card with slack should do — a chart that stretches (flex:1) fills
+   the tile regardless of justify-content, so this only affects content that
+   doesn't stretch (a donut, the calendar heatmap), where centering splits
+   any leftover row height evenly instead of dumping all of it below. */
 .rp-card .rp-card-body > * { max-width: 100%; }
 .rp-card-head { margin-bottom: 10px; min-width: 0; }
 .rp-card-head h2 { font-size: 15px; font-weight: 500; color: var(--text-0); overflow-wrap: anywhere; }
