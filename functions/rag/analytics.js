@@ -150,7 +150,7 @@ const RETRIES = 4;
    stops it — and a killed invocation tells the browser nothing at all. Giving
    up first, with a reason, is strictly better: the client retries the build a
    few seconds later against a store that has had a moment to breathe. */
-const BUDGET_MS = 25000;
+const BUDGET_MS = 50000;
 
 async function readPage(app, table, select, off, deadline) {
   let last;
