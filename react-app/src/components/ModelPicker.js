@@ -35,9 +35,9 @@ export default function ModelPicker({ value, onChange }) {
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        title="Choose which model answers"
+        title={`Model: ${current.label} — click to change`}
       >
-        {current.label}
+        Model
         <ChevronDown size={13} />
       </button>
       {open && (

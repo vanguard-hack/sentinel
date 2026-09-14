@@ -2802,7 +2802,6 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 
 }
 .as-composer:focus-within { border-color: var(--blue-500); }
-.as-composer-tools { display: flex; align-items: center; padding: 2px 6px 6px; }
 .as-attach-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px 8px; }
 .as-attach-chip {
   display: inline-flex; align-items: center; gap: 6px;
@@ -3825,15 +3824,20 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
    session row. */
 .as-model-wrap { position: relative; }
 .as-model-trigger {
+  flex-shrink: 0;
+  height: 38px;
   display: flex; align-items: center; gap: 5px;
-  padding: 5px 9px; border: 1px solid var(--border-1); border-radius: 999px;
+  padding: 0 12px; border: 1px solid var(--border-1); border-radius: 999px;
   background: var(--bg-1); color: var(--text-2);
   font-size: 0.78rem; font-weight: 500; cursor: pointer;
 }
 .as-model-trigger:hover { background: var(--hover-overlay); color: var(--text-1); }
 .as-model-trigger svg { color: var(--text-4); }
 .as-model-menu {
-  position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 50;
+  /* Right-anchored: the trigger sits near the composer's right edge (beside
+     the mic button), so a menu opening from its LEFT edge would run past the
+     composer's own right boundary. */
+  position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 50;
   min-width: 220px; padding: 6px;
   background: var(--bg-2); border: 1px solid var(--border-1);
   border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.3);

@@ -1210,9 +1210,6 @@ export default function Assistant() {
                   ))}
                 </div>
               )}
-              <div className="as-composer-tools">
-                <ModelPicker value={model} onChange={chooseModel} />
-              </div>
               <div className="as-composer-main">
                 <button
                   className="as-comp-btn"
@@ -1258,6 +1255,7 @@ export default function Assistant() {
                     {t('assistant.listening', 'Listening…')}
                   </span>
                 )}
+                <ModelPicker value={model} onChange={chooseModel} />
                 {canRecord && (
                   <button
                     className={`as-comp-btn ${listening ? 'listening' : ''} ${transcribing ? 'transcribing' : ''}`}
