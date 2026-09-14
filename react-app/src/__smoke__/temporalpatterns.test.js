@@ -126,9 +126,21 @@ test('illustrativeHistory values stay bounded and non-negative around the first 
   const lead = illustrativeHistory(series, 13);
   lead.forEach((p) => {
     expect(p.value).toBeGreaterThanOrEqual(0);
-    expect(p.value).toBeLessThanOrEqual(1500); // anchor * 1.15, with rounding slack
-    expect(p.value).toBeGreaterThanOrEqual(850); // anchor * 0.85, with rounding slack
+    expect(p.value).toBeLessThanOrEqual(1360); // anchor * 1.35, with rounding slack
+    expect(p.value).toBeGreaterThanOrEqual(640); // anchor * 0.65, with rounding slack
   });
+});
+
+test('illustrativeHistory correlates consecutive years instead of drawing each independently', () => {
+  // An AR(1) walk carries most of the previous year's deviation forward, so
+  // a year almost never lands more than half its own clamped range away
+  // from its neighbour. Independent draws (the old behaviour) have no such
+  // constraint and would fail this on a large enough seed sweep.
+  const series = [{ year: '2023', value: 1000, complete: true }];
+  const lead = illustrativeHistory(series, 13);
+  for (let i = 1; i < lead.length; i++) {
+    expect(Math.abs(lead[i].value - lead[i - 1].value)).toBeLessThanOrEqual(400);
+  }
 });
 
 test('illustrativeHistory is deterministic for the same seed, and empty with no series to anchor on', () => {

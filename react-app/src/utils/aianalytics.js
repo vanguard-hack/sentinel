@@ -175,23 +175,35 @@ function mulberry32(seed) {
 // case data only ever covers 2023 through mid-2026 (see CLAUDE.md); there is
 // no real record, synthetic or otherwise, behind anything earlier. Rather
 // than pretend to know a 13-year trend that was never modelled, each year is
-// drawn independently around the first REAL year's level with bounded
-// deterministic noise — a plausible-looking, admittedly-decorative backdrop,
-// not a second forecast. Every point carries `illustrative: true`, which is
-// what TrendArea uses to draw it dashed and unmistakably apart from the
-// actual recorded years — see completePartialYear and forecastYears below
-// for how those, by contrast, both stay strictly evidence-based.
+// a bounded deterministic walk off the first REAL year's level — a
+// plausible-looking, admittedly-decorative backdrop, not a second forecast.
+// Every point carries `illustrative: true`, which is what TrendArea uses to
+// draw it dashed and unmistakably apart from the actual recorded years — see
+// completePartialYear and forecastYears below for how those, by contrast,
+// both stay strictly evidence-based.
+//
+// This used to draw each year INDEPENDENTLY around the anchor. Independent
+// noise, once TrendArea's natural-spline curve smooths it, reliably reads as
+// a near-periodic wave — a natural spline enforces second-derivative
+// continuity, which low-pass-filters white noise into something that looks
+// like seasonality that was never in the data. An AR(1) walk (each year
+// keeps most of the previous year's deviation and adds a fresh shock) fixes
+// that at the source: multi-year runs stay above or below the anchor the way
+// real crime-count history does, and the path never repeats a fixed period.
+// `dev` is clamped so 13 correlated steps can't drift the whole backdrop
+// implausibly far from the real data it leads into.
 export function illustrativeHistory(series, years = 13, seed = 20100101) {
   if (!series.length) return [];
   const anchor = series[0].value;
   const firstYear = Number(series[0].year);
   const rnd = mulberry32(seed);
   const out = [];
-  for (let i = years; i >= 1; i--) {
-    const noise = (rnd() - 0.5) * 0.3; // +/-15% around the anchor level
-    out.push({ year: String(firstYear - i), value: Math.max(0, Math.round(anchor * (1 + noise))), illustrative: true });
+  let dev = 0; // fraction of anchor, carried across years with decay
+  for (let i = 1; i <= years; i++) {
+    dev = Math.max(-0.35, Math.min(0.35, dev * 0.55 + (rnd() - 0.5) * 0.22));
+    out.push({ year: String(firstYear - i), value: Math.max(0, Math.round(anchor * (1 + dev))), illustrative: true });
   }
-  return out;
+  return out.reverse();
 }
 
 // If the trailing year in `series` is partial and `modelSeries.forecast` (a
