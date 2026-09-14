@@ -7636,6 +7636,16 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .rb-filters .rb-select:hover { border-color: var(--border-bright); }
 .rb-filters .rb-select:focus { outline: none; border-color: var(--blue-500); }
 
+/* Records: bulk-selection bar */
+.rb-bulkbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: -4px 0 12px; padding: 10px 14px;
+  background: color-mix(in srgb, var(--blue-400) 8%, var(--bg-1));
+  border: 1px solid var(--blue-500); border-radius: 10px;
+  font-size: 12.5px; color: var(--text-1);
+}
+.rb-bulkbar-actions { display: flex; gap: 8px; }
+
 /* Linked-case chip in the editor toolbar */
 .rb-caselink-chip {
   display: inline-flex; align-items: center; gap: 1px; height: 30px;
@@ -7794,7 +7804,16 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   cursor: pointer; transition: border-color .12s, transform .12s;
 }
 .dg-card:hover { border-color: var(--border-bright); transform: translateY(-1px); }
+.dg-card.selected { border-color: var(--blue-500); background: color-mix(in srgb, var(--blue-400) 6%, var(--bg-1)); }
 .dg-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dg-card-head-left { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.dg-card-check {
+  display: flex; align-items: center; justify-content: center; flex: none;
+  width: 22px; height: 22px; padding: 0; border-radius: 6px;
+  background: transparent; border: none; color: var(--text-3); cursor: pointer;
+}
+.dg-card-check:hover { color: var(--text-1); background: var(--bg-2); }
+.dg-card.selected .dg-card-check { color: var(--blue-500); }
 .dg-card-type {
   font-size: 10px; font-weight: 600; letter-spacing: 0.01em;
   color: var(--blue-600); background: color-mix(in srgb, var(--blue-400) 12%, transparent);
@@ -7827,7 +7846,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 7px 9px;
 }
 .dg-title-input:hover, .dg-title-input:focus { border-color: var(--border); background: var(--bg-2); outline: none; }
-.dg-detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 18px; align-items: start; }
+.dg-detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 18px; align-items: stretch; }
 @media (max-width: 900px) { .dg-detail { grid-template-columns: 1fr; } }
 .dg-scan {
   position: sticky; top: 12px; padding: 10px;

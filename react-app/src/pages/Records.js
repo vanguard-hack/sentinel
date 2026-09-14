@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, Camera, CheckCircle2, FileDown, FileText, Images, Layers,
-  Loader2, Search, Trash2, X, FilePlus2, Files,
+  Loader2, Search, Trash2, X, FilePlus2, Files, CheckSquare, Square,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -36,6 +36,8 @@ export default function Records() {
   // photographed pages, and one record per photo was the wrong unit.
   const [tray, setTray] = useState([]);   // [{ key, file, url }]
   const [preparing, setPreparing] = useState(null);
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
 
@@ -261,7 +263,55 @@ export default function Records() {
       tone: 'danger',
     });
     if (!ok) return;
-    try { await deleteRecord(r.id); refresh(); } catch (e) { setError(e.message); }
+    try {
+      await deleteRecord(r.id);
+      setSelected((prev) => { const next = new Set(prev); next.delete(r.id); return next; });
+      refresh();
+    } catch (e) { setError(e.message); }
+  };
+
+  const toggleSelect = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const allVisibleSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id));
+  const toggleSelectAll = () => setSelected((prev) => {
+    if (allVisibleSelected) {
+      const next = new Set(prev);
+      filtered.forEach((r) => next.delete(r.id));
+      return next;
+    }
+    const next = new Set(prev);
+    filtered.forEach((r) => next.add(r.id));
+    return next;
+  });
+
+  // Every record is deleted the same way a single one is — the same blob and
+  // index entry the assistant's own search reads live, so a record dropped
+  // here stops being searchable (including by the assistant) the instant the
+  // call returns. There is no separate knowledge base to clean up afterwards.
+  const bulkRemove = async () => {
+    const ids = [...selected];
+    if (!ids.length) return;
+    const ok = await confirm({
+      title: t('records.deleteSelectedTitle', { count: ids.length }),
+      body: t('records.deleteSelectedBody'),
+      confirmLabel: t('records.deleteSelectedConfirm'),
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setBulkBusy(true);
+    try {
+      const results = await Promise.allSettled(ids.map((id) => deleteRecord(id)));
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed) setError(`${failed} of ${ids.length} record${ids.length === 1 ? '' : 's'} could not be deleted.`);
+      setSelected(new Set());
+      refresh();
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   const exportCsv = () => {
@@ -448,7 +498,30 @@ export default function Records() {
           <button type="button" className="aa-btn" disabled={!filtered.length} onClick={exportCsv}>
             <FileDown size={15} /> {t('records.exportCsv')}
           </button>
+          <button
+            type="button"
+            className="aa-btn"
+            disabled={!filtered.length}
+            onClick={toggleSelectAll}
+            aria-pressed={allVisibleSelected}
+          >
+            {allVisibleSelected ? <CheckSquare size={15} /> : <Square size={15} />} {t('records.selectAll')}
+          </button>
         </div>
+
+        {selected.size > 0 && (
+          <div className="rb-bulkbar">
+            <span>{t('records.selectedCount', { count: selected.size })}</span>
+            <div className="rb-bulkbar-actions">
+              <button type="button" className="aa-btn" onClick={() => setSelected(new Set())}>
+                {t('records.clearSelection')}
+              </button>
+              <button type="button" className="aa-btn danger" disabled={bulkBusy} onClick={bulkRemove}>
+                {bulkBusy ? <Loader2 size={15} className="dg-spin" /> : <Trash2 size={15} />} {t('records.deleteSelected')}
+              </button>
+            </div>
+          </div>
+        )}
 
         {!records && <div className="aa-loading">{t('common.loading')}</div>}
         {records && !filtered.length && (
@@ -462,14 +535,25 @@ export default function Records() {
           {filtered.map((r) => (
             <div
               key={r.id}
-              className="dg-card"
+              className={`dg-card${selected.has(r.id) ? ' selected' : ''}`}
               role="button"
               tabIndex={0}
               onClick={() => navigate(`/records/${r.id}`)}
               onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/records/${r.id}`); }}
             >
               <div className="dg-card-head">
-                <span className="dg-card-type">{r.docType}</span>
+                <span className="dg-card-head-left">
+                  <button
+                    type="button"
+                    className="dg-card-check"
+                    aria-pressed={selected.has(r.id)}
+                    aria-label={selected.has(r.id) ? 'Deselect record' : 'Select record'}
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(r.id); }}
+                  >
+                    {selected.has(r.id) ? <CheckSquare size={16} /> : <Square size={16} />}
+                  </button>
+                  <span className="dg-card-type">{r.docType}</span>
+                </span>
                 {r.status === 'ocr-failed' && <span className="dg-card-warn">{t('records.textNotRead')}</span>}
               </div>
               <div className="dg-card-title">{r.title}</div>

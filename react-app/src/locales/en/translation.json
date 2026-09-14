@@ -150,7 +150,16 @@
     "noText": "No text was extracted from this scan.",
     "deleteTitle": "Delete “{{title}}”?",
     "deleteBody": "The scan and its extracted text are permanently removed.",
-    "deleteConfirm": "Delete record"
+    "deleteConfirm": "Delete record",
+    "selectAll": "Select all",
+    "clearSelection": "Clear selection",
+    "selectedCount_one": "{{count}} selected",
+    "selectedCount_other": "{{count}} selected",
+    "deleteSelected": "Delete selected",
+    "deleteSelectedTitle_one": "Delete {{count}} record?",
+    "deleteSelectedTitle_other": "Delete {{count}} records?",
+    "deleteSelectedBody": "Every scan and its extracted text are permanently removed, and they stop being searchable — including by the assistant.",
+    "deleteSelectedConfirm": "Delete records"
   },
   "reportStudio": {
     "title": "Report Studio",
