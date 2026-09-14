@@ -3319,6 +3319,77 @@ async function handleAdminCheckFirTable(req, res) {
   return json(res, 200, { table: tableName, rowCount: total, idRange });
 }
 
+// ── One-time reset of the FIR dataset tables ────────────────────────────────
+//
+// TEMPORARY. Data Store has no CLI delete, so clearing a table before a fresh
+// ds:import has historically needed a function endpoint like this one — used
+// once to reset the FIR schema for the regenerated (ID-offset) dataset, then
+// removed. It is not a capability the app keeps.
+//
+// The allow-list is the whole safety argument: the caller names a table, but
+// only from a fixed set of eight — the FIR schema this reset was written for
+// — never an arbitrary string. Nothing else in this Data Store is reachable
+// through this route no matter what the request body says.
+//
+// Bounded per call (RESET_BUDGET rows) rather than looping until the table is
+// empty in one invocation: a 30,000-row table is many round trips, comfortably
+// past what a single function execution should run for, and a batch-bounded,
+// idempotent call is safe to simply invoke again — nothing here assumes it is
+// the only or the last call for a table.
+const FIR_RESET_TABLES = new Set([
+  'CaseMaster', 'ComplainantDetails', 'Victim', 'Accused',
+  'ActSectionAssociation', 'ArrestSurrender', 'ChargesheetDetails', 'Employee',
+]);
+const RESET_PAGE = 300;   // ZCQL SELECT hard cap
+const RESET_CHUNK = 200;  // matches the documented bulk-write cap
+const RESET_BUDGET = 3000; // rows per invocation
+
+async function handleAdminResetFirTable(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || role !== 'admin') return json(res, 403, { error: 'Admin access required' });
+
+  const tableName = String(body.table || '');
+  if (!FIR_RESET_TABLES.has(tableName)) {
+    return json(res, 400, { error: `table must be one of: ${[...FIR_RESET_TABLES].join(', ')}` });
+  }
+
+  const zcql = app.zcql();
+  const countRows = await zcql.executeZCQLQuery(`SELECT COUNT(ROWID) AS total FROM ${tableName}`);
+  const total = Number((countRows[0] && countRows[0][tableName] && countRows[0][tableName].total) || 0);
+
+  if (body.confirm !== true) {
+    return json(res, 200, {
+      dryRun: true, table: tableName, rowsRemaining: total,
+      note: 'Nothing was deleted. Send { "table": "...", "confirm": true } to delete up to '
+        + `${RESET_BUDGET} rows this call. Call again while rowsRemaining > 0.`,
+    });
+  }
+  if (!total) return json(res, 200, { table: tableName, deleted: 0, rowsRemaining: 0 });
+
+  const table = app.datastore().table(tableName);
+  let deleted = 0;
+  while (deleted < RESET_BUDGET) {
+    const page = await zcql.executeZCQLQuery(`SELECT ROWID FROM ${tableName} LIMIT ${RESET_PAGE}`);
+    const ids = page.map((r) => r[tableName] && r[tableName].ROWID).filter(Boolean);
+    if (!ids.length) break;
+    for (let i = 0; i < ids.length; i += RESET_CHUNK) {
+      await table.deleteRows(ids.slice(i, i + RESET_CHUNK));
+      deleted += Math.min(RESET_CHUNK, ids.length - i);
+    }
+  }
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'admin-reset-fir-table', feature: 'Admin', path: '/admin/reset-fir-table',
+    detail: `${tableName}: ${deleted} rows deleted (dataset regeneration reset)`,
+  }], caller);
+
+  const remaining = Math.max(0, total - deleted);
+  return json(res, 200, { table: tableName, deleted, rowsRemaining: remaining });
+}
+
 /* POST /server/rag/investigation/remove   { caseMasterId }
 
    Delete a WHOLE case diary, not one entry.
@@ -4968,6 +5039,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/investigation/actions')) return await handleActionQueue(req, res);
     if (path.endsWith('/investigation/purge-seeded')) return await handleInvestigationPurgeSeeded(req, res);
     if (path.endsWith('/admin/check-fir-table')) return await handleAdminCheckFirTable(req, res);
+    if (path.endsWith('/admin/reset-fir-table')) return await handleAdminResetFirTable(req, res);
     if (path.endsWith('/investigation/remove')) return await handleInvestigationRemove(req, res);
     if (path.endsWith('/investigation/obligation-ack')) return await handleObligationAck(req, res);
     if (path.endsWith('/investigation/list')) return await handleInvestigation(req, res, 'list');
