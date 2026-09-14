@@ -622,13 +622,13 @@ function buildConversationHtml(session) {
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     * { box-sizing: border-box; }
     @page { size: A4; margin: 18mm 15mm; }
-    body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1a2230; font-size: 11px; line-height: 1.55; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1a2230; font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
     .doc-head { border-bottom: 2px solid #5e6ad2; padding-bottom: 10px; margin-bottom: 16px; }
     .brand { font-size: 10px; letter-spacing: .12em; color: #5e6ad2; font-weight: 700; text-transform: uppercase; }
     .doc-head h1 { font-size: 19px; margin: 6px 0 2px; }
     .doc-head .sub { color: #5a6473; font-size: 11px; }
     .doc-head .exp { color: #8a93a2; font-size: 9.5px; margin-top: 4px; }
-    .msg { border: 1px solid #e2e7ef; border-radius: 8px; padding: 10px 13px; margin-bottom: 10px; page-break-inside: avoid; }
+    .msg { border: 1px solid #e2e7ef; border-radius: 8px; padding: 10px 13px; margin-bottom: 10px; page-break-inside: avoid; overflow: hidden; }
     .msg-user { background: #f5f7fb; }
     .msg-assistant { background: #ffffff; }
     .msg-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
