@@ -9141,7 +9141,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 /* ── Action queue: command view (by officer) ─────────────────────────────── */
 .aq-cmd { display: grid; gap: 10px; }
 .aq-officer {
-  display: grid; gap: 9px; padding: 14px 16px; border-radius: 12px;
+  display: grid; gap: 9px; padding: 14px 16px; border-radius: 0;
   background: var(--bg-1); border: 1px solid var(--border);
   border-left: 3px solid var(--blue-500);
 }

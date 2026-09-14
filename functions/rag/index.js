@@ -3316,6 +3316,187 @@ async function handleInvestigationPurgeSeeded(req, res) {
   return json(res, 200, { deleted: matched.length, cases: matched });
 }
 
+// ── One-time remix of the demonstration obligations ─────────────────────────
+//
+// TEMPORARY. Every open diary on Development converged on the same finding —
+// digital evidence, no certificate, years overdue — because that is the one
+// gap the early demo diaries happened to share. A queue where every row reads
+// identically with thousand-day-old deadlines teaches nothing and looks
+// broken. This rewrites each open diary's evidence/persons/statements/diary
+// sections to one clean target obligation, cycling through the engine's real
+// triggers (statutory, admissibility, procedural), with every clock landing
+// under twenty days out. It invents nothing: every diary it touches already
+// exists against a real CaseMaster row, and no new case is created.
+//
+// Admin only, for the same reason the old seeder was: this is a setup action
+// against demonstration state, not something to expose to an investigator
+// working a live queue.
+const REMIX_DAY = 86_400_000;
+
+const REMIX_PROFILES = [
+  {
+    // Statutory: custody clock, always the 60-day window (sections chosen so
+    // the punishment never reads as grave) so remaining days == 60 - elapsed
+    // regardless of whether the section resolves against the legal reference.
+    build: (i) => {
+      const remaining = 4 + (i % 16); // 4..19 days left
+      const arrestedDaysAgo = 60 - remaining;
+      const ts = Date.now() - arrestedDaysAgo * REMIX_DAY;
+      return {
+        sections: '379, 457',
+        persons: [{ name: `Accused ${i}`, role: 'Accused', status: 'Arrested', ts }],
+        timeline: [{ type: 'Arrest', detail: 'Accused arrested and produced before the magistrate.', ts }],
+        statements: [{ deponent: 'Witness 1', summary: 'Statement recorded at the scene.', ts: Date.now() - 2 * REMIX_DAY }],
+        evidence: [],
+        diaryEntries: [{ narrative: 'Investigation ongoing; custody clock running.', ts: Date.now() - 2 * REMIX_DAY }],
+      };
+    },
+  },
+  {
+    // Admissibility: electronic evidence, no certificate, DVR still has time
+    // left before it laps.
+    build: (i) => {
+      const remaining = 3 + (i % 16); // 3..18 days left
+      const elapsed = 30 - remaining;
+      return {
+        sections: '379',
+        persons: [],
+        timeline: [],
+        statements: [{ deponent: 'Witness 1', summary: 'Statement recorded at the scene.', ts: Date.now() - 3 * REMIX_DAY }],
+        evidence: [{ description: 'Shop CCTV footage, DVR at premises', type: 'Digital', ts: Date.now() - elapsed * REMIX_DAY }],
+        diaryEntries: [{ narrative: 'Awaiting section 63 BSA certificate from the shop owner.', ts: Date.now() - 3 * REMIX_DAY }],
+      };
+    },
+  },
+  {
+    // Admissibility, no clock: physical exhibits with no seizure reference.
+    build: () => ({
+      sections: '457',
+      persons: [],
+      timeline: [],
+      statements: [{ deponent: 'Witness 1', summary: 'Statement recorded at the scene.', ts: Date.now() - 4 * REMIX_DAY }],
+      evidence: [
+        { description: 'Recovered crowbar', type: 'Physical', ts: Date.now() - 4 * REMIX_DAY, seizureMemoRef: '' },
+        { description: 'Mobile phone of accused', type: 'Physical', ts: Date.now() - 4 * REMIX_DAY, seizureMemoRef: '' },
+      ],
+      diaryEntries: [{ narrative: 'Exhibits recovered at the scene; panchanama pending.', ts: Date.now() - 4 * REMIX_DAY }],
+    }),
+  },
+  {
+    // Procedural, no clock: forensic exhibit sent, report not back yet.
+    build: (i) => ({
+      sections: '328',
+      persons: [],
+      timeline: [],
+      statements: [{ deponent: 'Witness 1', summary: 'Statement recorded at the scene.', ts: Date.now() - 6 * REMIX_DAY }],
+      evidence: [{
+        description: 'Viscera sample', type: 'Forensic', fslStatus: 'Sent', seizureMemoRef: 'SM/2026/041',
+        ts: Date.now() - (5 + (i % 10)) * REMIX_DAY,
+      }],
+      diaryEntries: [{ narrative: 'Sample forwarded to the forensic lab; report awaited.', ts: Date.now() - 6 * REMIX_DAY }],
+    }),
+  },
+  {
+    // Procedural, no clock: no independent statements recorded.
+    build: (i) => ({
+      sections: '354',
+      persons: [{ name: `Suspect ${i}`, role: 'Suspect', status: 'On bail', ts: Date.now() - 5 * REMIX_DAY }],
+      timeline: [],
+      statements: [],
+      evidence: [{ description: 'Complaint copy', type: 'Physical', ts: Date.now() - 5 * REMIX_DAY, seizureMemoRef: 'SM/2026/077' }],
+      diaryEntries: [{ narrative: 'FIR registered; statements yet to be recorded.', ts: Date.now() - 5 * REMIX_DAY }],
+    }),
+  },
+  {
+    // Procedural, no clock: no case diary entry filed at all.
+    build: (i) => ({
+      sections: '420',
+      persons: [{ name: `Suspect ${i}`, role: 'Suspect', status: 'On bail', ts: Date.now() - 9 * REMIX_DAY }],
+      timeline: [],
+      statements: [{ deponent: 'Witness 1', summary: 'Statement recorded at the scene.', ts: Date.now() - 9 * REMIX_DAY }],
+      evidence: [],
+      diaryEntries: [],
+    }),
+  },
+  {
+    // Procedural, no clock: accused shown at large, nothing on file about the search.
+    build: (i) => ({
+      sections: '392',
+      persons: [{ name: `Accused ${i}`, role: 'Accused', status: 'At large', ts: Date.now() - 7 * REMIX_DAY }],
+      timeline: [],
+      statements: [{ deponent: 'Witness 1', summary: 'Statement recorded at the scene.', ts: Date.now() - 7 * REMIX_DAY }],
+      evidence: [],
+      diaryEntries: [{ narrative: 'Accused untraced; search initiated in native village.', ts: Date.now() - 7 * REMIX_DAY }],
+    }),
+  },
+];
+
+function remixEntries(section, items, ioIdentity) {
+  return (items || []).map((item, idx) => {
+    const entry = {
+      ...item,
+      id: `${section.slice(0, 3)}-remix-${idx}-${Math.random().toString(36).slice(2, 7)}`,
+      ts: Number.isFinite(item.ts) ? item.ts : Date.now(),
+      ioId: String(ioIdentity.email || ''),
+      ioName: ioIdentity.name || '',
+    };
+    if (section === 'diaryEntries') entry.serial = idx + 1;
+    return entry;
+  });
+}
+
+async function handleActionQueueRemix(req, res) {
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || role !== 'admin') return json(res, 403, { error: 'Admin access required' });
+
+  const index = await loadInvIndex(bucket);
+  const open = index.filter((c) => !['Chargesheet Filed', 'Closed'].includes(String(c.status)));
+  const io = { email: 'remix', name: [caller.first_name, caller.last_name].filter(Boolean).join(' ') || 'Remix' };
+
+  const newIndex = [...index];
+  let touched = 0;
+  for (let i = 0; i < open.length; i++) {
+    const c = open[i];
+    let rec;
+    try {
+      rec = JSON.parse((await streamToString(await bucket.getObject(invKey(c.caseMasterId)))) || 'null');
+    } catch {
+      rec = null;
+    }
+    if (!rec) continue;
+
+    const patch = REMIX_PROFILES[i % REMIX_PROFILES.length].build(i);
+    rec.sections = patch.sections;
+    rec.persons = remixEntries('persons', patch.persons, io);
+    rec.evidence = remixEntries('evidence', patch.evidence, io);
+    rec.statements = remixEntries('statements', patch.statements, io);
+    rec.timeline = remixEntries('timeline', patch.timeline, io);
+    rec.diaryEntries = remixEntries('diaryEntries', patch.diaryEntries, io);
+    rec.lastDiaryDate = rec.diaryEntries.length
+      ? new Date(Math.max(...rec.diaryEntries.map((d) => d.ts))).toISOString().slice(0, 10)
+      : '';
+    rec.updatedAt = Date.now();
+    // Old acknowledgements name obligation ids that no longer exist once the
+    // record is rewritten; keeping them would only risk a stale id colliding.
+    delete rec.obligationAcks;
+
+    await bucket.putObject(invKey(c.caseMasterId), Buffer.from(JSON.stringify(rec)));
+    const idx = newIndex.findIndex((x) => x.caseMasterId === rec.caseMasterId);
+    if (idx >= 0) newIndex[idx] = invSummary(rec);
+    touched++;
+  }
+  await saveInvIndex(bucket, newIndex);
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'remix-action-queue-demo', feature: 'Action Queue', path: '/action-queue',
+    detail: `${touched} open diaries rewritten for obligation variety`,
+  }], caller);
+
+  return json(res, 200, { touched, cases: open.length });
+}
+
 // ── One-time read-only row-count check ──────────────────────────────────────
 // TEMPORARY, and deliberately read-only — no delete/update path exists here
 // at all, unlike the reset endpoint this replaces for diagnosis. Used once to
@@ -5090,6 +5271,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/access/records')) return await handleAudit(req, res, 'list');
     if (path.endsWith('/investigation/actions')) return await handleActionQueue(req, res);
     if (path.endsWith('/investigation/purge-seeded')) return await handleInvestigationPurgeSeeded(req, res);
+    if (path.endsWith('/investigation/actionqueue-remix')) return await handleActionQueueRemix(req, res);
     if (path.endsWith('/admin/check-fir-table')) return await handleAdminCheckFirTable(req, res);
     if (path.endsWith('/admin/reset-fir-table')) return await handleAdminResetFirTable(req, res);
     if (path.endsWith('/investigation/remove')) return await handleInvestigationRemove(req, res);
