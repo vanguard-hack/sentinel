@@ -33,7 +33,7 @@ import {
   dictationSupported, startDictation, composeDictated,
 } from '../utils/dictation';
 import { useAccess } from '../context/AccessContext';
-import { slashQuery, filterCommands, parseCommand, closestCommand } from '../utils/slashCommands';
+import { slashQuery, filterCommands, parseCommand, closestCommand, leadingSlashToken } from '../utils/slashCommands';
 
 import { useTranslation } from 'react-i18next';
 
@@ -223,6 +223,7 @@ export default function Assistant() {
   const histRef = useRef({ idx: null, draft: '' });
 
   const textareaRef = useRef(null);
+  const inputHighlightRef = useRef(null);
   // Slash commands. The menu opens only on a leading '/', so an ordinary
   // message containing a slash is untouched.
   const { t } = useTranslation();
@@ -690,6 +691,10 @@ export default function Assistant() {
   // re-checks the role on execution regardless.
   const slashList = slashFrag === null ? [] : filterCommands(roleReady ? appRole : null, slashFrag, !roleReady);
   const menuOpen = slashOpen && slashFrag !== null && slashList.length > 0;
+  // The leading "/command" token, highlighted in the composer as it's typed
+  // — stays highlighted after the argument follows, unlike slashFrag above
+  // which only tracks the menu-open state.
+  const composerToken = leadingSlashToken(input);
 
   useEffect(() => { setSlashIdx(0); setSlashOpen(true); }, [slashFrag]);
 
@@ -1225,22 +1230,41 @@ export default function Assistant() {
                   hidden
                   onChange={onFiles}
                 />
-                <textarea
-                  ref={textareaRef}
-                  className="as-input"
-                  rows={1}
-                  placeholder={t('slash.placeholder', 'Ask a question or type / for commands…')}
-                  value={input}
-                  onChange={(e) => {
-                    setInput(e.target.value);
-                    // Editing mid-dictation rebases what the spoken words are
-                    // appended to, so a correction typed while talking is not
-                    // wiped by the next interim update.
-                    if (listening) typedRef.current = e.target.value;
-                    histRef.current.idx = null;
-                  }}
-                  onKeyDown={onKeyDown}
-                />
+                <div className="as-input-wrap">
+                  {/* Decorative backdrop, not the accessible text — the real
+                      value lives in the textarea below, which paints its
+                      caret and selection on top while its own characters are
+                      transparent, so this shows through. Kept in sync on
+                      scroll so a composer taller than its 200px cap doesn't
+                      show two different scroll positions. */}
+                  <div className="as-input-highlight" aria-hidden="true" ref={inputHighlightRef}>
+                    {composerToken
+                      ? <><span className="as-input-token">{composerToken}</span>{input.slice(composerToken.length)}</>
+                      : input}
+                    {/* A trailing newline collapses in a block box unless
+                        something follows it. */}
+                    {/\n$/.test(input) ? ' ' : null}
+                  </div>
+                  <textarea
+                    ref={textareaRef}
+                    className="as-input"
+                    rows={1}
+                    placeholder={t('slash.placeholder', 'Ask a question or type / for commands…')}
+                    value={input}
+                    onChange={(e) => {
+                      setInput(e.target.value);
+                      // Editing mid-dictation rebases what the spoken words are
+                      // appended to, so a correction typed while talking is not
+                      // wiped by the next interim update.
+                      if (listening) typedRef.current = e.target.value;
+                      histRef.current.idx = null;
+                    }}
+                    onKeyDown={onKeyDown}
+                    onScroll={(e) => {
+                      if (inputHighlightRef.current) inputHighlightRef.current.scrollTop = e.target.scrollTop;
+                    }}
+                  />
+                </div>
                 {/*
                   The words themselves are NOT shown here. They are already in
                   the composer — composeDictated appends the interim text as it

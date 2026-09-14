@@ -115,6 +115,18 @@ export function slashQuery(text) {
   return m ? m[1].toLowerCase() : null;
 }
 
+// The leading "/command" token, wherever it ends — a space, or the end of
+// the string. Unlike slashQuery (which only matches while the WHOLE input is
+// still just the command name, to gate the autocomplete menu), this keeps
+// matching once an argument follows too: "/fir 0042/2026" still returns
+// "/fir". Used to highlight the token in the composer as it's typed, so it
+// stays highlighted after the officer moves on to typing the argument.
+// Returns '' when the input does not open with a command-shaped token.
+export function leadingSlashToken(text) {
+  const m = /^\/[a-zA-Z-]+/.exec(text || '');
+  return m ? m[0] : '';
+}
+
 export function filterCommands(role, fragment, showAll = false) {
   const list = visibleCommands(role, showAll);
   if (!fragment) return list;

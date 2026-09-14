@@ -37,7 +37,7 @@ export default function ModelPicker({ value, onChange }) {
         onClick={() => setOpen((o) => !o)}
         title={`Model: ${current.label} — click to change`}
       >
-        Model
+        {current.label}
         <ChevronDown size={13} />
       </button>
       {open && (

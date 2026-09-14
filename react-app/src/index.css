@@ -2836,13 +2836,29 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .as-comp-btn:hover { background: var(--hover-overlay); color: var(--text-1); }
 .as-comp-btn.listening { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); animation: as-pulse 1.4s infinite; }
 @keyframes as-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.as-input-wrap { position: relative; flex: 1; min-width: 0; }
+/* Sits directly behind the textarea, same box exactly — any mismatch in
+   font/padding/line-height between the two would misalign the colour from
+   the caret it is meant to sit under. */
+.as-input-highlight {
+  position: absolute; inset: 0; margin: 0; overflow: hidden; pointer-events: none;
+  white-space: pre-wrap; word-wrap: break-word; word-break: break-word;
+  font-family: var(--font);
+  font-size: 14.5px;
+  line-height: 1.5;
+  padding: 9px 4px;
+  color: transparent;
+}
+.as-input-token { color: var(--blue-500); }
 .as-input {
-  flex: 1;
+  position: relative;
+  width: 100%;
   resize: none;
   border: none;
   outline: none;
   background: none;
-  color: var(--text-1);
+  color: transparent;
+  caret-color: var(--text-1);
   font-family: var(--font);
   font-size: 14.5px;
   line-height: 1.5;
@@ -3827,7 +3843,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   flex-shrink: 0;
   height: 38px;
   display: flex; align-items: center; gap: 5px;
-  padding: 0 12px; border: 1px solid var(--border-1); border-radius: 999px;
+  padding: 0 12px; border: 1px solid var(--border-1); border-radius: var(--radius-sm);
   background: var(--bg-1); color: var(--text-2);
   font-size: 0.78rem; font-weight: 500; cursor: pointer;
 }
