@@ -150,7 +150,16 @@
     "noText": "ಈ ಸ್ಕ್ಯಾನ್‌ನಿಂದ ಯಾವುದೇ ಪಠ್ಯ ಹೊರತೆಗೆಯಲಾಗಿಲ್ಲ.",
     "deleteTitle": "“{{title}}” ಅಳಿಸುವುದೇ?",
     "deleteBody": "ಸ್ಕ್ಯಾನ್ ಮತ್ತು ಅದರ ಹೊರತೆಗೆದ ಪಠ್ಯ ಶಾಶ್ವತವಾಗಿ ಅಳಿಸಲಾಗುತ್ತದೆ.",
-    "deleteConfirm": "ದಾಖಲೆ ಅಳಿಸಿ"
+    "deleteConfirm": "ದಾಖಲೆ ಅಳಿಸಿ",
+    "selectAll": "ಎಲ್ಲವನ್ನೂ ಆಯ್ಕೆಮಾಡಿ",
+    "clearSelection": "ಆಯ್ಕೆ ತೆರವುಗೊಳಿಸಿ",
+    "selectedCount_one": "{{count}} ಆಯ್ಕೆಯಾಗಿದೆ",
+    "selectedCount_other": "{{count}} ಆಯ್ಕೆಯಾಗಿವೆ",
+    "deleteSelected": "ಆಯ್ಕೆಮಾಡಿದವುಗಳನ್ನು ಅಳಿಸಿ",
+    "deleteSelectedTitle_one": "{{count}} ದಾಖಲೆ ಅಳಿಸುವುದೇ?",
+    "deleteSelectedTitle_other": "{{count}} ದಾಖಲೆಗಳನ್ನು ಅಳಿಸುವುದೇ?",
+    "deleteSelectedBody": "ಪ್ರತಿ ಸ್ಕ್ಯಾನ್ ಮತ್ತು ಅದರ ಹೊರತೆಗೆದ ಪಠ್ಯ ಶಾಶ್ವತವಾಗಿ ಅಳಿಸಲಾಗುತ್ತದೆ, ಮತ್ತು ಅವು ಹುಡುಕಬಹುದಾಗಿ ಉಳಿಯುವುದಿಲ್ಲ — ಸಹಾಯಕದಿಂದಲೂ ಅಲ್ಲ.",
+    "deleteSelectedConfirm": "ದಾಖಲೆಗಳನ್ನು ಅಳಿಸಿ"
   },
   "reportStudio": {
     "title": "ವರದಿ ಸ್ಟುಡಿಯೋ",

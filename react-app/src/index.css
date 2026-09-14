@@ -8318,6 +8318,18 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 }
 .rf-cite:hover, .rf-cite:focus-visible { color: var(--bg-1); background: var(--blue-500); }
 
+/* A crime/case number, a statute section, a rupee amount, or a risk
+   percentage inside assistant prose — called out so the load-bearing detail
+   catches the eye without the model having to backtick it itself. */
+.rf-entity {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+  border-radius: 4px;
+  padding: 0.5px 4px;
+}
+
 /* ── The source viewer ───────────────────────────────────────────────────── */
 
 .as-src-scrim {

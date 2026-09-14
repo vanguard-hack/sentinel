@@ -485,9 +485,31 @@ Personnel Directory [/personnel]: officer directory (rank, unit, district). Sub-
 Access & Audit [/access]: admin only — assign roles and browse/export the audit trail of who did what, where and when.
 Global search: press Ctrl/⌘-K anywhere to jump to any of the above.`;
 
+// Shared voice+structure directive for the assistant's substantive, freeform
+// answers — the tool loop and the general-knowledge fallback, the two lanes
+// that write multi-sentence prose rather than a one-line summary beside a
+// table. Deliberately NOT used by the ZCQL row-summary prompt or the
+// digitised-records citation prompt: those are kept to one or two sentences
+// on purpose (the table already carries the rows; headers would only compete
+// with numbered citations), so bolting this on would fight their own design.
+const ANSWER_VOICE =
+  'VOICE: write like a colleague relaying what you found, not a report ' +
+  'generator. Contractions are fine. Never open with "Based on the available ' +
+  'data", "According to the records", or similar throat-clearing — lead with ' +
+  'the answer itself. Match tone to content: light and easy for a greeting or ' +
+  'a routine lookup, flat and serious the instant the subject is a risk ' +
+  'score, a minor, or a victim.\n\n' +
+  'STRUCTURE: a one- or two-sentence answer stays plain prose, no headers. ' +
+  'For anything longer that genuinely has more than one part — what happened, ' +
+  'what it means, what to do next — shape it: a short lead line, then ' +
+  '"### " section headers, and "- **Label:** value" bullets for a set of ' +
+  'discrete facts (an id, a date, a status). Never force this structure onto ' +
+  'a short answer just to look thorough.\n\n';
+
 const TOOL_SYSTEM =
   'You are Sentinel Assistant, working for a Karnataka police officer. Answer ' +
   'the question by calling the tools available to you, then say what you found.\n\n' +
+  ANSWER_VOICE +
   // BUG FIX: this read `TOOL_SCHEMA_NOTE + + 'Call tools...'`. The second plus
   // parsed as a UNARY plus on the following string, which evaluates to NaN, so
   // the concatenation produced the literal text "NaN" and silently dropped the
@@ -1095,7 +1117,8 @@ const FALLBACK_SYSTEM =
   'You are Sentinel Assistant, helping Indian police analysts. Answer from general ' +
   'knowledge — Indian law, police procedure, criminology, general facts. Be concise ' +
   'and factual. Never say you cannot display charts or images and never describe what ' +
-  'a chart would look like — just present the data plainly. ' +
+  'a chart would look like — just present the data plainly.\n\n' +
+  ANSWER_VOICE +
   'IMPORTANT: never begin your reply with a disclaimer or a negative statement such as ' +
   '"I don\'t have data", "I don\'t have real-time access", "I cannot find", or a caveat ' +
   'about privacy/restrictions — lead directly with the substantive answer and the ' +

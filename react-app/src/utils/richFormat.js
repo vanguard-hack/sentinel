@@ -46,15 +46,41 @@ const INLINE_RE =
 // than no button.
 const CITE_RE = /(\[\d{1,2}\])/g;
 
+// Domain entities worth calling out inline: a crime/case number (this store's
+// numbers run to 9+ digits — FIR/CaseMasterID, never a phone or a plain
+// count), a statute + section citation, a rupee amount, and a risk or
+// confidence percentage. Highlighted so the load-bearing detail in an answer
+// catches an officer's eye without the model having to backtick anything.
+const ENTITY_SRC =
+  '\\b\\d{9,}\\b' +
+  '|\\b(?:IPC|BNS|BNSS|BSA|CrPC|POCSO|NDPS|PMLA)\\s+\\d+[A-Za-z]?(?:\\(\\d+\\))?\\b' +
+  '|₹\\s?[\\d,]+(?:\\.\\d+)?(?:\\s?(?:lakh|crore))?' +
+  '|\\b\\d{1,3}(?:\\.\\d+)?%';
+const ENTITY_RE = new RegExp(`(${ENTITY_SRC})`, 'g');
+const ENTITY_TEST_RE = new RegExp(`^(?:${ENTITY_SRC})$`);
+
+// Wrap entity matches inside a run of plain text. Returns an array of
+// strings/elements, not a single node — callers splice it into whatever list
+// they are already building (a citation-split fragment, or the whole part).
+function highlightEntities(text, keyPrefix) {
+  const parts = String(text).split(ENTITY_RE);
+  if (parts.length === 1) return [text];
+  return parts.filter((p) => p !== undefined && p !== '').map((part, i) => (
+    ENTITY_TEST_RE.test(part)
+      ? <span className="rf-entity" key={`${keyPrefix}-e${i}`}>{part}</span>
+      : part
+  ));
+}
+
 function withCitations(text, key, opts) {
   const parts = text.split(CITE_RE);
-  if (parts.length === 1) return <React.Fragment key={key}>{text}</React.Fragment>;
+  if (parts.length === 1) return <React.Fragment key={key}>{highlightEntities(text, key)}</React.Fragment>;
   return (
     <React.Fragment key={key}>
       {parts.filter((p) => p !== '').map((part, i) => {
         const m = /^\[(\d{1,2})\]$/.exec(part);
         const n = m ? Number(m[1]) : 0;
-        if (!n || n > opts.citationCount) return <React.Fragment key={i}>{part}</React.Fragment>;
+        if (!n || n > opts.citationCount) return <React.Fragment key={i}>{highlightEntities(part, `${key}-${i}`)}</React.Fragment>;
         return (
           <button
             key={i}
@@ -98,7 +124,7 @@ export function renderInline(text, keyPrefix = 'i', opts = null) {
     if (/^~~[^~\n]+~~$/.test(part)) return <del key={key}>{part.slice(2, -2)}</del>;
     if (/^`[^`\n]+`$/.test(part)) return <code key={key}>{part.slice(1, -1)}</code>;
     if (opts && opts.onCitation) return withCitations(part, key, opts);
-    return <React.Fragment key={key}>{part}</React.Fragment>;
+    return <React.Fragment key={key}>{highlightEntities(part, key)}</React.Fragment>;
   });
 }
 

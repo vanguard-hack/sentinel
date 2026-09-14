@@ -150,7 +150,16 @@
     "noText": "इस स्कैन से कोई पाठ नहीं निकाला गया।",
     "deleteTitle": "“{{title}}” हटाएँ?",
     "deleteBody": "स्कैन और उसका निकाला गया पाठ स्थायी रूप से हटा दिया जाएगा।",
-    "deleteConfirm": "अभिलेख हटाएँ"
+    "deleteConfirm": "अभिलेख हटाएँ",
+    "selectAll": "सभी चुनें",
+    "clearSelection": "चयन हटाएँ",
+    "selectedCount_one": "{{count}} चयनित",
+    "selectedCount_other": "{{count}} चयनित",
+    "deleteSelected": "चयनित हटाएँ",
+    "deleteSelectedTitle_one": "{{count}} अभिलेख हटाएँ?",
+    "deleteSelectedTitle_other": "{{count}} अभिलेख हटाएँ?",
+    "deleteSelectedBody": "हर स्कैन और उसका निकाला गया पाठ स्थायी रूप से हटा दिया जाएगा, और वे खोजे जाने योग्य नहीं रहेंगे — सहायक द्वारा भी नहीं।",
+    "deleteSelectedConfirm": "अभिलेख हटाएँ"
   },
   "reportStudio": {
     "title": "रिपोर्ट स्टूडियो",
