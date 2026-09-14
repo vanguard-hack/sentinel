@@ -93,7 +93,13 @@ export default function CalendarHeatmap({ days, ariaLabel = 'Daily crime registr
   const gridW = n * bin + (n - 1) * GAP;
   const gridH = ROWS * bin + (ROWS - 1) * GAP;
   const svgW = Math.max(box.w, PAD_L + gridW + PAD_R);
-  const x0 = PAD_L;
+  // The cell size is capped by whichever is tighter, box height or width —
+  // seven rows of a fixed height rarely need a full-width banner's worth of
+  // columns, so `bin` is usually height-bound and `gridW` lands short of
+  // `innerW`. Centred in the leftover rather than pinned to PAD_L, so a wide
+  // card reads as one grid with even margins instead of a grid hugging the
+  // left edge with all the slack dumped on the right, by the legend.
+  const x0 = PAD_L + Math.max(0, (innerW - gridW) / 2);
   const y0 = PAD_T;
 
   const monthTicks = [];
