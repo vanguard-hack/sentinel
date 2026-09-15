@@ -172,7 +172,7 @@ if (fs.existsSync(UTILS)) {
    * repo that can answer whether a column is real. */
   const fs = require('fs');
   const path = require('path');
-  const mdPath = path.join(__dirname, '..', '..', 'ksp', 'fir', 'import', 'SCHEMA.md');
+  const mdPath = path.join(__dirname, '..', '..', 'dataset', 'fir', 'import', 'SCHEMA.md');
   if (fs.existsSync(mdPath)) {
     const schema = {};
     let cur = null;

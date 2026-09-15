@@ -14,17 +14,17 @@ functions/rag/catalyst-config.json
 # Catalyst import job reports
 Import_*.zip
 
-# Synthetic dataset artifacts — regenerate with ksp/fir/generate_fir_dataset.py
-ksp/*.csv
-ksp/fir/*.csv
-# Training tables — regenerate with ksp/ml/export_training_data.py
-ksp/ml/*.csv
+# Synthetic dataset artifacts — regenerate with dataset/fir/generate_fir_dataset.py
+dataset/*.csv
+dataset/fir/*.csv
+# Training tables — regenerate with dataset/ml/export_training_data.py
+dataset/ml/*.csv
 # ...except the section list. It is reference data, not bulk records (35 rows,
 # 1 KB), and legal.test.js asserts the legal KB covers exactly these sections.
 # A drift detector that cannot run in CI is decoration, so this one ships.
-!ksp/fir/Section.csv
-ksp/rag_docs/
-ksp/import/configs_txt/
+!dataset/fir/Section.csv
+dataset/rag_docs/
+dataset/import/configs_txt/
 
 # Editor settings
 .vscode/
@@ -32,12 +32,12 @@ ksp/import/configs_txt/
 # Catalyst CLI debug logs
 catalyst-debug.log
 
-# one-time geocode resume cache (regenerate with ksp/geocode_stations.py)
-ksp/.geocode-cache.json
+# one-time geocode resume cache (regenerate with dataset/geocode_stations.py)
+dataset/.geocode-cache.json
 
 # join.test.js scratch db
-ksp/.jointest.db
+dataset/.jointest.db
 
 # Import parts: derived from the CSVs by prepare_import.py, regenerated on demand.
-ksp/fir/parts/
-ksp/.jointest.db
+dataset/fir/parts/
+dataset/.jointest.db

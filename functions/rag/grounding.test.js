@@ -14,7 +14,7 @@ const check = (name, cond, detail) => {
   else { fail++; console.log('FAIL ' + name + (detail ? ` — ${detail}` : '')); }
 };
 
-// Real shapes from ksp/fir/CaseMaster.csv.
+// Real shapes from dataset/fir/CaseMaster.csv.
 const ROWS = [
   { CaseMasterID: 1, CrimeNo: '144221107202500001', CaseNo: '202500001', BriefFacts: 'Vehicle theft at College Circle.' },
   { CaseMasterID: 2, CrimeNo: '144031013202300001', CaseNo: '202300001', BriefFacts: 'Identity theft after an online contact.' },

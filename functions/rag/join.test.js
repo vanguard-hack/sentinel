@@ -22,7 +22,7 @@ const check = (name, cond, detail) => {
 // WHERE THE DATA COMES FROM
 //
 // The seed CSVs are gitignored — they are ~1 MB of regenerable synthetic
-// records (ksp/fir/generate_fir_dataset.py), and committing bulk data to make a
+// records (dataset/fir/generate_fir_dataset.py), and committing bulk data to make a
 // test run is the wrong trade. But this suite reading them directly meant it
 // passed locally and failed on CI with ENOENT, which is worse than either
 // option: a test that only runs on one machine.
@@ -32,7 +32,7 @@ const check = (name, cond, detail) => {
 // from the same data by sqlite — so both modes assert the same property, that
 // the tool's answer matches SQL's over whatever it was given.
 const TABLE_NAMES = ['CaseMaster', 'Accused', 'Victim', 'ArrestSurrender', 'Unit', 'District'];
-const SEED = __dirname + '/../../ksp/fir';
+const SEED = __dirname + '/../../dataset/fir';
 const haveSeed = fs.existsSync(`${SEED}/CaseMaster.csv`);
 
 /**
@@ -105,7 +105,7 @@ const KSP = haveSeed
     return dir;
   })();
 console.log(haveSeed
-  ? '(using the real seed data in ksp/fir)'
+  ? '(using the real seed data in dataset/fir)'
   : '(seed CSVs absent — running against the generated fixture)');
 
 const parse = (f) => {
@@ -177,11 +177,11 @@ const app = {
 
 // Ground truth, computed directly from the CSVs — independent of the tool.
 const sqlite = (q) => {
-  const out = execFileSync('sqlite3', ['-json', '-readonly', `${__dirname}/../../ksp/.jointest.db`], { input: q, encoding: 'utf8' });
+  const out = execFileSync('sqlite3', ['-json', '-readonly', `${__dirname}/../../dataset/.jointest.db`], { input: q, encoding: 'utf8' });
   return out.trim() ? JSON.parse(out) : [];
 };
 function buildDb() {
-  const db = `${__dirname}/../../ksp/.jointest.db`;
+  const db = `${__dirname}/../../dataset/.jointest.db`;
   if (fs.existsSync(db)) fs.unlinkSync(db);
   let script = '.mode csv\n';
   for (const t of Object.keys(TABLES)) script += `.import --csv '${KSP}/${t}.csv' ${t}\n`;

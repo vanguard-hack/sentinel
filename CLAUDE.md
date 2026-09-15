@@ -25,7 +25,7 @@ PATH="$HOME/.nvm/versions/node/v20.20.2/bin:$PATH" catalyst serve --http 3000
 | Lint (what CI enforces) | `cd frontend && npx eslint src --ext .js --ignore-pattern '__smoke__'` |
 | Accessibility gate | `node scripts/a11y-check.test.js && node scripts/a11y-check.js` |
 | Assistant benchmark | `node functions/rag/bench/run.js` |
-| Regenerate the dataset | `cd ksp/fir && python3 generate_fir_dataset.py && python3 generate_accused_network.py && python3 enrich_personnel.py` |
+| Regenerate the dataset | `cd dataset/fir && python3 generate_fir_dataset.py && python3 generate_accused_network.py && python3 enrich_personnel.py` |
 
 Always build with `npm run build`, never `npx react-scripts build`: the `postbuild` step copies `build/index.html → build/404.html`, which is the SPA fallback Catalyst serves for client routes. Without it a hard refresh on any route shows Catalyst's 404 page. (Client routes returning HTTP 404 with the SPA as the body is normal and works.)
 
@@ -110,7 +110,7 @@ Local serve has no signed-in session, so authenticated UI paths (map imagery, Re
 
 ## Data
 
-CSVs under `ksp/` are gitignored — the Python generators are the tracked source of truth, and CI regenerates the dataset on the runner. `ksp/fir/Section.csv` is the deliberate exception (35 rows of reference data that `legal.test.js` asserts against).
+CSVs under `dataset/` are gitignored — the Python generators are the tracked source of truth, and CI regenerates the dataset on the runner. `dataset/fir/Section.csv` is the deliberate exception (35 rows of reference data that `legal.test.js` asserts against).
 
 `Accused.PersonID` is a **global** offender id across FIRs, which is what makes the co-offending network and case-linkage features work.
 

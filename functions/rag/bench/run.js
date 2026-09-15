@@ -22,7 +22,7 @@
  *                                                    questions against a
  *                                                    running deployment
  *
- * Writes docs/BENCHMARK.md and exits non-zero on any hard-gate failure.
+ * Writes BENCHMARK.md and exits non-zero on any hard-gate failure.
  */
 
 const fs = require('fs');
@@ -94,14 +94,14 @@ const pct = (m) => (m.total ? `${((100 * m.pass) / m.total).toFixed(1)}% (${m.pa
 console.log('Sentinel benchmark\n' + '='.repeat(70));
 
 if (!store.available()) {
-  // The dataset is derived, not committed — ksp/fir/*.csv is gitignored. Say
+  // The dataset is derived, not committed — dataset/fir/*.csv is gitignored. Say
   // how to produce it rather than only which path was missing: "no such file"
   // sends someone looking for something deleted, when nothing is lost and one
   // command rebuilds it byte for byte.
   console.error(`\nFATAL: no case records at ${store.CSV_PATH}`);
   console.error('The benchmark computes its ground truth from the generated dataset, which is');
   console.error('not committed to git. Build it first:\n');
-  console.error('  cd ksp/fir && rm -f Employee.base.csv \\');
+  console.error('  cd dataset/fir && rm -f Employee.base.csv \\');
   console.error('    && N_CASES=30000 STAFF_PER_PS=26 python3 generate_fir_dataset.py \\');
   console.error('    && python3 generate_accused_network.py && python3 enrich_personnel.py\n');
   process.exit(2);
@@ -373,10 +373,10 @@ async function runApi() {
   if (FAULT) {
     console.log('\nreport NOT written — this was a fault-injection run');
   } else {
-    const out = path.join(__dirname, '..', '..', '..', 'docs', 'BENCHMARK.md');
+    const out = path.join(__dirname, '..', '..', '..', 'BENCHMARK.md');
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, md + '\n');
-    console.log(`\nreport → docs/BENCHMARK.md`);
+    console.log(`\nreport → BENCHMARK.md`);
   }
   if (failed.length) {
     console.log(`\n${failed.length} GATE(S) FAILED: ${failed.map((m) => m.id).join(', ')}`);

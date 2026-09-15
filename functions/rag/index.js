@@ -2230,7 +2230,7 @@ const QUICKML_PREDICT_URL =
    `features` is the CONTRACT with the training table. QuickML answers null
    rather than erroring when a feature name does not match, so a typo here
    fails silently and looks like a bad model. The lists below are the exact
-   columns ksp/ml/export_training_data.py and export_forecast_data.py write.
+   columns dataset/ml/export_training_data.py and export_forecast_data.py write.
 
    `key` names an env var rather than holding the secret, and each model has
    its own endpoint key — a leaked key is then one model, not all of them. */

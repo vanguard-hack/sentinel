@@ -20,7 +20,7 @@ const check = (name, cond, detail) => {
 };
 
 // ── Coverage: the KB must match the data ──────────────────────────────────
-const csv = fs.readFileSync(`${__dirname}/../../ksp/fir/Section.csv`, 'utf8')
+const csv = fs.readFileSync(`${__dirname}/../../dataset/fir/Section.csv`, 'utf8')
   .replace(/\r/g, '').trim().split('\n').slice(1)
   .map((l) => { const [act, sec] = l.split(','); return `${act} ${sec}`; });
 const kbKeys = new Set(legal.SECTIONS.map((e) => `${e.act} ${e.section}`));

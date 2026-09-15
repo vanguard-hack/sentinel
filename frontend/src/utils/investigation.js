@@ -325,7 +325,7 @@ export async function searchCases(query) {
 
 // IPC/BNS sections charged on a case ("IPC 379, IT 66C" style) — ActID and
 // SectionID in ActSectionAssociation already ARE the readable act/section
-// codes (see ksp/fir/ActSectionAssociation.csv), so no further join needed.
+// codes (see dataset/fir/ActSectionAssociation.csv), so no further join needed.
 export async function fetchCaseSections(caseMasterId) {
   try {
     const resp = await zcql().executeQuery(

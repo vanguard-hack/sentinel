@@ -43,7 +43,7 @@ jobs:
         working-directory: functions/rag
         run: node --check index.js
 
-      # The FIR dataset is DERIVED, not committed. ksp/fir/*.csv is gitignored —
+      # The FIR dataset is DERIVED, not committed. dataset/fir/*.csv is gitignored —
       # 223,000 rows of generated CSV has no business in git — so the runner
       # rebuilds it. The generator is seeded and produces byte-identical output,
       # which is what makes this safe: CI measures the same data a developer
@@ -54,7 +54,7 @@ jobs:
       # was an improvement — one source of truth instead of two — and in CI the
       # file simply was not there.
       - name: Generate the FIR dataset
-        working-directory: ksp/fir
+        working-directory: dataset/fir
         env:
           N_CASES: '30000'
           STAFF_PER_PS: '26'
@@ -66,7 +66,7 @@ jobs:
           wc -l CaseMaster.csv Accused.csv Employee.csv
 
       # forecast_features.json IS committed — the function needs it at runtime
-      # and cannot regenerate it, since ksp/*.csv never ships. That makes it
+      # and cannot regenerate it, since dataset/*.csv never ships. That makes it
       # the one derived artifact that can drift: regenerate the dataset without
       # re-exporting, and the deployed models get feature rows describing data
       # they were not trained on. Nothing would error; the forecasts would
@@ -74,9 +74,9 @@ jobs:
       # what is checked in.
       - name: Check the forecast feature table matches the dataset
         run: |
-          python3 ksp/ml/export_forecast_data.py
+          python3 dataset/ml/export_forecast_data.py
           git diff --exit-code -- functions/rag/forecast_features.json \
-            || { echo "::error::forecast_features.json is stale — run ksp/ml/export_forecast_data.py and commit the result"; exit 1; }
+            || { echo "::error::forecast_features.json is stale — run dataset/ml/export_forecast_data.py and commit the result"; exit 1; }
 
       - name: Run backend test suites
         working-directory: functions/rag

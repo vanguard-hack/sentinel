@@ -89,7 +89,7 @@ function OfficerRow({ label, sub, officer, onOpenPhoto }) {
 
 const DATA_URL = `${process.env.PUBLIC_URL}/maps/india.json`;
 const POLICE_URL = `${process.env.PUBLIC_URL}/maps/karnataka-police-stations.geojson`;
-// Derived offline from FIR Narcotics cases by ksp/fir/generate_smuggling_corridors.py —
+// Derived offline from FIR Narcotics cases by dataset/fir/generate_smuggling_corridors.py —
 // districts with elevated case density, chained into a route. A pattern in past
 // seizures, not a verified ground-truth trafficking map.
 const CORRIDOR_URL = `${process.env.PUBLIC_URL}/maps/smuggling-corridors.json`;
@@ -359,7 +359,7 @@ export default function CrimeMap() {
       const same = (s) => s && s._k === k;
       setSelectedStation({ _k: k, name: p.name, code: p.code, dept: p.dept, kgis: p.kgis, lat, lng, image: marker._psImg, address: marker._psAddr });
 
-      // Addresses are baked into the station GeoJSON by ksp/geocode_stations.py,
+      // Addresses are baked into the station GeoJSON by dataset/geocode_stations.py,
       // so the common path costs no network at all and the address is on screen
       // the instant the panel opens.
       //

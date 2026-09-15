@@ -12,7 +12,7 @@
  *
  * All three are direct multi-horizon REGRESSION models: the series is a
  * feature, so one model covers every series in its table. See
- * ksp/ml/export_forecast_data.py for the table shape and why these are not
+ * dataset/ml/export_forecast_data.py for the table shape and why these are not
  * QuickML's per-target forecasting pipelines.
  *
  * MONTHLY, AND WHY IT IS NOT A DETAIL
@@ -50,7 +50,7 @@ const PREDICT_URL =
  * `keyEnv` names an env var rather than holding the endpoint key: a leaked key
  * is then one model rather than all of them.
  *
- * `quality` is measured OFFLINE, in ksp/ml, by pooled rolling-origin
+ * `quality` is measured OFFLINE, in dataset/ml, by pooled rolling-origin
  * validation against the honest baseline — each series' own historical
  * average. Naive and seasonal-naive were the wrong bar: for noisy counts the
  * mean beats both, so a model scored only against them can look strong while

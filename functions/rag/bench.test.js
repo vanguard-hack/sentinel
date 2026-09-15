@@ -39,7 +39,7 @@ const runBench = (args = []) => {
 
 check('the record source is present', store.available(),
   `expected ${store.CSV_PATH} — the dataset is generated, not committed. `
-  + 'Run ksp/fir/generate_fir_dataset.py; the CI workflow has the exact invocation.');
+  + 'Run dataset/fir/generate_fir_dataset.py; the CI workflow has the exact invocation.');
 
 const S = store.stats();
 // Asserted against the CSV rather than a literal: the dataset is regenerated
@@ -95,9 +95,9 @@ check('  and its count is what the store reports',
 const clean = runBench();
 check('a clean run exits zero', clean.code === 0, `exit ${clean.code}`);
 check('  and reports the dataset it measured', new RegExp(`${S.rows} FIRs`).test(clean.stdout), clean.stdout.split('\n')[1]);
-check('  and writes the report', fs.existsSync(path.join(__dirname, '..', '..', 'docs', 'BENCHMARK.md')));
+check('  and writes the report', fs.existsSync(path.join(__dirname, '..', '..', 'BENCHMARK.md')));
 
-const report = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'BENCHMARK.md'), 'utf8');
+const report = fs.readFileSync(path.join(__dirname, '..', '..', 'BENCHMARK.md'), 'utf8');
 check('the report states the results table', /\| Metric \| What it measures \| Result \|/.test(report));
 check('the report says ground truth is computed, not typed',
   /computed, never typed/i.test(report));
@@ -133,11 +133,11 @@ check('an unknown fault name is rejected rather than silently ignored',
 // A fault run must not overwrite the committed report with its fiction. This
 // caught a real defect: the first version of these tests left a BENCHMARK.md
 // on disk reporting that officers were refused 100% of the time.
-const before = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'BENCHMARK.md'), 'utf8');
+const before = fs.readFileSync(path.join(__dirname, '..', '..', 'BENCHMARK.md'), 'utf8');
 const faultRun = runBench(['--inject-fault', 'guard']);
-const after = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'BENCHMARK.md'), 'utf8');
+const after = fs.readFileSync(path.join(__dirname, '..', '..', 'BENCHMARK.md'), 'utf8');
 check('a fault run leaves the committed report untouched', before === after,
-  'the sabotaged run overwrote docs/BENCHMARK.md');
+  'the sabotaged run overwrote BENCHMARK.md');
 check('  and says so rather than failing silently',
   /report NOT written/.test(faultRun.stdout));
 

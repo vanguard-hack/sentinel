@@ -13,7 +13,7 @@
 import { getCatalyst } from './catalyst';
 import { isOnline, reportOffline, reportOnline } from './offline';
 
-// The Police FIR schema tables in the Data Store (see ksp/fir/import/SCHEMA.md),
+// The Police FIR schema tables in the Data Store (see dataset/fir/import/SCHEMA.md),
 // grouped for the table switcher. `name` must match the table name exactly.
 export const TABLE_GROUPS = [
   {

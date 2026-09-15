@@ -1,7 +1,7 @@
 // Personnel directory data layer.
 //
 // Core records come from the `Employee` Data Store table (see
-// ksp/fir/import/SCHEMA.md) joined client-side against the small master
+// dataset/fir/import/SCHEMA.md) joined client-side against the small master
 // tables (Rank, Unit, District) — ZCQL is single-table, so the
 // join happens here after a handful of fetchAllRows calls.
 //

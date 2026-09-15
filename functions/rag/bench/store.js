@@ -19,7 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const CSV_PATH = path.join(__dirname, '..', '..', '..', 'ksp', 'fir', 'CaseMaster.csv');
+const CSV_PATH = path.join(__dirname, '..', '..', '..', 'dataset', 'fir', 'CaseMaster.csv');
 const MASTERS = require('../masters.json');
 
 let CACHE = null;

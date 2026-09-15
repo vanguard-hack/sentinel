@@ -708,10 +708,6 @@ sentinel/
 ├── .github/
 │   └── workflows/ci.yml             # Test → lint → build → deploy → verify-live pipeline
 │
-├── docs/
-│   ├── sentinel-wireframes.png      # Low-fidelity layout of every screen
-│   └── screenshots/                 # App screenshots referenced by this README
-│
 ├── scripts/
 │   └── rotate-rag-token.sh          # Renews the Zoho OAuth refresh token used by the function
 │
@@ -870,7 +866,7 @@ sentinel/
 │       ├── catalyst-config.template.json  # Env-var template — copy to catalyst-config.json
 │       └── *.test.js                # 31 backend suites — no framework, one node script each
 │
-├── ksp/                             # ── DATASET ── synthetic Karnataka FIR data, generators, importers
+├── dataset/                             # ── DATASET ── synthetic Karnataka FIR data, generators, importers
 │   ├── fir/                         # The 26-table CCTNS-aligned schema (the live dataset)
 │   │   ├── *.csv                    # One CSV per table — CaseMaster, Accused, Victim, Employee, …
 │   │   ├── generate_fir_dataset.py  # Seeded generator for the whole FIR schema
@@ -904,7 +900,7 @@ generated so that the analytics on top of them have something true to find.
 ### Schema — 26 tables
 
 Live in the Catalyst **Data Store**; column types and lengths are in
-[`ksp/fir/import/SCHEMA.md`](ksp/fir/import/SCHEMA.md).
+[`dataset/fir/import/SCHEMA.md`](dataset/fir/import/SCHEMA.md).
 
 | Group | Table | Rows | What it holds |
 | --- | --- | --: | --- |
@@ -939,19 +935,19 @@ Live in the Catalyst **Data Store**; column types and lengths are in
 
 ### How it was built
 
-- **[`generate_fir_dataset.py`](ksp/fir/generate_fir_dataset.py)** — seeded generator for the
+- **[`generate_fir_dataset.py`](dataset/fir/generate_fir_dataset.py)** — seeded generator for the
   whole schema. Case volumes follow plausible district weights, registration dates carry
   realistic seasonality and day-of-week structure, and crime heads are distributed to match
   broad NCRB-shaped proportions rather than a flat random draw.
-- **[`generate_accused_network.py`](ksp/fir/generate_accused_network.py)** — the piece that makes
+- **[`generate_accused_network.py`](dataset/fir/generate_accused_network.py)** — the piece that makes
   the analytics real. It assigns each offender a **global `PersonID`** that persists across every
   case they appear in, then plants consistent offender *series*: repeat offenders operating in a
   signature modus operandi, within a coherent geography, over a coherent time window, with
   co-offending partners. This is what the case-linkage ranking (AUC ≈ 0.87 on the planted series)
   and the co-offending network graph actually detect.
-- **[`enrich_personnel.py`](ksp/fir/enrich_personnel.py)** — expands `Employee` to 3,368 officers
+- **[`enrich_personnel.py`](dataset/fir/enrich_personnel.py)** — expands `Employee` to 3,368 officers
   with unique full names distributed across the 12-rank ladder and posted to real units.
-- **[`fix_datetimes.py`](ksp/fix_datetimes.py)** — normalises datetime columns to the exact format
+- **[`fix_datetimes.py`](dataset/fix_datetimes.py)** — normalises datetime columns to the exact format
   the Data Store's importer accepts.
 
 ---
@@ -1197,7 +1193,7 @@ not also decide how much of the Data Store enters the prompt:
 | Requirement | Notes |
 | --- | --- |
 | **Node.js 18+** and npm | The function targets the Node 20 runtime; CI builds on 20 |
-| **Python 3.9+** | Required. `ksp/**/*.csv` is gitignored — the seeded generators are the tracked source of truth, so the dataset is built, not cloned |
+| **Python 3.9+** | Required. `dataset/**/*.csv` is gitignored — the seeded generators are the tracked source of truth, so the dataset is built, not cloned |
 | **Zoho Catalyst account** | <https://catalyst.zoho.in> — this project lives on the **India** data centre |
 | **Catalyst CLI** | `npm install -g zcatalyst-cli` |
 | **Zoho Self-Client** | <https://api-console.zoho.in> — issues the OAuth refresh token the function uses |
@@ -1294,14 +1290,14 @@ The CSVs are not in the repository. Build them first, with the same parameters C
 generators are seeded, so this reproduces the exact dataset the row-count table describes:
 
 ```bash
-cd ksp/fir
+cd dataset/fir
 rm -f Employee.base.csv
 N_CASES=30000 STAFF_PER_PS=26 python3 generate_fir_dataset.py
 python3 generate_accused_network.py
 python3 enrich_personnel.py
 ```
 
-Then create every table listed in [`ksp/fir/import/SCHEMA.md`](ksp/fir/import/SCHEMA.md) in the
+Then create every table listed in [`dataset/fir/import/SCHEMA.md`](dataset/fir/import/SCHEMA.md) in the
 Catalyst console — there is no auto-create and no CLI equivalent — and import:
 
 ```bash
@@ -1316,12 +1312,12 @@ unless you pass `--config`, and staged object keys must **not** have a leading s
 
 - **Zia** — enable OCR, Speech-to-Text and Vision in the console.
 - **QuickML — retrieval** — create a RAG knowledge base and upload the corpus in
-  [`ksp/rag_docs/`](ksp/rag_docs/). Put the resulting document IDs in `RAG_DOCUMENT_IDS` if you
+  [`dataset/rag_docs/`](dataset/rag_docs/). Put the resulting document IDs in `RAG_DOCUMENT_IDS` if you
   want to scope retrieval.
 - **QuickML — forecasting** — build the three training tables and the serving feature rows:
 
   ```bash
-  cd ksp/ml && python3 export_forecast_data.py
+  cd dataset/ml && python3 export_forecast_data.py
   ```
 
   That writes `firvolume_train.csv`, `crimehead_train.csv` and `district_train.csv` to upload as
@@ -1518,7 +1514,6 @@ no separate docs site, wiki or handbook to fall out of date.
 | Assistant routing | [↑ Assistant routing](#assistant-routing) | — |
 | Data model (ER) | [↑ Data model](#data-model-core-fir-schema) | — |
 | Deployment pipeline | [↑ Deployment pipeline](#deployment-pipeline) | — |
-| Screen wireframes | — | [`docs/sentinel-wireframes.png`](docs/sentinel-wireframes.png) |
 
 ---
 
