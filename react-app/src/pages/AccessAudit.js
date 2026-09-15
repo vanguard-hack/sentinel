@@ -489,7 +489,7 @@ export default function AccessAudit() {
               <p>Role-based access with a full activity trail.</p>
             </div>
           </div>
-          <div className="seg-group" role="tablist">
+          <div className="seg-group seg-dots" role="tablist">
             <button
               type="button" role="tab" aria-selected={tab === 'roles'}
               className={`seg-btn ${tab === 'roles' ? 'active' : ''}`}

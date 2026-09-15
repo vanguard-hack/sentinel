@@ -140,7 +140,7 @@ export default function Custody() {
           <Kpi value={`${a.avgCustodyDays} d`} label="Avg. custody" />
         </div>
 
-        <div className="seg-group cust-tabs" role="tablist">
+        <div className="seg-group cust-tabs seg-dots" role="tablist">
           {[['registry', 'Registry', ScrollText], ['alerts', 'Alerts', CalendarClock], ['analytics', 'Analytics', Users]].map(([k, lbl, Icon]) => (
             <button key={k} role="tab" aria-selected={tab === k} className={`seg-btn ${tab === k ? 'active' : ''}`} onClick={() => setTab(k)}>
               <Icon size={14} /> {lbl}
