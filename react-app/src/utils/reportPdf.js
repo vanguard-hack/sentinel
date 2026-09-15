@@ -142,29 +142,44 @@ export async function exportHomeReportPdf(element, meta = {}) {
   if (!sections.length) throw new Error('nothing to export');
 
   // Capture every block ONCE, up front, so the layout pass below is pure
-  // arithmetic and never blocks on html2canvas mid-page.
-  const captured = [];
-  for (const sec of sections) {
-    const items = [];
-    for (const it of sec.items) {
-      if (!it.el.offsetHeight || !it.el.offsetWidth) continue;
-      let canvas;
-      try {
-        canvas = await html2canvas(it.el, {
-          scale: 2,
-          backgroundColor: bg,
-          useCORS: true,
-          logging: false,
-          windowWidth: element.scrollWidth,
-        });
-      } catch {
-        continue; // one bad block must not sink the whole export
-      }
-      if (!canvas.width || !canvas.height) continue;
-      items.push({ canvas, wide: it.wide, aspect: canvas.height / canvas.width });
+  // arithmetic and never blocks on html2canvas mid-page. Blocks are captured
+  // in parallel rather than one `await` at a time — with 15-20+ cards in a
+  // report that serial loop was most of the export's wall-clock time.
+  const captureOne = async (it) => {
+    if (!it.el.offsetHeight || !it.el.offsetWidth) return null;
+    try {
+      const canvas = await html2canvas(it.el, {
+        scale: 2,
+        backgroundColor: bg,
+        useCORS: true,
+        logging: false,
+        windowWidth: element.scrollWidth,
+        // html2canvas doesn't apply font-variant-numeric when it rasterizes
+        // text, but it DOES measure glyph positions from the real (tabular)
+        // layout — the mismatch shows up as a stray gap next to every "1"
+        // (the digit tabular-nums pads the most). Strip it in the clone only.
+        onclone: (doc) => {
+          const style = doc.createElement('style');
+          style.textContent = '* { font-variant-numeric: normal !important; }';
+          doc.head.appendChild(style);
+        },
+      });
+      if (!canvas.width || !canvas.height) return null;
+      return { canvas, wide: it.wide, aspect: canvas.height / canvas.width };
+    } catch {
+      return null; // one bad block must not sink the whole export
     }
+  };
+
+  const counts = sections.map((sec) => sec.items.length);
+  const flatResults = await Promise.all(sections.flatMap((sec) => sec.items).map(captureOne));
+  const captured = [];
+  let cursor = 0;
+  sections.forEach((sec, i) => {
+    const items = flatResults.slice(cursor, cursor + counts[i]).filter(Boolean);
+    cursor += counts[i];
     if (items.length) captured.push({ name: sec.name, items });
-  }
+  });
   if (!captured.length) throw new Error('nothing could be captured for the PDF');
 
   const pdf = new jsPDF('p', 'mm', 'a4');
