@@ -39,7 +39,7 @@ function Card({ title, subtitle, wide, children }) {
    body is a NEW component type on every render, so React would unmount and
    remount the whole tab each time — which is exactly the cost this is here to
    avoid. */
-const Pane = ({ hidden, children }) => <div hidden={hidden}>{children}</div>;
+const Pane = ({ hidden, children }) => <div className="tab-pane" hidden={hidden}>{children}</div>;
 
 const DIMENSIONS = [
   { key: 'hour', label: 'Hour of day' },

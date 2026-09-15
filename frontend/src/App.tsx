@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect, useRef } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AccessProvider } from './context/AccessContext';
 import { LayoutProvider } from './context/LayoutContext';
@@ -41,8 +41,26 @@ const guarded = (feature: string, el: React.ReactNode) => (
   <RequireAccess feature={feature}>{el}</RequireAccess>
 );
 
+// Replays a CSS enter-animation on route change by toggling a class rather
+// than keying/remounting the element — a case detail page swapping :id in
+// its own URL must re-render, not unmount and re-fetch, so this can't be a
+// React `key`. Reflow between remove/add is what makes the class re-trigger.
+function usePageTransition(dep: unknown) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.classList.remove('page-transition-in');
+    void el.offsetWidth; // force reflow so the animation restarts
+    el.classList.add('page-transition-in');
+  }, [dep]);
+  return ref;
+}
+
 function AppRoutes() {
   const { loading, signingOut } = useAuth();
+  const { pathname } = useLocation();
+  const mainRef = usePageTransition(pathname);
   if (signingOut) return <LoadingScreen message="Signing out…" />;
   if (loading) return <LoadingScreen message="Verifying credentials…" />;
 
@@ -70,7 +88,7 @@ function AppRoutes() {
               A div rather than <main>: several pages render their own <main>
               landmark, and nesting them would be invalid.
             */}
-            <div className="app-main" id="main-content" tabIndex={-1}>
+            <div className="app-main" id="main-content" tabIndex={-1} ref={mainRef}>
               <OfflineBar />
               <Routes>
                 <Route path="/dashboard" element={guarded('dashboard', <Dashboard />)} />

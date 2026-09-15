@@ -3277,6 +3277,14 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.04);
 }
 
+/* Panes stay mounted after first visit (see AIAnalytics.js) — this animates
+   the one that just became visible rather than the mount itself. */
+.tab-pane:not([hidden]) { animation: paneIn 0.18s ease-out; }
+@keyframes paneIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* ── Crime links ────────────────────────────────────────────────────────── */
 .cl-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 /* flex (not inline-flex) so the h2 takes the full row and the subtitle drops
@@ -3784,6 +3792,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .rp-seg-btn {
   padding: 6px 12px; border: none; background: none;
   font-size: 0.78rem; color: var(--text-3); cursor: pointer; white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
 }
 .rp-seg-btn + .rp-seg-btn { border-left: 1px solid var(--border-1); }
 .rp-seg-btn.active { background: var(--rp-series, var(--primary)); color: #fff; }
@@ -4404,6 +4413,12 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+/* Replayed on every route change — see App.tsx's usePageTransition. */
+.app-main.page-transition-in { animation: pageIn 0.2s ease-out; }
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 /* Live date/time, left of the language switcher. Tabular figures so the
    seconds tick over without the row shifting a pixel each time a digit
@@ -5580,6 +5595,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   color: var(--text-2);
   font-size: 12.5px;
   font-weight: 500;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .fc-horizon.active { background: var(--blue-500); border-color: var(--blue-500); color: #fff; }
 
@@ -5729,6 +5745,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   font-weight: 500;
   color: var(--text-2);
   border-left: 1px solid var(--border);
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 .seg-btn:first-child { border-left: none; }
 .seg-btn:hover:not(.active) { background: var(--hover-overlay); color: var(--text-0); }
@@ -6193,6 +6210,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   color: var(--text-3);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
 }
 .inv-tab-btn:hover { color: var(--text-0); }
 .inv-tab-btn.active { color: var(--blue-500); border-bottom-color: var(--blue-500); }

@@ -506,7 +506,7 @@ export default function AccessAudit() {
             </button>
           </div>
         </div>
-        {tab === 'roles' ? <RolesTab /> : <AuditTab />}
+        <div key={tab} className="tab-pane">{tab === 'roles' ? <RolesTab /> : <AuditTab />}</div>
       </div>
     </div>
   );

@@ -150,6 +150,7 @@ export default function Custody() {
           ))}
         </div>
 
+        <div key={tab} className="tab-pane">
         {tab === 'registry' && (
           <>
             <div className="cust-filters">
@@ -318,6 +319,7 @@ export default function Custody() {
             </section>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
