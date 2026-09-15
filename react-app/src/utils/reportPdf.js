@@ -166,13 +166,21 @@ export async function exportHomeReportPdf(element, meta = {}) {
         useCORS: true,
         logging: false,
         windowWidth: element.scrollWidth,
-        // html2canvas doesn't apply font-variant-numeric when it rasterizes
-        // text, but it DOES measure glyph positions from the real (tabular)
-        // layout — the mismatch shows up as a stray gap next to every "1"
-        // (the digit tabular-nums pads the most). Strip it in the clone only.
+        // html2canvas draws text through Canvas2D's `ctx.font`, which has no
+        // slot for font-feature-settings or font-variant-numeric — but it
+        // POSITIONS each glyph from the real DOM's measured layout, which
+        // DOES apply them. index.css sets `font-feature-settings: 'cv05' 1,
+        // 'ss03' 1` on html/body/#root (inherited everywhere) and `.st-value`
+        // additionally sets tabular-nums; both change glyph widths in the
+        // live page that the canvas draw never reproduces, so the measured
+        // gap between glyphs doesn't match what's actually drawn there — a
+        // stray gap (or overlap) whichever character the width disagreement
+        // lands on. Strip both in the clone only, so measurement and drawing
+        // agree on the same (default) glyph widths.
         onclone: (doc) => {
           const style = doc.createElement('style');
-          style.textContent = '* { font-variant-numeric: normal !important; }';
+          style.textContent =
+            '* { font-variant-numeric: normal !important; font-feature-settings: normal !important; }';
           doc.head.appendChild(style);
         },
       });
