@@ -92,11 +92,15 @@ const withTimeout = (promise, ms) =>
 // last_name, email_id, ... } }. Returns null if the SDK is unavailable, the
 // call times out, or no session exists. Never throws, never hangs.
 export const getCurrentUser = async () => {
-  const cat = getCatalyst();
-  if (!cat) return null;
-  const um = typeof cat.userManagement === 'function' ? cat.userManagement() : cat.userManagement;
-  if (!um || typeof um.getCurrentProjectUser !== 'function') return null;
   try {
+    const cat = getCatalyst();
+    if (!cat) return null;
+    // An SDK core that loaded but never got its project/DC binding (offline,
+    // /__catalyst/sdk/init.js is same-origin and explicitly network-only —
+    // see NEVER_CACHE in public/sw.js) can throw HERE, synchronously, rather
+    // than reject a promise. Inside this try, that still resolves to null.
+    const um = typeof cat.userManagement === 'function' ? cat.userManagement() : cat.userManagement;
+    if (!um || typeof um.getCurrentProjectUser !== 'function') return null;
     const res = await withTimeout(um.getCurrentProjectUser(), 4000);
     return res?.content ?? res ?? null;
   } catch {

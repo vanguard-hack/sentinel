@@ -660,6 +660,25 @@ export default function CrimeMap() {
         }).addTo(patrolLayer);
         segLine.bindPopup(buildPopupHtml(null, segment.length > 1 ? segKm : null));
 
+        // Checkpoint pins — one per stop, numbered in visiting order within
+        // this car's leg. Without these the route was JUST a line: nothing
+        // marked where an officer is actually meant to stop, and a segment
+        // that splitIntoSegments reduced to a single stop (car count ≥ stop
+        // count) drew NO polyline at all — a route with one point is
+        // invisible — so the whole leg looked like it had vanished. A
+        // checkpoint pin has no such degenerate case: it is always visible.
+        segment.forEach((stop, stopIdx) => {
+          L.marker([stop.lat, stop.lng], {
+            icon: L.divIcon({
+              className: 'patrol-checkpoint-icon',
+              html: `<span class="patrol-checkpoint-pin" style="background:${segColor}">${stopIdx + 1}</span>`,
+              iconSize: [22, 22],
+            }),
+          })
+            .bindTooltip(`${stopIdx + 1}. ${stop.label}`, { direction: 'top', offset: [0, -10] })
+            .addTo(patrolLayer);
+        });
+
         return { segment, segCasing, segLine, buildPopupHtml };
       });
       patrolLayer.addTo(map);
@@ -1084,7 +1103,13 @@ export default function CrimeMap() {
                 onBlur={commitPatrolCarsInput}
                 onKeyDown={(e) => { if (e.key === 'Enter') { commitPatrolCarsInput(); e.target.blur(); } }}
               />
-              <button type="button" onClick={() => changePatrolCars(patrolCars + 1)} aria-label="More patrol cars">+</button>
+              <button
+                type="button"
+                onClick={() => changePatrolCars(patrolCars + 1)}
+                disabled={!!patrolInfo && patrolCars >= patrolInfo.stops}
+                title={patrolInfo && patrolCars >= patrolInfo.stops ? 'One car per stop already — more cars have nothing left to drive' : undefined}
+                aria-label="More patrol cars"
+              >+</button>
             </div>
           )}
           {level === 'district' && patrolOn && (

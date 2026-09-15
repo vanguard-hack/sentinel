@@ -1082,6 +1082,22 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .patrol-nav-btn:hover { background: color-mix(in srgb, var(--primary) 20%, transparent); }
 .patrol-nav-btn:disabled { opacity: 0.65; cursor: wait; }
 
+.leaflet-div-icon.patrol-checkpoint-icon { background: transparent; border: none; }
+.patrol-checkpoint-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2.5px solid #fff;
+  box-shadow: var(--shadow-pop);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .leaflet-div-icon.patrol-you-icon { background: transparent; border: none; }
 .patrol-you-pin {
   display: flex;

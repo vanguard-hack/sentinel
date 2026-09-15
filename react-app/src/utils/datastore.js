@@ -196,8 +196,7 @@ export async function runQuery(sql, table) {
 // Fetch the column list for a table plus one sample row (used to infer the
 // column types when filtering). Returns { columns: [], sample: {} } if empty.
 export async function fetchColumns(table) {
-  const resp = await zcql().executeQuery(`SELECT * FROM ${table} LIMIT 0, 1`);
-  const rows = flatten(resp, table);
+  const rows = await runQuery(`SELECT * FROM ${table} LIMIT 0, 1`, table);
   return {
     columns: rows.length ? Object.keys(rows[0]) : [],
     sample: rows[0] || {},
@@ -210,8 +209,7 @@ export async function fetchPage({ table, page = 1, perPage = 50, column = 'ALL',
   const offset = (page - 1) * perPage;
   const where = buildWhere(column, search, sample?.[column], op);
   const query = `SELECT * FROM ${table}${where} LIMIT ${offset}, ${perPage + 1}`;
-  const resp = await zcql().executeQuery(query);
-  const rows = flatten(resp, table);
+  const rows = await runQuery(query, table);
   const hasNext = rows.length > perPage;
   return { rows: hasNext ? rows.slice(0, perPage) : rows, hasNext };
 }
@@ -433,8 +431,7 @@ export async function fetchAllRows(table, { cap = 10000 } = {}) {
 export async function fetchCount({ table, column = 'ALL', search = '', op = 'contains', sample }) {
   try {
     const where = buildWhere(column, search, sample?.[column], op);
-    const resp = await zcql().executeQuery(`SELECT COUNT(ROWID) AS cnt FROM ${table}${where}`);
-    const rows = flatten(resp, table);
+    const rows = await runQuery(`SELECT COUNT(ROWID) AS cnt FROM ${table}${where}`, table);
     const r = rows[0] || {};
     const val = r.cnt ?? r.CNT ?? r['COUNT(ROWID)'] ?? Object.values(r)[0];
     const n = Number(val);

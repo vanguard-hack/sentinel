@@ -18,6 +18,7 @@
 
 import { getCatalyst } from './catalyst';
 import { queueWrite, reportOffline, reportOnline } from './offline';
+import { OFFLINE_MESSAGE } from './datastore';
 
 // Was this a lost connection rather than a refusal? A queued write must only
 // ever stand in for "the server never heard us" — never for a 4xx, which is the
@@ -127,8 +128,22 @@ async function post(url, body) {
   return data;
 }
 
-export const listInvestigations = () => post('/server/rag/investigation/list').then((d) => d.cases || []);
-export const getInvestigation = (caseMasterId) => post('/server/rag/investigation/get', { caseMasterId }).then((d) => d.record);
+// A read (list/get) has nothing to queue, so unlike appendInvestigationItem
+// below — which needs the RAW error to decide whether to queue — this
+// converts a lost connection straight to the same honest message every other
+// case-data screen already shows, instead of leaking `post`'s bare
+// "Failed to fetch".
+async function get(url, body) {
+  try {
+    return await post(url, body);
+  } catch (e) {
+    if (isNetworkFailure(e)) { reportOffline(); throw new Error(OFFLINE_MESSAGE); }
+    throw e;
+  }
+}
+
+export const listInvestigations = () => get('/server/rag/investigation/list').then((d) => d.cases || []);
+export const getInvestigation = (caseMasterId) => get('/server/rag/investigation/get', { caseMasterId }).then((d) => d.record);
 export const createInvestigation = (payload) => post('/server/rag/investigation/create', payload);
 export const setInvestigationStatus = (caseMasterId, status) =>
   post('/server/rag/investigation/status', { caseMasterId, status }).then((d) => d.record);
