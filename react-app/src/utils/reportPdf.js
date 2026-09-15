@@ -550,14 +550,27 @@ export async function exportInvestigationSummaryPdf(summary, citations, meta = {
 
 const roleLabel = (r) => (r === 'user' ? 'Officer' : 'Assistant');
 
+const seriesRow = (d) => `<div class="stat"><span>${esc(d.label ?? '')}</span><b>${esc(d.value ?? '')}</b></div>`;
+const nodeLabel = (nodes, id) => {
+  const n = (Array.isArray(nodes) ? nodes : []).find((x) => x && x.id === id);
+  return n ? (n.label || n.id) : id;
+};
+
 // Best-effort HTML for one AG-UI component spec (see AguiRenderer.js for the
-// full vocabulary). The structured types render as real markup; chart types
-// (bar/pie/line/heat-grid/scatter/funnel/sankey/geo-map/network-graph/…)
-// have no static-HTML equivalent, so they fall back to the data they were
-// drawn from — a transcript export cares about what was found, not the SVG.
+// full vocabulary — 17 types, each with its own field shape). The structured
+// types render as real markup; chart/graph types have no static-HTML chart
+// renderer here, so each one's own data — read per its OWN shape, not a
+// generic label/value guess — is laid out as a table or list instead. A
+// generic "does it have .data or .items with .label/.value" guess used to
+// stand in for all of these; it only matched bar/pie/line/funnel/pyramid,
+// so every other chart type (multi-line, stacked-bar, heat-grid, scatter,
+// sankey, network-graph) rendered as an empty note with no data at all —
+// exactly what a chart-shaped answer must never do.
 function aguiToHtml(spec) {
   if (!spec || !spec.type) return '';
   const title = spec.title ? `<div class="agui-title">${esc(spec.title)}</div>` : '';
+  const note = (text) => `<div class="agui-note">${esc(text)}</div>`;
+
   if (spec.type === 'table' && Array.isArray(spec.columns) && Array.isArray(spec.rows)) {
     const head = spec.columns.map((c) => `<th>${esc(c)}</th>`).join('');
     const rows = spec.rows
@@ -580,19 +593,70 @@ function aguiToHtml(spec) {
       .join('');
     return `<div class="agui-block">${title}${rows}</div>`;
   }
+  if (spec.type === 'stat-tiles' && Array.isArray(spec.items)) {
+    return `<div class="agui-block">${title}<div class="agui-grid">${spec.items.map(seriesRow).join('')}</div></div>`;
+  }
   if (spec.type === 'timeline' && Array.isArray(spec.events)) {
     const rows = spec.events.map((e) => `
       <div class="tl-row"><div class="tl-dot"></div><div><b>${esc(e.label)}</b> <span class="muted">${esc(e.date)}</span>${e.detail ? `<p>${esc(e.detail)}</p>` : ''}</div></div>`).join('');
     return `<div class="agui-block">${title}${rows}</div>`;
   }
-  const flat = Array.isArray(spec.items) ? spec.items : Array.isArray(spec.data) ? spec.data : [];
-  if (flat.length && flat.every((d) => d && (d.label !== undefined || d.value !== undefined))) {
-    const rows = flat.slice(0, 40)
-      .map((d) => `<div class="stat"><span>${esc(d.label ?? '')}</span><b>${esc(d.value ?? '')}</b></div>`)
-      .join('');
-    return `<div class="agui-block">${title}<div class="agui-note">Shown as a chart in the app — data reproduced here:</div><div class="agui-grid">${rows}</div></div>`;
+  // Simple label/value series: bar, pie, line, funnel, pyramid — all
+  // `data: [{ label, value }]`.
+  if (['bar-chart', 'pie-chart', 'line-chart', 'funnel', 'pyramid'].includes(spec.type) && Array.isArray(spec.data)) {
+    const rows = spec.data.slice(0, 60).map(seriesRow).join('');
+    return `<div class="agui-block">${title}${note('Shown as a chart in the app — data reproduced here:')}<div class="agui-grid">${rows}</div></div>`;
   }
-  return title ? `<div class="agui-block">${title}<div class="agui-note">Chart shown in the app — not reproduced here.</div></div>` : '';
+  // multi-line-chart: series: [{ name, points: [{ label, value }] }].
+  if (spec.type === 'multi-line-chart' && Array.isArray(spec.series)) {
+    const body = spec.series.map((s) => {
+      const rows = (Array.isArray(s.points) ? s.points : []).map(seriesRow).join('');
+      return `<div class="agui-series"><div class="agui-series-name">${esc(s.name || '')}</div><div class="agui-grid">${rows}</div></div>`;
+    }).join('');
+    return `<div class="agui-block">${title}${note('Shown as a chart in the app — data reproduced here:')}${body}</div>`;
+  }
+  // stacked-bar-chart: data: [{ label, parts: [{ name, value }] }].
+  if (spec.type === 'stacked-bar-chart' && Array.isArray(spec.data)) {
+    const rows = spec.data.map((d) => {
+      const parts = (Array.isArray(d.parts) ? d.parts : []).map((p) => `${esc(p.name)}: ${esc(p.value)}`).join(', ');
+      return `<tr><td>${esc(d.label ?? '')}</td><td>${parts}</td></tr>`;
+    }).join('');
+    return `<div class="agui-block">${title}<table><thead><tr><th>Label</th><th>Breakdown</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  // heat-grid: rows: [str], cols: [str], values: [[n]].
+  if (spec.type === 'heat-grid' && Array.isArray(spec.rows) && Array.isArray(spec.cols) && Array.isArray(spec.values)) {
+    const head = spec.cols.map((c) => `<th>${esc(c)}</th>`).join('');
+    const rows = spec.rows.map((r, i) => {
+      const vals = (spec.values[i] || []).map((v) => `<td>${esc(v)}</td>`).join('');
+      return `<tr><th>${esc(r)}</th>${vals}</tr>`;
+    }).join('');
+    return `<div class="agui-block">${title}<table><thead><tr><th></th>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  // scatter-plot: data: [{ x, y, label }].
+  if (spec.type === 'scatter-plot' && Array.isArray(spec.data)) {
+    const rows = spec.data.map((d) => `<tr><td>${esc(d.label ?? '')}</td><td>${esc(d.x)}</td><td>${esc(d.y)}</td></tr>`).join('');
+    return `<div class="agui-block">${title}<table><thead><tr><th>Label</th><th>${esc(spec.xLabel || 'X')}</th><th>${esc(spec.yLabel || 'Y')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  // sankey: nodes: [{ id, label }], links: [{ source, target, value }].
+  if (spec.type === 'sankey' && Array.isArray(spec.links)) {
+    const rows = spec.links
+      .map((l) => `<tr><td>${esc(nodeLabel(spec.nodes, l.source))}</td><td>${esc(nodeLabel(spec.nodes, l.target))}</td><td>${esc(l.value)}</td></tr>`)
+      .join('');
+    return `<div class="agui-block">${title}<table><thead><tr><th>From</th><th>To</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  // network-graph: nodes: [{ id, label, group }], links: [{ source, target }].
+  if (spec.type === 'network-graph' && Array.isArray(spec.links)) {
+    const rows = spec.links
+      .map((l) => `<tr><td>${esc(nodeLabel(spec.nodes, l.source))}</td><td>${esc(nodeLabel(spec.nodes, l.target))}</td></tr>`)
+      .join('');
+    return `<div class="agui-block">${title}<table><thead><tr><th>From</th><th>To</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  // geo-map: data: [{ district, value }].
+  if (spec.type === 'geo-map' && Array.isArray(spec.data)) {
+    const rows = spec.data.map((d) => `<div class="stat"><span>${esc(d.district ?? '')}</span><b>${esc(d.value ?? '')}</b></div>`).join('');
+    return `<div class="agui-block">${title}${note('Shown as a map in the app — data reproduced here:')}<div class="agui-grid">${rows}</div></div>`;
+  }
+  return title ? `<div class="agui-block">${title}${note('No data to show.')}</div>` : '';
 }
 
 function buildConversationHtml(session) {
@@ -655,6 +719,8 @@ function buildConversationHtml(session) {
     .stat span { display: block; font-size: 8.5px; color: #8a93a2; }
     .stat b { font-size: 10.5px; }
     .agui-card { border: 1px solid #e2e7ef; border-radius: 6px; padding: 7px 9px; min-width: 140px; flex: 1 1 140px; }
+    .agui-series { margin-bottom: 8px; }
+    .agui-series-name { font-weight: 600; font-size: 9.5px; color: #5a6473; margin-bottom: 4px; }
     .entry { border: 1px solid #e2e7ef; border-radius: 6px; padding: 6px 9px; margin-bottom: 6px; }
     .agui-block table { width: 100%; border-collapse: collapse; margin-top: 4px; }
     .agui-block th, .agui-block td { text-align: left; padding: 5px 7px; border-bottom: 1px solid #e2e7ef; font-size: 9.5px; }

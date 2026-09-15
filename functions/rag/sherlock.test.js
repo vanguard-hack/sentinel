@@ -81,6 +81,38 @@ function restore() {
   check('a succeeded run reports done with the username and links', done.status === 'done' && done.username === 'johndoe' && done.links.length === 1);
   check('the sovereignty line names the actual destination', /Apify/.test(done.sovereignty));
 
+  // ── pollRun: succeeded, but the actor returned an object per link ────
+  // Documented as an array of plain URL strings; live runs have been
+  // observed returning objects instead — a real "[object Object]" bug that
+  // reached officers before links were normalized before leaving pollRun.
+  mockFetch(async (url) => {
+    if (String(url).includes('/actor-runs/')) {
+      return { ok: true, json: async () => ({ data: { id: 'run-abc-123', status: 'SUCCEEDED', defaultDatasetId: 'ds-2' } }) };
+    }
+    return {
+      ok: true,
+      json: async () => ([{
+        username: 'johndoe',
+        links: [
+          { site: 'GitHub', url: 'https://github.com/johndoe' },
+          { name: 'Twitter', link: 'https://twitter.com/johndoe' },
+          'https://plainstring.example.com/johndoe',
+          { irrelevant: 'no usable field' },
+        ],
+      }]),
+    };
+  });
+  const doneObjLinks = await sherlock.pollRun({ runId: 'run-abc-123' });
+  check('object-shaped links never surface as "[object Object]"',
+    doneObjLinks.links.every((l) => !/\[object/i.test(l)));
+  check('object-shaped links are flattened to readable "site: url" strings',
+    doneObjLinks.links.includes('GitHub: https://github.com/johndoe')
+    && doneObjLinks.links.includes('Twitter: https://twitter.com/johndoe'));
+  check('a plain string link passes through unchanged',
+    doneObjLinks.links.includes('https://plainstring.example.com/johndoe'));
+  check('a link object with no usable field is dropped, not kept as garbage',
+    doneObjLinks.links.length === 3);
+
   // ── pollRun: terminal failures are reported plainly, not as "no accounts found" ──
   for (const status of ['FAILED', 'ABORTED', 'TIMED-OUT']) {
     mockFetch(async () => ({ ok: true, json: async () => ({ data: { id: 'x', status } }) }));

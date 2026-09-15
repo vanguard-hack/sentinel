@@ -115,13 +115,31 @@ async function pollRun({ runId } = {}) {
     return {
       status: 'done',
       username: item.username || null,
-      links: Array.isArray(item.links) ? item.links : [],
+      links: (Array.isArray(item.links) ? item.links : []).map(normalizeLink).filter(Boolean),
       sovereignty: `Looking up "${item.username}" runs on Apify's infrastructure, outside Sentinel and outside India, `
         + 'checking the username against several hundred public sites. Nothing else about this case travels with it.',
     };
   } catch (e) {
     return { error: `The lookup finished but its results could not be read: ${(e && e.message) || e}` };
   }
+}
+
+// The actor's documented schema is a plain string per link, but live runs
+// have been observed returning an object per site instead (Apify actors are
+// third-party and their exact per-item shape isn't something this codebase
+// controls or can pin down offline). Without this, an object flowed straight
+// into a template string and printed as the literal text "[object Object]" —
+// once per matched site. Accept either shape; only drop an entry if neither
+// yields anything usable.
+function normalizeLink(l) {
+  if (typeof l === 'string') return l.trim() || null;
+  if (l && typeof l === 'object') {
+    const url = l.url || l.link || l.href || l.site_url_user || l.profile_url || '';
+    const site = l.site || l.name || l.site_name || l.platform || '';
+    if (site && url) return `${site}: ${url}`;
+    return url || site || null;
+  }
+  return null;
 }
 
 module.exports = { ACTOR_ID, isValidUsername, startRun, pollRun };
