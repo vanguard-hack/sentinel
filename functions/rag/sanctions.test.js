@@ -77,6 +77,54 @@ const REAL_SHAPE_RESULT = {
   try { await sanctions.search({ query: 'anyone' }); } catch { threw = true; }
   check('a network exception is caught, not left to throw out of search()', !threw);
 
+  // ── matchBatch: input validation, no network call ──────────────────────
+  process.env.OPENSANCTIONS_API_KEY = 'test-key';
+  const noEntities = await sanctions.matchBatch({ entities: [] });
+  check('an empty batch is rejected without a network call', !!noEntities.error);
+  const tooMany = await sanctions.matchBatch({
+    entities: Array.from({ length: sanctions.MAX_BATCH + 1 }, (_, i) => ({ id: String(i), name: `Person ${i}` })),
+  });
+  check('a batch over MAX_BATCH is rejected without a network call', !!tooMany.error);
+  check('the cap is stated so the caller knows why', tooMany.error.includes(String(sanctions.MAX_BATCH)));
+
+  delete process.env.OPENSANCTIONS_API_KEY;
+  const noKeyBatch = await sanctions.matchBatch({ entities: [{ id: '1', name: 'Anyone' }] });
+  check('matchBatch with no configured key reports unavailable, no network call', !!noKeyBatch.error);
+  process.env.OPENSANCTIONS_API_KEY = 'test-key';
+
+  // ── matchBatch: real matches, shaped like the documented /match response ──
+  mockFetch(async (url, opts) => {
+    check('matchBatch posts to the match endpoint', String(url).includes('opensanctions.org/match/default'));
+    check('matchBatch sends the API key as an ApiKey auth header', opts.headers.Authorization === 'ApiKey test-key');
+    const sent = JSON.parse(opts.body);
+    check('every named entity becomes a query keyed by its id', sent.queries.a.properties.name[0] === 'Vladimir Putin');
+    check('an entity with no name is skipped, not sent as an empty query', sent.queries.b === undefined);
+    return {
+      ok: true,
+      json: async () => ({
+        responses: {
+          a: { results: [{ ...REAL_SHAPE_RESULT, score: 0.98, match: true }] },
+          c: { results: [{ ...REAL_SHAPE_RESULT, id: 'Q999', caption: 'Someone Else', score: 0.4, match: false }] },
+        },
+      }),
+    };
+  });
+  const batch = await sanctions.matchBatch({
+    entities: [{ id: 'a', name: 'Vladimir Putin' }, { id: 'b', name: '' }, { id: 'c', name: 'No Real Match' }],
+  });
+  check('a matched entity is reported found with its score', batch.results.a.found === true && batch.results.a.matches[0].score === 0.98);
+  check('a below-threshold result (match:false) is filtered out, not reported as a hit', batch.results.c.found === false);
+
+  // ── matchBatch: failure modes fail soft ─────────────────────────────────
+  mockFetch(async () => ({ ok: false, status: 503 }));
+  const batchHttpFail = await sanctions.matchBatch({ entities: [{ id: '1', name: 'anyone' }] });
+  check('matchBatch reports an HTTP failure as an error result, not thrown', !!batchHttpFail.error);
+
+  mockFetch(async () => { throw new Error('network down'); });
+  let batchThrew = false;
+  try { await sanctions.matchBatch({ entities: [{ id: '1', name: 'anyone' }] }); } catch { batchThrew = true; }
+  check('a network exception is caught, not left to throw out of matchBatch()', !batchThrew);
+
   restore();
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

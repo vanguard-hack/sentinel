@@ -15,9 +15,15 @@
 // replaces, not just a different vendor for the same data.
 
 const SEARCH_URL = 'https://api.opensanctions.org/search/default';
+const MATCH_URL = 'https://api.opensanctions.org/match/default';
 const PROFILE_URL = 'https://www.opensanctions.org/entities/';
 const FETCH_TIMEOUT_MS = 12_000;
 const MAX_MATCHES = 10;
+// OpenSanctions allows up to 100 queries per /match request, but bills each
+// entity individually regardless of batch size — batching is a network
+// convenience, not a cost saving. This cap is the actual spend/quota lever,
+// kept well under the API's own ceiling on purpose.
+const MAX_BATCH = 10;
 
 /**
  * Search a name — a person or an organisation — against OpenSanctions.
@@ -70,4 +76,67 @@ async function search({ query } = {}) {
   };
 }
 
-module.exports = { SEARCH_URL, PROFILE_URL, MAX_MATCHES, search };
+/**
+ * Screen several named entities against OpenSanctions in one request — the
+ * bulk counterpart to search() above, for Financial Trails' "screen these
+ * accused" action rather than a single officer-typed name.
+ *
+ * Request/response shape follows OpenSanctions' documented /match schema
+ * (queries -> responses, each result carrying a `match` boolean gated on
+ * their default 0.7 score threshold); not live-verified against the API in
+ * this session, deliberately, to avoid spending quota while building it.
+ *
+ * entities: [{ id, name }]. Returns { results: { [id]: { found, matches } } }
+ * or { error } — same never-throw contract as search().
+ */
+async function matchBatch({ entities } = {}) {
+  const list = Array.isArray(entities) ? entities : [];
+  if (!list.length) return { error: 'At least one entity is required to screen.' };
+  if (list.length > MAX_BATCH) return { error: `Screen at most ${MAX_BATCH} entities at a time.` };
+
+  const key = process.env.OPENSANCTIONS_API_KEY;
+  if (!key) return { error: 'Sanctions screening is not configured.' };
+
+  const queries = {};
+  list.forEach((e, i) => {
+    const name = String((e && e.name) || '').trim();
+    if (!name) return;
+    const id = String((e && e.id) || i);
+    queries[id] = { schema: 'Person', properties: { name: [name] } };
+  });
+  if (!Object.keys(queries).length) return { error: 'Every entity needs a name to screen.' };
+
+  let data;
+  try {
+    const res = await fetch(MATCH_URL, {
+      method: 'POST',
+      headers: { Authorization: `ApiKey ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ queries }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) return { error: `Sanctions screening failed: HTTP ${res.status}` };
+    data = await res.json();
+  } catch (e) {
+    return { error: `Sanctions screening failed: ${(e && e.message) || e}` };
+  }
+
+  const responses = (data && data.responses) || {};
+  const results = {};
+  Object.keys(queries).forEach((id) => {
+    const entry = responses[id] || {};
+    const hits = Array.isArray(entry.results) ? entry.results : [];
+    const matches = hits.filter((r) => r && r.match).map((r) => ({
+      id: r.id,
+      name: r.caption || '',
+      schema: r.schema || null,
+      score: typeof r.score === 'number' ? r.score : null,
+      datasets: Array.isArray(r.datasets) ? r.datasets : [],
+      profileUrl: r.id ? `${PROFILE_URL}${encodeURIComponent(r.id)}/` : null,
+    }));
+    results[id] = { found: matches.length > 0, matches };
+  });
+
+  return { results };
+}
+
+module.exports = { SEARCH_URL, MATCH_URL, PROFILE_URL, MAX_MATCHES, MAX_BATCH, search, matchBatch };

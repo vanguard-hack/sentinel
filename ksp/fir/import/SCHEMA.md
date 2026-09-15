@@ -1,6 +1,6 @@
 # Catalyst Data Store — table schemas
 
-_Generated 2026-09-11 23:17 • bucket: `accused`_
+_Generated 2026-09-14 08:48 • bucket: `accused`_
 
 Every table also gets an automatic `ROWID` primary key from Catalyst — you don't add it. Create each table below in the console (Data Store → New Table), then run `run_import.sh`.
 

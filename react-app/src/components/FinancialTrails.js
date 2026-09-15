@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import {
   getFinancialTrails, refreshFinancialTrails, formatRs, TYPOLOGIES,
-  scoreBreakdown, narrateFinancial,
+  scoreBreakdown, narrateFinancial, screenSanctions,
 } from '../utils/financial';
 import MoneyFlowMap from './MoneyFlowMap';
 
@@ -79,6 +79,28 @@ function TypologyChips({ typologies }) {
   );
 }
 
+// One flag per screened accused with a hit — never rendered for an
+// unscreened row, so "no chip" always means "not checked yet", not
+// "checked, clean". Links straight to the OpenSanctions profile so the
+// officer can judge the match themselves; this is a text-matched lead,
+// not a verified identity.
+function SanctionsFlag({ hit }) {
+  if (!hit || !hit.found) return null;
+  const top = hit.matches[0];
+  const title = hit.matches.map((m) => `${m.name} (${Math.round((m.score || 0) * 100)}% match)`).join(', ');
+  return (
+    <a
+      className="ft-flag ft-flag-sanctions"
+      href={top.profileUrl || 'https://www.opensanctions.org/'}
+      target="_blank"
+      rel="noreferrer"
+      title={title}
+    >
+      ⚠ Sanctions/PEP{hit.matches.length > 1 ? ` (${hit.matches.length})` : ''}
+    </a>
+  );
+}
+
 // The templated read is free and always there; the AI narrative is a
 // separate, explicit, per-row action — never generated automatically for a
 // page of alerts, since that would be an LLM call nobody asked for on every
@@ -138,6 +160,12 @@ export default function FinancialTrails() {
   const [aTier, setATier] = useState('');
   const [aTypo, setATypo] = useState('');
   const [aPage, setAPage] = useState(1);
+
+  // Sanctions/PEP screening — an explicit per-page action, not run on
+  // mount or on every filter change (see analytics_perf_contract). Reset
+  // whenever the visible page of accused changes, so a stale result never
+  // reads as if it covered the entities now on screen.
+  const [screen, setScreen] = useState({ status: 'idle', results: {} });
 
   // Transaction filters + paging
   const [tParty, setTParty] = useState('');
@@ -253,6 +281,23 @@ export default function FinancialTrails() {
   const tPages = Math.max(1, Math.ceil(filteredTxns.length / TXNS_PER_PAGE));
   const aRows = filteredAlerts.slice((aPage - 1) * ALERTS_PER_PAGE, aPage * ALERTS_PER_PAGE);
   const tRows = filteredTxns.slice((tPage - 1) * TXNS_PER_PAGE, tPage * TXNS_PER_PAGE);
+
+  const aRowsKey = aRows.map((a) => a.person).join(',');
+  useEffect(() => { setScreen({ status: 'idle', results: {} }); }, [aRowsKey]);
+
+  const runScreen = async () => {
+    setScreen({ status: 'loading', results: {} });
+    try {
+      // ALERTS_PER_PAGE is 8, under the backend's 10-entity screening cap —
+      // the slice is defensive insurance against that ever changing, not a
+      // limit expected to bite today.
+      const entities = aRows.slice(0, 10).map((a) => ({ id: a.person, name: a.name }));
+      const results = await screenSanctions(entities);
+      setScreen({ status: 'done', results });
+    } catch (e) {
+      setScreen({ status: 'error', results: {}, error: e.message || String(e) });
+    }
+  };
 
   if (loading) {
     return <div className="cf-state"><div className="cf-spinner" /><p>Tracing money trails…</p></div>;
@@ -485,6 +530,17 @@ export default function FinancialTrails() {
               {typoOpts.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
             <span className="ft-count">{filteredAlerts.length} of {alerts.length}</span>
+            <button
+              className="ft-ai-btn ft-screen-btn"
+              onClick={runScreen}
+              disabled={!aRows.length || screen.status === 'loading'}
+              title="Screen the accused on this page against OpenSanctions' sanctions and PEP watchlists"
+            >
+              {screen.status === 'loading'
+                ? 'Screening…'
+                : `Screen ${aRows.length} accused for sanctions/PEP matches`}
+            </button>
+            {screen.status === 'error' && <span className="ft-ai-error">{screen.error}</span>}
           </div>
           <div className="cf-scroll">
             <table className="fc-table ft-alert-table">
@@ -497,7 +553,10 @@ export default function FinancialTrails() {
               <tbody>
                 {aRows.map((a) => (
                   <tr key={a.person}>
-                    <td className="ft-entity-cell">{a.name} <span className="fc-pid">{a.person}</span></td>
+                    <td className="ft-entity-cell">
+                      {a.name} <span className="fc-pid">{a.person}</span>
+                      <SanctionsFlag hit={screen.results[a.person]} />
+                    </td>
                     <td><Tier t={a.tier} /></td>
                     <td className="ft-score-cell">
                       {a.score}

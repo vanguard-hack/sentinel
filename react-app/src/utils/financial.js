@@ -655,6 +655,20 @@ export async function narrateFinancial(alert) {
   return data.narrative;
 }
 
+// Bulk-screen accused against OpenSanctions' sanctions/PEP watchlists — an
+// explicit officer action (a button click), never automatic on page load.
+// entities: [{ id, name }]. Returns { [id]: { found, matches } }.
+export async function screenSanctions(entities) {
+  const res = await fetch('/server/rag/sanctions/batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entities }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data.results;
+}
+
 function buildNarrative(typ, inD, outD) {
   const parts = [];
   if (typ.includes('fanIn')) parts.push(`collected funds from ${inD} accounts`);

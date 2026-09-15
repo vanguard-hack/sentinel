@@ -8,6 +8,7 @@ const catalystVision = require('./catalystVision');
 const catalystGLM = require('./catalystGLM');
 const attribution = require('./sources');
 const crypto = require('./crypto');
+const sanctions = require('./sanctions');
 const sherlock = require('./sherlock');
 const memory = require('./memory');
 const assistantTools = require('./tools');
@@ -2195,7 +2196,7 @@ function rateLimited(key, max) {
 
 // Routes that cost money per call: Zoho transcription and OCR, SmartBrowz PDF
 // rendering, and every lane that reaches an LLM.
-const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|predict\/[a-z]+|forecast(\/refresh)?|digitise\/(upload|ingest)|financial\/narrative|patrol\/directions|sherlock\/start)$/;
+const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|predict\/[a-z]+|forecast(\/refresh)?|digitise\/(upload|ingest)|financial\/narrative|sanctions\/batch|patrol\/directions|sherlock\/start)$/;
 const isAdminUser = (u) => /admin/i.test(u?.role_details?.role_name || '');
 
 /* ── Case prediction (QuickML) ───────────────────────────────────────────────
@@ -3972,6 +3973,34 @@ async function handleFinancialNarrative(req, res) {
   return json(res, 200, { narrative: (prose || 'Narrative unavailable right now — try again shortly.').trim() });
 }
 
+// Financial Trails → "screen these accused" action: bulk sanctions/PEP
+// screening for the accused behind the alerts on the officer's current
+// page, one explicit click at a time. Same role gate as the sanctions_check
+// tool in tools.js, kept identical on purpose — this reaches no further
+// than asking the assistant the same question by hand would. Capped at
+// sanctions.MAX_BATCH entities per call (see that module for why) so one
+// click can never turn into an unbounded API bill.
+async function handleSanctionsBatch(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+  if (!caller || !['admin', 'supervisor', 'investigator', 'analyst'].includes(role)) {
+    return json(res, 403, { error: 'Sanctions checks are limited to investigators, supervisors, analysts and admin.' });
+  }
+
+  const entities = Array.isArray(body.entities) ? body.entities : [];
+  const out = await sanctions.matchBatch({ entities });
+  if (out.error) return json(res, 400, out);
+
+  await storeAuditEvents(req, app, bucket, [{
+    action: 'sanctions-screen', feature: 'Financial Trails', path: '/ai-analytics?tab=financial',
+    detail: `${entities.length} accused screened`,
+  }], caller);
+
+  return json(res, 200, out);
+}
+
 // Crime Map → patrol route: snap the client's already-computed stop order to
 // actual roads via OpenRouteService, so the drawn line follows streets
 // instead of straight segments between hotspots. Only lat/lng pairs the
@@ -5325,6 +5354,7 @@ module.exports = async (req, res) => {
     if (path.endsWith('/investigation/reorder')) return await handleInvestigation(req, res, 'reorder');
     if (path.endsWith('/investigation/summarize')) return await handleInvestigationSummary(req, res);
     if (path.endsWith('/financial/narrative')) return await handleFinancialNarrative(req, res);
+    if (path.endsWith('/sanctions/batch')) return await handleSanctionsBatch(req, res);
     if (path.endsWith('/patrol/directions')) return await handlePatrolDirections(req, res);
     if (path.endsWith('/investigation/media/upload')) return await handleMediaUpload(req, res);
     if (path.endsWith('/investigation/media/get')) return await handleMediaGet(req, res);

@@ -8,7 +8,7 @@
  * has to lay out.
  */
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 
 const mockModel = {
   summary: { txns: 120, flagged: 40, entities: 6, typologies: 3, value: 4500000 },
@@ -48,6 +48,7 @@ jest.mock('../utils/financial', () => {
     ...actual,
     getFinancialTrails: () => Promise.resolve(mockModel),
     refreshFinancialTrails: () => {},
+    screenSanctions: jest.fn(),
   };
 });
 
@@ -61,6 +62,7 @@ jest.mock('../utils/publicRefs', () => ({
 global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
 
 const FinancialTrails = require('../components/FinancialTrails').default;
+const { screenSanctions } = require('../utils/financial');
 
 test('the money-flow network draws to a canvas, not to hundreds of SVG nodes', async () => {
   const { container } = render(<FinancialTrails />);
@@ -123,4 +125,47 @@ test('a heavily-flagged alert caps its score breakdown, with a "+N more factors"
   // capped to 4 shown + 1 "+N more" row.
   expect(breakdownRows).toHaveLength(5);
   expect(row.querySelector('.ft-bd-more-label').textContent).toBe('+3 more factors');
+});
+
+// Sanctions/PEP screening: never run automatically — only an explicit click
+// triggers a call, and only the accused on the current page are sent.
+test('screening is never triggered on mount, only by the button', async () => {
+  render(<FinancialTrails />);
+  await screen.findByText('Suspect Two');
+  expect(screenSanctions).not.toHaveBeenCalled();
+});
+
+test('the screen button names exactly how many accused it will check', async () => {
+  render(<FinancialTrails />);
+  await screen.findByText(/Screen 2 accused for sanctions\/PEP matches/);
+});
+
+test('a hit renders a flag on the matched row and nothing on a clean one', async () => {
+  screenSanctions.mockResolvedValueOnce({
+    P1: { found: true, matches: [{ id: 'Q1', name: 'Suspect One', score: 0.95, profileUrl: 'https://www.opensanctions.org/entities/Q1/' }] },
+    P2: { found: false, matches: [] },
+  });
+  render(<FinancialTrails />);
+  const btn = await screen.findByText(/Screen 2 accused for sanctions\/PEP matches/);
+  fireEvent.click(btn);
+
+  expect(screenSanctions).toHaveBeenCalledWith([
+    { id: 'P1', name: 'Suspect One' },
+    { id: 'P2', name: 'Suspect Two' },
+  ]);
+
+  const table = document.querySelector('.ft-alert-table');
+  const rowOne = within(table).getByText('Suspect One').closest('tr');
+  await waitFor(() => expect(rowOne.querySelector('.ft-flag-sanctions')).not.toBeNull());
+
+  const rowTwo = within(table).getByText('Suspect Two').closest('tr');
+  expect(rowTwo.querySelector('.ft-flag-sanctions')).toBeNull();
+});
+
+test('a screening failure shows the error instead of silently doing nothing', async () => {
+  screenSanctions.mockRejectedValueOnce(new Error('Sanctions screening is not configured.'));
+  render(<FinancialTrails />);
+  const btn = await screen.findByText(/Screen 2 accused for sanctions\/PEP matches/);
+  fireEvent.click(btn);
+  await screen.findByText('Sanctions screening is not configured.');
 });
