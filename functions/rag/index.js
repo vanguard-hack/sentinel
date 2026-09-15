@@ -5400,6 +5400,7 @@ module.exports = async (req, res) => {
     // check by forgetting an argument.
     const evidence = grounding.collector();
     let groundingResult = null; // the verdict, shared with the decision record
+    let answerConfidence = null; // grounding.tier() verdict; null on refusals/fallback — nothing to score
     // Break-glass. The officer's stated purpose for reaching victim or
     // complainant identity on an offence against a woman or a child. Never
     // validated — it is recorded. See redaction.js for why the record, rather
@@ -5513,6 +5514,9 @@ module.exports = async (req, res) => {
           groundingResult && !groundingResult.grounded
             ? `grounding=FLAGGED:${groundingResult.unsupported.map((u) => u.value).join(',') || 'contradiction'}`
             : groundingResult ? 'grounding=ok' : null,
+          // Not `confidence=` — routeDecision.confidence above is the
+          // classifier's confidence in which LANE to use, an unrelated number.
+          answerConfidence ? `answer_conf=${answerConfidence}` : null,
           // Every guardrail hit this turn — an override attempt in the
           // officer's message, injection markers inside an attached file or a
           // scanned page, an answer withheld. Recorded whether or not it
@@ -5664,11 +5668,22 @@ module.exports = async (req, res) => {
       const groundless = isNegative(text);
       const shownSources = groundless ? [] : citedSources;
 
+      // Refusals, the guardrail lane, the "couldn't find an answer" fallback,
+      // and anything the output guard just replaced aren't answers drawn from
+      // records — there's nothing to score, same reasoning that withholds
+      // sources on those paths above.
+      const scoreless = !!payload.refused || payload.source === 'fallback'
+        || payload.source === 'guardrail' || outputScan.action === 'replace';
+      answerConfidence = scoreless
+        ? null
+        : grounding.tier(groundingResult, { sourceCount: citedSources.length, groundless });
+
       const sent = json(res, 200, {
         response_id: responseId,
         badge_id: badgeId(),
         answer,
         sources: shownSources,
+        ...(answerConfidence ? { confidence: { tier: answerConfidence } } : {}),
         ...(groundingWarning
           ? { grounding: { warning: groundingWarning, ...groundingResult } }
           : {}),

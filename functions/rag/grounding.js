@@ -249,7 +249,28 @@ function warning(result, lang) {
   return parts.join(' ');
 }
 
+/**
+ * How much an officer should trust this answer, derived from the same
+ * signals `check()` already computed — never a number the model reports
+ * about itself. See the module doc: citations come from retrieval, not from
+ * the model's own claims, and confidence follows the same rule.
+ *
+ *   low    — check() found an invented identifier or a contradiction. The
+ *            strongest signal available; nothing else overrides it.
+ *   medium — nothing invented, but nothing backs it either: nothing was
+ *            retrieved and no source is cited. Usually a general-knowledge
+ *            or chat-lane answer with no record behind it either way.
+ *   high   — nothing invented, AND it's backed by retrieved rows or a cited
+ *            source — or it's a legitimate "no such record" answer, which is
+ *            grounded in the officer's own question rather than retrieval.
+ */
+function tier(result, { sourceCount = 0, groundless = false } = {}) {
+  if (!result || !result.grounded) return 'low';
+  const backed = result.retrieved_rows > 0 || sourceCount > 0 || groundless;
+  return backed ? 'high' : 'medium';
+}
+
 module.exports = {
   PATTERNS, SECTION_RE, DENIAL_RE,
-  extract, extractSections, collector, supportedTokens, check, warning,
+  extract, extractSections, collector, supportedTokens, check, warning, tier,
 };

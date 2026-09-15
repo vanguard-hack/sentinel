@@ -135,6 +135,17 @@ function GroundingWarning({ grounding }) {
   );
 }
 
+const CONFIDENCE_LABEL = { high: 'High confidence', medium: 'Medium confidence', low: 'Low confidence' };
+
+// Absent on refusals, the fallback "couldn't find an answer" reply, and
+// anything the guard replaced — see respondWith's `scoreless` check. Those
+// aren't answers drawn from records, so there's nothing to score.
+function ConfidenceBadge({ confidence }) {
+  const tier = confidence && confidence.tier;
+  if (!tier || !CONFIDENCE_LABEL[tier]) return null;
+  return <span className={`as-confidence as-confidence-${tier}`}>{CONFIDENCE_LABEL[tier]}</span>;
+}
+
 // Short, domain-relevant prompts shown on an empty conversation.
 //
 // A default chip is a promise: tap it and you get a real answer. So these are
@@ -620,6 +631,7 @@ export default function Assistant() {
         sources: reply.sources,
         source: reply.source,
         grounding: reply.grounding,
+        confidence: reply.confidence,
         protectedAccess: reply.protectedAccess,
         attachmentWarning: reply.attachmentWarning,
         ts: Date.now(),
@@ -1153,6 +1165,7 @@ export default function Assistant() {
                           >
                             <ThumbsDown size={15} />
                           </button>
+                          <ConfidenceBadge confidence={m.confidence} />
                         </div>
                       )}
                     </div>

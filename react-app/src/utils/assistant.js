@@ -425,6 +425,7 @@ export async function generateReply(
     return {
       text, components, sources, source: data.source,
       grounding: data.grounding || null,
+      confidence: data.confidence || null,
       protectedAccess: data.protected_access || null,
       // A file that carries an instruction aimed at this assistant is itself a
       // finding — somebody wrote that document expecting a system like this to

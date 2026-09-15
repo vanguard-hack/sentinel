@@ -134,5 +134,23 @@ check('a flood of inventions is capped rather than filling the screen',
   grounding.check([...Array(40)].map((_, i) => `20260${String(i).padStart(4, '0')}`).join(' '), {})
     .unsupported.length === 10);
 
+// ── Confidence tier ─────────────────────────────────────────────────────────
+// Officer-facing, so a wrong tier is either a false "high" (worse than the
+// grounding check itself failing) or a "low" on a perfectly good answer
+// (trains officers to ignore it) — same two failure modes as above.
+check('an invented identifier is low confidence regardless of anything else',
+  grounding.tier(invented, { sourceCount: 5 }) === 'low');
+check('a contradicted answer is low confidence',
+  grounding.tier(contradiction, { sourceCount: 5 }) === 'low');
+check('a grounded answer actually backed by retrieved rows is high',
+  grounding.tier(grounding.check('Two cases matched: 144221107202500001 and 144031013202300001.',
+    { evidence: withRows(), question: 'theft cases' }), { sourceCount: 2 }) === 'high');
+check('a grounded answer with nothing retrieved behind it is only medium',
+  grounding.tier(grounding.check('Theft is generally underreported.', {}), { sourceCount: 0 }) === 'medium');
+check('a legitimate "no record found" answer is high even with zero sources shown',
+  grounding.tier(denial, { sourceCount: 0, groundless: true }) === 'high');
+check('a missing grounding result (checker threw) is treated as low, not high',
+  grounding.tier(null, { sourceCount: 5 }) === 'low');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
