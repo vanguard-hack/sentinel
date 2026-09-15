@@ -76,7 +76,7 @@ check('the key stays inside the analytics prefix',
 const fs = require('fs');
 const path = require('path');
 
-const UTILS = path.join(__dirname, '..', '..', 'react-app', 'src', 'utils');
+const UTILS = path.join(__dirname, '..', '..', 'frontend', 'src', 'utils');
 if (fs.existsSync(UTILS)) {
   const wanted = new Set();
   for (const f of fs.readdirSync(UTILS).filter((f) => f.endsWith('.js'))) {

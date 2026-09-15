@@ -86,9 +86,9 @@ check('the officer\'s own message is still scanned leniently',
 // dictation (really the officer) versus an attached recording (evidence).
 
 const assistant = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'react-app', 'src', 'pages', 'Assistant.js'), 'utf8');
+  path.join(__dirname, '..', '..', 'frontend', 'src', 'pages', 'Assistant.js'), 'utf8');
 const attachments = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'react-app', 'src', 'utils', 'attachments.js'), 'utf8');
+  path.join(__dirname, '..', '..', 'frontend', 'src', 'utils', 'attachments.js'), 'utf8');
 
 check('an attached recording is no longer routed into the composer',
   !/files\.filter\(\(f\) => f\.type\.startsWith\('audio\/'\)\)\.forEach/.test(assistant),

@@ -3,12 +3,12 @@
 
 # Dependencies & build output
 node_modules/
-react-app/build/
+frontend/build/
 # `catalyst serve` stages the functions here (~19MB) — artifact, not source.
 .build/
 
 # Secrets — never commit. Real values live only locally and in the Catalyst console.
-react-app/.env
+frontend/.env
 functions/rag/catalyst-config.json
 
 # Catalyst import job reports

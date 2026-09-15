@@ -17,19 +17,19 @@ PATH="$HOME/.nvm/versions/node/v20.20.2/bin:$PATH" catalyst serve --http 3000
 | Task | Command |
 |---|---|
 | Run everything locally | `catalyst serve --http 3000` → client at `/app/`, function at `/server/rag/` |
-| Build the client | `cd react-app && npm run build` |
+| Build the client | `cd frontend && npm run build` |
 | Backend tests | `cd functions/rag && npm test` |
 | One backend test | `node functions/rag/guard.test.js` |
-| Frontend tests | `cd react-app && CI=true npm test -- --watchAll=false` |
-| One frontend test | `cd react-app && CI=true npm test -- --watchAll=false src/__smoke__/link.test.js` |
-| Lint (what CI enforces) | `cd react-app && npx eslint src --ext .js --ignore-pattern '__smoke__'` |
+| Frontend tests | `cd frontend && CI=true npm test -- --watchAll=false` |
+| One frontend test | `cd frontend && CI=true npm test -- --watchAll=false src/__smoke__/link.test.js` |
+| Lint (what CI enforces) | `cd frontend && npx eslint src --ext .js --ignore-pattern '__smoke__'` |
 | Accessibility gate | `node scripts/a11y-check.test.js && node scripts/a11y-check.js` |
 | Assistant benchmark | `node functions/rag/bench/run.js` |
 | Regenerate the dataset | `cd ksp/fir && python3 generate_fir_dataset.py && python3 generate_accused_network.py && python3 enrich_personnel.py` |
 
 Always build with `npm run build`, never `npx react-scripts build`: the `postbuild` step copies `build/index.html → build/404.html`, which is the SPA fallback Catalyst serves for client routes. Without it a hard refresh on any route shows Catalyst's 404 page. (Client routes returning HTTP 404 with the SPA as the body is normal and works.)
 
-`npm install` in `react-app` needs `--legacy-peer-deps` — react-scripts 5 pins typescript ^3||^4 against the installed 5.x.
+`npm install` in `frontend` needs `--legacy-peer-deps` — react-scripts 5 pins typescript ^3||^4 against the installed 5.x.
 
 ## Deployment
 
@@ -92,7 +92,7 @@ Create React App 5, JavaScript with some TypeScript, `react-router-dom` 7, Leafl
 
 `src/data/hierarchyStore.js` loads map data from a Stratus bucket **as executable ES modules** at runtime via `import(/* webpackIgnore: true */ url)`. Anything with write access to that bucket runs JavaScript in every officer's browser — keep its write permissions closed, and do not reintroduce `new Function`, which would force `unsafe-eval` into the CSP.
 
-The CSP lives in `react-app/public/index.html`. The build emits no inline script, so `script-src` is a real allowlist with no `unsafe-eval` and no hashes. Adding either would undo the only load-bearing line in that file.
+The CSP lives in `frontend/public/index.html`. The build emits no inline script, so `script-src` is a real allowlist with no `unsafe-eval` and no hashes. Adding either would undo the only load-bearing line in that file.
 
 ## Testing conventions
 

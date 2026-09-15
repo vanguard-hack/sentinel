@@ -31,7 +31,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: |
-            react-app/package-lock.json
+            frontend/package-lock.json
             functions/rag/package-lock.json
 
       # ── Backend ────────────────────────────────────────────────────────
@@ -101,14 +101,14 @@ jobs:
 
       # ── Frontend ───────────────────────────────────────────────────────
       - name: Install web dependencies
-        working-directory: react-app
+        working-directory: frontend
         # --legacy-peer-deps because react-scripts 5 and zcatalyst-cli-plugin-react
         # declare conflicting peers around typescript; npm 7+ refuses the tree
         # without it. The lockfile already pins the resolution that works.
         run: npm ci --legacy-peer-deps --no-audit --no-fund
 
       - name: Lint application source
-        working-directory: react-app
+        working-directory: frontend
         # A real gate on application code — it is clean, so a new error stops
         # the build. src/__smoke__ is excluded: its 47 findings are all
         # testing-library style preferences (no-node-access, prefer-find-by)
@@ -126,15 +126,15 @@ jobs:
           node scripts/a11y-check.js
 
       - name: Lint smoke tests (advisory)
-        working-directory: react-app
+        working-directory: frontend
         continue-on-error: true
         run: npx eslint src/__smoke__ --ext .js
 
       - name: Build the web client
-        working-directory: react-app
+        working-directory: frontend
         env:
           CI: false # CRA promotes warnings to errors under CI; the build is clean but noisy
-          # react-app/.env is gitignored, so these reach a local build but never
+          # frontend/.env is gitignored, so these reach a local build but never
           # reached CI — every deployed bundle baked in empty strings and the
           # Crime Map's station panel showed "No image provider configured" for
           # EVERY station, while working fine on the developer's machine.
@@ -152,12 +152,12 @@ jobs:
         run: npm run build
 
       - name: Confirm the SPA fallback was produced
-        working-directory: react-app
+        working-directory: frontend
         run: test -f build/404.html || (echo "postbuild did not run — 404.html missing" && exit 1)
 
       - name: Record the built bundle name
         id: bundle
-        working-directory: react-app
+        working-directory: frontend
         run: |
           name=$(ls build/static/js/main.*.js | head -1 | xargs basename)
           echo "main_js=$name" >> "$GITHUB_OUTPUT"
@@ -166,7 +166,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: web-build
-          path: react-app/build
+          path: frontend/build
           retention-days: 5
 
     outputs:
@@ -186,14 +186,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # The client target in catalyst.json is react-app/build, which is
+      # The client target in catalyst.json is frontend/build, which is
       # gitignored — so the deploy uses the artifact the verify job produced
       # rather than rebuilding and risking a different bundle than the one
       # the tests ran against.
       - uses: actions/download-artifact@v4
         with:
           name: web-build
-          path: react-app/build
+          path: frontend/build
 
       - name: Install function dependencies
         working-directory: functions/rag

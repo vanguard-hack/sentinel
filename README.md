@@ -715,7 +715,7 @@ sentinel/
 ├── scripts/
 │   └── rotate-rag-token.sh          # Renews the Zoho OAuth refresh token used by the function
 │
-├── react-app/                       # ── FRONTEND ── React SPA, deployed to Web Hosting, served at /app
+├── frontend/                       # ── FRONTEND ── React SPA, deployed to Web Hosting, served at /app
 │   ├── package.json                 # Deps + scripts; `homepage: /app`; postbuild writes the SPA 404 fallback
 │   ├── client-package.json          # Catalyst client manifest — entry page, login redirect, 404 route
 │   ├── tsconfig.json                # TypeScript config for the TS entry points
@@ -1226,7 +1226,7 @@ catalyst init
 ### 2. Install dependencies
 
 ```bash
-cd react-app && npm install --legacy-peer-deps && cd ..
+cd frontend && npm install --legacy-peer-deps && cd ..
 cd functions/rag && npm install && cd ../..
 ```
 
@@ -1352,7 +1352,7 @@ empty, every write returns `false`, nothing errors.
 ## Running Locally
 
 ```bash
-cd react-app && npm start
+cd frontend && npm start
 catalyst serve
 ```
 
@@ -1371,7 +1371,7 @@ Two things to know:
 - **Local has no separate data plane.** Data Store and Stratus calls from a local serve proxy to
   and mutate **real Development data**. Testing function logic is safe; testing a destructive
   data operation is not.
-- `npm install` in `react-app` needs `--legacy-peer-deps` — react-scripts 5 pins TypeScript
+- `npm install` in `frontend` needs `--legacy-peer-deps` — react-scripts 5 pins TypeScript
   `^3 || ^4` against the installed 5.x.
 
 ---
@@ -1379,7 +1379,7 @@ Two things to know:
 ## Build & Deploy
 
 ```bash
-cd react-app && npm run build && cd ..
+cd frontend && npm run build && cd ..
 catalyst deploy
 
 catalyst deploy --only client
@@ -1420,7 +1420,7 @@ assert against the *source* and against injected fakes rather than a live Cataly
 ```bash
 cd functions/rag && npm test           # every *.test.js, in order
 
-cd react-app
+cd frontend
 CI=true npx react-scripts test --watchAll=false
 npx eslint src --ext .js --ignore-pattern '__smoke__'
 
@@ -1458,7 +1458,7 @@ deliberate: **a guard tested by regex is a guard that passes while doing nothing
 `router`, `keys`, `csrf`, `join`, `memory`, `sanctions`, `slash`, `osint`, `crypto`, `sherlock`
 and `geolocate`.
 
-### Frontend suites (`react-app/src/__smoke__/`)
+### Frontend suites (`frontend/src/__smoke__/`)
 
 57 suites, 527 tests. Beyond rendering, several pin behaviour that had already gone wrong once
 and would go wrong silently again:
@@ -1546,7 +1546,7 @@ server-side from the session — blocked visits are audit-logged, not silently d
 | Duty Roster | — | — | ✅ | — | ✅ |
 | **Access & Audit** | — | — | — | — | ✅ |
 
-The matrix above is generated from [`react-app/src/utils/access.js`](react-app/src/utils/access.js),
+The matrix above is generated from [`frontend/src/utils/access.js`](frontend/src/utils/access.js),
 which is the single source of truth.
 
 ---

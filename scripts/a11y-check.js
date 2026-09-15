@@ -29,7 +29,7 @@ const path = require('path');
 // The scan root is overridable so the gate's own tests can point it at a
 // fixture containing deliberate violations. A checker nobody has watched fail
 // is indistinguishable from one that always returns clean.
-const ROOT = process.argv[2] ? path.resolve(process.argv[2]) : path.join(__dirname, '..', 'react-app', 'src');
+const ROOT = process.argv[2] ? path.resolve(process.argv[2]) : path.join(__dirname, '..', 'frontend', 'src');
 const APP_SHELL = path.join(ROOT, 'App.tsx');
 const EXT = new Set(['.js', '.jsx', '.ts', '.tsx']);
 const SKIP_DIR = new Set(['node_modules', '__smoke__', 'build', 'dist']);

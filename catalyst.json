@@ -1,6 +1,6 @@
 {
   "client": {
-    "source": "react-app/build"
+    "source": "frontend/build"
   },
   "functions": {
     "source": "functions",
