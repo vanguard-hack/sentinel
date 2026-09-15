@@ -121,7 +121,14 @@ semantic recall of older sessions), **Voice input** via Zia speech-to-text, **do
 attachments** (PDF/Office files read as context, with each chip stating plainly whether the
 assistant can actually see the file), **Slash commands**, ↑/↓ prompt history, saved
 conversations, and replies rendered as charts, tables, maps and record cards. Every answer
-carries interactive **Source citations** you can click through to the exact row or document.
+carries interactive **Source citations** you can click through to the exact row or document, and
+a **confidence badge** (High / Medium / Low) derived from whether the answer's own claims are
+actually backed by what was retrieved — never a number the model reports about itself.
+
+Three LLM providers sit behind every lane, tried in order with automatic failover: **Groq**
+(default), then **Claude**. A model switcher in the composer also lets an officer pick
+**GLM-4.7-Flash** — a Catalyst QuickML `genai` endpoint — explicitly; it stays opt-in rather than
+joining the automatic chain because it measurably underperforms on structured ZCQL generation.
 
 ### 📈 AI Analytics
 
@@ -189,6 +196,9 @@ channel, and shell/mule routing.
   moved, colour by account kind. The graph is deliberately *uneven* — shared accounts, chains of
   varying depth and hubs with a long tail — because a field of identical stars would say nothing
   about where two chains meet, which is the finding.
+- **Bulk sanctions / PEP screening** — screen every accused on a case against OpenSanctions'
+  aggregated watchlist (UN, OFAC, EU, UK and 20+ more source lists) in one action from the page,
+  restricted to investigators, supervisors, analysts and admin.
 
 All outputs are advisory, cited and guardrail-bound: protected attributes (religion, caste,
 gender) are excluded from every risk model.
@@ -514,7 +524,7 @@ flowchart TD
     TOOLS -- "loop fails" --> ZCQL
     ZCQL -- "validator refuses" --> RAG
 
-    TOOLS & ZCQL & RAG & BOTH & CHAT & Direct --> Out["Single exit:<br/>clearance filter → redaction →<br/>citations → audit → localise"]
+    TOOLS & ZCQL & RAG & BOTH & CHAT & Direct --> Out["Single exit:<br/>clearance filter → redaction →<br/>citations → confidence → audit → localise"]
     Out --> Ans["Answer with sources"]
 ```
 
@@ -645,14 +655,17 @@ and a 401 on an anonymous call — not against the CLI's exit code.
 | --- | --- | --- |
 | Runtime | **Node.js 20** on a Catalyst **Advanced I/O** function | The single `rag` function — the entire backend |
 | SDK | **zcatalyst-sdk-node 3.4** | Data Store, Stratus, Cache, NoSQL, User Management |
-| LLM (primary) | **Groq** — `openai/gpt-oss-120b`, `qwen/qwen3.6-27b` | Routing, chat, ZCQL compilation, summarisation |
+| LLM (default) | **Groq** — `openai/gpt-oss-120b`, `qwen/qwen3.6-27b` | Routing, chat, ZCQL compilation, summarisation |
 | LLM (fallback) | **Anthropic** — `claude-opus-5` via `@anthropic-ai/sdk` | The tool loop, and failover when Groq is unavailable |
+| LLM (opt-in) | **GLM-4.7-Flash** — Catalyst QuickML `genai` endpoint | Selectable per-officer from the composer's model switcher; excluded from the automatic chain — it measurably underperforms on structured ZCQL generation |
+| Vision (VLM) | **Qwen3.6-35B-A3B** — Catalyst QuickML `VLM` endpoint | Deep visual understanding of an attachment, beyond what the Zia OCR/object pass extracts |
 | Retrieval | **QuickML RAG API** | Legal / SOP knowledge base and semantic memory recall |
 | Auth | **OAuth 2.0** refresh-token flow against `accounts.zoho.in` | Server-to-server calls to Zia, QuickML and SmartBrowz |
 | Mail | **nodemailer** | Help Centre tickets to the administrator |
 
-Provider order is configurable (`LLM_PROVIDER_ORDER`, default `groq,claude`) and every lane
-falls through the chain, so one provider being down degrades latency rather than the feature.
+Provider order is configurable (`LLM_PROVIDER_ORDER`, default `groq,claude`) and every lane falls
+through the chain, so one provider being down degrades latency rather than the feature.
+GLM-4.7-Flash is never in that automatic chain — it is reached only by an officer's explicit pick.
 
 ### Data tooling
 
@@ -692,7 +705,7 @@ Vision separately — and there is no self-managed server anywhere in the system
 | **Zia — Speech-to-Text** | Live voice-to-text for testimony capture and assistant voice input, plus transcription of uploaded interview recordings. |
 | **Zia — Vision** | The fast attachment pre-parser: runs vision services in parallel on an attached image the moment it is attached, so the digest is ready before the officer finishes typing. |
 | **SmartBrowz** | Renders the composed HTML of a statutory report or a full case file into a court-ready PDF, server-side. |
-| **QuickML** | Three distinct jobs. **Forecasting:** three deployed pipelines (force-wide volume, ten crime heads, thirty-one districts) served through prediction endpoints, one key per model so a leaked key is one model rather than all of them. **Classification:** a chargesheet-likelihood model over 21 case features, which returns its own measured accuracy with every prediction. **Retrieval:** the RAG knowledge base behind legal and procedural answers, and the semantic-recall tier of officer memory. |
+| **QuickML** | Five distinct jobs. **Forecasting:** three deployed pipelines (force-wide volume, ten crime heads, thirty-one districts) — AutoML gradient-boosted (XGBoost) regression over engineered lag/rolling/seasonal features, SHAP-explained — served through prediction endpoints, one key per model so a leaked key is one model rather than all of them. **Classification:** a chargesheet-likelihood model (gradient-boosted trees, 21 case features, SHAP-explained) that returns its own measured accuracy with every prediction. **Generation:** GLM-4.7-Flash, a `genai` endpoint reached only when an officer opts into it from the model switcher. **Vision:** a Qwen3.6-35B-A3B `VLM` endpoint for deep visual understanding of attachments. **Retrieval:** the RAG knowledge base behind legal and procedural answers, and the semantic-recall tier of officer memory. |
 
 ---
 
@@ -862,6 +875,8 @@ sentinel/
 │       ├── network.js               # Server-side network assembly for assistant replies
 │       ├── i18n.js                  # Language detection and the three answer languages
 │       ├── vision.js                # Fast attachment pre-parser over Zia vision services
+│       ├── catalystGLM.js           # GLM-4.7-Flash — the opt-in QuickML `genai` provider
+│       ├── catalystVision.js        # Qwen3.6-35B-A3B — the QuickML `VLM` endpoint for deep image understanding
 │       ├── masters.json             # Snapshot of master tables, for enriching ZCQL results in code
 │       ├── catalyst-config.template.json  # Env-var template — copy to catalyst-config.json
 │       └── *.test.js                # 31 backend suites — no framework, one node script each
@@ -996,6 +1011,21 @@ rolling-origin, leak-free** — the model is scored only on months it never saw.
 | 95% band at the forecast value | ±10.1% | ±28.5% | ±42.3% |
 | Forecast horizon | 6 months | 6 months | 6 months |
 
+### Deployed architecture
+
+Pulled live from the Catalyst QuickML console, not hand-documented. Every pipeline is AutoML,
+not a chosen algorithm: mean imputation → min-max normalisation → embedded feature selection,
+feeding a **gradient-boosted tree ensemble** — XGBoost regression (`max_depth 3, learning_rate
+0.1, 100 trees`) for the three forecasters — with **SHAP** explainability enabled on every model.
+`seasonal_lag_12` alone carries **88%** of `firvolume`'s feature importance, confirming the
+model leans on year-over-year seasonality rather than short-term drift.
+
+One number is deliberately not the headline above: QuickML's own console reports **R² 0.999 /
+MAPE 0.3%** for these same models — an order of magnitude better than the 4.1% in the table.
+It isn't wrong, it's scoring the wrong thing — the console's random train/test split lets
+adjacent rows share lag features with their holdout neighbours. The rolling-origin numbers above
+are what a month the model never saw actually produces, and what's shipped to officers.
+
 ### The fourth model: chargesheet likelihood
 
 Not a forecast, and it lives in [`index.js`](functions/rag/index.js) rather than `forecast.js`,
@@ -1004,7 +1034,9 @@ but it is the other trained QuickML model this platform serves, so its numbers b
 | Metric | Value |
 | --- | --- |
 | Kind | Binary classification — will this case reach a charge sheet |
+| Architecture | Gradient Boosting Classifier (`max_depth 3, learning_rate 0.1, 100 trees`, log-loss), SHAP-explained |
 | Features | 21 (crime head and minor head, category, gravity, station, district, incident hour and weekday, registration month and year, report delay, counts of accused / victims / complainants / arrests, arrest made, mean accused and victim age, station caseload, IO caseload, case age) |
+| Top signals (SHAP) | `n_arrests`, `arrest_made`, `case_age_days` — together 81% of feature importance |
 | **Accuracy** | **81.87%** |
 | Majority-class baseline | 72.6% |
 | Skill over that baseline | +9.3 points |
@@ -1042,7 +1074,7 @@ POST /server/rag/<path>
 
 | Endpoint | Does |
 | --- | --- |
-| `POST /server/rag/` | **The main assistant endpoint.** Detects language, routes the question (TOOLS / ZCQL / RAG / BOTH / CHAT), runs the lane, applies the two-tier clearance filter, attaches citations, writes the audit decision record, and returns `{ answer, components, sources, response_id }`. |
+| `POST /server/rag/` | **The main assistant endpoint.** Detects language, routes the question (TOOLS / ZCQL / RAG / BOTH / CHAT), runs the lane, applies the two-tier clearance filter, attaches citations, scores confidence, writes the audit decision record, and returns `{ answer, components, sources, confidence, response_id }`. An optional `model` field (`groq` / `glm` / `claude`) lets an officer's model-switcher pick override the default provider chain for that call. |
 | `POST /server/rag/transcribe` | Zia speech-to-text for voice input and uploaded recordings. |
 | `POST /server/rag/vision/parse` | Fast attachment pre-parser — runs Zia vision services in parallel on attach so the digest is ready before the officer hits send. |
 | `POST /server/rag/health` | Reports **whether** each provider and the RAG credentials are configured — never a value. The one route ahead of the session gate; CI asserts against it after every deploy. |
@@ -1055,6 +1087,8 @@ POST /server/rag/<path>
 | `POST /server/rag/forecast` | The assembled forecast bundle for all three QuickML pipelines: history, per-horizon predictions, 95% bands and each model's held-out quality figures. Normally a Stratus blob read — QuickML bills per prediction call and a full refresh is 42 series × 6 horizons = **252 calls**, so the numbers come from the models but are paid for once. Keyed by the dataset's origin month, so a cached bundle is not a stale one. |
 | `POST /server/rag/forecast/refresh` | Forces the bundle to be rebuilt from the live model endpoints. |
 | `POST /server/rag/predict/<model>` | The non-forecasting QuickML models. Today that is `chargesheet` — a chargesheet-likelihood classifier over 21 case features. The response carries the model's measured accuracy alongside the prediction, because roughly one call in five is wrong and a screen that hides that is worse than no model. |
+| `POST /server/rag/financial/narrative` | Plain-language analyst narrative for one Financial Trails alert — which typologies fired and why, cited to the underlying transactions. |
+| `POST /server/rag/sanctions/batch` | Bulk-screens every accused on a case against OpenSanctions in one call, from the Financial Trails page. Restricted to investigators, supervisors, analysts and admin. |
 
 ### Assistant memory
 
