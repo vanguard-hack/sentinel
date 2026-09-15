@@ -6,6 +6,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { parseBlocks } from './richFormat';
 import { readPdfResponse, downloadBase64Pdf } from './exportGate';
+import { mapLimit } from './concurrency';
 
 // Export the report to PDF by capturing each card / section as its OWN image
 // and flowing them onto A4 pages. A block is never split across a page break —
@@ -143,8 +144,19 @@ export async function exportHomeReportPdf(element, meta = {}) {
 
   // Capture every block ONCE, up front, so the layout pass below is pure
   // arithmetic and never blocks on html2canvas mid-page. Blocks are captured
-  // in parallel rather than one `await` at a time — with 15-20+ cards in a
-  // report that serial loop was most of the export's wall-clock time.
+  // through a small concurrency pool rather than one `await` at a time OR a
+  // bare Promise.all: a Home report runs 30+ of these (8 KPI tiles, the
+  // trend chart, 24 more cards), and each html2canvas call clones the
+  // ENTIRE page DOM into its own iframe. A bare Promise.all launches all 30+
+  // of those clones at once — that's not parallelism, it's a resource
+  // spike: it stayed slow (CPU/memory contention negated the concurrency
+  // win) and produced undersized, illegible captures for some charts
+  // (an iframe starved of a settled layout before html2canvas read its
+  // size). A pool of a few at a time keeps most of the speed win — captures
+  // still overlap their font/image-ready waits — without the 30-way pileup.
+  // ponytail: fixed pool size, not tuned to device/memory; raise it (or make
+  // it adaptive) if profiling on a real report shows room to go faster.
+  const CAPTURE_CONCURRENCY = 4;
   const captureOne = async (it) => {
     if (!it.el.offsetHeight || !it.el.offsetWidth) return null;
     try {
@@ -172,7 +184,7 @@ export async function exportHomeReportPdf(element, meta = {}) {
   };
 
   const counts = sections.map((sec) => sec.items.length);
-  const flatResults = await Promise.all(sections.flatMap((sec) => sec.items).map(captureOne));
+  const flatResults = await mapLimit(sections.flatMap((sec) => sec.items), CAPTURE_CONCURRENCY, captureOne);
   const captured = [];
   let cursor = 0;
   sections.forEach((sec, i) => {
