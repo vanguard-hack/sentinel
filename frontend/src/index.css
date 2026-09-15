@@ -470,6 +470,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 }
 
 .loading-shield { animation: pulse-shield 2s ease-in-out infinite; }
+.loading-mark { color: var(--primary); }
 
 .loading-spinner {
   width: 28px;
@@ -2835,6 +2836,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    the caret it is meant to sit under. */
 .as-input-highlight {
   position: absolute; inset: 0; margin: 0; overflow: hidden; pointer-events: none;
+  display: flex; flex-direction: column; justify-content: center;
   white-space: pre-wrap; word-wrap: break-word; word-break: break-word;
   font-family: var(--font);
   font-size: 14.5px;
@@ -2845,6 +2847,8 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .as-input-token { color: var(--blue-500); }
 .as-input {
   position: relative;
+  display: flex;
+  align-items: center;
   width: 100%;
   resize: none;
   border: none;

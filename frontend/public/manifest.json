@@ -10,7 +10,7 @@
   "lang": "en-IN",
   "dir": "ltr",
   "categories": ["government", "productivity", "utilities"],
-  "theme_color": "#1d4ed8",
+  "theme_color": "#5e6ad2",
   "background_color": "#f0f4f8",
   "icons": [
     { "src": "favicon-64.png", "sizes": "64x64", "type": "image/png" },

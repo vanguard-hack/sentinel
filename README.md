@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🛡️ Sentinel
+<img src="frontend/public/logo192.png" width="72" height="72" alt="Sentinel logo">
+
+# Sentinel
 
 ### Crime Intelligence & Case-Management Platform for the Karnataka State Police
 

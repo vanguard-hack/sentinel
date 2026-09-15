@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { splitEmail } from '../utils/profile';
 import {
-  Shield, Home, AlertTriangle, Map, Brain, Database,
+  Home, AlertTriangle, Map, Brain, Database,
   MessageSquare, Users, ChevronRight, Sun, Moon, LogOut,
   UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, Headset, Building2, CalendarClock,
   ScrollText, Images, ChevronsUpDown } from 'lucide-react';
@@ -13,6 +13,7 @@ import { useLayout, useThemeMode } from '../context/LayoutContext';
 import { canAccess, ROLE_LABELS } from '../utils/access';
 import { logAudit } from '../utils/audit';
 import Avatar from './Avatar';
+import SentinelMark from './SentinelMark';
 
 // Every feature lives here. `soon` items are shown disabled.
 const NAV = [
@@ -110,7 +111,7 @@ export default function Sidebar() {
             title="Home"
             aria-label="Go to Home"
           >
-            <span className="sb-brand-mark"><Shield size={20} strokeWidth={2} /></span>
+            <span className="sb-brand-mark"><SentinelMark size={19} /></span>
             <span className="sb-brand-name">SENTINEL</span>
           </button>
           <button
