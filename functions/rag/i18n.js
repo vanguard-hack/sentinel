@@ -4,28 +4,19 @@
  * Officer-facing strings the server writes itself, in the three languages
  * Sentinel supports.
  *
- * WHY THESE ARE A TABLE AND NOT A TRANSLATION CALL
+ * The assistant's ANSWER goes through a model to be re-expressed per
+ * language, since its content differs every time. This file is the
+ * opposite: fixed text the server emits verbatim (withheld-identity
+ * notices, unverified-identifier warnings, table titles). Routing those
+ * through a model would be slower, inconsistently re-translated on every
+ * request, and silently reverts to English on a provider outage — exactly
+ * when a warning matters most. So they're written once and served from
+ * memory.
  *
- * The assistant's ANSWER is generated in English and re-expressed in the
- * officer's language by a model, because its content is different every time
- * and no table could hold it. Everything in this file is the opposite: fixed
- * text the server emits verbatim — a notice that identity was withheld, a
- * warning that an identifier could not be verified, the title above a table.
- *
- * Sending those through a model would be three things at once: slower (a round
- * trip per notice), worse (a fixed legal sentence re-translated slightly
- * differently on every request), and unreliable (a provider outage silently
- * reverting to English at the moment a warning matters most). They are written
- * once, checked once, and served from memory.
- *
- * WHAT IS DELIBERATELY LEFT IN ENGLISH
- *
- * Identifiers. Crime numbers, section citations, vehicle plates, database
- * column names. A column headed CrimeNo is not an English word that happens to
- * appear in a table, it is the name of a field, and translating it would break
- * the officer's ability to match what they see against the record system they
- * already use. Where a template interpolates one of these, it stays exactly as
- * it arrived.
+ * Identifiers (crime numbers, section citations, plates, column names) stay
+ * in English always — a field named CrimeNo isn't prose to translate, and
+ * translating it would break the officer's ability to match it against the
+ * record system they already use.
  */
 
 const LANGS = ['en', 'hi', 'kn'];

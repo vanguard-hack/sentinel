@@ -3,36 +3,21 @@
 /**
  * Sunrise and sunset, computed rather than fetched.
  *
- * WHY THIS IS NOT AN API CALL
+ * The Action Queue re-derives obligations for every open case on every load,
+ * back to 2023 — an HTTP call per arrest would be thousands of calls, a key
+ * to rotate, and a network dependency for a legal check. Sunrise/sunset is
+ * closed-form astronomy (Meeus), so it's arithmetic instead: offline,
+ * retroactive, free.
  *
- * Several free services return sunrise and sunset for a coordinate, and every
- * one of them would be worse here. This runs inside a serverless function that
- * already answers on a request budget, over records going back to 2023 — the
- * Action Queue re-derives obligations for every open case on every load, so an
- * HTTP call per arrest would be thousands of calls, a key to rotate, a rate
- * limit to respect, and a dependency that turns a legal check into a network
- * failure. The underlying quantity is closed-form astronomy that has not
- * changed since Meeus published it. So it is arithmetic, and it works offline,
- * retroactively, and for free.
+ * For BNSS 43(5) (CrPC 46(4)): a woman may not be arrested between sunset
+ * and sunrise without a magistrate's prior written permission. "Was this
+ * arrest at night?" needs the actual sunset for that place and date — a
+ * fixed 18:00 would be off by up to forty minutes across the year.
  *
- * WHAT IT IS FOR
- *
- * BNSS 43(5) (CrPC 46(4)): a woman may not be arrested after sunset and before
- * sunrise except in exceptional circumstances, and then only with the prior
- * written permission of the jurisdictional magistrate. Answering "was this
- * arrest at night?" needs the actual sunset at that place on that date — not
- * a fixed 18:00, which would be wrong by up to forty minutes across the year
- * and would put arrests on the wrong side of a line that has legal
- * consequences.
- *
- * ACCURACY, AND WHY THE MARGIN MATTERS MORE THAN THE ALGORITHM
- *
- * The NOAA/Meeus approximation used here is good to well under a minute for
- * Indian latitudes — far tighter than the data it is applied to, where an
- * arrest time is recorded to the minute at best and often rounded. So the
- * uncertainty that matters is not astronomical, and `nightArrest` below
- * reports how close to the line an event fell rather than pretending a
- * clean boundary exists.
+ * The NOAA/Meeus approximation is accurate to well under a minute — tighter
+ * than the data it's applied to, since arrest times are recorded to the
+ * minute at best. `nightArrest` below reports how close to the line an
+ * event fell rather than pretending a clean boundary exists.
  */
 
 const RAD = Math.PI / 180;

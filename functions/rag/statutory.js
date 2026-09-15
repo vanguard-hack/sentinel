@@ -3,70 +3,36 @@
 /**
  * Statutory obligations — what breaks, and when.
  *
- * THE DIFFERENCE THIS MAKES
+ * A checklist of missing items ("no witness statements on file") doesn't
+ * prioritize itself. Pairing each gap with its consequence ("in custody 47
+ * days, default bail arises at day 60") does — it carries a clock. Three
+ * kinds of clock: STATUTORY (fixed by law, e.g. the custody deadline — past
+ * it, the accused is entitled to release regardless of case strength),
+ * PHYSICAL (evidence retention windows — CCTV overwrite, call record aging),
+ * and ADMISSIBILITY (no deadline, but evidence is worthless without the
+ * paperwork — the one officers most often lose cases to since nothing about
+ * it looks urgent).
  *
- * Sentinel already tells an officer what is missing from a case file. That is a
- * checklist, and a checklist loses. An officer carrying fifteen live cases has
- * fifteen permanently incomplete checklists; nothing in a list of empty boxes
- * says which box matters this morning, so within a week the panel is furniture.
+ * This reads the record, not the world — a seizure memo that exists on paper
+ * but was never entered reads as missing. So every finding is phrased as a
+ * statement about the FILE, never an accusation of the officer, and
+ * obligations can be acknowledged as done-offline so the alert stays
+ * dismissible rather than ignored wholesale.
  *
- * The missing half is the consequence. "No witness statements on file" is a
- * fact about a record. "No chargesheet, accused in custody 47 days, default
- * bail arises at day 60" is a fact about what the law will do on a date. The
- * second sorts itself to the top of the list without anyone deciding it should,
- * because it carries a clock.
+ * legal_kb.json covers substantive law only (IPC, NDPS, POCSO); the
+ * procedural (BNSS) and evidentiary (BSA) authorities below are this
+ * module's own table, `verified: false` per legal.js's convention. The
+ * citation is supporting detail, not the claim — a wrong section number
+ * should cost the citation, never the alert.
  *
- * THREE KINDS OF CLOCK, AND ONLY ONE OF THEM IS LEGAL
- *
- *   Statutory — fixed by law, counted from a date already in the record. The
- *     custody clock is the one that matters: past it, the accused is entitled
- *     to release irrespective of the strength of the case.
- *
- *   Physical — nothing to do with law. CCTV overwrites, call records age out
- *     of retention. Miss the window and the evidence is simply gone.
- *
- *   Admissibility — no deadline at all, but the evidence is worthless without
- *     the paperwork. This is the one officers most often lose cases to,
- *     because nothing about it looks urgent: the footage exists, everyone has
- *     watched it, and it cannot be put before the court.
- *
- * WHAT THIS IS NOT
- *
- * It reads the record, not the world. If a seizure memo exists on paper in a
- * folder and was never entered, this says it is missing — and it will be
- * telling an officer off for something they actually did. That is tolerable
- * only if the wording stays honest about which it is claiming: every finding
- * below is phrased as a statement about the FILE ("no seizure reference is
- * recorded against this exhibit"), never about the officer ("you failed to
- * record a seizure"). Obligations can also be acknowledged as done-offline,
- * because an alert that cannot be dismissed is an alert that gets ignored
- * wholesale.
- *
- * ON THE SECTION NUMBERS
- *
- * legal_kb.json carries substantive law only — IPC, NDPS, POCSO and so on. The
- * obligations here are procedural (BNSS) and evidentiary (BSA), which the
- * reference does not cover, so the small table below is this module's own and
- * follows the same convention as the rest of the legal layer: verified: false,
- * with the caveat carried through to the officer.
- *
- * The citation is deliberately the SUPPORTING detail rather than the claim. An
- * obligation states the finding and the consequence in plain words and both
- * stand on their own; the section is offered so an officer can check the
- * authority, not so they have to trust it. A wrong number should cost a
- * citation, never the alert.
- *
- * NOTE for whoever verifies these against the bare acts: Sentinel's own report
- * templates already carry the correct convention — "Witnesses examined u/s 180
- * BNSS (161 CrPC)" — pairing the new section with the familiar old one. But
- * utils/investigation.js's nextStepSuggestions() currently says "(Section 161
- * BNSS)", which conflates the two numbering systems: 161 is the CrPC section,
- * 180 is its BNSS successor. This module uses the paired form throughout.
+ * NOTE: utils/investigation.js's nextStepSuggestions() says "(Section 161
+ * BNSS)", conflating 161 CrPC with its BNSS successor 180. This module uses
+ * the correct paired form ("u/s 180 BNSS (161 CrPC)") throughout — that
+ * caller needs the same fix.
  */
 
-// Procedural and evidentiary authorities. `verified: false` throughout, per the
-// convention in legal.js — this is an operational reference for a prototype,
-// not a citation checked against the bare act.
+// `verified: false` throughout, per legal.js's convention — an operational
+// reference for a prototype, not a citation checked against the bare act.
 const solar = require('./solar');
 
 const AUTHORITIES = {

@@ -371,24 +371,15 @@ export async function validateAsync(data, opts, { sliceMs = 12 } = {}) {
 
 /**
  * Is the linkage score calibrated — does 0.8 mean anything like 80%?
+ * validate() checks whether the model RANKS well; this checks whether its
+ * numbers mean what they say (see utils/calibration.js for why they differ).
  *
- * validate() answers whether the model RANKS well. This answers whether its
- * numbers mean what they say, which is a different question and the one an
- * officer is actually reading. See utils/calibration.js for why the two come
- * apart.
- *
- * THE SAMPLING, WHICH IS THE ENTIRE DIFFICULTY
- *
- * Linked pairs are vanishingly rare among all pairs: with n cases there are
- * n(n-1)/2 pairs and only a few thousand are true links. Scoring all of them
- * is not possible in a browser, so we do what every case-control study does —
- * take every positive and a manageable sample of negatives — and then WEIGHT
- * each sampled pair by how many pairs of its class it stands for.
- *
- * Skip that weighting and the reliability curve comes out beautifully straight
- * against a 50/50 sample that does not exist, and every probability is
- * overstated by two orders of magnitude. The weights are what make this a
- * statement about the case file rather than about the sample.
+ * Linked pairs are vanishingly rare among all n(n-1)/2 pairs, so scoring
+ * every pair isn't feasible in a browser — instead we take every positive
+ * plus a manageable sample of negatives and WEIGHT each sampled pair by how
+ * many pairs of its class it stands for. Skip the weighting and the
+ * reliability curve looks great against a 50/50 sample that doesn't exist,
+ * overstating every probability by two orders of magnitude.
  */
 export function calibrateLinkage(data, { pairCap = 4000, negativeSample = 8000 } = {}) {
   const { cases, byId, linkedPairs } = data;

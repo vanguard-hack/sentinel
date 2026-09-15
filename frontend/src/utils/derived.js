@@ -1,35 +1,17 @@
 /* Derived-model cache for the analytics pages.
  *
- * THE PROBLEM THIS SOLVES
+ * datastore.js caches raw tables, but each AI Analytics tab still turns rows
+ * into its own model (co-offending graph, transaction ledger, linkage
+ * candidates) before it can draw — hundreds of ms of work redone every time
+ * a tab remounts. This caches that derived model instead.
  *
- * datastore.js already caches the raw tables: the snapshot map holds a promise
- * per table for the life of the session, so the second page to want CaseMaster
- * pays nothing for it. That fixed the network, and it is the reason the tabs
- * are not re-downloading 30,000 rows.
+ * Safe because FIR data is read-only (nothing writes to CaseMaster, Accused,
+ * Unit) and every model is a pure function of those tables — including the
+ * money trails, synthesised from a seeded PRNG and identical on every build.
  *
- * It did not fix the WAIT. Every AI Analytics tab turns those rows into a
- * model of its own before it can draw anything — the co-offending graph, the
- * synthesised transaction ledger, the linkage candidate set — and each is a few
- * hundred milliseconds of straight-line work on a fast machine, several times
- * that on the one an officer actually has. Switching tabs unmounts the
- * component, so coming back re-ran all of it and put the spinner up again for a
- * view the officer had already waited for once.
- *
- * WHY IT IS SAFE TO CACHE
- *
- * The FIR data is read-only in this product: nothing in the app writes to
- * CaseMaster, Accused or Unit. Every model below is a pure function of those
- * tables — the money trails included, which are synthesised from a seeded PRNG
- * and so are identical on every build. A cached model is therefore the same
- * model, not a stale one.
- *
- * The map holds PROMISES, not results. Two panels mounting at once then share
- * one computation instead of racing to run it twice, and a caller that arrives
- * mid-flight waits on the work already happening rather than starting its own.
- *
- * A REJECTED PROMISE IS NOT AN ANSWER. It is evicted, so a failed load can be
- * retried by the Retry button instead of being remembered as the result until
- * the officer reloads the page.
+ * The map holds PROMISES, not results, so two panels mounting at once share
+ * one computation instead of racing to run it twice. A REJECTED promise is
+ * evicted rather than cached, so a failed load can be retried.
  */
 
 const models = new Map(); // key -> Promise<model>

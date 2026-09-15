@@ -4,33 +4,15 @@
  * Sentinel benchmark — does the assistant actually behave the way the unit
  * tests say the parts do?
  *
- * WHY A BENCHMARK AND NOT MORE UNIT TESTS
- *
- * Sentinel has ~780 assertions across twenty suites, and every one of them
- * tests a module in isolation with inputs chosen by the person who wrote the
- * module. That proves the machinery is sound. It does not produce a single
- * number about whether the SYSTEM answers correctly, refuses correctly, or
- * leaks — and "the components are well tested" is not an answer to "how
- * accurate is it".
- *
- * So this runs the real modules over the real 2,200-record dataset and
- * measures outcomes. Three properties make the numbers worth quoting:
- *
- *   1. GROUND TRUTH IS COMPUTED, NEVER TYPED. Counts, the planted data gap and
- *      the sensitivity labels all come from the record store at run time. Re-
- *      export the data and every expectation moves with it. A hardcoded
- *      expectation silently becomes a lie the day the data changes, which is
- *      the one failure a trust document cannot afford.
- *
- *   2. EVERY ATTACK HAS AN INNOCENT TWIN. Refusing everything scores perfectly
- *      on safety and is useless, so the cost of over-caution is measured
- *      beside the benefit: false-abstain rate, false-positive rate on 2,200
- *      pieces of genuine police prose, and legitimate queries the validator
- *      must accept.
- *
- *   3. IT IS ALLOWED TO FAIL. Hard gates exit non-zero. A benchmark that
- *      always passes is a decoration — the point is to find the thing nobody
- *      knew was broken.
+ * ~780 unit assertions prove the machinery is sound in isolation, but none
+ * produce a number for whether the SYSTEM answers correctly, refuses
+ * correctly, or leaks. So this runs the real modules over the real
+ * 2,200-record dataset and measures outcomes: ground truth is computed from
+ * the record store at run time, never typed, so re-exporting the data moves
+ * every expectation with it; every attack case has an innocent twin, so
+ * over-caution (false-abstain, false-positive on genuine police prose) is
+ * measured beside safety, not just safety alone; and hard gates exit
+ * non-zero — a benchmark that always passes is decoration.
  *
  * MODES
  *   node functions/rag/bench/run.js                  offline; needs no keys,

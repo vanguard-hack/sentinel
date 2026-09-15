@@ -1,49 +1,25 @@
 // Does a score mean what it says?
 //
-// THE QUESTION AUC CANNOT ANSWER
+// AUC (.87 here) measures RANKING — whether real matches sort near the top —
+// and says nothing about the number itself: a model scoring every true link
+// 0.95 and every false one 0.90 has a perfect AUC with meaningless numbers.
+// Officers read the number, not the rank. So this module bins predictions,
+// compares each bin's mean prediction to what actually happened, and reports
+// the gap as a Brier score + Expected Calibration Error, plus an isotonic fit
+// that corrects the scores without touching their order (AUC unchanged).
 //
-// Case Linkage reports an ROC AUC of about .87. AUC measures RANKING — the
-// probability that a random linked pair outscores a random unlinked one. It is
-// the right metric for "does the model put the real matches near the top", and
-// on that question .87 is a good answer.
+// validate() samples unlinked pairs 1:1 with linked ones for AUC, but true
+// links are a fraction of a percent of all pairs — a calibrator fit on that
+// 50% sample overstates every probability by two orders of magnitude, and
+// the reliability curve against the sample looks convincingly straight
+// anyway. Fix: weight each sampled pair by how many pairs of its class it
+// stands for (the standard case-control correction) — every function here
+// takes weights for this reason.
 //
-// It says nothing whatever about the number on the screen. A model that scores
-// every true link at 0.95 and every false one at 0.90 has a perfect AUC of 1.0
-// and its numbers are nonsense: the things it calls 90% are almost never true.
-// Ranking and calibration come apart completely, and the officer reads the
-// number, not the ranking. Nobody has ever thought "this pair is ranked third
-// of five hundred"; they think "87% — that is nearly certain".
-//
-// So this module measures the other half: bin the predictions, compare each
-// bin's mean prediction against what actually happened in it, and report the
-// gap. Two numbers come out — the Brier score and the Expected Calibration
-// Error — plus an isotonic fit that corrects the scores without touching their
-// order, so the AUC is unchanged and only the printed number moves.
-//
-// THE BASE-RATE TRAP, WHICH IS THE WHOLE DIFFICULTY HERE
-//
-// validate() samples unlinked pairs one-for-one with linked pairs, because
-// that is what AUC needs and AUC is insensitive to class balance. Calibration
-// is not. Among all pairs of cases the true rate of linked pairs is a fraction
-// of a percent; in a 1:1 sample it is 50%. Fit a calibrator on the sample and
-// every probability it produces is overstated by two orders of magnitude — and
-// it would look convincing, because the reliability curve against the SAMPLE
-// would come out beautifully straight.
-//
-// The fix is the standard correction for case-control sampling: weight each
-// sampled pair by how many pairs of its class it stands for. Every function
-// here therefore takes weights, and the weights are what make the answer a
-// statement about the real world rather than about the sample.
-//
-// WHY ISOTONIC AND NOT A SIGMOID
-//
-// Isotonic regression is monotone and non-parametric: it can only reorder
-// nothing and reshape anything. That is exactly this model's profile — the
-// ranking is already good (AUC .87), so the shape of the score-to-probability
-// mapping is what is wrong, and forcing it through a two-parameter sigmoid
-// would impose a shape the data has no reason to take. Being monotone also
-// guarantees the correction cannot change the AUC, so calibrating costs
-// nothing that was already working.
+// Isotonic regression, not a sigmoid: it's monotone and non-parametric, so it
+// can reshape the score-to-probability mapping without ever reordering it —
+// exactly what's needed when ranking is already good (AUC .87) but the shape
+// is wrong, and it guarantees the correction can't change the AUC.
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 

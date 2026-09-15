@@ -1,22 +1,13 @@
 // Live dictation — words appearing as they are spoken.
 //
-// WHY THIS EXISTS ALONGSIDE THE ZIA PATH
+// The Zia path records to a blob and uploads on stop, so nothing appears
+// until the round trip finishes — fine for filing a statement, wrong for
+// dictating a question you want to correct mid-sentence. The Web Speech API
+// streams interim results instead, with no upload and no round trip.
 //
-// The microphone recorded to a blob and uploaded it to Zia when you pressed
-// stop, so nothing appeared until you had finished speaking and waited for the
-// round trip. That is fine for filing a statement and wrong for dictating a
-// question: you cannot tell whether it heard you until it is too late to say
-// it differently.
-//
-// The Web Speech API streams interim results, so the words appear as they are
-// said and the officer can correct themselves mid-sentence. Where it is
-// available it is also simply faster — nothing is uploaded and there is no
-// round trip at all.
-//
-// It is NOT available everywhere (Firefox, and Safari only partially), so the
-// recorder-and-Zia path stays exactly as it was and is used when this returns
-// unsupported. Neither path is a fallback for a failure in the other; they are
-// two different capabilities, and the caller picks once.
+// Not available everywhere (Firefox, partial Safari), so the recorder-and-
+// Zia path stays and is used when this returns unsupported — two separate
+// capabilities, not a fallback for each other's failures.
 
 const Recognition = typeof window !== 'undefined'
   ? (window.SpeechRecognition || window.webkitSpeechRecognition)

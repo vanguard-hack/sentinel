@@ -3,26 +3,21 @@
 /**
  * Legal reference lookup.
  *
- * The assistant already ROUTED legal questions — SOP_RE matches "section 302"
- * and "under IPC" — and the knowledge-base tool described itself to the model
- * as "the QuickML legal/SOP corpus". But that corpus holds no law: all seven
- * documents are data dumps of FIRs, gangs, officers, stations and modus
- * operandi. Asked what section 302 is, the assistant had nothing to retrieve
- * and was correctly forbidden from answering out of general knowledge. This
- * module is the missing half.
+ * The assistant routed legal questions to the knowledge base, but that
+ * corpus holds no actual law — just FIRs, gangs, officers, stations and
+ * modus operandi. Asked what section 302 is, it had nothing to retrieve.
+ * This module is the missing half.
  *
- * It is a LOOKUP, not a retrieval. "What is the punishment under 379" has one
- * right answer, and semantic search over prose is the wrong instrument for it:
- * a lookup table cannot return the neighbouring section because it embedded
- * similarly. Scope is the 35 sections that actually appear in this deployment's
+ * It's a LOOKUP, not a retrieval — "what is the punishment under 379" has
+ * one right answer, and semantic search can't return the neighbouring
+ * section it embedded near. Scope is the 35 sections in this deployment's
  * Section.csv, so every entry is one an officer can meet on a charge sheet.
  *
- * PROVENANCE. The entries were drafted for this prototype, not transcribed from
- * the gazette and not reviewed by a law officer. Every record carries
- * verified:false and every answer carries the caveat — see disclaimer(). That
- * caveat is not decoration: an officer acting on a punishment or a bail
- * classification taken from here without checking it is the failure this file
- * has to avoid.
+ * PROVENANCE: drafted for this prototype, not transcribed from the gazette
+ * or reviewed by a law officer. Every record carries verified:false and
+ * every answer carries the caveat from disclaimer() — not decoration, since
+ * acting on an unchecked punishment or bail classification is the failure
+ * this file exists to avoid.
  */
 
 const KB = require('./legal_kb.json');

@@ -1,23 +1,12 @@
 // Public reference lookups — IFSC branches and postal PIN codes.
 //
-// WHY THESE TWO ARE SAFE TO CALL AND OTHERS ARE NOT
-//
-// Sentinel's rule about external services is that police content does not leave
-// the country. Every other integration here obeys it by staying inside Zoho's
-// Indian data centre, and the assistant's Groq lane is the exception that the
-// clearance filter exists to bound.
-//
-// These two are different in kind, and the difference is worth stating rather
-// than assumed. An IFSC code is public routing information printed on every
-// cheque book; a PIN code is a postal district. Neither carries a case, a
-// person, or anything an officer typed. What travels is "what branch is
-// KARB0000123", and the answer is the same for everyone who asks. So these run
-// from the browser with no key and no proxy, and no clearance question arises —
-// there is nothing to clear.
-//
-// Both APIs are keyless and free. Both are also somebody else's servers, so
-// every call here fails soft: a lookup that does not answer leaves the account
-// or the address exactly as it was, and nothing in the page depends on it.
+// Sentinel's rule is that police content doesn't leave the country; these two
+// are the exception because they carry no case, person, or officer-typed
+// content — an IFSC code is public routing info printed on every cheque book,
+// a PIN code is a postal district, and the answer is the same for anyone who
+// asks. So they run from the browser with no key, no proxy, no clearance
+// question. Both APIs are free, keyless, and somebody else's servers, so
+// every call here fails soft — a lookup that doesn't answer changes nothing.
 
 const IFSC_URL = (code) => `https://ifsc.razorpay.com/${encodeURIComponent(code)}`;
 const PIN_URL = (pin) => `https://api.postalpincode.in/pincode/${encodeURIComponent(pin)}`;

@@ -3,26 +3,17 @@
 /*
  * The benchmark's ground truth.
  *
- * WHY THIS FILE EXISTS
+ * A benchmark with hardcoded expected answers starts lying the day the data
+ * changes — reseed the Data Store and the suite still reports green on false
+ * expectations. So nothing here is hardcoded: this reads the generator's own
+ * CaseMaster.csv (the exact rows imported into the Data Store) and answers
+ * questions about it directly, so re-running the generator moves every
+ * expected value with it.
  *
- * A benchmark whose expected answers are typed into the test file starts lying
- * the day the data changes. Reseed the Data Store and "Yelahanka has 14
- * chain-snatchings" quietly becomes false while the suite still reports green —
- * the worst possible failure for a document whose whole purpose is to be
- * trusted.
- *
- * So nothing here is hardcoded. This reads the generator's own CaseMaster.csv —
- * the exact rows that get imported into the Data Store — and answers questions
- * about it directly. Re-run the generator and every expected value moves with
- * it.
- *
- * WHY THE CSV AND NOT AN EXPORT
- *
- * It used to parse a text export snapshotted out of the Data Store by hand.
- * That was one more artefact to keep in step, it had no script that produced
- * it, and at 30,000 cases it would have been a 22MB file committed to the repo
- * for no reason. The CSV is the source those rows come from; reading it removes
- * the copy rather than growing it.
+ * Reads the CSV rather than a Data Store export — an export would be one more
+ * artefact to keep in step, with no script producing it, and a 22MB file at
+ * 30,000 cases committed for no reason. The CSV is the source those rows
+ * come from.
  */
 
 const fs = require('fs');

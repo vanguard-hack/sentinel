@@ -246,24 +246,14 @@ export function clearQueryCache() {
 /**
  * Page a query to the end, or to a stated bound — and SAY which.
  *
- * Three analytics modules each grew their own copy of this loop with a
- * different ceiling: 6,000 rows in aianalytics, 10,000 in fetchAllRows, 30,000
- * in crimelinks. At 2,200 cases none of them ever bit. At 30,000 all three do,
- * and they did it silently: the charts were drawn from a fifth of the data and
- * captioned as though they were the whole of it.
+ * A truncated read is a different answer, not a smaller one, so the result
+ * carries `truncated`/`cap` and the caller must say so on screen rather than
+ * silently presenting a partial figure as a total. Pages fetch CONCURRENTLY
+ * (30,000 rows sequentially at ~100ms/page is ten seconds of avoidable wait).
  *
- * A truncated read is not a smaller answer, it is a different one. So the
- * result carries `truncated` and `cap`, and the caller is expected to say so on
- * screen rather than quietly present a partial figure as a total.
- *
- * Pages are fetched CONCURRENTLY. 30,000 rows at 300 a page is 100 round
- * trips; run one after another at ~100ms each that is ten seconds of waiting
- * for data the server was ready to hand over all at once.
- *
- * CALLERS MUST TREAT THE RESULT AS IMMUTABLE. It is shared with every other
- * caller of the same query, so sorting it in place or writing a field onto a
- * row would silently reorder or corrupt another page's data. Derive with map
- * and build new objects; never assign onto a returned row.
+ * CALLERS MUST TREAT THE RESULT AS IMMUTABLE — it's shared with every other
+ * caller of the same query (see `cache`). Derive with map/spread; never sort
+ * or assign onto a returned row.
  */
 export async function pageQuery(baseSql, table, {
   cap = 60000, page = 300, concurrency = 8, cache = true,

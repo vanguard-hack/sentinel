@@ -1,35 +1,15 @@
 /* One request instead of four hundred.
  *
- * THE PROBLEM THIS EXISTS TO SOLVE
+ * Every analytics surface pages whole tables (ZCQL caps at 300 rows/query) and
+ * derives charts in the browser — the home page alone was 437 round trips,
+ * 10-15s no matter how they're batched or cached. Fix: run the same reads
+ * HERE, inside the datacentre where a round trip is a fraction of a
+ * browser's, encode the result COLUMNAR (one column-name array + value-arrays,
+ * dropping the repeated JSON keys that tripled payload size), and write the
+ * snapshot to Stratus so only the first caller after a deploy builds it.
  *
- * Every analytics surface — the home bento, all five AI Analytics tabs, the
- * inmate registry — reads whole tables and derives its charts in the browser.
- * ZCQL returns at most 300 rows per query, so the home page alone was:
- *
- *   CaseMaster       30,000 rows  ->  101 requests
- *   Accused          44,237 rows  ->  148 requests
- *   Victim           27,572 rows  ->   92 requests
- *   ArrestSurrender  28,708 rows  ->   96 requests
- *                                 ->  437 round trips from a browser
- *
- * Caching those responses and running them eight at a time helped a repeat
- * visit and did nothing for the first one: 437 requests is ten to fifteen
- * seconds no matter how they are batched. The fix is not to make the paging
- * faster, it is to stop paging from the browser at all.
- *
- * WHAT THIS DOES INSTEAD
- *
- * The same reads run HERE, inside the datacentre, where a round trip is a
- * fraction of a browser's. The result is encoded COLUMNAR — one array of
- * column names plus an array of value-arrays — which drops the repeated JSON
- * keys that made the payload three times larger than the data in it. The
- * assembled snapshot is then written to Stratus, so only the first caller
- * after a deploy pays to build it and everyone else gets a single blob read.
- *
- * The FIR data is read-only in this product: nothing writes to CaseMaster,
- * Accused, Victim or ArrestSurrender. A snapshot is therefore never stale
- * against a write, only against a re-import, which is what SNAPSHOT_VERSION
- * is for — bump it and every client rebuilds.
+ * FIR data is read-only here — a snapshot goes stale only on a re-import,
+ * which is what SNAPSHOT_VERSION is for: bump it and every client rebuilds.
  */
 
 const SNAPSHOT_VERSION = 2;

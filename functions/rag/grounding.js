@@ -3,53 +3,18 @@
 /**
  * Did the answer stay inside what was actually read?
  *
- * THE FAILURE THIS CATCHES
+ * Citations are already built from retrieval, not the model's claims — this
+ * checks the other direction: every identifier IN THE ANSWER must appear in
+ * what was retrieved, the officer's question, or the recent conversation.
+ * Anything else was invented, even if the rest of the answer is accurate.
  *
- * Sentinel already builds citations from retrieval rather than from the
- * model's own claims, which is the right way round. But nothing checked the
- * other direction: that the identifiers appearing IN THE ANSWER are among the
- * ones actually retrieved.
+ * The officer's own words count as supported so a correct "no record found
+ * for X" isn't flagged just because X was never retrieved — false positives
+ * here train officers to ignore the warning on the day it's real.
  *
- * Asked for theft cases in Mysuru, the assistant reads three real FIRs and can
- * still write "there were four: …, …, …, and 202600247". The fourth does not
- * exist. Everything around it is correct, the citation panel below shows three
- * genuine records, and nothing looks wrong — so an officer goes looking for a
- * file that was never opened. On a police console that is the worst available
- * failure: not a blank screen, a plausible one.
- *
- * THE RULE
- *
- * Supported = anything the model could have READ:
- *
- *   • the records, passages and documents retrieved for this answer;
- *   • the officer's own question;
- *   • the recent conversation, since a follow-up legitimately refers back.
- *
- * An identifier in the answer that appears in none of those was not retrieved
- * and was not given — the model produced it. That is a strict definition and
- * deliberately so: it does not judge whether the answer is TRUE, only whether
- * its identifiers came from somewhere.
- *
- * WHY THE OFFICER'S OWN WORDS COUNT
- *
- * An officer asks about a crime number that does not exist. The assistant
- * correctly replies "no record found for 144221107202500999". A naive checker
- * flags that number as unsupported — nothing was retrieved to back it — and
- * puts a warning on an answer that was exactly right.
- *
- * Get that wrong and officers learn to ignore the warning strip. Then it is
- * useless on the day it catches a real invention, which is the only day it
- * matters. So the question's own identifiers are supported by definition.
- *
- * WHAT IS DELIBERATELY NOT CHECKED
- *
- * Bare small integers. Record ids like CaseMasterID 42 are indistinguishable
- * from any other number in prose ("42 cases were registered"), so treating
- * them as identifiers would flag arithmetic as invention. Only formats that
- * are unmistakably identifiers are matched — see PATTERNS.
- *
- * This is a spell-check for invented record numbers, not a fact-checker. It
- * proves an identifier was seen; it cannot prove a sentence is true.
+ * Bare small integers are never flagged (indistinguishable from arithmetic
+ * in prose); only unmistakably identifier-shaped tokens are matched — see
+ * PATTERNS. This proves an identifier was seen, not that a sentence is true.
  */
 
 const i18n = require('./i18n');

@@ -3,23 +3,18 @@
 /**
  * The co-offending network, server-side.
  *
- * Two people are linked when they appear as accused in the SAME case, and the
- * same person is followed across cases by their global PersonID. The Crime
- * Links tab has computed this in the browser for a while; this module exists so
- * the ASSISTANT can answer from it too. Until now it could not: ZCQL is
- * single-table with no joins, so "who has this person offended with" — the most
- * natural question an officer can ask about an accused — had no route to an
- * answer at all.
+ * Two people are linked when they appear as accused in the same case,
+ * followed across cases by their global PersonID. The Crime Links tab
+ * already computes this in the browser; this module exists so the
+ * ASSISTANT can answer "who has this person offended with" too — ZCQL is
+ * single-table with no joins, so that question had no route to an answer.
  *
- * Why this and not a graph database. The graph is ~2,400 people and ~1,700
- * links. Every operation below is a breadth-first walk over that, which is
- * microseconds; a graph database is built for a scale six orders of magnitude
- * larger and would add a second datastore, another credential and another
- * outage to a platform whose whole point is that it runs on Catalyst alone.
- * Revisit that if the real statewide graph ever outgrows memory.
+ * No graph database: ~2,400 people and ~1,700 links means every walk below
+ * is microseconds in memory. A graph DB is built for orders of magnitude
+ * more and would add a second datastore this platform doesn't need.
  *
- * Everything returned here names people, so every caller must pass results
- * through the clearance filter — tools.js does that at dispatch.
+ * Everything returned here names people — every caller must pass results
+ * through the clearance filter (tools.js does at dispatch).
  */
 
 const PAGE = 300; // the Data Store's per-query ceiling

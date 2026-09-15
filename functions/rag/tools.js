@@ -3,26 +3,18 @@
 /**
  * The assistant's tools.
  *
- * The router picks ONE lane per question: knowledge base, or Data Store, or
- * chat. That is the wrong shape for half of what an officer actually asks.
- * "Which FIRs were filed in Belagavi last month, and who is accused in them"
- * is two lookups, and ZCQL has no JOINs, so the single-lane path cannot answer
- * it at all — the second query depends on the IDs the first one returns.
+ * The router normally picks one lane per question, but ZCQL has no JOINs, so
+ * "which FIRs were filed in Belagavi, and who is accused in them" needs a
+ * second query depending on the first one's IDs — a single lane can't do it.
+ * A tool loop fixes that: the model asks, reads the result, asks again. This
+ * module is the tool half (registry, schemas, dispatch); the loop itself
+ * lives in index.js, where the Catalyst app and caller's clearance already are.
  *
- * A tool loop fixes that: the model asks for what it needs, reads the result,
- * and asks again, until it can answer. This module is the tool half — the
- * registry, the JSON schemas the model sees, and the dispatch that runs them.
- * The loop itself lives in index.js, where the Catalyst app and the caller's
- * clearance already are.
- *
- * Two rules hold for every tool here:
- *
- *   1. Every result passes through the clearance filter BEFORE it is returned.
- *      A tool result goes straight into the model's context, so an unfiltered
- *      one is the same disclosure as printing the record — it just happens a
- *      turn earlier. Filtering at dispatch means a new tool cannot forget.
- *   2. Every result is capped. The model decides how many tools to call; it
- *      does not get to decide how much of the Data Store enters the prompt.
+ * Two rules for every tool here: (1) every result passes the clearance filter
+ * before it's returned — it goes straight into the model's context, so
+ * filtering at dispatch means a new tool can't forget to. (2) every result is
+ * capped — the model decides how many tools to call, not how much of the
+ * Data Store enters the prompt.
  */
 
 const zcql = require('./zcql');

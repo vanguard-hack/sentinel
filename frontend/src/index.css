@@ -1,33 +1,16 @@
-/* ═══════════════════════════════════════════════════════════════════════════
-   Sentinel design tokens — Linear design system
-   ───────────────────────────────────────────────────────────────────────────
-   Reference: DESIGN-linear.app.md.
-
-   That document describes Linear's *marketing* canvas: 96px section rhythm,
-   80px display type, product screenshots as the protagonist. Sentinel is the
-   opposite kind of surface — an operational console where an officer scans
-   hundreds of FIR rows. Applied literally, the marketing rhythm would put
-   four rows on a screen that needs forty.
-
-   So the split is deliberate, and it is the same split Linear itself makes
-   between its marketing site and its product:
-
-     Taken exactly      the four-step surface ladder, hairline borders, the
-                        lavender accent and its scarcity rule, the radius
-                        roles, the negative-tracking curve on display type,
-                        the weight ceiling (600 display / 400 body), the
-                        refusal of gradients and card shadows.
-
-     Compressed         vertical rhythm, control heights, card padding and
-                        type sizes drop one step to product scale. The
-                        `--sp-*` and `--h-*` ladders below are that scale;
-                        `--space-section` (96px) is kept for the marketing-
-                        weight surfaces that do exist (Help Center).
-
-   Every legacy token name (--bg-*, --text-*, --blue-*, --radius*) is retained
-   as an alias onto the Linear values, so the ~8,900 lines of component CSS
-   below re-theme without being rewritten line by line.
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* Sentinel design tokens — Linear design system. Reference: DESIGN-linear.app.md.
+ *
+ * That doc describes Linear's *marketing* canvas (96px rhythm, 80px display
+ * type); Sentinel is an operational console scanning hundreds of FIR rows,
+ * so surface ladder, hairline borders, lavender accent and type curve are
+ * taken exactly, while rhythm/control-heights/padding/type sizes are
+ * compressed one step to product scale (the `--sp-*`/`--h-*` ladders below;
+ * `--space-section` 96px stays for the marketing-weight surfaces that do
+ * exist, e.g. Help Center).
+ *
+ * Legacy token names (--bg-*, --text-*, --blue-*, --radius*) alias onto the
+ * Linear values so existing component CSS re-themes without a rewrite.
+ */
 
 :root {
   /* ── Brand ──────────────────────────────────────────────────────────────
@@ -1563,9 +1546,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   .map-hint { font-size: 11px; max-width: 90%; overflow: hidden; text-overflow: ellipsis; }
 }
 
-/* ══════════════════════════════════════════════════════════
-   Case Files — Data Store browser
-   ══════════════════════════════════════════════════════════ */
+/* ── Case Files — Data Store browser ── */
 .cf-page {
   min-height: 100vh;
   display: flex;
@@ -2000,9 +1981,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   background: var(--bg-1);
 }
 
-/* ══════════════════════════════════════════════════════════
-   Reports — analytics dashboard
-   ══════════════════════════════════════════════════════════ */
+/* ── Reports — analytics dashboard ── */
 .rp-page {
   min-height: 100vh;
   display: flex;
@@ -2680,9 +2659,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 }
 .rp-sort-btn:hover { background: var(--bg-3); color: var(--text-0); border-color: var(--border-bright); }
 
-/* ══════════════════════════════════════════════════════════
-   Assistant — chatbot
-   ══════════════════════════════════════════════════════════ */
+/* ── Assistant — chatbot ── */
 .as-page { height: 100vh; display: flex; flex-direction: column; background: var(--bg-0); }
 .as-body { flex: 1; display: flex; min-height: 0; }
 
@@ -4156,9 +4133,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .inc-maplink { color: var(--primary); text-decoration: none; font-size: 0.78rem; }
 .inc-maplink:hover { text-decoration: underline; }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   App shell — persistent left sidebar + per-page top bar
-   ══════════════════════════════════════════════════════════════════════════ */
+/* ── App shell — persistent left sidebar + per-page top bar ── */
 .app-shell {
   display: flex;
   min-height: 100vh;
@@ -6924,7 +6899,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   .hc-layout { grid-template-columns: 1fr; gap: 26px; }
 }
 
-/* ══════════════ Custody & Corrections ══════════════ */
+/* ── Custody & Corrections ── */
 .cust-head { margin-bottom: 16px; }
 .cust-title { display: flex; gap: 12px; align-items: flex-start; color: var(--blue-500); }
 .cust-title > svg { flex-shrink: 0; margin-top: 3px; }

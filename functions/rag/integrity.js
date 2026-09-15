@@ -3,67 +3,31 @@
 /**
  * Tamper-evidence for the audit trail.
  *
- * THE HOLE THIS CLOSES
+ * The trail was ordinary JSON in Stratus: anyone who could write it could
+ * silently edit it, and a corrected trail still looks complete. A plain hash
+ * chain (each row hashes the one before) doesn't fit because writes are
+ * concurrent across function invocations into separate objects with no
+ * compare-and-swap — two racing writers would fork the chain and look like
+ * tampering on an ordinary Tuesday.
  *
- * The trail records who read which case, from where, on what device. It is the
- * artefact an inquiry reaches for. But it was ordinary JSON in Stratus: anyone
- * who could write those objects could also edit them, and nothing anywhere
- * would show that they had. A trail that can be quietly corrected is not
- * evidence of anything — and the dangerous part is not the missing line, it is
- * that what remains still looks complete. "Nobody accessed that case" and "the
- * line saying who did was removed" read identically.
+ * Three levels instead, each matched to what it can prove without
+ * coordination: (1) BLOB HASH — every audit object hashes its own events,
+ * detects in-place edits. (2) DAY SEAL — once a day is closed its object set
+ * is enumerated with no race, detects a deleted or backdated object. (3)
+ * SEAL CHAIN — each seal hashes the previous seal in write order (not
+ * calendar order), detects a seal itself being rewritten. Sealing is the
+ * only step that coordinates, and runs at most once per day, from an admin
+ * opening the audit page.
  *
- * WHY NOT A PLAIN HASH CHAIN
+ * This is not tamper-PROOF — full Stratus access can still rewrite
+ * everything, including every seal after the target. It makes *silent*
+ * alteration impossible, which is the realistic threat. Entries from before
+ * this module existed carry no hash and report as UNVERIFIABLE, never as
+ * intact or altered.
  *
- * The obvious answer is the one used for a chain of custody: every row carries
- * the hash of the row before it. That works there because custody is naturally
- * serial — one officer hands an item to the next.
- *
- * This log is not serial. Every officer's every action appends concurrently,
- * from separate function invocations, into separate Stratus objects precisely
- * so that writes never contend. Stratus has no compare-and-swap, so two
- * requests reading the same head hash would both write against it and fork the
- * chain. The fork would then be indistinguishable from tampering, and a
- * detector that fires on ordinary Tuesday traffic is one officers learn to
- * ignore — which costs more than having none.
- *
- * SO: THREE LEVELS, EACH MATCHED TO WHAT IT CAN ACTUALLY PROVE
- *
- *   1. BLOB HASH — every audit object stores a hash of the events inside it.
- *      Needs no coordination at all: the writer hashes what it is writing.
- *      Detects: an event's contents edited in place.
- *
- *   2. DAY SEAL — once a day is over its object set is closed and can be
- *      enumerated with no race at all. The seal lists every object in that day
- *      with its hash.
- *      Detects: a whole object deleted, or one backdated into a past day.
- *
- *   3. SEAL CHAIN — each seal carries the hash of the seal written before it,
- *      in the order they were written (NOT calendar order, so sealing an older
- *      day later still links correctly).
- *      Detects: a seal itself deleted or rewritten to cover the deletion.
- *
- * Sealing is the only step that coordinates, and it runs at most once per day
- * per day — from an admin opening the audit page — rather than on every write.
- *
- * WHAT THIS IS NOT
- *
- * It is not tamper-PROOF. Someone with full Stratus access could delete an
- * event, rewrite its blob hash, rewrite the day seal, and rewrite every seal
- * after it. Making that impossible needs a store this platform does not have.
- * What it makes impossible is *silent* alteration — the quiet edit of one line
- * by someone who then walks away. That is the realistic threat and this is the
- * achievable defence.
- *
- * It is also not retrospective: entries written before this module existed
- * carry no hash. They are reported as UNVERIFIABLE, never as intact and never
- * as altered, because claiming either would be a lie about what we can check.
- *
- * THE ONE THING AN ADMIN SHOULD DO
- *
- * Copy the head hash somewhere outside Catalyst — a notebook is enough. The
- * chain proves internal consistency; a head hash recorded elsewhere is what
- * turns that into proof against someone who can rewrite the whole store.
+ * The one thing an admin should do: copy the head hash somewhere outside
+ * Catalyst. The chain proves internal consistency; an externally-recorded
+ * head hash is what proves it against someone who can rewrite the store.
  */
 
 const { createHash } = require('crypto');
