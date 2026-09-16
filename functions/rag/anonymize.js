@@ -102,18 +102,27 @@ function anonymizeText(text, entities) {
   return { anonymizedText: out, entityMap: map, entityCounts };
 }
 
-// Replaces every placeholder found in `text` with its original value. Works
-// even when `text` isn't the anonymized output verbatim but a report or
-// third-party document built from it — that's the point of keeping the map
-// server-side rather than baking a one-shot substitution into the response.
+// Replaces every placeholder found in `text` with its original value. A
+// single regex pass over all placeholders at once, word-boundary anchored —
+// naive split/join per placeholder would let a short placeholder's substring
+// (e.g. "PERSON_1") corrupt a longer one that hasn't been replaced yet (e.g.
+// "PERSON_10"), since split/join has no boundary awareness. Works even when
+// `text` isn't the anonymized output verbatim but a report or third-party
+// document built from it — that's the point of keeping the map server-side
+// rather than baking a one-shot substitution into the response.
 function revealText(text, entityMap) {
-  let out = String(text || '');
+  const byPlaceholder = {};
   for (const bucket of Object.values(entityMap || {})) {
     for (const [original, placeholder] of Object.entries(bucket)) {
-      out = out.split(placeholder).join(original);
+      byPlaceholder[placeholder] = original;
     }
   }
-  return out;
+  const placeholders = Object.keys(byPlaceholder);
+  const out = String(text || '');
+  if (!placeholders.length) return out;
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`\\b(?:${placeholders.map(escape).join('|')})\\b`, 'g');
+  return out.replace(pattern, (m) => byPlaceholder[m] ?? m);
 }
 
 async function detectAndAnonymize(text, nerFn) {

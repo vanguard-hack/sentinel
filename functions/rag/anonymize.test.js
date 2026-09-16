@@ -80,6 +80,20 @@ const span = (text, value, from = 0) => {
     revealedReport === `Case summary: ${text} Filed under review.`);
 }
 
+// ── Reveal with 11+ distinct entities (placeholder substring collision) ──────
+{
+  const text = 'A met B met C met D met E met F met G met H met I met J met K met L.';
+  const names = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+  const entities = names.map((name) => ({
+    type: 'PERSON', ...span(text, name), score: 1,
+  }));
+  const { anonymizedText, entityMap } = anonymize.anonymizeText(text, entities);
+  // Placeholders will be PERSON_0 through PERSON_11; naive split('PERSON_1').join(...)
+  // would corrupt PERSON_10 and PERSON_11. Word-boundary regex prevents this.
+  check('reveal is faithful with 11+ distinct values (no substring collision of PERSON_1 into PERSON_10)',
+    anonymize.revealText(anonymizedText, entityMap) === text);
+}
+
 // ── NER integration (injectable — no live Zia call) ─────────────────────────
 {
   (async () => {
