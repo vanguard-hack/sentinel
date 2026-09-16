@@ -45,8 +45,91 @@ function resolveOverlaps(entities) {
   return kept.sort((a, b) => a.start - b.start);
 }
 
+// Zia's NER response shape (functions/rag/node_modules/zcatalyst-sdk-node/
+// lib/utils/pojo/zia.d.ts, ICatalystZiaNer): one array of {start_index,
+// end_index, confidence_score, ner_tag, token} per input document. end_index's
+// inclusive/exclusive convention isn't documented, so it is never used here —
+// the end offset is derived from the token's own length instead, and an
+// entity is kept only if that exact slice matches the token.
+async function nerEntities(text, nerFn) {
+  if (!text.trim()) return { entities: [], available: true };
+  let resp;
+  try {
+    resp = await nerFn([text]);
+  } catch {
+    return { entities: [], available: false };
+  }
+  const general = (resp && resp[0] && resp[0].ner && resp[0].ner.general_entities) || [];
+  const entities = [];
+  for (const e of general) {
+    const token = String(e.token || '');
+    const start = Number(e.start_index);
+    if (!token || !Number.isInteger(start) || start < 0) continue;
+    const end = start + token.length;
+    if (text.slice(start, end) !== token) continue; // offset doesn't match its own token — drop it
+    entities.push({
+      type: String(e.ner_tag || 'ENTITY').toUpperCase(),
+      start, end, text: token,
+      score: Number(e.confidence_score) || 0.5,
+    });
+  }
+  return { entities, available: true };
+}
+
+// Consistent instance-counter anonymizer: the same (type, value) pair always
+// gets the same placeholder within this call. Placeholders are assigned in
+// first-appearance order, then spliced back-to-front so earlier offsets stay
+// valid while later ones are replaced.
+function anonymizeText(text, entities) {
+  const byStart = [...entities].sort((a, b) => a.start - b.start);
+  const map = {};
+  const counts = {};
+  for (const e of byStart) {
+    const bucket = map[e.type] || (map[e.type] = {});
+    if (!bucket[e.text]) {
+      const idx = counts[e.type] || 0;
+      bucket[e.text] = `${e.type}_${idx}`;
+      counts[e.type] = idx + 1;
+    }
+  }
+  let out = text;
+  for (const e of [...byStart].sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, e.start) + map[e.type][e.text] + out.slice(e.end);
+  }
+  const entityCounts = Object.fromEntries(
+    Object.entries(map).map(([type, bucket]) => [type, Object.keys(bucket).length])
+  );
+  return { anonymizedText: out, entityMap: map, entityCounts };
+}
+
+// Replaces every placeholder found in `text` with its original value. Works
+// even when `text` isn't the anonymized output verbatim but a report or
+// third-party document built from it — that's the point of keeping the map
+// server-side rather than baking a one-shot substitution into the response.
+function revealText(text, entityMap) {
+  let out = String(text || '');
+  for (const bucket of Object.values(entityMap || {})) {
+    for (const [original, placeholder] of Object.entries(bucket)) {
+      out = out.split(placeholder).join(original);
+    }
+  }
+  return out;
+}
+
+async function detectAndAnonymize(text, nerFn) {
+  const regexHits = regexEntities(text);
+  const { entities: nerHits, available } = await nerEntities(text, nerFn);
+  const merged = resolveOverlaps([...regexHits, ...nerHits]);
+  const { anonymizedText, entityMap, entityCounts } = anonymizeText(text, merged);
+  return { anonymizedText, entityMap, entityCounts, nerAvailable: available };
+}
+
 module.exports = {
   REGEX_RECOGNIZERS,
   regexEntities,
   resolveOverlaps,
+  nerEntities,
+  anonymizeText,
+  revealText,
+  detectAndAnonymize,
 };

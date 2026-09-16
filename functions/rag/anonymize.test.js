@@ -43,5 +43,83 @@ const span = (text, value, from = 0) => {
     kept.every((e, i) => i === 0 || kept[i - 1].start <= e.start));
 }
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+// ── Consistent placeholders ─────────────────────────────────────────────────
+{
+  const text = 'Ravi Kumar met Ravi Kumar near Chennai.';
+  const first = span(text, 'Ravi Kumar');
+  const second = span(text, 'Ravi Kumar', first.end);
+  const loc = span(text, 'Chennai');
+  const entities = [
+    { type: 'PERSON', ...first, score: 1 },
+    { type: 'PERSON', ...second, score: 1 },
+    { type: 'LOCATION', ...loc, score: 1 },
+  ];
+  const { anonymizedText, entityMap, entityCounts } = anonymize.anonymizeText(text, entities);
+  check('the same value gets the same placeholder',
+    anonymizedText === 'PERSON_0 met PERSON_0 near LOCATION_0.');
+  check('entityMap records the mapping for reveal', entityMap.PERSON['Ravi Kumar'] === 'PERSON_0');
+  check('entityCounts reflects distinct values per type',
+    entityCounts.PERSON === 1 && entityCounts.LOCATION === 1);
+}
+
+// ── Reveal roundtrip ─────────────────────────────────────────────────────────
+{
+  const text = 'Ravi Kumar met Suresh near Chennai.';
+  const entities = [
+    { type: 'PERSON', ...span(text, 'Ravi Kumar'), score: 1 },
+    { type: 'PERSON', ...span(text, 'Suresh'), score: 1 },
+    { type: 'LOCATION', ...span(text, 'Chennai'), score: 1 },
+  ];
+  const { anonymizedText, entityMap } = anonymize.anonymizeText(text, entities);
+  check('reveal reproduces the original text exactly',
+    anonymize.revealText(anonymizedText, entityMap) === text);
+
+  const thirdPartyReport = `Case summary: ${anonymizedText} Filed under review.`;
+  const revealedReport = anonymize.revealText(thirdPartyReport, entityMap);
+  check('reveal also works on a third-party document built from the anonymized text',
+    revealedReport === `Case summary: ${text} Filed under review.`);
+}
+
+// ── NER integration (injectable — no live Zia call) ─────────────────────────
+{
+  (async () => {
+    const text = 'John works at Zoho in Chennai';
+    const johnSpan = span(text, 'John');
+    const chennaiSpan = span(text, 'Chennai');
+    const zohoSpan = span(text, 'Zoho');
+    const fakeNer = async () => [{
+      ner: { general_entities: [
+        { start_index: johnSpan.start, end_index: johnSpan.end - 1, confidence_score: '0.95', ner_tag: 'PERSON', token: 'John' },
+        { start_index: chennaiSpan.start, end_index: chennaiSpan.end - 1, confidence_score: '0.9', ner_tag: 'LOCATION', token: 'Chennai' },
+        // Deliberately wrong offset (does not point at its own token) — must
+        // be dropped, not spliced in and corrupt the text.
+        { start_index: zohoSpan.start + 1, end_index: zohoSpan.end, confidence_score: '0.4', ner_tag: 'ORG', token: 'Zoho' },
+      ] },
+    }];
+    const { entities, available } = await anonymize.nerEntities(text, fakeNer);
+    check('NER wrapper is available when the injected call succeeds', available === true);
+    check('a correctly-offset entity is kept',
+      entities.some((e) => e.text === 'John' && e.type === 'PERSON'));
+    check('a mis-offset entity is dropped rather than corrupting a later splice',
+      !entities.some((e) => e.text === 'Zoho'));
+
+    const failingNer = async () => { throw new Error('quota exceeded'); };
+    const degraded = await anonymize.nerEntities(text, failingNer);
+    check('a failing NER call degrades to unavailable rather than throwing',
+      degraded.available === false && degraded.entities.length === 0);
+
+    const mergeText = 'FIR 9/2026 says John met Chennai.';
+    const mergeJohn = span(mergeText, 'John');
+    const full = await anonymize.detectAndAnonymize(mergeText, async () => [{
+      ner: { general_entities: [
+        { start_index: mergeJohn.start, end_index: mergeJohn.end - 1, confidence_score: '0.95', ner_tag: 'PERSON', token: 'John' },
+      ] },
+    }]);
+    check('detectAndAnonymize merges regex and NER hits',
+      full.anonymizedText === 'FIR FIR_NUMBER_0 says PERSON_0 met Chennai.');
+    check('detectAndAnonymize reports NER availability', full.nerAvailable === true);
+
+    console.log(`\n${pass} passed, ${fail} failed`);
+    process.exit(fail ? 1 : 0);
+  })();
+}
