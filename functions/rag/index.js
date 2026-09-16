@@ -3,6 +3,7 @@
 const catalystSDK = require('zcatalyst-sdk-node');
 const zcql = require('./zcql');
 const redaction = require('./redaction');
+const anonymize = require('./anonymize');
 const vision = require('./vision');
 const catalystVision = require('./catalystVision');
 const catalystGLM = require('./catalystGLM');
@@ -2196,7 +2197,7 @@ function rateLimited(key, max) {
 
 // Routes that cost money per call: Zoho transcription and OCR, SmartBrowz PDF
 // rendering, and every lane that reaches an LLM.
-const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|predict\/[a-z]+|forecast(\/refresh)?|digitise\/(upload|ingest)|financial\/narrative|sanctions\/batch|patrol\/directions|sherlock\/start)$/;
+const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|predict\/[a-z]+|forecast(\/refresh)?|digitise\/(upload|ingest)|financial\/narrative|sanctions\/batch|patrol\/directions|sherlock\/start|anonymize\/(text|reveal))$/;
 const isAdminUser = (u) => /admin/i.test(u?.role_details?.role_name || '');
 
 /* ── Case prediction (QuickML) ───────────────────────────────────────────────
@@ -2478,6 +2479,76 @@ async function handleForecast(req, res, forceRefresh) {
     }
   }
   return json(res, anyValue ? 200 : 503, { ...bundle, cached: false });
+}
+
+// POST .../anonymize/text    { text }              -> { mapId, anonymizedText, entityCounts, nerAvailable }
+// POST .../anonymize/reveal  { mapId, text }        -> { text }
+// Text is capped the same way handleSupport caps its message field — this is
+// pasted casework text, not a file upload.
+async function handleAnonymize(req, res, action) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const app = catalystSDK.initialize(req);
+  const bucket = app.stratus().bucket(CONV_BUCKET);
+  const { role, caller } = await myRole(app, bucket);
+
+  if (action === 'anonymize') {
+    const text = String(body.text || '').slice(0, 20000);
+    if (!text.trim()) return json(res, 400, { error: 'text is required' });
+
+    const result = await anonymize.detectAndAnonymize(
+      text,
+      (docs) => app.zia().getNERPrediction(docs)
+    );
+
+    const mapId = `anon_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+    await bucket.putObject(
+      `anonymize/maps/${mapId}.json`,
+      Buffer.from(JSON.stringify({
+        owner: String(caller?.email_id || '').toLowerCase(),
+        createdAt: Date.now(),
+        entityMap: result.entityMap,
+      }))
+    );
+
+    return json(res, 200, {
+      mapId,
+      anonymizedText: result.anonymizedText,
+      entityCounts: result.entityCounts,
+      nerAvailable: result.nerAvailable,
+    });
+  }
+
+  if (action === 'reveal') {
+    const mapId = String(body.mapId || '');
+    const text = String(body.text || '').slice(0, 20000);
+    if (!mapId || !text.trim()) return json(res, 400, { error: 'mapId and text are required' });
+
+    if (redaction.clearanceOf(role) < redaction.PROTECTED_CLEARANCE) {
+      await storeAuditEvents(req, app, bucket, [{
+        action: 'anonymize-reveal-denied', feature: 'Anonymize', path: '/anonymize',
+        detail: `mapId=${mapId} role=${role}`,
+      }], caller);
+      return json(res, 403, { error: 'Insufficient clearance to reveal identities' });
+    }
+
+    let stored;
+    try {
+      stored = JSON.parse(await streamToString(await bucket.getObject(`anonymize/maps/${mapId}.json`)));
+    } catch {
+      return json(res, 404, { error: 'Unknown mapId' });
+    }
+
+    const revealed = anonymize.revealText(text, stored.entityMap);
+
+    await storeAuditEvents(req, app, bucket, [{
+      action: 'anonymize-reveal', feature: 'Anonymize', path: '/anonymize',
+      detail: `mapId=${mapId}`,
+    }], caller);
+
+    return json(res, 200, { text: revealed });
+  }
+
+  return json(res, 400, { error: 'unknown action' });
 }
 
 async function handleAccess(req, res, action) {
@@ -5296,6 +5367,8 @@ module.exports = async (req, res) => {
     if (path.endsWith('/transcribe')) return await handleTranscribe(req, res);
     if (path.endsWith('/report-pdf')) return await handleReportPdf(req, res);
     if (path.endsWith('/support')) return await handleSupport(req, res);
+    if (path.endsWith('/anonymize/text')) return await handleAnonymize(req, res, 'anonymize');
+    if (path.endsWith('/anonymize/reveal')) return await handleAnonymize(req, res, 'reveal');
     if (path.endsWith('/analytics/snapshot')) return await handleAnalyticsSnapshot(req, res);
     if (path.endsWith('/forecast/refresh')) return await handleForecast(req, res, true);
     if (path.endsWith('/forecast')) return await handleForecast(req, res, false);
