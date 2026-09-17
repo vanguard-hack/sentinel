@@ -6921,6 +6921,56 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   .hc-layout { grid-template-columns: 1fr; gap: 26px; }
 }
 
+/* ── Anonymize ── */
+.an-layout { display: flex; flex-direction: column; gap: 20px; max-width: 720px; }
+.an-intro { padding-top: 8px; }
+.an-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 46px; height: 46px; border-radius: 12px;
+  background: var(--blue-glow); color: var(--blue-500); margin-bottom: 16px;
+}
+.an-intro h1 { font-size: 28px; font-weight: 600; color: var(--text-0); margin: 0 0 10px; letter-spacing: -0.02em; }
+.an-lead { font-size: 14px; line-height: 1.6; color: var(--text-3); margin: 0; }
+.an-lead-small { font-size: 12.5px; margin-top: 4px; }
+
+.an-card {
+  border: 1px solid var(--border); border-radius: 16px; background: var(--bg-1);
+  padding: 26px; display: flex; flex-direction: column; gap: 16px;
+}
+.an-field { display: flex; flex-direction: column; gap: 9px; }
+.an-field > span { font-size: 13.5px; font-weight: 500; color: var(--text-1); display: flex; align-items: center; gap: 6px; }
+.an-input {
+  width: 100%; padding: 12px 14px; line-height: 1.6;
+  border: 1px solid var(--border-bright); border-radius: 12px;
+  background: var(--bg-2); color: var(--text-0); font-size: 14px; resize: vertical;
+}
+.an-input:focus { outline: none; border-color: var(--blue-500); background: var(--bg-1); }
+.an-input[readonly] { color: var(--text-2); }
+.an-submit {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  height: 42px; padding: 0 20px; border: none; border-radius: 10px;
+  background: var(--blue-500); color: #fff; font-size: 14px; font-weight: 500; cursor: pointer;
+}
+.an-submit:hover:not(:disabled) { background: var(--primary-hover); }
+.an-submit:disabled { opacity: 0.5; cursor: default; }
+
+.an-result { display: flex; flex-direction: column; gap: 10px; }
+.an-result-head { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; font-weight: 500; color: var(--text-1); }
+.an-copy {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border-bright); border-radius: 8px; background: var(--bg-1);
+  color: var(--text-2); font-size: 12.5px; padding: 5px 10px; cursor: pointer;
+}
+.an-copy:hover { border-color: var(--blue-500); color: var(--text-0); }
+
+.an-counts { display: flex; flex-wrap: wrap; gap: 8px; }
+.an-badge-chip {
+  display: inline-block; padding: 3px 10px; border-radius: 9999px;
+  background: var(--bg-3); color: var(--text-2); font-size: 11.5px; font-weight: 500;
+}
+.an-badge-warn { background: color-mix(in srgb, var(--gold) 16%, transparent); color: var(--gold); }
+
 /* ── Custody & Corrections ── */
 .cust-head { margin-bottom: 16px; }
 .cust-title { display: flex; gap: 12px; align-items: flex-start; color: var(--blue-500); }

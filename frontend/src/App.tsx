@@ -24,6 +24,7 @@ import ReportEditor from './pages/ReportEditor';
 import Records from './pages/Records';
 import RecordDetail from './pages/RecordDetail';
 import HelpCenter from './pages/HelpCenter';
+import Anonymize from './pages/Anonymize';
 import Custody from './pages/Custody';
 import CustodyRecord from './pages/CustodyRecord';
 import Sidebar from './components/Sidebar';
@@ -99,6 +100,7 @@ function AppRoutes() {
                 <Route path="/ai-analytics" element={guarded('aiAnalytics', <AIAnalytics />)} />
                 <Route path="/profile" element={guarded('profile', <Profile />)} />
                 <Route path="/help" element={guarded('help', <HelpCenter />)} />
+                <Route path="/anonymize" element={guarded('anonymize', <Anonymize />)} />
                 <Route path="/incidents" element={guarded('incidents', <Incidents />)} />
                 <Route path="/personnel" element={guarded('personnel', <Personnel />)} />
                 <Route path="/personnel/roster" element={guarded('dutyRoster', <Roster />)} />

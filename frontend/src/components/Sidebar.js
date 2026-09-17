@@ -6,7 +6,7 @@ import {
   Home, AlertTriangle, Map, Brain, Database,
   MessageSquare, Users, ChevronRight, Sun, Moon, LogOut,
   UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, Headset, Building2, CalendarClock,
-  ScrollText, Images, ChevronsUpDown } from 'lucide-react';
+  ScrollText, Images, ChevronsUpDown, ShieldOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccess } from '../context/AccessContext';
 import { useLayout, useThemeMode } from '../context/LayoutContext';
@@ -225,6 +225,9 @@ export default function Sidebar() {
                 </button>
                 <button className="sb-menu-item" onClick={() => { setMenuOpen(false); navigate('/help'); setMobileOpen(false); }}>
                   <Headset size={16} /> Help center
+                </button>
+                <button className="sb-menu-item" onClick={() => { setMenuOpen(false); navigate('/anonymize'); setMobileOpen(false); }}>
+                  <ShieldOff size={16} /> Anonymize
                 </button>
                 <button
                   className="sb-menu-item sb-menu-danger"

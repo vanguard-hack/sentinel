@@ -8,7 +8,7 @@ import {
   NotebookPen, ShieldCheck, UserCircle, TrendingUp, Share2, Fingerprint, ScrollText, Images,
   LineChart, Landmark, CalendarDays, Network, BarChart3, PieChart,
   Activity, Table, Clock, Headset, Building2,
-  ListChecks, LayoutGrid,
+  ListChecks, LayoutGrid, ShieldOff,
 } from 'lucide-react';
 
 export const SEARCH_INDEX = [
@@ -73,6 +73,9 @@ export const SEARCH_INDEX = [
   { id: 'help', feature: 'help', group: 'Pages', Icon: Headset,
     title: 'Help Center', sub: 'Report an issue or contact support', to: '/help',
     keywords: 'help center support contact issue problem bug feedback email phone ticket assistance' },
+  { id: 'anonymize', feature: 'anonymize', group: 'Pages', Icon: ShieldOff,
+    title: 'Anonymize', sub: 'Redact names, places & identifiers', to: '/anonymize',
+    keywords: 'anonymize redact pii mask names places identifiers deidentify privacy reveal' },
 
   // ---- AI Analytics tabs -------------------------------------------------
   { id: 'ai-patterns', feature: 'aiAnalytics', group: 'AI Analytics', Icon: Activity,
