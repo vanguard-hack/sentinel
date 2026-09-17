@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
-import { ShieldOff, Copy, Check, AlertTriangle, EyeOff } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { ShieldOff, Copy, Check, AlertTriangle, EyeOff, Upload, Download } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import { useAccess } from '../context/AccessContext';
 import { anonymizeText, revealText } from '../utils/anonymize';
+import {
+  extractDocument, buildFlatText, mapRedactionsToTokens, burnRedactions, buildRedactedPdf, terminateOcr,
+} from '../utils/documentRedact';
 
 // Mirrors redaction.js's PROTECTED_CLEARANCE tier (functions/rag/redaction.js
 // ROLE_CLEARANCE: admin/supervisor/investigator = 3) for UI purposes only —
@@ -19,6 +22,67 @@ export default function Anonymize() {
   const [revealInput, setRevealInput] = useState('');
   const [revealOutput, setRevealOutput] = useState('');
   const [revealStatus, setRevealStatus] = useState({ state: 'idle', error: null });
+
+  const [docStatus, setDocStatus] = useState({ state: 'idle', error: null, progress: '' });
+  const [docPages, setDocPages] = useState(null);
+  const [docPreviews, setDocPreviews] = useState([]);
+  const [docResult, setDocResult] = useState(null);
+  const fileInputRef = useRef(null);
+
+  // Tesseract's WASM worker is expensive to spin up — the module keeps one
+  // alive for reuse across documents in the same visit, and it's only torn
+  // down when the officer actually navigates away from this page.
+  useEffect(() => () => { terminateOcr(); }, []);
+
+  const runDocumentAnonymize = async (file) => {
+    setDocStatus({ state: 'extracting', error: null, progress: '' });
+    setDocPages(null);
+    setDocPreviews([]);
+    setDocResult(null);
+    try {
+      const { pages, notePages } = await extractDocument(file, (progress) =>
+        setDocStatus({ state: 'extracting', error: null, progress }));
+
+      const { flatText, spans } = buildFlatText(pages);
+      if (!flatText.trim()) {
+        setDocStatus({ state: 'idle', error: 'No text could be read from this file.', progress: '' });
+        return;
+      }
+
+      setDocStatus({ state: 'detecting', error: null, progress: 'Detecting names, places and identifiers…' });
+      const data = await anonymizeText(flatText);
+
+      setDocStatus({ state: 'redacting', error: null, progress: 'Redacting the document…' });
+      const covered = mapRedactionsToTokens(data.redactions, spans);
+      burnRedactions(pages, covered);
+      const previews = pages.map((p) => p.canvas.toDataURL('image/jpeg', 0.85));
+
+      setDocPages(pages);
+      setDocPreviews(previews);
+      setDocResult({ ...data, notePages, ocrPages: pages.filter((p) => p.ocr).length });
+      setDocStatus({ state: 'idle', error: null, progress: '' });
+    } catch (err) {
+      setDocStatus({ state: 'idle', error: err.message, progress: '' });
+    }
+  };
+
+  const onFilePicked = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ''; // allow re-picking the same file
+    if (file) runDocumentAnonymize(file);
+  };
+
+  const downloadRedactedPdf = async () => {
+    if (!docPages) return;
+    const bytes = await buildRedactedPdf(docPages);
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'redacted.pdf';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const runAnonymize = async () => {
     if (!input.trim()) return;
@@ -125,6 +189,77 @@ export default function Anonymize() {
                     </span>
                   )}
                 </div>
+              </div>
+            )}
+          </div>
+
+          <div className="an-card">
+            <div className="an-field">
+              <span>Or upload a document</span>
+              <p className="an-lead an-lead-small">
+                PDF or image. Text is extracted, checked for names/places/identifiers the
+                same way, and the flagged areas are redacted directly on the page —
+                download the result as a new PDF.
+              </p>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf,image/*"
+              style={{ display: 'none' }}
+              onChange={onFilePicked}
+            />
+            <button
+              type="button"
+              className="an-submit"
+              disabled={docStatus.state !== 'idle'}
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+            >
+              <Upload size={14} />
+              {docStatus.state === 'idle' ? 'Choose a file…' : (docStatus.progress || 'Working…')}
+            </button>
+
+            {docStatus.error && (
+              <div className="aa-error"><AlertTriangle size={16} /> {docStatus.error}</div>
+            )}
+
+            {docResult && (
+              <div className="an-result">
+                <div className="an-counts">
+                  {Object.entries(docResult.entityCounts || {}).map(([type, count]) => (
+                    <span className="an-badge-chip" key={type}>{type}: {count}</span>
+                  ))}
+                  {docResult.ocrPages > 0 && (
+                    <span className="an-badge-chip">
+                      {docResult.ocrPages} scanned page{docResult.ocrPages > 1 ? 's' : ''} read via OCR
+                    </span>
+                  )}
+                  {docResult.notePages && (
+                    <span className="an-badge-chip an-badge-warn">{docResult.notePages}</span>
+                  )}
+                  {!docResult.nerAvailable && (
+                    <span className="an-badge-chip an-badge-warn">
+                      Name/place detection degraded — only structured identifiers were removed
+                    </span>
+                  )}
+                </div>
+
+                <div className="an-doc-pages">
+                  {docPreviews.map((src, i) => (
+                    // eslint-disable-next-line react/no-array-index-key
+                    <img key={i} src={src} alt={`Redacted page ${i + 1}`} className="an-doc-page" />
+                  ))}
+                </div>
+
+                <div className="an-result-head">
+                  <span>Extracted &amp; anonymized text</span>
+                </div>
+                <textarea className="an-input" rows={8} readOnly value={docResult.anonymizedText} />
+
+                <button type="button" className="an-submit" onClick={downloadRedactedPdf}>
+                  <Download size={14} /> Download redacted PDF
+                </button>
               </div>
             )}
           </div>

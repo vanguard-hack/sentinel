@@ -6971,6 +6971,12 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 }
 .an-badge-warn { background: color-mix(in srgb, var(--gold) 16%, transparent); color: var(--gold); }
 
+.an-doc-pages { display: flex; flex-direction: column; gap: 12px; }
+.an-doc-page {
+  width: 100%; max-width: 480px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg-2);
+}
+
 /* ── Custody & Corrections ── */
 .cust-head { margin-bottom: 16px; }
 .cust-title { display: flex; gap: 12px; align-items: flex-start; color: var(--blue-500); }
