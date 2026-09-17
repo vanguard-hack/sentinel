@@ -133,6 +133,21 @@ const span = (text, value, from = 0) => {
       full.anonymizedText === 'FIR FIR_NUMBER_0 says PERSON_0 met Chennai.');
     check('detectAndAnonymize reports NER availability', full.nerAvailable === true);
 
+    // Test that regex hits always beat NER hits even if NER returns very high
+    // confidence scores (e.g., on 0-100 scale rather than 0-1). Regex score is
+    // fixed at 1, and NER is clamped to 0.99, so regex must always win overlaps.
+    const highConfText = 'FIR 42/2026 was filed.';
+    const firSpan = span(highConfText, '42/2026');
+    const nerWithHighScore = async () => [{
+      ner: { general_entities: [
+        // High confidence that looks like 0-100 scale (99) — simulates the real bug
+        { start_index: firSpan.start, end_index: firSpan.end - 1, confidence_score: '99', ner_tag: 'NUMBER', token: '42/2026' },
+      ] },
+    }];
+    const highConfResult = await anonymize.detectAndAnonymize(highConfText, nerWithHighScore);
+    check('regex hit (FIR_NUMBER, score 1) beats high-confidence NER (NUMBER, clamped to 0.99)',
+      highConfResult.anonymizedText === 'FIR FIR_NUMBER_0 was filed.');
+
     console.log(`\n${pass} passed, ${fail} failed`);
     process.exit(fail ? 1 : 0);
   })();

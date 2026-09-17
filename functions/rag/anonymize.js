@@ -70,7 +70,7 @@ async function nerEntities(text, nerFn) {
     entities.push({
       type: String(e.ner_tag || 'ENTITY').toUpperCase(),
       start, end, text: token,
-      score: Number(e.confidence_score) || 0.5,
+      score: Math.min(Number(e.confidence_score) || 0.5, 0.99),
     });
   }
   return { entities, available: true };
