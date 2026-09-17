@@ -105,21 +105,28 @@ current ask.
 
 - On `/anonymize/text`, the server generates a `mapId` (random UUID) and
   stores `{ owner: email, createdAt, entityMap }` at Stratus key
-  `anonymize/maps/<mapId>.json`. The key is server-generated, never
-  client-supplied, so `confineKey` doesn't apply here (no traversal
-  surface to defend).
+  `anonymize/maps/<mapId>.json`.
 - The response is `{ mapId, anonymizedText, entityCounts }` — the raw
   `entityMap` is never returned to the caller.
 - `POST .../anonymize/reveal` takes `{ mapId, text }` and replaces every
   placeholder found in `text` using the stored map — this works even if
   `text` is a report or third-party document built from the anonymized
   output, not just the original anonymized string verbatim (mirrors the
-  reference's `/de-ano`, which is its stated selling point).
+  reference's `/de-ano`, which is its stated selling point). Unlike the
+  server-generated map key, `mapId` here IS client-supplied, so it is
+  validated via `confineKey(key, 'anonymize/maps/')` before any Stratus
+  read — a path-traversal vulnerability in this validation was found and
+  fixed during implementation.
 - Gated by `clearanceOf(role) >= PROTECTED_CLEARANCE` (reusing the
   existing tier from `redaction.js` — investigator/supervisor/admin, the
-  same tier that already gates victim/complainant identity). A denied
-  attempt and a successful reveal are both written to the audit trail via
-  the existing audit logging path.
+  same tier that already gates victim/complainant identity) AND by
+  ownership: `stored.owner` must match the caller's email
+  (case-insensitive) — a supervisor cannot reveal an investigator's map,
+  only maps they created themselves. This ownership check was added
+  during implementation, in addition to the clearance gate. A denied
+  attempt (on either the clearance or the ownership check) and a
+  successful reveal are all written to the audit trail via the existing
+  audit logging path.
 - Unknown `mapId` → 404. No map is ever deleted implicitly; a future TTL
   or manual-delete affordance is not part of this iteration.
 

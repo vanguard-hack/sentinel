@@ -79,7 +79,7 @@ export default function Anonymize() {
             <label className="an-field">
               <span>Text to anonymize</span>
               <textarea
-                className="an-input an-textarea"
+                className="an-input"
                 rows={8}
                 placeholder="Paste text here…"
                 value={input}
@@ -108,7 +108,7 @@ export default function Anonymize() {
                     {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy'}
                   </button>
                 </div>
-                <textarea className="an-input an-textarea" rows={8} readOnly value={result.anonymizedText} />
+                <textarea className="an-input" rows={8} readOnly value={result.anonymizedText} />
                 <div className="an-counts">
                   {Object.entries(result.entityCounts || {}).map(([type, count]) => (
                     <span className="an-badge-chip" key={type}>{type}: {count}</span>
@@ -116,6 +116,12 @@ export default function Anonymize() {
                   {!result.nerAvailable && (
                     <span className="an-badge-chip an-badge-warn">
                       Name/place detection degraded — only structured identifiers were removed
+                    </span>
+                  )}
+                  {result.containsPlaceholders && (
+                    <span className="an-badge-chip an-badge-warn">
+                      Input already contained placeholder-shaped text (e.g. PERSON_3) — reveal
+                      may substitute a real value where none was originally anonymized
                     </span>
                   )}
                 </div>
@@ -135,7 +141,7 @@ export default function Anonymize() {
               <label className="an-field">
                 <span>Text to reveal</span>
                 <textarea
-                  className="an-input an-textarea"
+                  className="an-input"
                   rows={6}
                   value={revealInput}
                   onChange={(e) => setRevealInput(e.target.value)}
@@ -156,7 +162,7 @@ export default function Anonymize() {
               </button>
 
               {revealOutput && (
-                <textarea className="an-input an-textarea" rows={6} readOnly value={revealOutput} />
+                <textarea className="an-input" rows={6} readOnly value={revealOutput} />
               )}
             </div>
           )}

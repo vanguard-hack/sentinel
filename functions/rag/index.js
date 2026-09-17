@@ -2499,6 +2499,8 @@ async function handleAnonymize(req, res, action) {
     const text = String(body.text || '').slice(0, 20000);
     if (!text.trim()) return json(res, 400, { error: 'text is required' });
 
+    const containsPlaceholders = anonymize.containsPlaceholderShapedText(text);
+
     const result = await anonymize.detectAndAnonymize(
       text,
       (docs) => app.zia().getNERPrediction(docs)
@@ -2514,11 +2516,17 @@ async function handleAnonymize(req, res, action) {
       }))
     );
 
+    await storeAuditEvents(req, app, bucket, [{
+      action: 'anonymize-text', feature: 'Anonymize', path: '/anonymize',
+      detail: `mapId=${mapId}`,
+    }], caller);
+
     return json(res, 200, {
       mapId,
       anonymizedText: result.anonymizedText,
       entityCounts: result.entityCounts,
       nerAvailable: result.nerAvailable,
+      containsPlaceholders,
     });
   }
 
@@ -2526,9 +2534,6 @@ async function handleAnonymize(req, res, action) {
     const mapId = String(body.mapId || '');
     const text = String(body.text || '').slice(0, 20000);
     if (!mapId || !text.trim()) return json(res, 400, { error: 'mapId and text are required' });
-
-    const mapKey = confineKey(`anonymize/maps/${mapId}.json`, 'anonymize/maps/');
-    if (!mapKey) return json(res, 400, { error: 'invalid mapId' });
 
     if (redaction.clearanceOf(role) < redaction.PROTECTED_CLEARANCE) {
       await storeAuditEvents(req, app, bucket, [{
@@ -2538,10 +2543,14 @@ async function handleAnonymize(req, res, action) {
       return json(res, 403, { error: 'Insufficient clearance to reveal identities' });
     }
 
+    const mapKey = confineKey(`anonymize/maps/${mapId}.json`, 'anonymize/maps/');
+    if (!mapKey) return json(res, 400, { error: 'invalid mapId' });
+
     let stored;
     try {
       stored = JSON.parse(await streamToString(await bucket.getObject(mapKey)));
-    } catch {
+    } catch (e) {
+      console.error('anonymize map read failed (non-fatal):', e && e.message);
       return json(res, 404, { error: 'Unknown mapId' });
     }
 

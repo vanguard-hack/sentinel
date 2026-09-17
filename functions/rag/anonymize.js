@@ -31,12 +31,14 @@ function regexEntities(text) {
   return hits;
 }
 
-// Greedy sweep: sort by start (ties broken by higher score first), keep an
-// entity only if it doesn't overlap anything already kept. Equivalent in
-// intent to the reference's overlap resolution (higher-confidence entity wins
-// a conflict) but a single sorted pass instead of an O(n^2) pairwise scan.
+// Greedy sweep: sort by score descending (so a higher-confidence entity
+// always gets first claim on a contested span), start position as the
+// tiebreak for equal scores, then keep an entity only if it doesn't overlap
+// anything already kept. This is O(n·k) — n entities against a kept-set of
+// size k — cheaper than the reference implementation's O(n^2) pairwise scan,
+// but not a single pass: the `kept.some(...)` scan runs per candidate.
 function resolveOverlaps(entities) {
-  const sorted = [...entities].sort((a, b) => a.start - b.start || b.score - a.score);
+  const sorted = [...entities].sort((a, b) => b.score - a.score || a.start - b.start);
   const kept = [];
   for (const e of sorted) {
     const overlaps = kept.some((k) => e.start < k.end && k.start < e.end);
@@ -50,7 +52,12 @@ function resolveOverlaps(entities) {
 // end_index, confidence_score, ner_tag, token} per input document. end_index's
 // inclusive/exclusive convention isn't documented, so it is never used here —
 // the end offset is derived from the token's own length instead, and an
-// entity is kept only if that exact slice matches the token.
+// entity is kept only if that exact slice matches the token. That length math
+// is UTF-16 code units (token.length), which could misalign for characters
+// outside the Basic Multilingual Plane (rare emoji, some historical scripts);
+// this is safe-by-construction rather than a correctness bug, since the
+// slice-match guard immediately below would catch any such mismatch and drop
+// the entity instead of corrupting the text.
 async function nerEntities(text, nerFn) {
   if (!text.trim()) return { entities: [], available: true };
   let resp;
@@ -125,6 +132,16 @@ function revealText(text, entityMap) {
   return out.replace(pattern, (m) => byPlaceholder[m] ?? m);
 }
 
+// Detects placeholder-shaped tokens (e.g. "PERSON_3") in arbitrary input.
+// Used to flag text handed to /anonymize/text that already looks anonymized
+// (re-anonymized output, or a document mixing anonymized and raw content) —
+// a later reveal on such text would substitute a real value where no
+// anonymization ever happened, fabricating an identity.
+const PLACEHOLDER_SHAPE = /\b[A-Z][A-Z_]*_\d+\b/;
+function containsPlaceholderShapedText(text) {
+  return PLACEHOLDER_SHAPE.test(String(text || ''));
+}
+
 async function detectAndAnonymize(text, nerFn) {
   const regexHits = regexEntities(text);
   const { entities: nerHits, available } = await nerEntities(text, nerFn);
@@ -140,5 +157,6 @@ module.exports = {
   nerEntities,
   anonymizeText,
   revealText,
+  containsPlaceholderShapedText,
   detectAndAnonymize,
 };

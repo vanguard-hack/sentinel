@@ -43,6 +43,22 @@ const span = (text, value, from = 0) => {
     kept.every((e, i) => i === 0 || kept[i - 1].start <= e.start));
 }
 
+// ── Overlap resolution: score wins even when it starts later ───────────────
+// Regression test for a bug where sorting by `start` first meant a
+// lower-scoring entity that merely began one character earlier than an
+// overlapping higher-scoring hit would win the greedy sweep — e.g. a fuzzy
+// NER guess starting at "from 98765" beating the PHONE regex hit on
+// "9876543210" that starts later but scores 1, leaking the phone number.
+{
+  const text = 'Called from 9876543210 yesterday.';
+  const nerGuess = { type: 'MISC', ...span(text, 'from 98765'), score: 0.2 };
+  const phoneHit = { type: 'PHONE', ...span(text, '9876543210'), score: 1 };
+  // nerGuess.start < phoneHit.start, but phoneHit has the higher score.
+  const kept = anonymize.resolveOverlaps([nerGuess, phoneHit]);
+  check('a higher-scoring entity wins even when it starts after the loser',
+    kept.length === 1 && kept[0].type === 'PHONE' && kept[0].text === '9876543210');
+}
+
 // ── Consistent placeholders ─────────────────────────────────────────────────
 {
   const text = 'Ravi Kumar met Ravi Kumar near Chennai.';
@@ -92,6 +108,17 @@ const span = (text, value, from = 0) => {
   // would corrupt PERSON_10 and PERSON_11. Word-boundary regex prevents this.
   check('reveal is faithful with 11+ distinct values (no substring collision of PERSON_1 into PERSON_10)',
     anonymize.revealText(anonymizedText, entityMap) === text);
+}
+
+// ── Placeholder-shaped input detection ──────────────────────────────────────
+{
+  check('detects placeholder-shaped text',
+    anonymize.containsPlaceholderShapedText('PERSON_0 called Ravi Kumar.') === true);
+  check('detects placeholder-shaped text with a longer type name',
+    anonymize.containsPlaceholderShapedText('Filed under FIR_NUMBER_3.') === true);
+  check('ordinary text is not flagged',
+    anonymize.containsPlaceholderShapedText('Ravi Kumar called from Chennai.') === false);
+  check('empty/missing text is not flagged', anonymize.containsPlaceholderShapedText('') === false);
 }
 
 // ── NER integration (injectable — no live Zia call) ─────────────────────────
