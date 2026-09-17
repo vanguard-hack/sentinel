@@ -147,7 +147,13 @@ async function detectAndAnonymize(text, nerFn) {
   const { entities: nerHits, available } = await nerEntities(text, nerFn);
   const merged = resolveOverlaps([...regexHits, ...nerHits]);
   const { anonymizedText, entityMap, entityCounts } = anonymizeText(text, merged);
-  return { anonymizedText, entityMap, entityCounts, nerAvailable: available };
+  // Offsets into the ORIGINAL text the caller sent, not the anonymized
+  // output — this is what lets a client that already has that original text
+  // (e.g. positioned words extracted from a PDF/image) know which regions to
+  // redact visually. Safe to return: it tells the caller nothing about their
+  // own text they couldn't already see by diffing input against output.
+  const redactions = merged.map((e) => ({ type: e.type, start: e.start, end: e.end }));
+  return { anonymizedText, entityMap, entityCounts, redactions, nerAvailable: available };
 }
 
 module.exports = {

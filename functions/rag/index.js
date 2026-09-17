@@ -2496,7 +2496,10 @@ async function handleAnonymize(req, res, action) {
   const { role, caller } = await myRole(app, bucket);
 
   if (action === 'anonymize') {
-    const text = String(body.text || '').slice(0, 20000);
+    // 120000 covers a multi-page extracted PDF/image document, not just a
+    // pasted paragraph — the document-upload flow sends the whole extracted
+    // text of a file in one call.
+    const text = String(body.text || '').slice(0, 120000);
     if (!text.trim()) return json(res, 400, { error: 'text is required' });
 
     const containsPlaceholders = anonymize.containsPlaceholderShapedText(text);
@@ -2525,6 +2528,7 @@ async function handleAnonymize(req, res, action) {
       mapId,
       anonymizedText: result.anonymizedText,
       entityCounts: result.entityCounts,
+      redactions: result.redactions,
       nerAvailable: result.nerAvailable,
       containsPlaceholders,
     });

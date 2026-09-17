@@ -160,6 +160,11 @@ const span = (text, value, from = 0) => {
       full.anonymizedText === 'FIR FIR_NUMBER_0 says PERSON_0 met Chennai.');
     check('detectAndAnonymize reports NER availability', full.nerAvailable === true);
 
+    const mergeFir = span(mergeText, '9/2026');
+    check('detectAndAnonymize returns redactions with original-text offsets',
+      full.redactions.some((r) => r.type === 'PERSON' && r.start === mergeJohn.start && r.end === mergeJohn.end)
+      && full.redactions.some((r) => r.type === 'FIR_NUMBER' && r.start === mergeFir.start && r.end === mergeFir.end));
+
     // Test that regex hits always beat NER hits even if NER returns very high
     // confidence scores (e.g., on 0-100 scale rather than 0-1). Regex score is
     // fixed at 1, and NER is clamped to 0.99, so regex must always win overlaps.
