@@ -4,6 +4,10 @@ const catalystSDK = require('zcatalyst-sdk-node');
 const zcql = require('./zcql');
 const redaction = require('./redaction');
 const anonymize = require('./anonymize');
+// Aliased: `crypto` at file scope is already the local wallet-lookup module
+// (./crypto.js) required a few lines down — this is Node's built-in module,
+// used only for a cryptographically strong mapId below.
+const nodeCrypto = require('crypto');
 const vision = require('./vision');
 const catalystVision = require('./catalystVision');
 const catalystGLM = require('./catalystGLM');
@@ -2500,7 +2504,7 @@ async function handleAnonymize(req, res, action) {
       (docs) => app.zia().getNERPrediction(docs)
     );
 
-    const mapId = `anon_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+    const mapId = `anon_${nodeCrypto.randomBytes(24).toString('base64url')}`;
     await bucket.putObject(
       `anonymize/maps/${mapId}.json`,
       Buffer.from(JSON.stringify({
@@ -2523,6 +2527,9 @@ async function handleAnonymize(req, res, action) {
     const text = String(body.text || '').slice(0, 20000);
     if (!mapId || !text.trim()) return json(res, 400, { error: 'mapId and text are required' });
 
+    const mapKey = confineKey(`anonymize/maps/${mapId}.json`, 'anonymize/maps/');
+    if (!mapKey) return json(res, 400, { error: 'invalid mapId' });
+
     if (redaction.clearanceOf(role) < redaction.PROTECTED_CLEARANCE) {
       await storeAuditEvents(req, app, bucket, [{
         action: 'anonymize-reveal-denied', feature: 'Anonymize', path: '/anonymize',
@@ -2533,9 +2540,19 @@ async function handleAnonymize(req, res, action) {
 
     let stored;
     try {
-      stored = JSON.parse(await streamToString(await bucket.getObject(`anonymize/maps/${mapId}.json`)));
+      stored = JSON.parse(await streamToString(await bucket.getObject(mapKey)));
     } catch {
       return json(res, 404, { error: 'Unknown mapId' });
+    }
+
+    const ownerEmail = String(stored.owner || '').toLowerCase();
+    const callerEmail = String(caller?.email_id || '').toLowerCase();
+    if (ownerEmail !== callerEmail) {
+      await storeAuditEvents(req, app, bucket, [{
+        action: 'anonymize-reveal-denied', feature: 'Anonymize', path: '/anonymize',
+        detail: `mapId=${mapId} reason=not-owner`,
+      }], caller);
+      return json(res, 403, { error: 'Not authorized for this mapId' });
     }
 
     const revealed = anonymize.revealText(text, stored.entityMap);
