@@ -8,10 +8,10 @@
 
 export const ROLE_LABELS = {
   admin: 'Admin',
-  supervisor: 'District Command',
-  investigator: 'Ground Command',
-  analyst: 'Divisional Command',
-  policymaker: 'State Command',
+  supervisor: 'Supervisor',
+  investigator: 'Investigator',
+  analyst: 'Analyst',
+  policymaker: 'Policymaker',
 };
 
 export const ASSIGNABLE_ROLES = ['investigator', 'analyst', 'supervisor', 'policymaker', 'admin'];

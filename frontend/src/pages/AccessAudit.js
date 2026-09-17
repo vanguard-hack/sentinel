@@ -156,10 +156,10 @@ function RolesTab() {
     <>
       <p className="aa-hint">
         Each user carries one role that decides which features open for them —
-        Ground Command gets the case-level tools, Divisional Command the
-        analytics views, District Command both plus personnel management,
-        State Command the strategic views. Admin comes from the Catalyst
-        project role and cannot be assigned here.
+        Investigator gets the case-level tools, Analyst the analytics views,
+        Supervisor both plus personnel management, Policymaker the strategic
+        views. Admin comes from the Catalyst project role and cannot be
+        assigned here.
       </p>
       <div className="aa-table-wrap">
         <table className="aa-table">
