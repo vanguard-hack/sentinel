@@ -5,6 +5,7 @@ import {
   Loader2, Search, Trash2, X, FilePlus2, Files, CheckSquare, Square,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
+import FileUpload from '../components/ui/FileUpload';
 import { useConfirm } from '../components/ConfirmDialog';
 import {
   listRecords, deleteRecord, uploadScan, newBatchId, recordsToCsv, searchRecords,
@@ -19,6 +20,8 @@ const fmt = (ts) => (ts
   ? new Date(ts).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
   : '—');
 
+const ACCEPT_LIST = '.jpg,.jpeg,.png,.webp,.heic,.heif,.gif,.bmp,.tif,.tiff,.pdf,.docx,.docm,.xlsx,.xlsm,.xls,.csv,.tsv,.ods,.pptx,.pptm,.txt,.md,.log,.json,.xml,.rtf,.eml,.vtt,.srt,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.amr,.mp4,.mov,.m4v,.webm,.3gp,image/*,application/pdf,audio/*,video/*,text/*';
+
 export default function Records() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -30,7 +33,6 @@ export default function Records() {
   const [hits, setHits] = useState(null);   // full-text matches inside document text
   const [searching, setSearching] = useState(false);
   const [queue, setQueue] = useState([]); // { key, name, status, error }
-  const [dragging, setDragging] = useState(false);
   // Pages staged for the document being assembled. Nothing is filed until the
   // officer says the document is complete — a physical file is usually several
   // photographed pages, and one record per photo was the wrong unit.
@@ -229,12 +231,6 @@ export default function Records() {
     refresh();
   }, [tray, clearTray, refresh, i18n.resolvedLanguage]);
 
-  const onDrop = (e) => {
-    e.preventDefault();
-    setDragging(false);
-    if (e.dataTransfer?.files?.length) stage(e.dataTransfer.files);
-  };
-
   // Paste a file straight onto the page — copy it in Finder or Explorer, or
   // take a screenshot, then Ctrl/Cmd+V anywhere on Records.
   //
@@ -353,28 +349,11 @@ export default function Records() {
         />
         <input
           ref={fileRef} type="file" multiple hidden
-          accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.gif,.bmp,.tif,.tiff,.pdf,.docx,.docm,.xlsx,.xlsm,.xls,.csv,.tsv,.ods,.pptx,.pptm,.txt,.md,.log,.json,.xml,.rtf,.eml,.vtt,.srt,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.amr,.mp4,.mov,.m4v,.webm,.3gp,image/*,application/pdf,audio/*,video/*,text/*"
+          accept={ACCEPT_LIST}
           onChange={(e) => { if (e.target.files?.length) stage(e.target.files); e.target.value = ''; }}
         />
 
-        <div
-          className={`dg-drop${dragging ? ' over' : ''}`}
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
-          // The panel itself opens the file picker — with the Choose files
-          // button gone it is the only way to browse, so it also has to be
-          // reachable by keyboard. That does nest the camera button inside a
-          // role="button", which is not ideal; leaving file browsing
-          // mouse-only would be considerably worse.
-          role="button"
-          tabIndex={0}
-          aria-label={t('records.chooseFiles')}
-          onClick={() => fileRef.current?.click()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click(); }
-          }}
-        >
+        <FileUpload onFiles={stage} accept={ACCEPT_LIST} busy={!!preparing} className="dg-drop">
           <Layers size={22} strokeWidth={1.7} className="dg-drop-icon" />
           <div className="dg-drop-copy">
             <strong>{t('records.dropTitle')}</strong>
@@ -392,7 +371,7 @@ export default function Records() {
               <Camera size={15} /> {t('records.takePhoto')}
             </button>
           </div>
-        </div>
+        </FileUpload>
 
         {preparing && <div className="aa-loading">{preparing}</div>}
 
