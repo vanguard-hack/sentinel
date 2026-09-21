@@ -35,6 +35,11 @@ import {
 } from '../utils/dictation';
 import { useAccess } from '../context/AccessContext';
 import { slashQuery, filterCommands, parseCommand, closestCommand, leadingSlashToken } from '../utils/slashCommands';
+import { useToast } from '../components/ui/Toast';
+import MessageScroller from '../components/ui/MessageScroller';
+import BorderBeam from '../components/ui/BorderBeam';
+import VoiceGlow from '../components/ui/VoiceGlow';
+import ActionButton from '../components/ui/ActionButton';
 
 import { useTranslation } from 'react-i18next';
 
@@ -175,6 +180,7 @@ export default function Assistant() {
   const location = useLocation();
   const { user } = useAuth();
   const email = user?.email_id || null;
+  const { show: showToast, dismiss } = useToast();
 
   // Opening from the floating widget's "expand" passes the conversation to focus.
   const incomingId = location.state?.conversationId || null;
@@ -184,6 +190,7 @@ export default function Assistant() {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState([]); // { id, name, size, type, url? }
   const [sending, setSending] = useState(false);
+  const [composerFocused, setComposerFocused] = useState(false);
   // Non-null only while a /sherlock lookup is polling — a run genuinely
   // takes 60-110+ seconds, so this replaces Thinking's generic cycling
   // phrases with an honest "still running" label for that one command.
@@ -193,13 +200,10 @@ export default function Assistant() {
   const [voiceError, setVoiceError] = useState(null);
   const [voiceLang, setVoiceLang] = useState(loadVoiceLang);
   const chooseVoiceLang = (lang) => { setVoiceLang(lang); saveVoiceLang(lang); };
-  const [copiedId, setCopiedId] = useState(null);
   // The citation the officer opened: which message, and which footnote number
   // within it. One at a time, held here rather than per message, so opening a
   // second source closes the first instead of stacking panels.
   const [citation, setCitation] = useState(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState(null);
   const [menuId, setMenuId] = useState(null); // open kebab menu
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState('');
@@ -236,7 +240,6 @@ export default function Assistant() {
   const [slashOpen, setSlashOpen] = useState(true);
   const [cmdHint, setCmdHint] = useState(null); // { kind, text, apply }
   const fileRef = useRef(null);
-  const threadRef = useRef(null);
   const recognitionRef = useRef(null);
 
   const active = sessions.find((s) => s.id === activeId) || null;
@@ -364,12 +367,6 @@ export default function Assistant() {
     return () => document.removeEventListener('visibilitychange', onHide);
   }, [email, activeId]);
 
-  // Autoscroll the thread on new messages / typing.
-  useEffect(() => {
-    const el = threadRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, sending]);
-
   // Auto-grow the composer.
   const growTextarea = () => {
     const el = textareaRef.current;
@@ -454,16 +451,17 @@ export default function Assistant() {
     setMenuId(null);
     const session = sessions.find((s) => s.id === id);
     if (!session) return;
-    setExporting(true);
+    const loadingId = showToast('Exporting conversation to PDF…', { tone: 'loading', duration: 0 });
     try {
       await exportConversationPdf(session);
+      dismiss(loadingId);
+      showToast('Exported', { tone: 'success' });
     } catch (e) {
       // This used to swallow every failure. An export that vanishes without a
       // word is the one outcome this must never produce — the officer waits
       // for a download that is never coming and assumes it worked.
-      setExportError(e?.message || 'The transcript could not be exported.');
-    } finally {
-      setExporting(false);
+      dismiss(loadingId);
+      showToast(e?.message || 'The transcript could not be exported.', { tone: 'error' });
     }
   };
 
@@ -828,11 +826,8 @@ export default function Assistant() {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
 
   const copyMessage = (m) => {
-    if (!navigator.clipboard) return;
-    navigator.clipboard.writeText(m.content).then(() => {
-      setCopiedId(m.id);
-      setTimeout(() => setCopiedId((c) => (c === m.id ? null : c)), 1500);
-    });
+    if (!navigator.clipboard) return Promise.reject(new Error('clipboard unavailable'));
+    return navigator.clipboard.writeText(m.content);
   };
 
   // Toggle thumbs-up / thumbs-down feedback on an assistant message.
@@ -1074,7 +1069,7 @@ export default function Assistant() {
 
         {/* ── Conversation ── */}
         <main className="as-main">
-          <div className="as-thread" ref={threadRef}>
+          <MessageScroller className="as-thread" dependency={`${activeId}-${messages.length}-${sending}`}>
             {messages.length === 0 && !sending ? (
               <div className="as-greeting">
                 <Shield size={40} strokeWidth={1.3} />
@@ -1138,9 +1133,13 @@ export default function Assistant() {
                       )}
                       {m.role === 'assistant' && m.content && (
                         <div className="as-msg-actions">
-                          <button onClick={() => copyMessage(m)} title="Copy" aria-label="Copy response">
-                            {copiedId === m.id ? <Check size={15} /> : <Copy size={15} />}
-                          </button>
+                          <ActionButton
+                            icon={Copy}
+                            doneIcon={Check}
+                            label="Copy"
+                            doneLabel="Copied"
+                            onAction={() => copyMessage(m)}
+                          />
                           <button
                             className={m.feedback === 'up' ? 'active up' : ''}
                             onClick={() => setFeedback(m.id, 'up')}
@@ -1174,7 +1173,7 @@ export default function Assistant() {
                 )}
               </div>
             )}
-          </div>
+          </MessageScroller>
 
           {/* ── Composer ── */}
           <div className="as-composer-wrap">
@@ -1195,6 +1194,7 @@ export default function Assistant() {
                 onPick={applyCommand}
               />
             )}
+            <BorderBeam active={composerFocused || sending} className="as-composer-beam">
             <div className="as-composer">
               {attachments.length > 0 && (
                 <div className="as-attach-row">
@@ -1271,6 +1271,8 @@ export default function Assistant() {
                     onScroll={(e) => {
                       if (inputHighlightRef.current) inputHighlightRef.current.scrollTop = e.target.scrollTop;
                     }}
+                    onFocus={() => setComposerFocused(true)}
+                    onBlur={() => setComposerFocused(false)}
                   />
                 </div>
                 {/*
@@ -1290,22 +1292,25 @@ export default function Assistant() {
                 <ModelPicker value={model} onChange={chooseModel} />
                 {canRecord && <VoiceLangPicker value={voiceLang} onChange={chooseVoiceLang} />}
                 {canRecord && (
-                  <button
-                    className={`as-comp-btn ${listening ? 'listening' : ''} ${transcribing ? 'transcribing' : ''}`}
-                    onClick={toggleMic}
-                    disabled={transcribing}
-                    title={
-                      transcribing
-                        ? 'Transcribing…'
-                        : listening
-                        ? 'Stop'
-                        : voiceLang === 'en' && dictationSupported()
-                        ? 'Dictate — words appear as you speak (English)'
-                        : 'Record voice (transcribed when you stop)'
-                    }
-                  >
-                    <Mic size={18} />
-                  </button>
+                  <span className="as-mic-wrap">
+                    <VoiceGlow listening={listening} thinking={sending} />
+                    <button
+                      className={`as-comp-btn ${listening ? 'listening' : ''} ${transcribing ? 'transcribing' : ''}`}
+                      onClick={toggleMic}
+                      disabled={transcribing}
+                      title={
+                        transcribing
+                          ? 'Transcribing…'
+                          : listening
+                          ? 'Stop'
+                          : voiceLang === 'en' && dictationSupported()
+                          ? 'Dictate — words appear as you speak (English)'
+                          : 'Record voice (transcribed when you stop)'
+                      }
+                    >
+                      <Mic size={18} />
+                    </button>
+                  </span>
                 )}
                 <button
                   className="as-send-btn"
@@ -1317,6 +1322,7 @@ export default function Assistant() {
                 </button>
               </div>
             </div>
+            </BorderBeam>
             <p className={`as-disclaimer ${voiceError ? 'as-voice-error' : ''}`}>
               {voiceError
                 ? `Voice input: ${voiceError}`
@@ -1363,26 +1369,11 @@ export default function Assistant() {
           </div>
         </div>
       )}
-      {exporting && (
-        <div className="as-modal-overlay">
-          <div className="as-modal as-export-toast">
-            <span className="btn-spinner" /> Exporting conversation to PDF…
-          </div>
-        </div>
-      )}
 
       {/* The source the officer opened. Rendered once, here, rather than
           inside the message loop: only one can be open, and a panel nested in
           a scrolling thread inherits its clipping. */}
       {openSource && <SourceViewer source={openSource} onClose={() => setCitation(null)} />}
-
-      {exportError && (
-        <div className="as-modal-overlay" onMouseDown={() => setExportError(null)}>
-          <div className="as-modal as-export-toast" onMouseDown={(e) => e.stopPropagation()}>
-            {exportError}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

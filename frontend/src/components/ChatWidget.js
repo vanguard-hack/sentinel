@@ -12,6 +12,8 @@ import SourceCitations, { SourceViewer } from './SourceCitations';
 import { normaliseSources } from '../utils/sources';
 import Thinking from './Thinking';
 import VoiceLangPicker from './VoiceLangPicker';
+import MessageScroller from './ui/MessageScroller';
+import BorderBeam from './ui/BorderBeam';
 
 // Floating assistant: a bubble in the bottom-right that expands into a compact
 // chat. Full parity with the assistant page — suggested questions, voice input
@@ -51,13 +53,13 @@ export default function ChatWidget() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [composerFocused, setComposerFocused] = useState(false);
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [voiceLang, setVoiceLang] = useState(loadVoiceLang);
   const chooseVoiceLang = (lang) => { setVoiceLang(lang); saveVoiceLang(lang); };
   // Which citation the officer opened, by message and footnote number.
   const [citation, setCitation] = useState(null);
-  const threadRef = useRef(null);
   const inputRef = useRef(null);
   const recorderRef = useRef(null);
 
@@ -75,11 +77,6 @@ export default function ChatWidget() {
       if (convId) localStorage.setItem(ACTIVE_KEY, convId);
     } catch { /* non-fatal */ }
   }, [convId]);
-
-  useEffect(() => {
-    const el = threadRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, sending, open]);
 
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
 
@@ -199,7 +196,7 @@ export default function ChatWidget() {
             </div>
           </div>
 
-          <div className="cw-thread" ref={threadRef}>
+          <MessageScroller className="cw-thread" dependency={`${convId}-${messages.length}-${sending}-${open}`}>
             {messages.length === 0 && !sending ? (
               <div className="cw-empty">
                 <Bot size={26} strokeWidth={1.4} />
@@ -241,8 +238,9 @@ export default function ChatWidget() {
                 <div className="cw-bubble"><Thinking /></div>
               </div>
             )}
-          </div>
+          </MessageScroller>
 
+          <BorderBeam active={composerFocused || sending} className="cw-composer-beam">
           <div className="cw-composer">
             <input
               ref={inputRef}
@@ -251,6 +249,8 @@ export default function ChatWidget() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+              onFocus={() => setComposerFocused(true)}
+              onBlur={() => setComposerFocused(false)}
               disabled={transcribing}
             />
             {canRecord && <VoiceLangPicker value={voiceLang} onChange={chooseVoiceLang} />}
@@ -268,6 +268,7 @@ export default function ChatWidget() {
               <ArrowUp size={16} />
             </button>
           </div>
+          </BorderBeam>
         </div>
       )}
 

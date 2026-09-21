@@ -1,0 +1,31 @@
+.ui-voice-glow { display: none; }
+
+@media (max-width: 640px) {
+  .ui-voice-glow {
+    display: block;
+    position: absolute;
+    inset: -6px;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+  .ui-voice-glow[data-state='listening'] {
+    box-shadow: 0 0 0 0 var(--primary);
+    animation: ui-voice-pulse 1.2s ease-out infinite;
+  }
+  .ui-voice-glow[data-state='thinking'] {
+    background: linear-gradient(90deg, transparent, var(--primary-hover), transparent);
+    background-size: 200% 100%;
+    animation: ui-voice-sweep 1.6s ease-in-out infinite;
+  }
+  @keyframes ui-voice-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(94, 106, 210, 0.5); }
+    100% { box-shadow: 0 0 0 10px rgba(94, 106, 210, 0); }
+  }
+  @keyframes ui-voice-sweep {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ui-voice-glow { animation: none !important; }
+  }
+}

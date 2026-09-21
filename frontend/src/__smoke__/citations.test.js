@@ -71,6 +71,8 @@ beforeEach(() => {
 test('every citation type renders a numbered chip', () => {
   render(<SourceCitations sources={sources} onOpen={() => {}} />);
   expect(screen.getByText('Sources')).toBeTruthy();
+  // 5 sources push past the 4-chip default collapse; expand to see them all.
+  fireEvent.click(screen.getByText('+1 more'));
   ['1', '2', '3', '4', '5'].forEach((n) => expect(screen.getByText(n)).toBeTruthy());
   expect(screen.getByText('SOP_Arrest_and_Impound_v3.pdf')).toBeTruthy();
   expect(screen.getByText('CaseMaster')).toBeTruthy();
@@ -274,6 +276,8 @@ test('a recording plays, with its transcript beside it', async () => {
 
 test('a digitised chip carries a direct jump to the record page', () => {
   const { container } = render(<SourceCitations sources={sources} onOpen={() => {}} />);
+  // The 5th source (the digitised record) is behind the 4-chip default collapse.
+  fireEvent.click(screen.getByText('+1 more'));
   const jump = container.querySelector('.as-cite-jump');
   expect(jump.getAttribute('href')).toBe('/records/rec-1');
 });

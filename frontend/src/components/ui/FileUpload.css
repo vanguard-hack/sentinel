@@ -1,0 +1,16 @@
+.ui-upload { position: relative; }
+.ui-upload-trigger { all: unset; display: contents; cursor: pointer; }
+.ui-upload-ring {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  border: 2px solid transparent;
+  background:
+    conic-gradient(var(--primary) var(--ui-upload-pct, 0%), transparent 0) border-box;
+  -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.ui-upload-ring:not([style]) { animation: ui-upload-sweep 1.4s linear infinite; }
+@keyframes ui-upload-sweep { to { transform: rotate(360deg); } }

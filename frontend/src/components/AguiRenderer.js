@@ -63,20 +63,66 @@ const cleanSeries = (data) =>
 
 function AguiTable({ spec, pageSize = 8 }) {
   const [page, setPage] = useState(0);
+  const [q, setQ] = useState('');
+  const [sort, setSort] = useState(null); // { col: number, dir: 1 | -1 }
+
   const columns = Array.isArray(spec.columns) ? spec.columns : [];
-  const rows = (Array.isArray(spec.rows) ? spec.rows : []).filter(Array.isArray);
-  if (!columns.length || !rows.length) return null;
+  const allRows = (Array.isArray(spec.rows) ? spec.rows : []).filter(Array.isArray);
+  if (!columns.length || !allRows.length) return null;
+
+  const filtered = q.trim()
+    ? allRows.filter((r) => r.some((cell) => String(cell ?? '').toLowerCase().includes(q.trim().toLowerCase())))
+    : allRows;
+
+  const rows = sort
+    ? [...filtered].sort((a, b) => {
+        const av = a[sort.col], bv = b[sort.col];
+        const an = Number(av), bn = Number(bv);
+        const cmp = Number.isFinite(an) && Number.isFinite(bn)
+          ? an - bn
+          : String(av ?? '').localeCompare(String(bv ?? ''));
+        return cmp * sort.dir;
+      })
+    : filtered;
 
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const cur = Math.min(page, pages - 1);
   const slice = rows.slice(cur * pageSize, cur * pageSize + pageSize);
 
+  const cycleSort = (col) => {
+    setPage(0);
+    setSort((s) => {
+      if (!s || s.col !== col) return { col, dir: 1 };
+      if (s.dir === 1) return { col, dir: -1 };
+      return null; // third click clears the sort
+    });
+  };
+
   return (
     <div>
+      {allRows.length > pageSize && (
+        <input
+          type="search"
+          className="agui-table-search"
+          placeholder="Search table…"
+          aria-label="Search table"
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setPage(0); }}
+        />
+      )}
       <div className="cf-table-wrap">
         <table className="cf-table">
           <thead>
-            <tr>{columns.map((c, i) => <th key={i}>{renderInline(normaliseText(c), `th${i}`)}</th>)}</tr>
+            <tr>
+              {columns.map((c, i) => (
+                <th key={i} aria-sort={sort?.col === i ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
+                  <button type="button" className="agui-table-sort" onClick={() => cycleSort(i)}>
+                    {renderInline(normaliseText(c), `th${i}`)}
+                    {sort?.col === i && (sort.dir === 1 ? ' ↑' : ' ↓')}
+                  </button>
+                </th>
+              ))}
+            </tr>
           </thead>
           <tbody>
             {slice.map((r, i) => (
@@ -93,21 +139,11 @@ function AguiTable({ spec, pageSize = 8 }) {
             {cur * pageSize + 1}–{Math.min(rows.length, (cur + 1) * pageSize)} of {rows.length}
           </span>
           <div className="cf-pager-controls">
-            <button
-              className="cf-page-btn"
-              disabled={cur === 0}
-              onClick={() => setPage(cur - 1)}
-              aria-label="Previous page"
-            >
+            <button className="cf-page-btn" disabled={cur === 0} onClick={() => setPage(cur - 1)} aria-label="Previous page">
               <ChevronLeft size={15} />
             </button>
             <span className="cf-page-num">{cur + 1} / {pages}</span>
-            <button
-              className="cf-page-btn"
-              disabled={cur >= pages - 1}
-              onClick={() => setPage(cur + 1)}
-              aria-label="Next page"
-            >
+            <button className="cf-page-btn" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)} aria-label="Next page">
               <ChevronRight size={15} />
             </button>
           </div>
@@ -133,25 +169,44 @@ function AguiCards({ spec }) {
     <div className="agui-cards">
       {items.map((it, i) => {
         const nav = typeof it.to === 'string' && it.to.startsWith('/');
-        return (
-          <div
-            className={`agui-card ${nav ? 'agui-card-nav' : ''}`}
-            key={i}
-            role={nav ? 'button' : undefined}
-            tabIndex={nav ? 0 : undefined}
-            onClick={nav ? () => go(it.to) : undefined}
-            onKeyDown={nav ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(it.to); } } : undefined}
-          >
-            <div className="agui-card-head">
-              {it.title && <span className="agui-card-title">{renderInline(normaliseText(it.title), 'ct')}</span>}
-              {it.badge && <span className="agui-card-badge">{normaliseText(it.badge)}</span>}
-            </div>
-            {it.subtitle && <div className="agui-card-sub">{renderInline(normaliseText(it.subtitle), 'cs')}</div>}
-            {it.body && <div className="agui-card-body">{renderCell(it.body)}</div>}
-            {nav && <span className="agui-card-open">Open <ArrowRight size={13} /></span>}
-          </div>
-        );
+        return <AguiCard key={i} it={it} nav={nav} go={go} />;
       })}
+    </div>
+  );
+}
+
+// A single context card. Its expanded/clamped state is local so multiple
+// cards in one block each expand independently (mirrors the useState +
+// reveal-button pattern SourceCitations already uses for "+N more").
+function AguiCard({ it, nav, go }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div
+      className={`agui-card agui-card-context ${nav ? 'agui-card-nav' : ''}`}
+      role={nav ? 'button' : undefined}
+      tabIndex={nav ? 0 : undefined}
+      onClick={nav ? () => go(it.to) : undefined}
+      onKeyDown={nav ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(it.to); } } : undefined}
+    >
+      <div className="agui-card-head">
+        {it.title && <span className="agui-card-title">{renderInline(normaliseText(it.title), 'ct')}</span>}
+        {it.badge && <span className="agui-card-badge">{normaliseText(it.badge)}</span>}
+      </div>
+      {it.subtitle && <div className="agui-card-sub">{renderInline(normaliseText(it.subtitle), 'cs')}</div>}
+      {it.body && (
+        <div className={`agui-card-body ${expanded ? 'agui-card-body-expanded' : ''}`}>{renderCell(it.body)}</div>
+      )}
+      {it.body && !expanded && (
+        <button
+          type="button"
+          className="agui-card-more"
+          onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          Show more
+        </button>
+      )}
+      {nav && <span className="agui-card-open">Open <ArrowRight size={13} /></span>}
     </div>
   );
 }
@@ -262,15 +317,36 @@ function AguiChecklist({ items }) {
 }
 
 function AguiStatTiles({ items }) {
+  const [page, setPage] = useState(0);
+  const perPage = 4;
+  const pages = Math.max(1, Math.ceil(items.length / perPage));
+  const cur = Math.min(page, pages - 1);
+  const slice = items.slice(cur * perPage, cur * perPage + perPage);
+
   return (
-    <div className="agui-stat-tiles">
-      {items.map((it, i) => (
-        <div className={`agui-stat-tile tone-${it.tone}`} key={i}>
-          <span className="agui-stat-tile-value">{it.value}</span>
-          <span className="agui-stat-tile-label">{normaliseText(it.label)}</span>
-          {it.hint && <span className="agui-stat-tile-hint">{normaliseText(it.hint)}</span>}
+    <div>
+      <div className="agui-stat-tiles">
+        {slice.map((it, i) => (
+          <div className={`agui-stat-tile tone-${it.tone}`} key={cur * perPage + i}>
+            <span className="agui-stat-tile-value">{it.value}</span>
+            <span className="agui-stat-tile-label">{normaliseText(it.label)}</span>
+            {it.hint && <span className="agui-stat-tile-hint">{normaliseText(it.hint)}</span>}
+          </div>
+        ))}
+      </div>
+      {pages > 1 && (
+        <div className="cf-pager">
+          <span className="cf-pager-info">{cur + 1} / {pages}</span>
+          <div className="cf-pager-controls">
+            <button className="cf-page-btn" disabled={cur === 0} onClick={() => setPage(cur - 1)} aria-label="Previous">
+              <ChevronLeft size={15} />
+            </button>
+            <button className="cf-page-btn" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)} aria-label="Next">
+              <ChevronRight size={15} />
+            </button>
+          </div>
         </div>
-      ))}
+      )}
     </div>
   );
 }

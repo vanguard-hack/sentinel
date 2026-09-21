@@ -49,14 +49,16 @@ const PAGES_EAGER = 3;
 // ── The chip row ────────────────────────────────────────────────────────────
 
 export default function SourceCitations({ sources, onOpen }) {
+  const [expanded, setExpanded] = useState(false);
   if (!sources || !sources.length) return null;
+  const visible = expanded ? sources : sources.slice(0, 4);
   return (
     <div className="as-cite-row">
       <span className="as-cite-label">
         {sources.length === 1 ? 'Source' : 'Sources'}
       </span>
       <div className="as-cite-chips">
-        {sources.map((s) => {
+        {visible.map((s) => {
           const Icon = iconFor(s);
           const subtitle = subtitleOf(s);
           // A web citation IS its link. A knowledge-base document that happens
@@ -148,6 +150,11 @@ export default function SourceCitations({ sources, onOpen }) {
             </span>
           );
         })}
+        {!expanded && sources.length > 4 && (
+          <button type="button" className="as-cite-more" onClick={() => setExpanded(true)}>
+            +{sources.length - 4} more
+          </button>
+        )}
       </div>
     </div>
   );

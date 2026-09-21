@@ -57,12 +57,18 @@ export default function StatTile({
   sub,
   trend,
   share,
+  variant = 'plain',
+  footerText,
 }) {
   const ref = useCountUp(value, format);
   return (
-    <div className="st-tile">
+    <div className={`st-tile ${variant === 'footer' ? 'st-tile-footer' : ''}`}>
       <div className="st-head">
-        {Icon && <span className="st-icon"><Icon size={17} strokeWidth={1.8} /></span>}
+        {Icon && (
+          <span className={`st-icon ${variant === 'footer' ? 'st-icon-tile' : ''}`}>
+            <Icon size={17} strokeWidth={1.8} />
+          </span>
+        )}
         <span className="st-label">{label}</span>
         {trend && (
           <span className={`st-trend st-trend-${trend.dir}`}>
@@ -72,7 +78,7 @@ export default function StatTile({
         )}
       </div>
 
-      <span className="st-value" ref={ref}>{format(0)}</span>
+      <span className={`st-value ${variant === 'footer' ? 'st-value-display' : ''}`} ref={ref}>{format(0)}</span>
 
       {/* Only drawn when the figure is a share of something real. */}
       {share != null && (
@@ -82,6 +88,7 @@ export default function StatTile({
       )}
 
       {sub && <span className="st-sub">{sub}</span>}
+      {variant === 'footer' && footerText && <div className="st-footer">{footerText}</div>}
     </div>
   );
 }

@@ -435,6 +435,20 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   border-radius: var(--r-card);
 }
 
+.agui-table-search {
+  display: block;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-ctl);
+  background: var(--bg-1);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  width: 220px;
+}
+.agui-table-sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; }
+.agui-table-sort:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 2px; }
+
 /* ── Scrollbar ─────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: var(--bg-1); }
@@ -2166,6 +2180,25 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 }
 .st-sub { font-size: 11px; color: var(--text-4); }
 
+.st-tile-footer .st-icon-tile {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-ctl);
+  background: linear-gradient(135deg, var(--primary-tint), transparent);
+  color: var(--primary);
+}
+.st-tile-footer .st-value-display { font-size: var(--fs-display, 28px); }
+.st-tile-footer .st-footer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+  font-size: var(--fs-caption);
+  color: var(--ink-subtle);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .st-share-fill { transition: none; }
 }
@@ -2830,6 +2863,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .as-comp-btn:hover { background: var(--hover-overlay); color: var(--text-1); }
 .as-comp-btn.listening { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); animation: as-pulse 1.4s infinite; }
 @keyframes as-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.as-mic-wrap { position: relative; display: inline-flex; }
 .as-input-wrap { position: relative; flex: 1; min-width: 0; }
 /* Sits directly behind the textarea, same box exactly — any mismatch in
    font/padding/line-height between the two would misalign the colour from
@@ -3019,6 +3053,39 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   font-weight: 500;
   color: var(--blue-500);
 }
+
+/* Context cards — retrieved knowledge chunks styled with left accent and clamped body */
+.agui-card-context { border-left: 2px solid var(--primary); }
+.agui-card-context .agui-card-badge {
+  font-size: var(--fs-caption);
+  color: var(--ink-subtle);
+  background: var(--bg-3);
+  padding: 1px 6px;
+  border-radius: var(--r-chip);
+}
+.agui-card-context .agui-card-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.agui-card-context .agui-card-body.agui-card-body-expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+.agui-card-more {
+  display: inline-block;
+  margin-top: 6px;
+  border: 1px dashed var(--hairline-strong);
+  background: none;
+  color: var(--ink-subtle);
+  font-size: var(--fs-caption);
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+.agui-card-more:hover { color: var(--ink); border-color: var(--primary); }
 
 /* checklist, stat-tiles, timeline share ActionQueue's own severity tones
    (overdue/critical/high) rather than inventing a second color language for
@@ -4100,6 +4167,20 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .as-thinking { display: inline-flex; align-items: center; gap: 10px; }
 .as-thinking-phrase { font-size: 0.82rem; color: var(--text-3); animation: think-fade 1.8s ease both; }
 @keyframes think-fade { 0% { opacity: 0; transform: translateY(2px); } 25%, 80% { opacity: 1; transform: none; } 100% { opacity: 0.55; } }
+.as-thinking-grid {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 4px);
+  grid-template-rows: repeat(3, 4px);
+  gap: 2px;
+}
+.as-thinking-grid span {
+  background: var(--primary);
+  border-radius: 1px;
+  animation: as-thinking-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes as-thinking-shimmer { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+.as-thinking-elapsed { color: var(--ink-tertiary); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .as-thinking-grid span { animation: none; opacity: 0.6; } }
 
 /* ── Incidents ──────────────────────────────────────────────────────────── */
 .inc-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -6240,6 +6321,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 @media (max-width: 720px) {
   .inv-tabbar { display: none; }
   .inv-tabbar-mobile { display: block; }
+  .inv-tab-wrap [role='tablist'] { display: none; }
 }
 
 .inv-iif-badge {
@@ -7894,12 +7976,12 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   border: 1.5px dashed var(--border-bright); border-radius: 12px;
   transition: border-color .12s, background .12s, color .12s;
 }
-.dg-drop:hover, .dg-drop.over {
+.dg-drop:hover, .dg-drop[data-drop-target] {
   color: var(--blue-600); border-color: var(--blue-500);
   background: color-mix(in srgb, var(--blue-400) 7%, transparent);
 }
 .dg-drop strong { display: block; font-size: 13px; font-weight: 500; color: var(--text-0); }
-.dg-drop.over strong, .dg-drop:hover strong { color: var(--blue-600); }
+.dg-drop:hover strong, .dg-drop[data-drop-target] strong { color: var(--blue-600); }
 .dg-drop span { display: block; font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
 
 .dg-queue {
@@ -8424,6 +8506,16 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   max-width: 130px;
 }
 .as-cite-out { flex: 0 0 auto; color: var(--text-4); }
+.as-cite-more {
+  border: 1px dashed var(--hairline-strong);
+  background: none;
+  color: var(--ink-subtle);
+  font-size: var(--fs-caption);
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+.as-cite-more:hover { color: var(--ink); border-color: var(--primary); }
 
 /* Inline footnote marker inside the prose. Sized to sit on the text baseline
    without opening up the line height around it. */
