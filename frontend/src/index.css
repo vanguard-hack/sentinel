@@ -3053,6 +3053,22 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   color: var(--blue-500);
 }
 
+/* Context cards — retrieved knowledge chunks styled with left accent and clamped body */
+.agui-card-context { border-left: 2px solid var(--primary); }
+.agui-card-context .agui-card-badge {
+  font-size: var(--fs-caption);
+  color: var(--ink-subtle);
+  background: var(--bg-3);
+  padding: 1px 6px;
+  border-radius: var(--r-chip);
+}
+.agui-card-context .agui-card-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* checklist, stat-tiles, timeline share ActionQueue's own severity tones
    (overdue/critical/high) rather than inventing a second color language for
    the same "how urgent is this" question. */

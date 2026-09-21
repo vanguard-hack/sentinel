@@ -170,7 +170,7 @@ function AguiCards({ spec }) {
         const nav = typeof it.to === 'string' && it.to.startsWith('/');
         return (
           <div
-            className={`agui-card ${nav ? 'agui-card-nav' : ''}`}
+            className={`agui-card agui-card-context ${nav ? 'agui-card-nav' : ''}`}
             key={i}
             role={nav ? 'button' : undefined}
             tabIndex={nav ? 0 : undefined}
