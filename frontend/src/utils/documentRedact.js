@@ -157,6 +157,23 @@ function pdfTextLayerTokens(pdfjs, content, viewport) {
   return tokens;
 }
 
+// tesseract.js v7 nests word-level data as blocks -> paragraphs -> lines ->
+// words rather than a flat array (README: "Use `blocks` output to generate
+// granular data [word/symbol level]") — recognize() must be asked for it
+// explicitly (`{ blocks: true }`) or `data.blocks` is null and there is
+// nothing to flatten.
+function flattenWords(blocks) {
+  const words = [];
+  for (const block of blocks || []) {
+    for (const para of block.paragraphs || []) {
+      for (const line of para.lines || []) {
+        words.push(...(line.words || []));
+      }
+    }
+  }
+  return words;
+}
+
 function ocrWordsToTokens(words) {
   return (words || [])
     .filter((w) => (w.text || '').trim())
@@ -188,8 +205,8 @@ export async function extractDocument(file, onProgress) {
     canvas.height = bitmap.height;
     canvas.getContext('2d').drawImage(bitmap, 0, 0);
     const worker = await getTesseractWorker(onProgress);
-    const { data } = await worker.recognize(canvas);
-    pages.push({ canvas, width: canvas.width, height: canvas.height, tokens: ocrWordsToTokens(data.words), ocr: true });
+    const { data } = await worker.recognize(canvas, {}, { blocks: true });
+    pages.push({ canvas, width: canvas.width, height: canvas.height, tokens: ocrWordsToTokens(flattenWords(data.blocks)), ocr: true });
     return { pages };
   }
 
@@ -216,8 +233,8 @@ export async function extractDocument(file, onProgress) {
       // eslint-disable-next-line no-await-in-loop
       const worker = await getTesseractWorker(onProgress);
       // eslint-disable-next-line no-await-in-loop
-      const { data: ocrData } = await worker.recognize(canvas);
-      pages.push({ canvas, width: canvas.width, height: canvas.height, tokens: ocrWordsToTokens(ocrData.words), ocr: true });
+      const { data: ocrData } = await worker.recognize(canvas, {}, { blocks: true });
+      pages.push({ canvas, width: canvas.width, height: canvas.height, tokens: ocrWordsToTokens(flattenWords(ocrData.blocks)), ocr: true });
     }
   }
   return { pages, notePages: doc.numPages > pageCount ? `first ${pageCount} of ${doc.numPages} pages` : '' };
@@ -251,14 +268,26 @@ export function burnRedactions(pages, coveredTokens) {
 // page becomes a flattened JPEG image, which also means there is no
 // underlying text layer left in the output at all, not just in the
 // redacted regions.
+// canvas.toBlob() rather than toDataURL()+fetch(): this app's CSP has a
+// strict connect-src allowlist with no `data:` entry, so fetching a data:
+// URL to get its bytes back (the usual shortcut) is silently blocked —
+// "TypeError: Failed to fetch" with no CSP violation report to explain it.
+// toBlob()/Blob.arrayBuffer() never touches the network at all.
+function canvasToJpegBytes(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(async (blob) => {
+      if (!blob) { reject(new Error('canvas.toBlob failed')); return; }
+      resolve(new Uint8Array(await blob.arrayBuffer()));
+    }, 'image/jpeg', 0.92);
+  });
+}
+
 export async function buildRedactedPdf(pages) {
   const { PDFDocument } = await import('pdf-lib');
   const pdf = await PDFDocument.create();
   for (const page of pages) {
     // eslint-disable-next-line no-await-in-loop
-    const jpegDataUrl = page.canvas.toDataURL('image/jpeg', 0.92);
-    // eslint-disable-next-line no-await-in-loop
-    const jpegBytes = await (await fetch(jpegDataUrl)).arrayBuffer();
+    const jpegBytes = await canvasToJpegBytes(page.canvas);
     // eslint-disable-next-line no-await-in-loop
     const image = await pdf.embedJpg(jpegBytes);
     const pdfPage = pdf.addPage([page.width, page.height]);
