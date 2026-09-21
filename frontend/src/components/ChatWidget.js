@@ -12,6 +12,7 @@ import SourceCitations, { SourceViewer } from './SourceCitations';
 import { normaliseSources } from '../utils/sources';
 import Thinking from './Thinking';
 import VoiceLangPicker from './VoiceLangPicker';
+import MessageScroller from './ui/MessageScroller';
 
 // Floating assistant: a bubble in the bottom-right that expands into a compact
 // chat. Full parity with the assistant page — suggested questions, voice input
@@ -57,7 +58,6 @@ export default function ChatWidget() {
   const chooseVoiceLang = (lang) => { setVoiceLang(lang); saveVoiceLang(lang); };
   // Which citation the officer opened, by message and footnote number.
   const [citation, setCitation] = useState(null);
-  const threadRef = useRef(null);
   const inputRef = useRef(null);
   const recorderRef = useRef(null);
 
@@ -75,11 +75,6 @@ export default function ChatWidget() {
       if (convId) localStorage.setItem(ACTIVE_KEY, convId);
     } catch { /* non-fatal */ }
   }, [convId]);
-
-  useEffect(() => {
-    const el = threadRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, sending, open]);
 
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
 
@@ -199,7 +194,7 @@ export default function ChatWidget() {
             </div>
           </div>
 
-          <div className="cw-thread" ref={threadRef}>
+          <MessageScroller className="cw-thread" dependency={`${messages.length}-${sending}-${open}`}>
             {messages.length === 0 && !sending ? (
               <div className="cw-empty">
                 <Bot size={26} strokeWidth={1.4} />
@@ -241,7 +236,7 @@ export default function ChatWidget() {
                 <div className="cw-bubble"><Thinking /></div>
               </div>
             )}
-          </div>
+          </MessageScroller>
 
           <div className="cw-composer">
             <input

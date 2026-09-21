@@ -36,6 +36,7 @@ import {
 import { useAccess } from '../context/AccessContext';
 import { slashQuery, filterCommands, parseCommand, closestCommand, leadingSlashToken } from '../utils/slashCommands';
 import { useToast } from '../components/ui/Toast';
+import MessageScroller from '../components/ui/MessageScroller';
 
 import { useTranslation } from 'react-i18next';
 
@@ -236,7 +237,6 @@ export default function Assistant() {
   const [slashOpen, setSlashOpen] = useState(true);
   const [cmdHint, setCmdHint] = useState(null); // { kind, text, apply }
   const fileRef = useRef(null);
-  const threadRef = useRef(null);
   const recognitionRef = useRef(null);
 
   const active = sessions.find((s) => s.id === activeId) || null;
@@ -363,12 +363,6 @@ export default function Assistant() {
     document.addEventListener('visibilitychange', onHide);
     return () => document.removeEventListener('visibilitychange', onHide);
   }, [email, activeId]);
-
-  // Autoscroll the thread on new messages / typing.
-  useEffect(() => {
-    const el = threadRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, sending]);
 
   // Auto-grow the composer.
   const growTextarea = () => {
@@ -1075,7 +1069,7 @@ export default function Assistant() {
 
         {/* ── Conversation ── */}
         <main className="as-main">
-          <div className="as-thread" ref={threadRef}>
+          <MessageScroller className="as-thread" dependency={`${messages.length}-${sending}`}>
             {messages.length === 0 && !sending ? (
               <div className="as-greeting">
                 <Shield size={40} strokeWidth={1.3} />
@@ -1175,7 +1169,7 @@ export default function Assistant() {
                 )}
               </div>
             )}
-          </div>
+          </MessageScroller>
 
           {/* ── Composer ── */}
           <div className="as-composer-wrap">
