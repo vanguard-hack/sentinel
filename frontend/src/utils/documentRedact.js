@@ -18,6 +18,20 @@
 // large file to the server and back would double the transfer for no gain.
 
 export const MAX_PAGES = 15;
+// Per-page ceiling on the pdf.js/Tesseract calls below. Extraction can hang
+// rather than reject if the underlying engine gets stuck (observed in one
+// environment on a worker-script load that a plain fetch() of the identical
+// URL completed instantly — narrow enough that the exact trigger wasn't
+// worth chasing further, but broad enough that hanging forever with no
+// feedback is not acceptable) — a bounded, clearly-reported failure for one
+// page beats a silently frozen upload button.
+const PAGE_TIMEOUT_MS = 25000;
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms)),
+  ]);
+}
 // Redaction boxes are burned onto the page raster at this padding (px) on
 // every side beyond the token's measured box — better to redact a shade too
 // much than leave a sliver of the original text visible at the edge.
@@ -212,18 +226,25 @@ export async function extractDocument(file, onProgress) {
 
   const pdfjs = await loadPdfJs();
   const data = new Uint8Array(await file.arrayBuffer());
-  const doc = await pdfjs.getDocument({ data, disableWorker: true, isEvalSupported: false }).promise;
+  // Unlike utils/attachments.js's text-only extraction, this also calls
+  // page.render() to a canvas — a heavier operation than getTextContent(),
+  // and disableWorker (justified there as "fast enough on the main thread
+  // for text extraction") hung indefinitely here instead of erroring.
+  // A real worker is vendored same-origin (public/pdf.worker.min.js,
+  // reachable, CSP already allows worker-src 'self'), so there's no reason
+  // to force everything onto the main thread in the first place.
+  const doc = await pdfjs.getDocument({ data, isEvalSupported: false }).promise;
   const pageCount = Math.min(doc.numPages, MAX_PAGES);
 
   for (let i = 1; i <= pageCount; i++) {
     if (onProgress) onProgress(`Reading page ${i} of ${pageCount}…`);
     // eslint-disable-next-line no-await-in-loop
-    const page = await doc.getPage(i);
+    const page = await withTimeout(doc.getPage(i), PAGE_TIMEOUT_MS, `Loading page ${i}`);
     const viewport = page.getViewport({ scale });
     // eslint-disable-next-line no-await-in-loop
-    const canvas = await renderPageToCanvas(page, scale);
+    const canvas = await withTimeout(renderPageToCanvas(page, scale), PAGE_TIMEOUT_MS, `Rendering page ${i}`);
     // eslint-disable-next-line no-await-in-loop
-    const content = await page.getTextContent();
+    const content = await withTimeout(page.getTextContent(), PAGE_TIMEOUT_MS, `Reading text on page ${i}`);
     const textLayerTokens = pdfTextLayerTokens(pdfjs, content, viewport);
 
     if (textLayerTokens.length > 0) {
@@ -233,7 +254,9 @@ export async function extractDocument(file, onProgress) {
       // eslint-disable-next-line no-await-in-loop
       const worker = await getTesseractWorker(onProgress);
       // eslint-disable-next-line no-await-in-loop
-      const { data: ocrData } = await worker.recognize(canvas, {}, { blocks: true });
+      const { data: ocrData } = await withTimeout(
+        worker.recognize(canvas, {}, { blocks: true }), PAGE_TIMEOUT_MS, `Reading scanned page ${i}`
+      );
       pages.push({ canvas, width: canvas.width, height: canvas.height, tokens: ocrWordsToTokens(flattenWords(ocrData.blocks)), ocr: true });
     }
   }
