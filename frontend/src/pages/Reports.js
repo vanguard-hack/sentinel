@@ -294,6 +294,8 @@ export default function Reports() {
                 label="FIRs registered"
                 value={data.kpis.firs}
                 sub={data.kpis.deltaPct == null ? data.rangeLabel : undefined}
+                variant={data.kpis.deltaPct == null ? 'plain' : 'footer'}
+                footerText={data.kpis.deltaPct == null ? undefined : `${Math.abs(data.kpis.deltaPct).toFixed(0)}% vs previous period`}
                 trend={data.kpis.deltaPct == null ? null : {
                   dir: data.kpis.deltaPct >= 0 ? 'up' : 'down',
                   text: `${Math.abs(data.kpis.deltaPct).toFixed(0)}%`,

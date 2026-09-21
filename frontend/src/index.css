@@ -2166,6 +2166,25 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 }
 .st-sub { font-size: 11px; color: var(--text-4); }
 
+.st-tile-footer .st-icon-tile {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-ctl);
+  background: linear-gradient(135deg, var(--primary-tint), transparent);
+  color: var(--primary);
+}
+.st-tile-footer .st-value-display { font-size: var(--fs-display, 28px); }
+.st-tile-footer .st-footer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+  font-size: var(--fs-caption);
+  color: var(--ink-subtle);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .st-share-fill { transition: none; }
 }
