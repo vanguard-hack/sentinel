@@ -1,0 +1,26 @@
+.ui-toast-stack {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ui-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-3);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-card);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+}
+.ui-toast[data-tone='success'] svg { color: var(--green, #27a644); }
+.ui-toast[data-tone='error'] svg { color: var(--red, #e5484d); }
+.ui-toast button { background: none; border: none; color: var(--ink-tertiary); cursor: pointer; margin-left: 4px; }
+.ui-toast-spin { animation: ui-toast-spin 1s linear infinite; }
+@keyframes ui-toast-spin { to { transform: rotate(360deg); } }

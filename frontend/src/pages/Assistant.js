@@ -35,6 +35,7 @@ import {
 } from '../utils/dictation';
 import { useAccess } from '../context/AccessContext';
 import { slashQuery, filterCommands, parseCommand, closestCommand, leadingSlashToken } from '../utils/slashCommands';
+import { useToast } from '../components/ui/Toast';
 
 import { useTranslation } from 'react-i18next';
 
@@ -175,6 +176,7 @@ export default function Assistant() {
   const location = useLocation();
   const { user } = useAuth();
   const email = user?.email_id || null;
+  const { show: showToast } = useToast();
 
   // Opening from the floating widget's "expand" passes the conversation to focus.
   const incomingId = location.state?.conversationId || null;
@@ -198,8 +200,6 @@ export default function Assistant() {
   // within it. One at a time, held here rather than per message, so opening a
   // second source closes the first instead of stacking panels.
   const [citation, setCitation] = useState(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState(null);
   const [menuId, setMenuId] = useState(null); // open kebab menu
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState('');
@@ -454,16 +454,15 @@ export default function Assistant() {
     setMenuId(null);
     const session = sessions.find((s) => s.id === id);
     if (!session) return;
-    setExporting(true);
+    showToast('Exporting conversation to PDF…', { tone: 'loading', duration: 0 });
     try {
       await exportConversationPdf(session);
+      showToast('Exported', { tone: 'success' });
     } catch (e) {
       // This used to swallow every failure. An export that vanishes without a
       // word is the one outcome this must never produce — the officer waits
       // for a download that is never coming and assumes it worked.
-      setExportError(e?.message || 'The transcript could not be exported.');
-    } finally {
-      setExporting(false);
+      showToast(e?.message || 'The transcript could not be exported.', { tone: 'error' });
     }
   };
 
@@ -1363,26 +1362,11 @@ export default function Assistant() {
           </div>
         </div>
       )}
-      {exporting && (
-        <div className="as-modal-overlay">
-          <div className="as-modal as-export-toast">
-            <span className="btn-spinner" /> Exporting conversation to PDF…
-          </div>
-        </div>
-      )}
 
       {/* The source the officer opened. Rendered once, here, rather than
           inside the message loop: only one can be open, and a panel nested in
           a scrolling thread inherits its clipping. */}
       {openSource && <SourceViewer source={openSource} onClose={() => setCitation(null)} />}
-
-      {exportError && (
-        <div className="as-modal-overlay" onMouseDown={() => setExportError(null)}>
-          <div className="as-modal as-export-toast" onMouseDown={(e) => e.stopPropagation()}>
-            {exportError}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
