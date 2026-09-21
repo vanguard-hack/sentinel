@@ -37,6 +37,7 @@ import { useAccess } from '../context/AccessContext';
 import { slashQuery, filterCommands, parseCommand, closestCommand, leadingSlashToken } from '../utils/slashCommands';
 import { useToast } from '../components/ui/Toast';
 import MessageScroller from '../components/ui/MessageScroller';
+import BorderBeam from '../components/ui/BorderBeam';
 
 import { useTranslation } from 'react-i18next';
 
@@ -187,6 +188,7 @@ export default function Assistant() {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState([]); // { id, name, size, type, url? }
   const [sending, setSending] = useState(false);
+  const [composerFocused, setComposerFocused] = useState(false);
   // Non-null only while a /sherlock lookup is polling — a run genuinely
   // takes 60-110+ seconds, so this replaces Thinking's generic cycling
   // phrases with an honest "still running" label for that one command.
@@ -1190,6 +1192,7 @@ export default function Assistant() {
                 onPick={applyCommand}
               />
             )}
+            <BorderBeam active={composerFocused || sending} className="as-composer-beam">
             <div className="as-composer">
               {attachments.length > 0 && (
                 <div className="as-attach-row">
@@ -1266,6 +1269,8 @@ export default function Assistant() {
                     onScroll={(e) => {
                       if (inputHighlightRef.current) inputHighlightRef.current.scrollTop = e.target.scrollTop;
                     }}
+                    onFocus={() => setComposerFocused(true)}
+                    onBlur={() => setComposerFocused(false)}
                   />
                 </div>
                 {/*
@@ -1312,6 +1317,7 @@ export default function Assistant() {
                 </button>
               </div>
             </div>
+            </BorderBeam>
             <p className={`as-disclaimer ${voiceError ? 'as-voice-error' : ''}`}>
               {voiceError
                 ? `Voice input: ${voiceError}`

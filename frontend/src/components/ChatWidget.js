@@ -13,6 +13,7 @@ import { normaliseSources } from '../utils/sources';
 import Thinking from './Thinking';
 import VoiceLangPicker from './VoiceLangPicker';
 import MessageScroller from './ui/MessageScroller';
+import BorderBeam from './ui/BorderBeam';
 
 // Floating assistant: a bubble in the bottom-right that expands into a compact
 // chat. Full parity with the assistant page — suggested questions, voice input
@@ -52,6 +53,7 @@ export default function ChatWidget() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [composerFocused, setComposerFocused] = useState(false);
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [voiceLang, setVoiceLang] = useState(loadVoiceLang);
@@ -238,6 +240,7 @@ export default function ChatWidget() {
             )}
           </MessageScroller>
 
+          <BorderBeam active={composerFocused || sending} className="cw-composer-beam">
           <div className="cw-composer">
             <input
               ref={inputRef}
@@ -246,6 +249,8 @@ export default function ChatWidget() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+              onFocus={() => setComposerFocused(true)}
+              onBlur={() => setComposerFocused(false)}
               disabled={transcribing}
             />
             {canRecord && <VoiceLangPicker value={voiceLang} onChange={chooseVoiceLang} />}
@@ -263,6 +268,7 @@ export default function ChatWidget() {
               <ArrowUp size={16} />
             </button>
           </div>
+          </BorderBeam>
         </div>
       )}
 
