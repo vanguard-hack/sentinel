@@ -97,10 +97,19 @@ function getTesseractWorker(onProgress) {
       corePath: `${base}/tesseract-core-lstm.wasm.js`,
       langPath: `${base}/tessdata`,
       gzip: true,
+      // tesseract.js defaults to wrapping the worker script in a blob: URL
+      // (importScripts from inside a Blob) to dodge CORS when workerPath
+      // points at a CDN. That indirection breaks the WASM core's own
+      // relative lookup of its .wasm binary — inside the blob, it can no
+      // longer tell it's really being served from this origin — which
+      // hangs forever at "initializing tesseract" with no error. Everything
+      // here is already same-origin (vendored into public/, not a CDN), so
+      // the workaround isn't needed and only causes the hang.
+      workerBlobURL: false,
       logger: (m) => {
-        if (onProgress && m.status === 'recognizing text') {
-          onProgress(`Reading scanned page — ${Math.round((m.progress || 0) * 100)}%`);
-        }
+        if (!onProgress) return;
+        const pct = Math.round((m.progress || 0) * 100);
+        onProgress(m.status === 'recognizing text' ? `Reading scanned page — ${pct}%` : `${m.status}… ${pct}%`);
       },
     });
     return worker;
