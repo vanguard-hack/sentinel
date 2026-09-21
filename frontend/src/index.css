@@ -8488,6 +8488,16 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   max-width: 130px;
 }
 .as-cite-out { flex: 0 0 auto; color: var(--text-4); }
+.as-cite-more {
+  border: 1px dashed var(--hairline-strong);
+  background: none;
+  color: var(--ink-subtle);
+  font-size: var(--fs-caption);
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+.as-cite-more:hover { color: var(--ink); border-color: var(--primary); }
 
 /* Inline footnote marker inside the prose. Sized to sit on the text baseline
    without opening up the line height around it. */
