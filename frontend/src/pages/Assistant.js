@@ -176,7 +176,7 @@ export default function Assistant() {
   const location = useLocation();
   const { user } = useAuth();
   const email = user?.email_id || null;
-  const { show: showToast } = useToast();
+  const { show: showToast, dismiss } = useToast();
 
   // Opening from the floating widget's "expand" passes the conversation to focus.
   const incomingId = location.state?.conversationId || null;
@@ -454,14 +454,16 @@ export default function Assistant() {
     setMenuId(null);
     const session = sessions.find((s) => s.id === id);
     if (!session) return;
-    showToast('Exporting conversation to PDF…', { tone: 'loading', duration: 0 });
+    const loadingId = showToast('Exporting conversation to PDF…', { tone: 'loading', duration: 0 });
     try {
       await exportConversationPdf(session);
+      dismiss(loadingId);
       showToast('Exported', { tone: 'success' });
     } catch (e) {
       // This used to swallow every failure. An export that vanishes without a
       // word is the one outcome this must never produce — the officer waits
       // for a download that is never coming and assumes it worked.
+      dismiss(loadingId);
       showToast(e?.message || 'The transcript could not be exported.', { tone: 'error' });
     }
   };

@@ -10,6 +10,20 @@ function Trigger() {
   return <button onClick={() => show('Exported', { tone: 'success' })}>Fire</button>;
 }
 
+function ManualDismiss() {
+  const { show, dismiss } = useToast();
+  return (
+    <>
+      <button onClick={() => {
+        const id = show('Loading…', { tone: 'loading', duration: 0 });
+        setTimeout(() => dismiss(id), 100);
+      }}>
+        Fire and Dismiss
+      </button>
+    </>
+  );
+}
+
 test('show() renders a toast with its message and tone', async () => {
   render(<ToastProvider><Trigger /></ToastProvider>);
   fireEvent.click(screen.getByText('Fire'));
@@ -24,3 +38,12 @@ test('a toast auto-dismisses after its duration', async () => {
   await screen.findByRole('status');
   await waitFor(() => expect(screen.queryByRole('status')).toBeNull(), { timeout: 6000 });
 }, 7000);
+
+test('dismiss() removes a duration:0 toast immediately', async () => {
+  render(<ToastProvider><ManualDismiss /></ToastProvider>);
+  fireEvent.click(screen.getByText('Fire and Dismiss'));
+  const toast = await screen.findByRole('status');
+  expect(toast).toHaveTextContent('Loading…');
+  // Verify the dismiss call removes it (motion exit animation adds ~300ms)
+  await waitFor(() => expect(screen.queryByRole('status')).toBeNull(), { timeout: 1500 });
+});
