@@ -2,6 +2,9 @@
 // this they would assert against raw translation keys rather than text.
 import './i18n';
 
+// Setup jest-dom matchers.
+import '@testing-library/jest-dom';
+
 // Loaded automatically by react-scripts before each test file.
 //
 // ProseMirror (Tiptap) measures the document to place selections and decorations,

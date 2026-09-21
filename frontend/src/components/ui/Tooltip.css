@@ -1,0 +1,20 @@
+.ui-tooltip {
+  background: var(--bg-4);
+  color: var(--ink);
+  font-size: var(--fs-caption);
+  padding: 4px 8px;
+  border-radius: var(--r-tag);
+  border: 1px solid var(--hairline-strong);
+  transform-origin: var(--trigger-anchor-point, center);
+  animation: ui-tooltip-in 120ms ease-out;
+}
+.ui-tooltip[data-placement='top'] { margin-bottom: 4px; }
+.ui-tooltip[data-placement='bottom'] { margin-top: 4px; }
+.ui-tooltip-arrow path { fill: var(--bg-4); }
+@keyframes ui-tooltip-in {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-tooltip { animation: none; }
+}

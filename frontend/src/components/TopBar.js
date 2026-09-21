@@ -5,6 +5,7 @@ import { useLayout } from '../context/LayoutContext';
 import GlobalSearch from './GlobalSearch';
 import LanguageSwitcher from './LanguageSwitcher';
 import LiveClock from './LiveClock';
+import Tooltip from './ui/Tooltip';
 
 // Slim per-page header inside the app shell. Left: mobile menu button + a
 // breadcrumb trail (home icon / current module). Center: optional search.
@@ -16,19 +17,18 @@ export default function TopBar({ title, parent, parentTo, search, children }) {
 
   return (
     <header className="topbar">
-      <button className="topbar-menu" onClick={toggleMobile} aria-label="Open menu">
+      <Tooltip className="topbar-menu" onPress={toggleMobile} label="Open menu">
         <Menu size={19} />
-      </button>
+      </Tooltip>
 
       <nav className="topbar-crumbs" aria-label="Breadcrumb">
-        <button
+        <Tooltip
           className={`crumb-home ${isHome ? 'active' : ''}`}
-          onClick={() => navigate('/reports')}
-          title="Home"
-          aria-label="Home"
+          onPress={() => navigate('/reports')}
+          label="Home"
         >
           <Home size={16} />
-        </button>
+        </Tooltip>
         {parent && (
           <>
             <span className="crumb-sep">/</span>
