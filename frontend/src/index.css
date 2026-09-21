@@ -4132,6 +4132,20 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .as-thinking { display: inline-flex; align-items: center; gap: 10px; }
 .as-thinking-phrase { font-size: 0.82rem; color: var(--text-3); animation: think-fade 1.8s ease both; }
 @keyframes think-fade { 0% { opacity: 0; transform: translateY(2px); } 25%, 80% { opacity: 1; transform: none; } 100% { opacity: 0.55; } }
+.as-thinking-grid {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 4px);
+  grid-template-rows: repeat(3, 4px);
+  gap: 2px;
+}
+.as-thinking-grid span {
+  background: var(--primary);
+  border-radius: 1px;
+  animation: as-thinking-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes as-thinking-shimmer { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+.as-thinking-elapsed { color: var(--ink-tertiary); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .as-thinking-grid span { animation: none; opacity: 0.6; } }
 
 /* ── Incidents ──────────────────────────────────────────────────────────── */
 .inc-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
