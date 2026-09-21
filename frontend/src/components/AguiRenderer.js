@@ -297,15 +297,36 @@ function AguiChecklist({ items }) {
 }
 
 function AguiStatTiles({ items }) {
+  const [page, setPage] = useState(0);
+  const perPage = 4;
+  const pages = Math.max(1, Math.ceil(items.length / perPage));
+  const cur = Math.min(page, pages - 1);
+  const slice = items.slice(cur * perPage, cur * perPage + perPage);
+
   return (
-    <div className="agui-stat-tiles">
-      {items.map((it, i) => (
-        <div className={`agui-stat-tile tone-${it.tone}`} key={i}>
-          <span className="agui-stat-tile-value">{it.value}</span>
-          <span className="agui-stat-tile-label">{normaliseText(it.label)}</span>
-          {it.hint && <span className="agui-stat-tile-hint">{normaliseText(it.hint)}</span>}
+    <div>
+      <div className="agui-stat-tiles">
+        {slice.map((it, i) => (
+          <div className={`agui-stat-tile tone-${it.tone}`} key={cur * perPage + i}>
+            <span className="agui-stat-tile-value">{it.value}</span>
+            <span className="agui-stat-tile-label">{normaliseText(it.label)}</span>
+            {it.hint && <span className="agui-stat-tile-hint">{normaliseText(it.hint)}</span>}
+          </div>
+        ))}
+      </div>
+      {pages > 1 && (
+        <div className="cf-pager">
+          <span className="cf-pager-info">{cur + 1} / {pages}</span>
+          <div className="cf-pager-controls">
+            <button className="cf-page-btn" disabled={cur === 0} onClick={() => setPage(cur - 1)} aria-label="Previous">
+              <ChevronLeft size={15} />
+            </button>
+            <button className="cf-page-btn" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)} aria-label="Next">
+              <ChevronRight size={15} />
+            </button>
+          </div>
         </div>
-      ))}
+      )}
     </div>
   );
 }
