@@ -4,12 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { splitEmail } from '../utils/profile';
 import {
   Home, AlertTriangle, Map, Brain, Database,
-  MessageSquare, Users, ChevronRight, Sun, Moon, LogOut,
+  MessageSquare, Users, ChevronRight, LogOut,
   UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, Headset, Building2, CalendarClock,
   ScrollText, Images, ChevronsUpDown, ShieldOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccess } from '../context/AccessContext';
-import { useLayout, useThemeMode } from '../context/LayoutContext';
+import { useLayout } from '../context/LayoutContext';
 import { canAccess, ROLE_LABELS } from '../utils/access';
 import { logAudit } from '../utils/audit';
 import Avatar from './Avatar';
@@ -47,7 +47,6 @@ export default function Sidebar() {
   const { user, signOut } = useAuth();
   const { role: appRole, isAdmin, ready } = useAccess();
   const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen } = useLayout();
-  const [isDark, setIsDark] = useThemeMode();
   const [menuOpen, setMenuOpen] = useState(false);
   const profileRef = useRef(null);
 
@@ -165,35 +164,6 @@ export default function Sidebar() {
         </nav>
 
         <div className="sb-footer">
-          {collapsed ? (
-            <button
-              className="sb-item sb-theme icononly"
-              onClick={() => setIsDark((d) => !d)}
-              title={isDark ? 'Light mode' : 'Dark mode'}
-              aria-label={isDark ? 'Light mode' : 'Dark mode'}
-            >
-              {isDark ? <Sun size={19} strokeWidth={1.8} className="sb-item-icon" />
-                      : <Moon size={19} strokeWidth={1.8} className="sb-item-icon" />}
-            </button>
-          ) : (
-            <div className="sb-theme-seg" role="group" aria-label="Theme">
-              <button
-                className={`sb-theme-opt ${!isDark ? 'active' : ''}`}
-                onClick={() => setIsDark(false)}
-                aria-pressed={!isDark}
-              >
-                <Sun size={16} strokeWidth={1.8} /> Light
-              </button>
-              <button
-                className={`sb-theme-opt ${isDark ? 'active' : ''}`}
-                onClick={() => setIsDark(true)}
-                aria-pressed={isDark}
-              >
-                <Moon size={16} strokeWidth={1.8} /> Dark
-              </button>
-            </div>
-          )}
-
           <div className="sb-profile" ref={profileRef}>
             <button
               className={`sb-account ${menuOpen ? 'open' : ''}`}

@@ -1,17 +1,19 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Home } from 'lucide-react';
-import { useLayout } from '../context/LayoutContext';
+import { Menu, Home, Sun, Moon } from 'lucide-react';
+import { useLayout, useThemeMode } from '../context/LayoutContext';
 import GlobalSearch from './GlobalSearch';
 import LanguageSwitcher from './LanguageSwitcher';
 import LiveClock from './LiveClock';
 import Tooltip from './ui/Tooltip';
+import SegmentedControl from './ui/SegmentedControl';
 
 // Slim per-page header inside the app shell. Left: mobile menu button + a
 // breadcrumb trail (home icon / current module). Center: optional search.
 // Right: page-specific actions (children).
 export default function TopBar({ title, parent, parentTo, search, children }) {
   const { toggleMobile } = useLayout();
+  const [isDark, setIsDark] = useThemeMode();
   const navigate = useNavigate();
   const isHome = title === 'Home';
 
@@ -54,6 +56,15 @@ export default function TopBar({ title, parent, parentTo, search, children }) {
           space between it and the header's actual right edge. This spacer
           keeps the same effect for every page, search box or not. */}
       {search ? <div className="topbar-search">{search}</div> : <div className="topbar-spacer" />}
+      <SegmentedControl
+        aria-label="Theme"
+        items={[
+          { id: 'light', label: '', Icon: Sun },
+          { id: 'dark', label: '', Icon: Moon },
+        ]}
+        selected={isDark ? 'dark' : 'light'}
+        onChange={(id) => setIsDark(id === 'dark')}
+      />
       <LiveClock />
       <LanguageSwitcher />
       <div className="topbar-global"><GlobalSearch /></div>
