@@ -7914,12 +7914,12 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   border: 1.5px dashed var(--border-bright); border-radius: 12px;
   transition: border-color .12s, background .12s, color .12s;
 }
-.dg-drop:hover, .dg-drop.over, .dg-drop[data-drop-target] {
+.dg-drop:hover, .dg-drop[data-drop-target] {
   color: var(--blue-600); border-color: var(--blue-500);
   background: color-mix(in srgb, var(--blue-400) 7%, transparent);
 }
 .dg-drop strong { display: block; font-size: 13px; font-weight: 500; color: var(--text-0); }
-.dg-drop.over strong, .dg-drop:hover strong, .dg-drop[data-drop-target] strong { color: var(--blue-600); }
+.dg-drop:hover strong, .dg-drop[data-drop-target] strong { color: var(--blue-600); }
 .dg-drop span { display: block; font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
 
 .dg-queue {

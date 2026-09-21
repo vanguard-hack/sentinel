@@ -26,3 +26,26 @@ test('a busy upload shows the progress ring', () => {
   const ring = document.querySelector('.ui-upload-ring');
   expect(ring).toHaveAttribute('data-progress', '40');
 });
+
+// Regression test: an earlier version of FileUpload rendered a plain <button>
+// as FileTrigger's child. FileTrigger only wires up click-to-open through a
+// PressResponder context, which a plain native <button> never registers
+// with — clicking it silently did nothing. react-aria-components' own
+// <Button> is what actually consumes that context. This proves the click
+// really reaches the hidden file input, not just that some test passes.
+test('clicking the trigger opens the file picker and selecting a file calls onFiles', () => {
+  const onFiles = jest.fn();
+  const clickSpy = jest.spyOn(HTMLInputElement.prototype, 'click');
+  render(<FileUpload onFiles={onFiles}>Drop here</FileUpload>);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Drop here' }));
+  expect(clickSpy).toHaveBeenCalled();
+
+  const input = document.querySelector('input[type="file"]');
+  const file = new File(['x'], 'b.pdf', { type: 'application/pdf' });
+  Object.defineProperty(input, 'files', { value: [file] });
+  fireEvent.change(input);
+
+  expect(onFiles).toHaveBeenCalledWith([file]);
+  clickSpy.mockRestore();
+});
