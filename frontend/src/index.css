@@ -447,6 +447,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   width: 220px;
 }
 .agui-table-sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; }
+.agui-table-sort:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 2px; }
 
 /* ── Scrollbar ─────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
@@ -3068,6 +3069,23 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.agui-card-context .agui-card-body.agui-card-body-expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+.agui-card-more {
+  display: inline-block;
+  margin-top: 6px;
+  border: 1px dashed var(--hairline-strong);
+  background: none;
+  color: var(--ink-subtle);
+  font-size: var(--fs-caption);
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+.agui-card-more:hover { color: var(--ink); border-color: var(--primary); }
 
 /* checklist, stat-tiles, timeline share ActionQueue's own severity tones
    (overdue/critical/high) rather than inventing a second color language for
@@ -6303,7 +6321,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 @media (max-width: 720px) {
   .inv-tabbar { display: none; }
   .inv-tabbar-mobile { display: block; }
-  .inv-tab-wrap { display: none; }
+  .inv-tab-wrap [role='tablist'] { display: none; }
 }
 
 .inv-iif-badge {

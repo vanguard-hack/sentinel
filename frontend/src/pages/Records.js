@@ -353,7 +353,7 @@ export default function Records() {
           onChange={(e) => { if (e.target.files?.length) stage(e.target.files); e.target.value = ''; }}
         />
 
-        <FileUpload onFiles={stage} accept={ACCEPT_LIST} busy={!!preparing} className="dg-drop">
+        <FileUpload onFiles={stage} accept={ACCEPT_LIST} busy={!!preparing} className="dg-drop" label={t('records.chooseFiles')}>
           <Layers size={22} strokeWidth={1.7} className="dg-drop-icon" />
           <div className="dg-drop-copy">
             <strong>{t('records.dropTitle')}</strong>

@@ -25,3 +25,31 @@ test('an existing range is reflected in the calendar selection', () => {
   // The grid renders at least the start date's cell as selected.
   expect(document.querySelector('[aria-selected="true"]')).toBeInTheDocument();
 });
+
+test('the "This year" preset spans Jan 1 of the current year through today', () => {
+  const onSelect = jest.fn();
+  render(<DatePicker from={null} to={null} onSelect={onSelect} />);
+  fireEvent.click(screen.getByRole('button', { name: 'This year' }));
+  const now = new Date();
+  const jan1 = `${now.getFullYear()}-01-01`;
+  const today = now.toISOString().slice(0, 10);
+  expect(onSelect).toHaveBeenCalledWith({ from: jan1, to: today });
+});
+
+test('the "Last year" preset spans all of the previous calendar year', () => {
+  const onSelect = jest.fn();
+  render(<DatePicker from={null} to={null} onSelect={onSelect} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Last year' }));
+  const lastYear = new Date().getFullYear() - 1;
+  expect(onSelect).toHaveBeenCalledWith({ from: `${lastYear}-01-01`, to: `${lastYear}-12-31` });
+});
+
+test('the "Last 12 months" preset runs from 12 months ago through today', () => {
+  const onSelect = jest.fn();
+  render(<DatePicker from={null} to={null} onSelect={onSelect} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Last 12 months' }));
+  const today = new Date().toISOString().slice(0, 10);
+  const called = onSelect.mock.calls[0][0];
+  expect(called.to).toBe(today);
+  expect(called.from < today).toBe(true);
+});

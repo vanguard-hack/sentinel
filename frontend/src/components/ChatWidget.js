@@ -196,7 +196,7 @@ export default function ChatWidget() {
             </div>
           </div>
 
-          <MessageScroller className="cw-thread" dependency={`${messages.length}-${sending}-${open}`}>
+          <MessageScroller className="cw-thread" dependency={`${convId}-${messages.length}-${sending}-${open}`}>
             {messages.length === 0 && !sending ? (
               <div className="cw-empty">
                 <Bot size={26} strokeWidth={1.4} />

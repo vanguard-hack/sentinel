@@ -41,3 +41,26 @@ test('typing in the search box filters rows across all columns', () => {
   expect(screen.queryByText('Bengaluru')).toBeNull();
   expect(screen.getByText('Mysuru')).toBeInTheDocument();
 });
+
+test('the search input has an accessible name', () => {
+  render(<AguiRenderer components={[spec]} />);
+  expect(screen.getByRole('searchbox', { name: 'Search table' })).toBeInTheDocument();
+});
+
+test('a sorted column header reports its sort state via aria-sort', () => {
+  render(<AguiRenderer components={[spec]} />);
+  const districtHeader = screen.getByText('District').closest('th');
+  const countHeader = screen.getByText('Count').closest('th');
+  const districtSortBtn = districtHeader.querySelector('.agui-table-sort');
+  expect(districtHeader).toHaveAttribute('aria-sort', 'none');
+
+  // Re-query the button by its own reference across clicks rather than by
+  // text, since the header's text node changes (a ↑/↓ suffix is appended)
+  // once it's sorted.
+  fireEvent.click(districtSortBtn);
+  expect(districtHeader).toHaveAttribute('aria-sort', 'ascending');
+  expect(countHeader).toHaveAttribute('aria-sort', 'none');
+
+  fireEvent.click(districtSortBtn);
+  expect(districtHeader).toHaveAttribute('aria-sort', 'descending');
+});

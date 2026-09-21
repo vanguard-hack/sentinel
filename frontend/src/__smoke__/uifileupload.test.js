@@ -49,3 +49,15 @@ test('clicking the trigger opens the file picker and selecting a file calls onFi
   expect(onFiles).toHaveBeenCalledWith([file]);
   clickSpy.mockRestore();
 });
+
+// The old drop zone had an explicit aria-label; the RAC-based rewrite left
+// the trigger's accessible name to fall out implicitly from its rendered
+// content. A `label` prop restores an explicit, predictable name.
+test('a label prop sets the trigger\'s accessible name explicitly', () => {
+  render(
+    <FileUpload onFiles={() => {}} label="Choose files">
+      <span>Some rich content</span>
+    </FileUpload>
+  );
+  expect(screen.getByRole('button', { name: 'Choose files' })).toBeInTheDocument();
+});

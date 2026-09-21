@@ -1069,7 +1069,7 @@ export default function Assistant() {
 
         {/* ── Conversation ── */}
         <main className="as-main">
-          <MessageScroller className="as-thread" dependency={`${messages.length}-${sending}`}>
+          <MessageScroller className="as-thread" dependency={`${activeId}-${messages.length}-${sending}`}>
             {messages.length === 0 && !sending ? (
               <div className="as-greeting">
                 <Shield size={40} strokeWidth={1.3} />

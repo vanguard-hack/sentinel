@@ -105,6 +105,7 @@ function AguiTable({ spec, pageSize = 8 }) {
           type="search"
           className="agui-table-search"
           placeholder="Search table…"
+          aria-label="Search table"
           value={q}
           onChange={(e) => { setQ(e.target.value); setPage(0); }}
         />
@@ -114,7 +115,7 @@ function AguiTable({ spec, pageSize = 8 }) {
           <thead>
             <tr>
               {columns.map((c, i) => (
-                <th key={i}>
+                <th key={i} aria-sort={sort?.col === i ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
                   <button type="button" className="agui-table-sort" onClick={() => cycleSort(i)}>
                     {renderInline(normaliseText(c), `th${i}`)}
                     {sort?.col === i && (sort.dir === 1 ? ' ↑' : ' ↓')}
@@ -168,25 +169,44 @@ function AguiCards({ spec }) {
     <div className="agui-cards">
       {items.map((it, i) => {
         const nav = typeof it.to === 'string' && it.to.startsWith('/');
-        return (
-          <div
-            className={`agui-card agui-card-context ${nav ? 'agui-card-nav' : ''}`}
-            key={i}
-            role={nav ? 'button' : undefined}
-            tabIndex={nav ? 0 : undefined}
-            onClick={nav ? () => go(it.to) : undefined}
-            onKeyDown={nav ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(it.to); } } : undefined}
-          >
-            <div className="agui-card-head">
-              {it.title && <span className="agui-card-title">{renderInline(normaliseText(it.title), 'ct')}</span>}
-              {it.badge && <span className="agui-card-badge">{normaliseText(it.badge)}</span>}
-            </div>
-            {it.subtitle && <div className="agui-card-sub">{renderInline(normaliseText(it.subtitle), 'cs')}</div>}
-            {it.body && <div className="agui-card-body">{renderCell(it.body)}</div>}
-            {nav && <span className="agui-card-open">Open <ArrowRight size={13} /></span>}
-          </div>
-        );
+        return <AguiCard key={i} it={it} nav={nav} go={go} />;
       })}
+    </div>
+  );
+}
+
+// A single context card. Its expanded/clamped state is local so multiple
+// cards in one block each expand independently (mirrors the useState +
+// reveal-button pattern SourceCitations already uses for "+N more").
+function AguiCard({ it, nav, go }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div
+      className={`agui-card agui-card-context ${nav ? 'agui-card-nav' : ''}`}
+      role={nav ? 'button' : undefined}
+      tabIndex={nav ? 0 : undefined}
+      onClick={nav ? () => go(it.to) : undefined}
+      onKeyDown={nav ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(it.to); } } : undefined}
+    >
+      <div className="agui-card-head">
+        {it.title && <span className="agui-card-title">{renderInline(normaliseText(it.title), 'ct')}</span>}
+        {it.badge && <span className="agui-card-badge">{normaliseText(it.badge)}</span>}
+      </div>
+      {it.subtitle && <div className="agui-card-sub">{renderInline(normaliseText(it.subtitle), 'cs')}</div>}
+      {it.body && (
+        <div className={`agui-card-body ${expanded ? 'agui-card-body-expanded' : ''}`}>{renderCell(it.body)}</div>
+      )}
+      {it.body && !expanded && (
+        <button
+          type="button"
+          className="agui-card-more"
+          onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          Show more
+        </button>
+      )}
+      {nav && <span className="agui-card-open">Open <ArrowRight size={13} /></span>}
     </div>
   );
 }

@@ -15,6 +15,15 @@ const PRESETS = [
   { label: 'Today', range: () => { const d = today(tz); return { from: d, to: d }; } },
   { label: 'Last 7 days', range: () => ({ from: today(tz).subtract({ days: 6 }), to: today(tz) }) },
   { label: 'This month', range: () => ({ from: today(tz).set({ day: 1 }), to: today(tz) }) },
+  { label: 'This year', range: () => ({ from: today(tz).set({ month: 1, day: 1 }), to: today(tz) }) },
+  {
+    label: 'Last year',
+    range: () => {
+      const lastYear = today(tz).subtract({ years: 1 });
+      return { from: lastYear.set({ month: 1, day: 1 }), to: lastYear.set({ month: 12, day: 31 }) };
+    },
+  },
+  { label: 'Last 12 months', range: () => ({ from: today(tz).subtract({ months: 12 }), to: today(tz) }) },
 ];
 
 export default function DatePicker({ from, to, onSelect }) {

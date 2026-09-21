@@ -1,7 +1,7 @@
 import { Button, DropZone, FileTrigger } from 'react-aria-components';
 import './FileUpload.css';
 
-export default function FileUpload({ onFiles, accept, busy, progress, children, className, ...rest }) {
+export default function FileUpload({ onFiles, accept, busy, progress, children, className, label, ...rest }) {
   const toArray = (items) =>
     Array.from(items || []).map((it) => (typeof it.getFile === 'function' ? it.getFile() : it)).filter(Boolean);
 
@@ -17,7 +17,7 @@ export default function FileUpload({ onFiles, accept, busy, progress, children, 
       {...rest}
     >
       <FileTrigger acceptedFileTypes={accept} allowsMultiple onSelect={(files) => onFiles(toArray(files))}>
-        <Button className="ui-upload-trigger">{children}</Button>
+        <Button className="ui-upload-trigger" aria-label={label}>{children}</Button>
       </FileTrigger>
       {busy && (
         <span
