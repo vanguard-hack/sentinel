@@ -15,8 +15,8 @@ export default function SegmentedControl({ items, selected, onChange, 'aria-labe
         if (next != null) onChange(next);
       }}
     >
-      {items.map(({ id, label, Icon }) => (
-        <ToggleButton key={id} id={id} className="ui-segmented-item">
+      {items.map(({ id, label, Icon, srLabel }) => (
+        <ToggleButton key={id} id={id} className="ui-segmented-item" aria-label={srLabel}>
           {Icon && <Icon size={14} strokeWidth={1.8} />}
           {label}
         </ToggleButton>

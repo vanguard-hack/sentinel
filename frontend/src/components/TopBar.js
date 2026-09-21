@@ -59,8 +59,8 @@ export default function TopBar({ title, parent, parentTo, search, children }) {
       <SegmentedControl
         aria-label="Theme"
         items={[
-          { id: 'light', label: '', Icon: Sun },
-          { id: 'dark', label: '', Icon: Moon },
+          { id: 'light', label: '', Icon: Sun, srLabel: 'Light mode' },
+          { id: 'dark', label: '', Icon: Moon, srLabel: 'Dark mode' },
         ]}
         selected={isDark ? 'dark' : 'light'}
         onChange={(id) => setIsDark(id === 'dark')}

@@ -26,3 +26,16 @@ test('clicking an option calls onChange with its id', () => {
   fireEvent.click(screen.getByRole('radio', { name: 'Dark' }));
   expect(onChange).toHaveBeenCalledWith('dark');
 });
+
+// Icon-only items (empty visible label, e.g. the theme toggle's Sun/Moon
+// glyphs) have nothing for a screen reader to read unless a `srLabel` is
+// carried through to the underlying ToggleButton as aria-label.
+test('icon-only items carry an accessible name via srLabel', () => {
+  const iconItems = [
+    { id: 'light', label: '', srLabel: 'Light mode' },
+    { id: 'dark', label: '', srLabel: 'Dark mode' },
+  ];
+  render(<SegmentedControl items={iconItems} selected="light" onChange={() => {}} aria-label="Theme" />);
+  expect(screen.getByRole('radio', { name: 'Light mode' })).toBeInTheDocument();
+  expect(screen.getByRole('radio', { name: 'Dark mode' })).toBeInTheDocument();
+});
