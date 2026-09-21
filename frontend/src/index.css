@@ -435,6 +435,19 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   border-radius: var(--r-card);
 }
 
+.agui-table-search {
+  display: block;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-ctl);
+  background: var(--bg-1);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  width: 220px;
+}
+.agui-table-sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; }
+
 /* ── Scrollbar ─────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: var(--bg-1); }

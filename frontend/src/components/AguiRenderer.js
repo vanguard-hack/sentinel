@@ -63,20 +63,65 @@ const cleanSeries = (data) =>
 
 function AguiTable({ spec, pageSize = 8 }) {
   const [page, setPage] = useState(0);
+  const [q, setQ] = useState('');
+  const [sort, setSort] = useState(null); // { col: number, dir: 1 | -1 }
+
   const columns = Array.isArray(spec.columns) ? spec.columns : [];
-  const rows = (Array.isArray(spec.rows) ? spec.rows : []).filter(Array.isArray);
-  if (!columns.length || !rows.length) return null;
+  const allRows = (Array.isArray(spec.rows) ? spec.rows : []).filter(Array.isArray);
+  if (!columns.length || !allRows.length) return null;
+
+  const filtered = q.trim()
+    ? allRows.filter((r) => r.some((cell) => String(cell ?? '').toLowerCase().includes(q.trim().toLowerCase())))
+    : allRows;
+
+  const rows = sort
+    ? [...filtered].sort((a, b) => {
+        const av = a[sort.col], bv = b[sort.col];
+        const an = Number(av), bn = Number(bv);
+        const cmp = Number.isFinite(an) && Number.isFinite(bn)
+          ? an - bn
+          : String(av ?? '').localeCompare(String(bv ?? ''));
+        return cmp * sort.dir;
+      })
+    : filtered;
 
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const cur = Math.min(page, pages - 1);
   const slice = rows.slice(cur * pageSize, cur * pageSize + pageSize);
 
+  const cycleSort = (col) => {
+    setPage(0);
+    setSort((s) => {
+      if (!s || s.col !== col) return { col, dir: 1 };
+      if (s.dir === 1) return { col, dir: -1 };
+      return null; // third click clears the sort
+    });
+  };
+
   return (
     <div>
+      {allRows.length > pageSize && (
+        <input
+          type="search"
+          className="agui-table-search"
+          placeholder="Search table…"
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setPage(0); }}
+        />
+      )}
       <div className="cf-table-wrap">
         <table className="cf-table">
           <thead>
-            <tr>{columns.map((c, i) => <th key={i}>{renderInline(normaliseText(c), `th${i}`)}</th>)}</tr>
+            <tr>
+              {columns.map((c, i) => (
+                <th key={i}>
+                  <button type="button" className="agui-table-sort" onClick={() => cycleSort(i)}>
+                    {renderInline(normaliseText(c), `th${i}`)}
+                    {sort?.col === i && (sort.dir === 1 ? ' ↑' : ' ↓')}
+                  </button>
+                </th>
+              ))}
+            </tr>
           </thead>
           <tbody>
             {slice.map((r, i) => (
@@ -93,21 +138,11 @@ function AguiTable({ spec, pageSize = 8 }) {
             {cur * pageSize + 1}–{Math.min(rows.length, (cur + 1) * pageSize)} of {rows.length}
           </span>
           <div className="cf-pager-controls">
-            <button
-              className="cf-page-btn"
-              disabled={cur === 0}
-              onClick={() => setPage(cur - 1)}
-              aria-label="Previous page"
-            >
+            <button className="cf-page-btn" disabled={cur === 0} onClick={() => setPage(cur - 1)} aria-label="Previous page">
               <ChevronLeft size={15} />
             </button>
             <span className="cf-page-num">{cur + 1} / {pages}</span>
-            <button
-              className="cf-page-btn"
-              disabled={cur >= pages - 1}
-              onClick={() => setPage(cur + 1)}
-              aria-label="Next page"
-            >
+            <button className="cf-page-btn" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)} aria-label="Next page">
               <ChevronRight size={15} />
             </button>
           </div>
