@@ -6,7 +6,18 @@
 // Clear/calOpen state doesn't have to change.
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { today, getLocalTimeZone } from '@internationalized/date';
 import DatePicker from '../components/ui/DatePicker';
+
+// `new Date().toISOString()` reads the UTC date, but DatePicker (like the
+// rest of this test file's "current date" checks) computes "today" in the
+// browser's local timezone via `today(getLocalTimeZone())` — the two
+// disagree for part of every day in any timezone ahead of UTC (this app
+// runs in Asia/Kolkata, UTC+5:30), which made these assertions flaky rather
+// than wrong. Using the same @internationalized/date call the component
+// itself uses keeps the test's notion of "today" identical to the code
+// under test, regardless of timezone or when in the day the suite runs.
+const todayIso = () => today(getLocalTimeZone()).toString();
 
 test('picking the "Today" preset calls onSelect with today as both ends', () => {
   const onSelect = jest.fn();
@@ -16,8 +27,8 @@ test('picking the "Today" preset calls onSelect with today as both ends', () => 
   // /today/i regex would also match, so this must target the preset button
   // by its exact accessible name.
   fireEvent.click(screen.getByRole('button', { name: 'Today' }));
-  const today = new Date().toISOString().slice(0, 10);
-  expect(onSelect).toHaveBeenCalledWith({ from: today, to: today });
+  const iso = todayIso();
+  expect(onSelect).toHaveBeenCalledWith({ from: iso, to: iso });
 });
 
 test('an existing range is reflected in the calendar selection', () => {
@@ -30,10 +41,8 @@ test('the "This year" preset spans Jan 1 of the current year through today', () 
   const onSelect = jest.fn();
   render(<DatePicker from={null} to={null} onSelect={onSelect} />);
   fireEvent.click(screen.getByRole('button', { name: 'This year' }));
-  const now = new Date();
-  const jan1 = `${now.getFullYear()}-01-01`;
-  const today = now.toISOString().slice(0, 10);
-  expect(onSelect).toHaveBeenCalledWith({ from: jan1, to: today });
+  const jan1 = `${new Date().getFullYear()}-01-01`;
+  expect(onSelect).toHaveBeenCalledWith({ from: jan1, to: todayIso() });
 });
 
 test('the "Last year" preset spans all of the previous calendar year', () => {
@@ -48,8 +57,8 @@ test('the "Last 12 months" preset runs from 12 months ago through today', () => 
   const onSelect = jest.fn();
   render(<DatePicker from={null} to={null} onSelect={onSelect} />);
   fireEvent.click(screen.getByRole('button', { name: 'Last 12 months' }));
-  const today = new Date().toISOString().slice(0, 10);
+  const iso = todayIso();
   const called = onSelect.mock.calls[0][0];
-  expect(called.to).toBe(today);
-  expect(called.from < today).toBe(true);
+  expect(called.to).toBe(iso);
+  expect(called.from < iso).toBe(true);
 });
