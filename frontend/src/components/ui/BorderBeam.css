@@ -1,4 +1,14 @@
 /* frontend/src/components/ui/BorderBeam.css */
+/* Browsers treat a plain custom property as an opaque string, so they can't
+   interpolate --beam-angle between 0deg and 360deg — motion/react's animate()
+   sets it once and the sweep never continues. Registering the property's real
+   type (an angle) is what makes the browser actually animate it, natively and
+   continuously, instead of jumping straight to the end value and stopping. */
+@property --beam-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
 .ui-border-beam { position: relative; border-radius: inherit; }
 /* .as-composer has its own rounded corners (var(--radius-lg)); border-radius:
    inherit alone would resolve to the composer-wrap parent's 0, leaving the
