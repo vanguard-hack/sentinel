@@ -1,10 +1,11 @@
 // looksDegenerateTranscript(): catches the Whisper-style repetition-loop
 // hallucination Zia STT produces when audio is forced through the wrong
 // language (no auto-detect on that endpoint).
-// translateTranscriptToEnglish(): Zia STT transcribes Hindi/Kannada in the
-// spoken script (often code-switched with English loanwords) — it never
-// translates. This machine-translates that transcript to English before it
-// reaches the composer. Run: node functions/rag/transcribe.test.js
+// transliterateToNativeScript(): Zia STT sometimes renders Hindi/Kannada
+// speech in Latin letters ("han bhai mera naam...") instead of native script.
+// That's indistinguishable from English to every downstream language check,
+// so this rewrites it into native Devanagari/Kannada script (same words, no
+// translation) before it reaches the composer. Run: node functions/rag/transcribe.test.js
 
 let pass = 0, fail = 0;
 const check = (name, cond, detail) => {
@@ -49,35 +50,51 @@ check(
   ) === false
 );
 
+// Same literal ranges as index.js's own SCRIPT/LANG_NAME — injected as
+// dependencies, same pattern geolocate.test.js uses for fetch/AbortSignal.
+const SCRIPT = { hi: /[ऀ-ॿ]/, kn: /[ಀ-೿]/ };
+const LANG_NAME = { en: 'English', hi: 'Hindi', kn: 'Kannada' };
+
 // eslint-disable-next-line no-new-func
-const buildTranslate = () => new Function(
-  'callLLM',
-  `${grabFn('translateTranscriptToEnglish')}\nreturn translateTranscriptToEnglish;`
+const buildTransliterate = () => new Function(
+  'callLLM', 'SCRIPT', 'LANG_NAME',
+  `${grabFn('transliterateToNativeScript')}\nreturn transliterateToNativeScript;`
 );
 
 (async () => {
-  const noCall = buildTranslate()(async () => { throw new Error('callLLM should not be called for English'); });
-  check('english text is passed through untouched, no LLM call', await noCall('already english', 'en') === 'already english');
+  const noCallEn = buildTransliterate()(async () => { throw new Error('callLLM should not be called for English'); }, SCRIPT, LANG_NAME);
+  check('english text is passed through untouched, no LLM call', await noCallEn('already english', 'en') === 'already english');
 
-  const translateHi = buildTranslate()(async (messages) => {
-    check('the source language is named in the translation prompt', messages[1].content.includes('Hindi'));
-    return '  The accused fled towards Udupi road.  ';
-  });
+  const noCallAlreadyDevanagari = buildTransliterate()(
+    async () => { throw new Error('callLLM should not be called when script is already native'); }, SCRIPT, LANG_NAME
+  );
   check(
-    'a Hindi transcript is translated to English and trimmed',
-    await translateHi('आरोपी उडुपी रोड की तरफ भाग गया', 'hi') === 'The accused fled towards Udupi road.'
+    'a transcript already in Devanagari is passed through untouched, no LLM call',
+    await noCallAlreadyDevanagari('आरोपी उडुपी रोड की तरफ भाग गया', 'hi') === 'आरोपी उडुपी रोड की तरफ भाग गया'
   );
 
-  const translateKn = buildTranslate()(async (messages) => {
-    check('Kannada is named in the translation prompt', messages[1].content.includes('Kannada'));
-    return 'The suspect escaped.';
-  });
-  check('a Kannada transcript is translated', await translateKn('ಆರೋಪಿ ಪರಾರಿಯಾಗಿದ್ದಾನೆ', 'kn') === 'The suspect escaped.');
-
-  const translateFail = buildTranslate()(async () => null);
+  const romanHi = buildTransliterate()(async (messages) => {
+    check('Hindi is named in the transliteration prompt', messages[0].content.includes('Hindi'));
+    return '  आरोपी उडुपी रोड की तरफ भाग गया  ';
+  }, SCRIPT, LANG_NAME);
   check(
-    'an LLM failure falls back to the original transcript rather than losing it',
-    await translateFail('ಆರೋಪಿ ಪರಾರಿಯಾಗಿದ್ದಾನೆ', 'kn') === 'ಆರೋಪಿ ಪರಾರಿಯಾಗಿದ್ದಾನೆ'
+    'Romanized Hindi is rewritten into Devanagari and trimmed',
+    await romanHi('aaropi udupi road ki taraf bhaag gaya', 'hi') === 'आरोपी उडुपी रोड की तरफ भाग गया'
+  );
+
+  const romanKn = buildTransliterate()(async (messages) => {
+    check('Kannada is named in the transliteration prompt', messages[0].content.includes('Kannada'));
+    return 'ಆರೋಪಿ ಪರಾರಿಯಾಗಿದ್ದಾನೆ';
+  }, SCRIPT, LANG_NAME);
+  check(
+    'Romanized Kannada is rewritten into Kannada script',
+    await romanKn('aaropi pararaayaagiddaane', 'kn') === 'ಆರೋಪಿ ಪರಾರಿಯಾಗಿದ್ದಾನೆ'
+  );
+
+  const llmFails = buildTransliterate()(async () => null, SCRIPT, LANG_NAME);
+  check(
+    'an LLM failure falls back to the Romanized transcript rather than losing it',
+    await llmFails('aaropi pararaayaagiddaane', 'kn') === 'aaropi pararaayaagiddaane'
   );
 
   console.log(`\n${pass} passed, ${fail} failed`);

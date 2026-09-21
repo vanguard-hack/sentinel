@@ -1068,11 +1068,13 @@ async function localiseAnswer(text, lang) {
       {
         role: 'system',
         content:
-          `Rewrite the following police assistant answer in ${LANG_NAME[lang]}. Preserve every ` +
-          'number, name, date, crime/FIR number, vehicle registration and section of law exactly ' +
-          'as written — transliterate nothing that identifies a record. Keep any markdown ' +
-          'structure (headings, lists, tables) intact. Legal precision matters more than ' +
-          'elegance: if a term has no accepted translation, keep the English term and gloss it ' +
+          `Rewrite the following police assistant answer in ${LANG_NAME[lang]}, using native ` +
+          `${LANG_NAME[lang]} script (${lang === 'hi' ? 'Devanagari' : 'Kannada'} Unicode) throughout — ` +
+          'never Romanized/Hinglish or Kanglish transliteration, even if the source text mixes ' +
+          'scripts. Preserve every number, name, date, crime/FIR number, vehicle registration and ' +
+          'section of law exactly as written — transliterate nothing that identifies a record. Keep ' +
+          'any markdown structure (headings, lists, tables) intact. Legal precision matters more ' +
+          'than elegance: if a term has no accepted translation, keep the English term and gloss it ' +
           'in brackets. Output ONLY the rewritten answer.',
       },
       { role: 'user', content: text },
@@ -1368,34 +1370,33 @@ function looksDegenerateTranscript(text) {
   return topCount >= 8 && topCount / Math.max(1, lowered.length - 2) > 0.25;
 }
 
-// Zia's audio/transcribe model is transcription, not translation — a Hindi or
-// Kannada officer gets back the words they said, in the script they said them
-// (often code-switched with English loanwords, since that's how the sentence
-// was actually spoken), never an English rendering. Whatever lane the text
-// lands in next reads English question text far more reliably than a mixed-
-// script transcript, so the transcript is machine-translated here, once,
-// before it ever reaches the composer.
-async function translateTranscriptToEnglish(text, lang) {
-  const langName = lang === 'hi' ? 'Hindi' : lang === 'kn' ? 'Kannada' : null;
-  if (!langName || !text) return text;
+// Zia's audio/transcribe model sometimes renders Hindi/Kannada speech in
+// Latin letters ("han bhai mera naam Dipu hai...") instead of the native
+// script — indistinguishable from genuine English to detectLang() and every
+// other language check downstream, which key off Unicode script presence.
+// This is a spelling fix, not a translation: same words, same language,
+// written the way the officer actually wrote/spoke it, so both the composer
+// and the chat pipeline's own localiseAnswer see real Devanagari/Kannada and
+// answer back in kind instead of silently downgrading to English.
+async function transliterateToNativeScript(text, lang) {
+  if (lang === 'en' || !text || !LANG_NAME[lang] || SCRIPT[lang]?.test(text)) return text;
   const out = await callLLM(
     [
       {
         role: 'system',
         content:
-          'You translate spoken police statements and questions into English. ' +
-          'Preserve names, place names, numbers, dates, and legal section numbers exactly ' +
-          '(transliterate proper nouns, never invent or drop them). ' +
-          'Reply with ONLY the English translation — no preamble, no quotes, no notes.',
+          `The following was transcribed in Latin letters but is spoken ${LANG_NAME[lang]}. ` +
+          `Rewrite it in native ${LANG_NAME[lang]} script exactly as spoken — same words, same ` +
+          'meaning, no translation, no additions, no omissions. Output ONLY the rewritten text.',
       },
-      { role: 'user', content: `Translate this ${langName} transcript into English:\n\n${text}` },
+      { role: 'user', content: text },
     ],
-    { maxTokens: 512, timeoutMs: 15_000 }
+    { maxTokens: 400, temperature: 0, timeoutMs: 12_000 }
   );
-  const translated = String(out || '').trim();
-  // Fail soft: a translation miss should not lose the transcript entirely —
-  // the original-language text is still better than nothing in the composer.
-  return translated || text;
+  const rewritten = String(out || '').trim();
+  // Fail soft: a miss should not lose the transcript entirely — the
+  // Romanized text is still usable in the composer.
+  return rewritten || text;
 }
 
 async function handleTranscribe(req, res) {
@@ -1457,7 +1458,7 @@ async function handleTranscribe(req, res) {
     (typeof d.response === 'string' ? d.response : '') || '';
   text = String(text).trim();
   if (looksDegenerateTranscript(text)) text = '';
-  if (text && lang !== 'en') text = await translateTranscriptToEnglish(text, lang);
+  if (text && lang !== 'en') text = await transliterateToNativeScript(text, lang);
   return json(res, 200, { text, raw: data });
 }
 

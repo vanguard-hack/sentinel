@@ -18,6 +18,7 @@ import {
   attachState,
 } from '../utils/attachments';
 import ModelPicker from '../components/ModelPicker';
+import VoiceLangPicker from '../components/VoiceLangPicker';
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
 import Avatar from '../components/Avatar';
@@ -160,13 +161,27 @@ const SUGGESTIONS = [
   'How many arrests were made last year?',
 ];
 
-// Browser live dictation is only trusted for English — Chrome's own hi-IN/
-// kn-IN recognition quality trails Zia's server-side model badly, so Hindi
-// and Kannada always take the recorder-and-Zia path below instead.
-const isEnglishUi = () => String(i18n.resolvedLanguage || '').slice(0, 2).toLowerCase() === 'en';
+// Which language the mic listens for — a deliberate choice next to the mic
+// button (VoiceLangPicker), not derived from the platform's display
+// language. An officer whose console is in English still needs to dictate a
+// Hindi/Kannada sentence without switching the whole UI, and forcing Hindi
+// speech through an English recognizer doesn't error, it just phonetically
+// mangles it into Latin letters ("han bhai mera naam..."). Persisted so it
+// doesn't reset every session.
+const VOICE_LANG_KEY = 'sentinel.voiceLang';
+const SUPPORTED_VOICE_LANGS = ['en', 'hi', 'kn'];
+function loadVoiceLang() {
+  try {
+    const stored = localStorage.getItem(VOICE_LANG_KEY);
+    if (SUPPORTED_VOICE_LANGS.includes(stored)) return stored;
+  } catch { /* private browsing / storage disabled */ }
+  const uiLang = String(i18n.resolvedLanguage || '').slice(0, 2).toLowerCase();
+  return SUPPORTED_VOICE_LANGS.includes(uiLang) ? uiLang : 'en';
+}
 
 // Voice input records real audio via MediaRecorder and transcribes it with the
-// Zia audio-to-text model (English / Hindi / Kannada, follows the UI language).
+// Zia audio-to-text model (English / Hindi / Kannada, per the voice language
+// picked above).
 const canRecord =
   typeof window !== 'undefined' &&
   typeof window.MediaRecorder !== 'undefined' &&
@@ -194,6 +209,11 @@ export default function Assistant() {
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
+  const [voiceLang, setVoiceLang] = useState(loadVoiceLang);
+  const chooseVoiceLang = (lang) => {
+    setVoiceLang(lang);
+    try { localStorage.setItem(VOICE_LANG_KEY, lang); } catch { /* private browsing / storage disabled */ }
+  };
   const [copiedId, setCopiedId] = useState(null);
   // The citation the officer opened: which message, and which footnote number
   // within it. One at a time, held here rather than per message, so opening a
@@ -858,7 +878,7 @@ export default function Assistant() {
     setTranscribing(true);
     setVoiceError(null);
     try {
-      const text = await transcribeAudio(blob, i18n.resolvedLanguage || 'en');
+      const text = await transcribeAudio(blob, voiceLang);
       setInput((cur) => (cur ? cur.replace(/\s+$/, '') + ' ' + text : text));
       textareaRef.current?.focus();
     } catch (e) {
@@ -866,7 +886,7 @@ export default function Assistant() {
     } finally {
       setTranscribing(false);
     }
-  }, []);
+  }, [voiceLang]);
 
   // What the officer has typed, held while dictation appends to it — otherwise
   // speaking after typing half a question would overwrite the half they typed.
@@ -885,13 +905,14 @@ export default function Assistant() {
     // Live dictation where the browser has it. The words appear as they are
     // spoken, which is the difference between being able to correct yourself
     // mid-sentence and finding out afterwards that it misheard you. Nothing is
-    // uploaded on this path, so it is also simply faster.
-    //
-    if (isEnglishUi() && dictationSupported()) {
+    // uploaded on this path, so it is also simply faster. English only — see
+    // the voiceLang comment above for why Hindi/Kannada skip straight to the
+    // recorder-and-Zia path below.
+    if (voiceLang === 'en' && dictationSupported()) {
       typedRef.current = input;
       setVoiceError(null);
       const handle = startDictation({
-        lang: i18n.resolvedLanguage,
+        lang: voiceLang,
         onText: ({ final, interim }) => {
           setInput(composeDictated(typedRef.current, final, interim));
         },
@@ -1281,13 +1302,14 @@ export default function Assistant() {
                   not. The indicator's job is to say the microphone is open,
                   and nothing else.
                 */}
-                {listening && isEnglishUi() && dictationSupported() && (
+                {listening && voiceLang === 'en' && dictationSupported() && (
                   <span className="as-dictating" aria-live="polite">
                     <span className="as-dictating-dot" />
                     {t('assistant.listening', 'Listening…')}
                   </span>
                 )}
                 <ModelPicker value={model} onChange={chooseModel} />
+                {canRecord && <VoiceLangPicker value={voiceLang} onChange={chooseVoiceLang} />}
                 {canRecord && (
                   <button
                     className={`as-comp-btn ${listening ? 'listening' : ''} ${transcribing ? 'transcribing' : ''}`}
@@ -1298,9 +1320,9 @@ export default function Assistant() {
                         ? 'Transcribing…'
                         : listening
                         ? 'Stop'
-                        : isEnglishUi() && dictationSupported()
+                        : voiceLang === 'en' && dictationSupported()
                         ? 'Dictate — words appear as you speak (English)'
-                        : 'Record voice (transcribed when you stop — English/Hindi/Kannada)'
+                        : 'Record voice (transcribed when you stop)'
                     }
                   >
                     <Mic size={18} />
