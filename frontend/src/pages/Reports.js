@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { fetchReports, computeReport, trendSeries, earliestTs, TREND_RANGES, customLabel } from '../utils/reports';
 import { exportHomeReportPdf } from '../utils/reportPdf';
-import DateRangeCalendar from '../components/DateRangeCalendar';
+import DatePicker from '../components/ui/DatePicker';
 import { HeatGrid, Funnel, Pyramid } from '../components/Charts';
 // The vendored Bklit chart set. Everything still imported from Charts.js above
 // is a shape Bklit has no equivalent for, or one not yet converted.
@@ -228,10 +228,10 @@ export default function Reports() {
                     </span>
                   </div>
 
-                  <DateRangeCalendar
+                  <DatePicker
                     from={draftFrom}
                     to={draftTo}
-                    onSelect={(f, t) => { setDraftFrom(f); setDraftTo(t); }}
+                    onSelect={({ from, to }) => { setDraftFrom(from); setDraftTo(to); }}
                   />
 
                   <div className="rp-cal-actions">
@@ -373,10 +373,10 @@ export default function Reports() {
                     </button>
                     {chartCalOpen && (
                       <div className="rp-cal-pop" role="dialog" aria-label="Chart date range">
-                        <DateRangeCalendar
+                        <DatePicker
                           from={chartFrom}
                           to={chartTo}
-                          onSelect={(f, t) => { setChartFrom(f); setChartTo(t); }}
+                          onSelect={({ from, to }) => { setChartFrom(from); setChartTo(to); }}
                         />
                         <div className="rp-cal-actions">
                           <button
