@@ -1,13 +1,16 @@
 /* frontend/src/components/ui/BorderBeam.css */
 /* Browsers treat a plain custom property as an opaque string, so they can't
-   interpolate --beam-angle between 0deg and 360deg — motion/react's animate()
-   sets it once and the sweep never continues. Registering the property's real
-   type (an angle) is what makes the browser actually animate it, natively and
-   continuously, instead of jumping straight to the end value and stopping. */
+   interpolate --beam-angle between 0deg and 360deg on their own. Registering
+   the property's real type is what makes @keyframes below able to animate it
+   at all, continuously, via native CSS rather than a JS animation library. */
 @property --beam-angle {
   syntax: '<angle>';
   inherits: false;
   initial-value: 0deg;
+}
+@keyframes ui-border-beam-spin {
+  from { --beam-angle: 0deg; }
+  to   { --beam-angle: 360deg; }
 }
 .ui-border-beam { position: relative; border-radius: inherit; }
 /* .as-composer has its own rounded corners (var(--radius-lg)); border-radius:
@@ -24,6 +27,7 @@
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
+  animation: ui-border-beam-spin 3s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .ui-border-beam.active { box-shadow: 0 0 0 1px var(--primary-focus); }
