@@ -171,6 +171,11 @@ const SUGGESTIONS = [
   'How many arrests were made last year?',
 ];
 
+// Browser live dictation is only trusted for English — Chrome's own hi-IN/
+// kn-IN recognition quality trails Zia's server-side model badly, so Hindi
+// and Kannada always take the recorder-and-Zia path below instead.
+const isEnglishUi = () => String(i18n.resolvedLanguage || '').slice(0, 2).toLowerCase() === 'en';
+
 // Voice input records real audio via MediaRecorder and transcribes it with the
 // Zia audio-to-text model (English / Hindi / Kannada, follows the UI language).
 const canRecord =
@@ -893,7 +898,8 @@ export default function Assistant() {
     // spoken, which is the difference between being able to correct yourself
     // mid-sentence and finding out afterwards that it misheard you. Nothing is
     // uploaded on this path, so it is also simply faster.
-    if (dictationSupported()) {
+    //
+    if (isEnglishUi() && dictationSupported()) {
       typedRef.current = input;
       setVoiceError(null);
       const handle = startDictation({
@@ -1288,7 +1294,7 @@ export default function Assistant() {
                   not. The indicator's job is to say the microphone is open,
                   and nothing else.
                 */}
-                {listening && dictationSupported() && (
+                {listening && isEnglishUi() && dictationSupported() && (
                   <span className="as-dictating" aria-live="polite">
                     <span className="as-dictating-dot" />
                     {t('assistant.listening', 'Listening…')}
@@ -1305,8 +1311,8 @@ export default function Assistant() {
                         ? 'Transcribing…'
                         : listening
                         ? 'Stop'
-                        : dictationSupported()
-                        ? 'Dictate — words appear as you speak (English/Hindi/Kannada)'
+                        : isEnglishUi() && dictationSupported()
+                        ? 'Dictate — words appear as you speak (English)'
                         : 'Record voice (transcribed when you stop — English/Hindi/Kannada)'
                     }
                   >

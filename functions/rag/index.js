@@ -1345,6 +1345,29 @@ const ZIA_FILE_FIELD = process.env.ZIA_FILE_FIELD || 'file';
 const ZIA_LANG_FIELD = process.env.ZIA_LANG_FIELD || 'language';
 const ZIA_LANGS = new Set(['en', 'hi', 'kn']);
 
+// Zia's audio/transcribe model is Whisper-style under the hood, and Whisper's
+// known failure mode is a runaway repetition loop ("the one who is the one
+// who is ...") when the audio doesn't match the forced language — exactly
+// what happens when an officer's Kannada/Hindi speech gets forced through as
+// English, since Zia has no auto-detect and takes language as a mandatory
+// param. Pasting that into the composer is worse than surfacing "no speech
+// detected", so catch it: a real sentence doesn't repeat one short phrase
+// dozens of times.
+function looksDegenerateTranscript(text) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  if (words.length < 12) return false;
+  const lowered = words.map((w) => w.toLowerCase());
+  const uniqueRatio = new Set(lowered).size / lowered.length;
+  if (uniqueRatio < 0.22) return true;
+  const counts = new Map();
+  for (let i = 0; i < lowered.length - 2; i++) {
+    const gram = lowered.slice(i, i + 3).join(' ');
+    counts.set(gram, (counts.get(gram) || 0) + 1);
+  }
+  const topCount = Math.max(0, ...counts.values());
+  return topCount >= 8 && topCount / Math.max(1, lowered.length - 2) > 0.25;
+}
+
 async function handleTranscribe(req, res) {
   // Two request shapes are accepted:
   //   • raw audio bytes as application/octet-stream, with mimetype/filename/
@@ -1399,10 +1422,12 @@ async function handleTranscribe(req, res) {
 
   // Field name isn't documented — check the likely spots and return raw too.
   const d = data.data || data;
-  const text =
+  let text =
     d.transcript || d.transcription || d.text || d.result || d.output ||
     (typeof d.response === 'string' ? d.response : '') || '';
-  return json(res, 200, { text: String(text).trim(), raw: data });
+  text = String(text).trim();
+  if (looksDegenerateTranscript(text)) text = '';
+  return json(res, 200, { text, raw: data });
 }
 
 

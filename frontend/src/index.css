@@ -2842,7 +2842,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   font-size: 14.5px;
   line-height: 1.5;
   padding: 9px 4px;
-  color: transparent;
+  color: var(--text-1);
 }
 .as-input-token { color: var(--blue-500); }
 .as-input {
@@ -9510,7 +9510,7 @@ span.inv-status-dot {
 /* Live dictation: the words still being revised, shown faintly so it is clear
    they may change before they settle. */
 .as-dictating {
-  display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
+  display: inline-flex; align-items: center; align-self: center; gap: 7px; max-width: 100%;
   padding: 2px 4px; font-size: 12px; color: var(--text-3);
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
