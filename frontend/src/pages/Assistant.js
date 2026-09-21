@@ -38,6 +38,7 @@ import { slashQuery, filterCommands, parseCommand, closestCommand, leadingSlashT
 import { useToast } from '../components/ui/Toast';
 import MessageScroller from '../components/ui/MessageScroller';
 import BorderBeam from '../components/ui/BorderBeam';
+import VoiceGlow from '../components/ui/VoiceGlow';
 
 import { useTranslation } from 'react-i18next';
 
@@ -1290,22 +1291,25 @@ export default function Assistant() {
                 <ModelPicker value={model} onChange={chooseModel} />
                 {canRecord && <VoiceLangPicker value={voiceLang} onChange={chooseVoiceLang} />}
                 {canRecord && (
-                  <button
-                    className={`as-comp-btn ${listening ? 'listening' : ''} ${transcribing ? 'transcribing' : ''}`}
-                    onClick={toggleMic}
-                    disabled={transcribing}
-                    title={
-                      transcribing
-                        ? 'Transcribing…'
-                        : listening
-                        ? 'Stop'
-                        : voiceLang === 'en' && dictationSupported()
-                        ? 'Dictate — words appear as you speak (English)'
-                        : 'Record voice (transcribed when you stop)'
-                    }
-                  >
-                    <Mic size={18} />
-                  </button>
+                  <span className="as-mic-wrap">
+                    <VoiceGlow listening={listening} thinking={sending} />
+                    <button
+                      className={`as-comp-btn ${listening ? 'listening' : ''} ${transcribing ? 'transcribing' : ''}`}
+                      onClick={toggleMic}
+                      disabled={transcribing}
+                      title={
+                        transcribing
+                          ? 'Transcribing…'
+                          : listening
+                          ? 'Stop'
+                          : voiceLang === 'en' && dictationSupported()
+                          ? 'Dictate — words appear as you speak (English)'
+                          : 'Record voice (transcribed when you stop)'
+                      }
+                    >
+                      <Mic size={18} />
+                    </button>
+                  </span>
                 )}
                 <button
                   className="as-send-btn"

@@ -2862,6 +2862,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .as-comp-btn:hover { background: var(--hover-overlay); color: var(--text-1); }
 .as-comp-btn.listening { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); animation: as-pulse 1.4s infinite; }
 @keyframes as-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.as-mic-wrap { position: relative; display: inline-flex; }
 .as-input-wrap { position: relative; flex: 1; min-width: 0; }
 /* Sits directly behind the textarea, same box exactly — any mismatch in
    font/padding/line-height between the two would misalign the colour from
