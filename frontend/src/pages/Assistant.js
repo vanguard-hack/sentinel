@@ -39,6 +39,7 @@ import { useToast } from '../components/ui/Toast';
 import MessageScroller from '../components/ui/MessageScroller';
 import BorderBeam from '../components/ui/BorderBeam';
 import VoiceGlow from '../components/ui/VoiceGlow';
+import ActionButton from '../components/ui/ActionButton';
 
 import { useTranslation } from 'react-i18next';
 
@@ -199,7 +200,6 @@ export default function Assistant() {
   const [voiceError, setVoiceError] = useState(null);
   const [voiceLang, setVoiceLang] = useState(loadVoiceLang);
   const chooseVoiceLang = (lang) => { setVoiceLang(lang); saveVoiceLang(lang); };
-  const [copiedId, setCopiedId] = useState(null);
   // The citation the officer opened: which message, and which footnote number
   // within it. One at a time, held here rather than per message, so opening a
   // second source closes the first instead of stacking panels.
@@ -826,11 +826,8 @@ export default function Assistant() {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
 
   const copyMessage = (m) => {
-    if (!navigator.clipboard) return;
-    navigator.clipboard.writeText(m.content).then(() => {
-      setCopiedId(m.id);
-      setTimeout(() => setCopiedId((c) => (c === m.id ? null : c)), 1500);
-    });
+    if (!navigator.clipboard) return Promise.reject(new Error('clipboard unavailable'));
+    return navigator.clipboard.writeText(m.content);
   };
 
   // Toggle thumbs-up / thumbs-down feedback on an assistant message.
@@ -1136,9 +1133,13 @@ export default function Assistant() {
                       )}
                       {m.role === 'assistant' && m.content && (
                         <div className="as-msg-actions">
-                          <button onClick={() => copyMessage(m)} title="Copy" aria-label="Copy response">
-                            {copiedId === m.id ? <Check size={15} /> : <Copy size={15} />}
-                          </button>
+                          <ActionButton
+                            icon={Copy}
+                            doneIcon={Check}
+                            label="Copy"
+                            doneLabel="Copied"
+                            onAction={() => copyMessage(m)}
+                          />
                           <button
                             className={m.feedback === 'up' ? 'active up' : ''}
                             onClick={() => setFeedback(m.id, 'up')}
