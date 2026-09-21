@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import {
   loadSessions, saveSessions, makeTitle, newSession, generateReply, runSherlockLookup, uid,
-  loadModel, saveModel,
+  loadModel, saveModel, loadVoiceLang, saveVoiceLang,
   transcribeAudio, loadSessionsRemote, saveSessionRemote, saveSessionBeacon, deleteSessionRemote,
   consolidateMemory,
 } from '../utils/assistant';
@@ -161,24 +161,6 @@ const SUGGESTIONS = [
   'How many arrests were made last year?',
 ];
 
-// Which language the mic listens for — a deliberate choice next to the mic
-// button (VoiceLangPicker), not derived from the platform's display
-// language. An officer whose console is in English still needs to dictate a
-// Hindi/Kannada sentence without switching the whole UI, and forcing Hindi
-// speech through an English recognizer doesn't error, it just phonetically
-// mangles it into Latin letters ("han bhai mera naam..."). Persisted so it
-// doesn't reset every session.
-const VOICE_LANG_KEY = 'sentinel.voiceLang';
-const SUPPORTED_VOICE_LANGS = ['en', 'hi', 'kn'];
-function loadVoiceLang() {
-  try {
-    const stored = localStorage.getItem(VOICE_LANG_KEY);
-    if (SUPPORTED_VOICE_LANGS.includes(stored)) return stored;
-  } catch { /* private browsing / storage disabled */ }
-  const uiLang = String(i18n.resolvedLanguage || '').slice(0, 2).toLowerCase();
-  return SUPPORTED_VOICE_LANGS.includes(uiLang) ? uiLang : 'en';
-}
-
 // Voice input records real audio via MediaRecorder and transcribes it with the
 // Zia audio-to-text model (English / Hindi / Kannada, per the voice language
 // picked above).
@@ -210,10 +192,7 @@ export default function Assistant() {
   const [transcribing, setTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
   const [voiceLang, setVoiceLang] = useState(loadVoiceLang);
-  const chooseVoiceLang = (lang) => {
-    setVoiceLang(lang);
-    try { localStorage.setItem(VOICE_LANG_KEY, lang); } catch { /* private browsing / storage disabled */ }
-  };
+  const chooseVoiceLang = (lang) => { setVoiceLang(lang); saveVoiceLang(lang); };
   const [copiedId, setCopiedId] = useState(null);
   // The citation the officer opened: which message, and which footnote number
   // within it. One at a time, held here rather than per message, so opening a

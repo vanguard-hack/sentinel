@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { MessageSquare, X, ArrowUp, Bot, Maximize2, RotateCcw, Mic } from 'lucide-react';
 import {
   generateReply, uid, transcribeAudio, saveSessionRemote, upsertLocalSession, loadSessions,
+  loadVoiceLang, saveVoiceLang,
 } from '../utils/assistant';
 import { useAuth } from '../context/AuthContext';
 import AguiRenderer from './AguiRenderer';
@@ -10,7 +11,7 @@ import RichText from './RichText';
 import SourceCitations, { SourceViewer } from './SourceCitations';
 import { normaliseSources } from '../utils/sources';
 import Thinking from './Thinking';
-import i18n from '../i18n';
+import VoiceLangPicker from './VoiceLangPicker';
 
 // Floating assistant: a bubble in the bottom-right that expands into a compact
 // chat. Full parity with the assistant page — suggested questions, voice input
@@ -52,6 +53,8 @@ export default function ChatWidget() {
   const [sending, setSending] = useState(false);
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [voiceLang, setVoiceLang] = useState(loadVoiceLang);
+  const chooseVoiceLang = (lang) => { setVoiceLang(lang); saveVoiceLang(lang); };
   // Which citation the officer opened, by message and footnote number.
   const [citation, setCitation] = useState(null);
   const threadRef = useRef(null);
@@ -142,7 +145,7 @@ export default function ChatWidget() {
         if (blob.size < 800) return;
         setTranscribing(true);
         try {
-          const text = await transcribeAudio(blob, i18n.resolvedLanguage || 'en');
+          const text = await transcribeAudio(blob, voiceLang);
           setInput((cur) => (cur ? cur.replace(/\s+$/, '') + ' ' + text : text));
           inputRef.current?.focus();
         } catch { /* surfaced by empty input */ } finally {
@@ -250,12 +253,13 @@ export default function ChatWidget() {
               onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
               disabled={transcribing}
             />
+            {canRecord && <VoiceLangPicker value={voiceLang} onChange={chooseVoiceLang} />}
             {canRecord && (
               <button
                 className={`cw-mic ${listening ? 'listening' : ''}`}
                 onClick={toggleMic}
                 disabled={transcribing}
-                title={listening ? 'Stop recording' : 'Voice input (English/Hindi/Kannada)'}
+                title={listening ? 'Stop recording' : 'Voice input'}
               >
                 <Mic size={16} />
               </button>

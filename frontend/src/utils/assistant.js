@@ -8,6 +8,33 @@ import { capturePageContext } from './pageContext';
 
 const STORAGE_KEY = 'sentinel-chat-sessions';
 const MODEL_STORAGE_KEY = 'sentinel-chat-model';
+const VOICE_LANG_STORAGE_KEY = 'sentinel.voiceLang';
+
+// Which language the mic listens for — independent of the platform's display
+// language (an officer whose console is in English still needs to dictate a
+// Hindi/Kannada sentence without switching the whole UI), and shared between
+// the full assistant page and the floating widget so the choice only has to
+// be made once per device. Forcing speech through the wrong language's
+// recogniser doesn't error, it just phonetically mangles the words into
+// Latin letters ("han bhai mera naam...") — neither English nor Devanagari.
+export const VOICE_LANG_OPTIONS = [
+  { key: 'en', label: 'English' },
+  { key: 'hi', label: 'हिंदी' },
+  { key: 'kn', label: 'ಕನ್ನಡ' },
+];
+const VOICE_LANG_KEYS = VOICE_LANG_OPTIONS.map((o) => o.key);
+
+export function loadVoiceLang() {
+  try {
+    const v = localStorage.getItem(VOICE_LANG_STORAGE_KEY);
+    if (VOICE_LANG_KEYS.includes(v)) return v;
+  } catch { /* private browsing / storage disabled */ }
+  return currentLang();
+}
+
+export function saveVoiceLang(lang) {
+  try { localStorage.setItem(VOICE_LANG_STORAGE_KEY, lang); } catch { /* private browsing / storage disabled */ }
+}
 
 // The assistant's model switcher. Keys and order must match MODEL_CHOICES in
 // functions/rag/index.js — the backend is the source of truth for which

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
+import { VOICE_LANG_OPTIONS as OPTIONS } from '../utils/assistant';
 
 // Which language the mic listens for. Deliberately independent of the
 // platform's display language (Settings → language toggle): an officer whose
@@ -8,11 +9,6 @@ import { ChevronDown, Check } from 'lucide-react';
 // Hindi sentence forced through an English recognizer comes back as
 // "han bhai mera naam..." (real words, phonetically mangled into Latin
 // letters), not an error, so there is nothing else to catch it.
-const OPTIONS = [
-  { key: 'en', label: 'English' },
-  { key: 'hi', label: 'हिंदी' },
-  { key: 'kn', label: 'ಕನ್ನಡ' },
-];
 
 export default function VoiceLangPicker({ value, onChange }) {
   const [open, setOpen] = useState(false);
