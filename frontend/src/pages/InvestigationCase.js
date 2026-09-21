@@ -6,6 +6,7 @@ import {
   Mic, Upload, Paperclip, Play, FileText, Pencil, Trash2, FileDown,
   ScrollText, ExternalLink, CloudOff } from 'lucide-react';
 import TopBar from '../components/TopBar';
+import Tabs, { TabPanel } from '../components/ui/Tabs';
 import RichText from '../components/RichText';
 import {
   getInvestigation, setInvestigationStatus, appendInvestigationItem, summarizeInvestigation,
@@ -1048,13 +1049,6 @@ export default function InvestigationCase() {
           </div>
         </div>
         {exportError && <div className="aa-error"><AlertTriangle size={16} /> {exportError}</div>}
-        <div className="inv-tabbar">
-          {TABS.map((t) => (
-            <button key={t.key} className={`inv-tab-btn ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>
-              <t.Icon size={14} /> {t.label}
-            </button>
-          ))}
-        </div>
         <div className="inv-tabbar-mobile">
           <button type="button" className="inv-tab-mobile-btn" onClick={() => setTabMenuOpen((o) => !o)}>
             <active.Icon size={14} /> {active.label} <ChevronDown size={14} />
@@ -1070,15 +1064,23 @@ export default function InvestigationCase() {
           )}
         </div>
 
-        {tab === 'overview' && <OverviewTab rec={rec} />}
-        {tab === 'diary' && <DiaryTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
-        {tab === 'statements' && <StatementsTab rec={rec} caseMasterId={rec.caseMasterId} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
-        {tab === 'evidence' && <EvidenceTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
-        {tab === 'persons' && <PersonsTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
-        {tab === 'timeline' && <TimelineTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
-        {tab === 'findings' && <FindingsTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} />}
-        {tab === 'reports' && <ReportsTab caseMasterId={rec.caseMasterId} crimeNo={rec.crimeNo} />}
-        {tab === 'summary' && <SummaryTab caseMasterId={rec.caseMasterId} />}
+        <div className="inv-tab-wrap">
+          <Tabs
+            items={TABS.map((t) => ({ id: t.key, label: t.label, Icon: t.Icon }))}
+            selected={tab}
+            onChange={setTab}
+          >
+            <TabPanel id="overview"><OverviewTab rec={rec} /></TabPanel>
+            <TabPanel id="diary"><DiaryTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} /></TabPanel>
+            <TabPanel id="statements"><StatementsTab rec={rec} caseMasterId={rec.caseMasterId} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} /></TabPanel>
+            <TabPanel id="evidence"><EvidenceTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} /></TabPanel>
+            <TabPanel id="persons"><PersonsTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} /></TabPanel>
+            <TabPanel id="timeline"><TimelineTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} /></TabPanel>
+            <TabPanel id="findings"><FindingsTab rec={rec} onAdd={onAdd} onUpdate={onUpdate} onDelete={onDelete} /></TabPanel>
+            <TabPanel id="reports"><ReportsTab caseMasterId={rec.caseMasterId} crimeNo={rec.crimeNo} /></TabPanel>
+            <TabPanel id="summary"><SummaryTab caseMasterId={rec.caseMasterId} /></TabPanel>
+          </Tabs>
+        </div>
       </div>
     </div>
   );

@@ -6259,6 +6259,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 @media (max-width: 720px) {
   .inv-tabbar { display: none; }
   .inv-tabbar-mobile { display: block; }
+  .inv-tab-wrap { display: none; }
 }
 
 .inv-iif-badge {
