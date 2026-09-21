@@ -1368,6 +1368,36 @@ function looksDegenerateTranscript(text) {
   return topCount >= 8 && topCount / Math.max(1, lowered.length - 2) > 0.25;
 }
 
+// Zia's audio/transcribe model is transcription, not translation — a Hindi or
+// Kannada officer gets back the words they said, in the script they said them
+// (often code-switched with English loanwords, since that's how the sentence
+// was actually spoken), never an English rendering. Whatever lane the text
+// lands in next reads English question text far more reliably than a mixed-
+// script transcript, so the transcript is machine-translated here, once,
+// before it ever reaches the composer.
+async function translateTranscriptToEnglish(text, lang) {
+  const langName = lang === 'hi' ? 'Hindi' : lang === 'kn' ? 'Kannada' : null;
+  if (!langName || !text) return text;
+  const out = await callLLM(
+    [
+      {
+        role: 'system',
+        content:
+          'You translate spoken police statements and questions into English. ' +
+          'Preserve names, place names, numbers, dates, and legal section numbers exactly ' +
+          '(transliterate proper nouns, never invent or drop them). ' +
+          'Reply with ONLY the English translation — no preamble, no quotes, no notes.',
+      },
+      { role: 'user', content: `Translate this ${langName} transcript into English:\n\n${text}` },
+    ],
+    { maxTokens: 512, timeoutMs: 15_000 }
+  );
+  const translated = String(out || '').trim();
+  // Fail soft: a translation miss should not lose the transcript entirely —
+  // the original-language text is still better than nothing in the composer.
+  return translated || text;
+}
+
 async function handleTranscribe(req, res) {
   // Two request shapes are accepted:
   //   • raw audio bytes as application/octet-stream, with mimetype/filename/
@@ -1427,6 +1457,7 @@ async function handleTranscribe(req, res) {
     (typeof d.response === 'string' ? d.response : '') || '';
   text = String(text).trim();
   if (looksDegenerateTranscript(text)) text = '';
+  if (text && lang !== 'en') text = await translateTranscriptToEnglish(text, lang);
   return json(res, 200, { text, raw: data });
 }
 

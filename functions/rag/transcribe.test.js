@@ -1,6 +1,10 @@
 // looksDegenerateTranscript(): catches the Whisper-style repetition-loop
 // hallucination Zia STT produces when audio is forced through the wrong
-// language (no auto-detect on that endpoint). Run: node functions/rag/transcribe.test.js
+// language (no auto-detect on that endpoint).
+// translateTranscriptToEnglish(): Zia STT transcribes Hindi/Kannada in the
+// spoken script (often code-switched with English loanwords) — it never
+// translates. This machine-translates that transcript to English before it
+// reaches the composer. Run: node functions/rag/transcribe.test.js
 
 let pass = 0, fail = 0;
 const check = (name, cond, detail) => {
@@ -10,7 +14,9 @@ const check = (name, cond, detail) => {
 
 const src = require('fs').readFileSync(__dirname + '/index.js', 'utf8');
 const grabFn = (name) => {
-  const i = src.indexOf(`function ${name}(`);
+  const i = src.indexOf(`async function ${name}(`) >= 0
+    ? src.indexOf(`async function ${name}(`)
+    : src.indexOf(`function ${name}(`);
   if (i < 0) throw new Error('missing function ' + name);
   let d = 0, j = src.indexOf('{', i);
   for (let k = j; k < src.length; k++) {
@@ -43,5 +49,37 @@ check(
   ) === false
 );
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+// eslint-disable-next-line no-new-func
+const buildTranslate = () => new Function(
+  'callLLM',
+  `${grabFn('translateTranscriptToEnglish')}\nreturn translateTranscriptToEnglish;`
+);
+
+(async () => {
+  const noCall = buildTranslate()(async () => { throw new Error('callLLM should not be called for English'); });
+  check('english text is passed through untouched, no LLM call', await noCall('already english', 'en') === 'already english');
+
+  const translateHi = buildTranslate()(async (messages) => {
+    check('the source language is named in the translation prompt', messages[1].content.includes('Hindi'));
+    return '  The accused fled towards Udupi road.  ';
+  });
+  check(
+    'a Hindi transcript is translated to English and trimmed',
+    await translateHi('आरोपी उडुपी रोड की तरफ भाग गया', 'hi') === 'The accused fled towards Udupi road.'
+  );
+
+  const translateKn = buildTranslate()(async (messages) => {
+    check('Kannada is named in the translation prompt', messages[1].content.includes('Kannada'));
+    return 'The suspect escaped.';
+  });
+  check('a Kannada transcript is translated', await translateKn('ಆರೋಪಿ ಪರಾರಿಯಾಗಿದ್ದಾನೆ', 'kn') === 'The suspect escaped.');
+
+  const translateFail = buildTranslate()(async () => null);
+  check(
+    'an LLM failure falls back to the original transcript rather than losing it',
+    await translateFail('ಆರೋಪಿ ಪರಾರಿಯಾಗಿದ್ದಾನೆ', 'kn') === 'ಆರೋಪಿ ಪರಾರಿಯಾಗಿದ್ದಾನೆ'
+  );
+
+  console.log(`\n${pass} passed, ${fail} failed`);
+  process.exit(fail ? 1 : 0);
+})();
