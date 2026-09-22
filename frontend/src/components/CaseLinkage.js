@@ -19,10 +19,6 @@ function Kpi({ value, label }) {
 
 const pct = (v) => `${Math.round(v * 100)}%`;
 
-// Calibrated probabilities on this data are genuinely small — among all pairs
-// of cases almost none are the same offender — so rounding to whole percent
-// would collapse the whole reliability table to "0%" and hide the very thing
-// it exists to show. Precision scales with the magnitude instead.
 const fmtRate = (v) => {
   if (v == null || !Number.isFinite(v)) return '—';
   if (v === 0) return '0%';

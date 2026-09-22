@@ -16,10 +16,7 @@ const labelOf = (v) => {
 // The home bento reads the same tables as the AI Analytics tabs, so it pages
 // through the shared helper and shares their cached scan rather than making
 // its own sequential pass over 30,000 rows.
-
 // Fetch a master table once and return an id → name lookup function.
-// Master tables come from the analytics snapshot too, so these pages issue no
-// ZCQL from the browser at all — the whole page is a handful of blob reads.
 async function lookup(table, idCol, nameCol) {
   const rows = await fetchSnapshotTable(table);
   const map = new Map(rows.map((r) => [String(r[idCol]), r[nameCol]]));

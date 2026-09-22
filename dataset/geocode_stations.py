@@ -1,17 +1,7 @@
 #!/usr/bin/env python3
 """One-time reverse-geocode of every Karnataka police station.
 
-The station GeoJSON carries coordinates but no street address — neither the
-`Unit` master table nor police_stations.csv has an address column. The Crime Map
-therefore used to reverse-geocode each station live, on click, against the public
-Nominatim instance.
-
-That works for a demo and does not scale. Nominatim's usage policy caps the
-public instance at 1 request/second, forbids bulk use, and reserves the right to
-block: a few thousand officers browsing the map would get the deployment's IP
-blocked and every address would silently degrade to "—". So the lookup is done
-ONCE, here, and the answer is baked into the GeoJSON that ships with the app.
-
+The station GeoJSON carries coordinates but no street address.
 That removes the runtime dependency entirely, makes addresses appear instantly
 instead of after a network round-trip, and — because the data is now in the
 repo — lets the address be used anywhere else it is wanted.

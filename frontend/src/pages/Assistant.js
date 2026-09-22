@@ -1169,7 +1169,7 @@ export default function Assistant() {
                   </div>
                 ))}
                 {sending && (
-                  <div className="as-msg as-msg-assistant">
+                  <div className="as-msg as-msg-assistant as-msg-thinking">
                     <div className="as-avatar"><Shield size={16} /></div>
                     <div className="as-msg-body">
                       <Thinking label={sherlockLabel} />

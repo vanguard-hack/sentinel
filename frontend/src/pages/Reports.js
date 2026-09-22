@@ -8,8 +8,6 @@ import { fetchReports, computeReport, trendSeries, earliestTs, TREND_RANGES, cus
 import { exportHomeReportPdf } from '../utils/reportPdf';
 import DatePicker from '../components/ui/DatePicker';
 import { HeatGrid, Funnel, Pyramid } from '../components/Charts';
-// The vendored Bklit chart set. Everything still imported from Charts.js above
-// is a shape Bklit has no equivalent for, or one not yet converted.
 import TrendLine from '../components/charts/TrendLine';
 import TrendArea from '../components/charts/TrendArea';
 import BarList from '../components/charts/BarColumns';
@@ -33,10 +31,6 @@ function Card({ id, title, subtitle, wide, two, hero, full, banner, tall, sectio
     !full && !banner && !hero && two && 'rp-card-2',
   ].filter(Boolean).join(' ');
   return (
-    // data-pdf-section groups cards into titled, one-page-per-section spreads
-    // in the PDF export (see exportHomeReportPdf) without duplicating this
-    // page's own layout — the bento above is deliberately ONE lattice with no
-    // section walls; the PDF is the one place sections still make sense.
     <section id={id} className={`rp-card ${span}`} data-pdf-section={section}>
       <div className="rp-card-head">
         <h2>{title}</h2>
@@ -414,31 +408,6 @@ export default function Reports() {
               </div>
             </section>
 
-            {/* ── The bento ───────────────────────────────────────────────
-                ONE grid, not six. The page used to be six section-headed
-                grids, and a heading is a wall: a card could only ever be
-                placed among its own section's cards, so every section ended
-                on a ragged row and the page read as a column of half-empty
-                shelves.
-
-                With the walls gone the whole page is one lattice and the
-                cards are ordered into BANDS that each fill the four columns
-                exactly:
-
-                  hero + tall + tall            2 rows
-                  full (crime flow)             2 rows
-                  wide + wide                   1 row
-                  hero + four ones              2 rows
-                  banner (seasonality)          1 row
-                  hero + tall + tall            2 rows
-                  wide + wide                   1 row
-                  four talls                    2 rows
-                  wide + one + one              1 row
-
-                Spans are 1, 2, or the full row, so the same bands re-pack
-                without holes when the grid drops to two columns, and to one
-                on a phone. The order below IS the layout — moving a card
-                between bands breaks the tiling, so keep the band comments. */}
             <div className="rp-grid rp-bento">
               {/* Band 1 — the map, flanked by two ranked lists. */}
               <Card id="chart-top-districts" title={t('charts.topDistricts')} subtitle={t('charts.topDistrictsSub')} hero section="Geography & caseload">

@@ -47,6 +47,10 @@
 }
 
 .ui-toast-row { display: flex; align-items: flex-start; gap: 12px; } /* flex items-start gap-3 */
+/* Single-line toasts (no description) have nothing for flex-start to align
+   the icon against — center the icon and close button on the title line. */
+.ui-toast-row-center { align-items: center; }
+.ui-toast-row-center .ui-toast-icon-wrap { margin-top: 0; }
 
 .ui-toast-icon-wrap { /* mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full */
   margin-top: 2px;

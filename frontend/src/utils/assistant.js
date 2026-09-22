@@ -1,8 +1,5 @@
 // Chatbot storage + helpers. Conversations live in localStorage so sessions and
-// history survive reloads. The reply function is deliberately pluggable — swap
-// `generateReply` for a call to a Catalyst serverless function that proxies a
-// real model (e.g. Claude) when you're ready.
-
+// history survive reloads. 
 import { currentLang } from '../i18n';
 import { capturePageContext } from './pageContext';
 
@@ -36,13 +33,7 @@ export function saveVoiceLang(lang) {
   try { localStorage.setItem(VOICE_LANG_STORAGE_KEY, lang); } catch { /* private browsing / storage disabled */ }
 }
 
-// The assistant's model switcher. Keys and order must match MODEL_CHOICES in
-// functions/rag/index.js — the backend is the source of truth for which
-// providers actually exist; this is just how they're presented. Groq leads
-// because it's the safest default (fast, and the one every fallback chain
-// already assumes); GLM is opt-in only — see index.js for why.
-// Labels name the actual underlying model, not just its provider — must
-// track GROQ_MODEL/CLAUDE_MODEL in functions/rag/index.js if those change.
+// The assistant's model switcher. 
 export const MODEL_OPTIONS = [
   { key: 'groq', label: 'GPT-OSS-120B', desc: 'Groq · fast, default' },
   { key: 'glm', label: 'GLM-4.7-Flash', desc: 'Zoho Catalyst-hosted' },
@@ -64,16 +55,12 @@ export function saveModel(model) {
   try {
     localStorage.setItem(MODEL_STORAGE_KEY, model);
   } catch {
-    /* quota / private mode — non-fatal, just means the pick doesn't persist */
   }
 }
 
 export const uid = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-// Clean a message list so a refresh mid-answer never leaves orphaned or
-// duplicated questions: collapse adjacent identical user messages, then drop
-// any trailing user message(s) that never received an assistant reply.
 export function sanitizeMessages(msgs) {
   if (!Array.isArray(msgs)) return [];
   const out = [];
@@ -87,7 +74,6 @@ export function sanitizeMessages(msgs) {
   return out;
 }
 
-// Sanitize every session and drop any that end up empty.
 export function sanitizeSessions(sessions) {
   return (Array.isArray(sessions) ? sessions : [])
     .map((s) => ({ ...s, messages: sanitizeMessages(s.messages) }))
@@ -138,26 +124,11 @@ export function upsertLocalSession(session) {
   saveSessions(idx >= 0 ? all.map((s) => (s.id === session.id ? merged : s)) : [merged, ...all]);
 }
 
-// ── Remote persistence (Catalyst Data Store, via the rag function) ──────────
-// Conversations are scoped by the signed-in user's email so they follow the
-// officer across devices and survive cache clears. localStorage stays as an
-// instant cache; these sync it with the server.
-
-// Citations are persisted; the evidence attached to them is not.
-//
-// `records` and the full passages exist so the viewer can show the rows and
-// the retrieved text beside the answer. Saved into the conversation they would
-// push it past the server's 120 KB message budget, and the server makes room
-// by dropping the OLDEST exchanges — quietly trading the officer's history for
-// a snapshot of rows they can always ask for again. What survives is the
-// provenance itself, which is what a citation is for.
 const slimSource = (s) => {
   if (!s || typeof s !== 'object') return s;
   const out = { ...s };
   if (out.records && out.records.length) {
     delete out.records;
-    // Flagged rather than silently absent: the viewer must not tell an officer
-    // an answer had no matching rows when it simply is not carrying them.
     out.records_trimmed = true;
   }
   delete out.query;
@@ -171,7 +142,6 @@ const slimSource = (s) => {
   return out;
 };
 
-// Strip transient/bulky fields before persisting a message.
 const slimMsg = (m) => ({
   id: m.id,
   role: m.role,
@@ -194,8 +164,6 @@ export async function loadSessionsRemote(email) {
     if (!res.ok) return null;
     const data = await res.json();
     if (!Array.isArray(data.conversations)) return null;
-    // Same cleanup for server copies (a refresh mid-answer may have synced a
-    // dangling question).
     return data.conversations
       .map((c) => ({ ...c, messages: sanitizeMessages(c.messages) }))
       .filter((c) => c.messages.length > 0);
@@ -203,9 +171,6 @@ export async function loadSessionsRemote(email) {
     return null;
   }
 }
-
-// Persist one conversation; returns { title, starred } (title may be
-// AI-generated). `starred` is sent only when provided (star toggle / rename).
 export async function saveSessionRemote(session, email, extra = {}) {
   if (!email || !session || !session.messages?.length) return null;
   try {
@@ -246,8 +211,7 @@ export function saveSessionBeacon(session, email) {
 }
 
 // Tell the backend a conversation has ended, so it can fold the session into
-// the officer's long-term memory. Fire-and-forget: memory is an improvement to
-// the next conversation, never something this one should wait on.
+// the officer's long-term memory. 
 export function consolidateMemory(sessionId) {
   if (!sessionId) return false;
   const body = JSON.stringify({ session_id: sessionId });
@@ -279,10 +243,6 @@ export async function deleteSessionRemote(id, email) {
   }
 }
 
-// Re-encode any decodable audio (webm/opus recordings, mp3 files, …) into
-// 16 kHz mono PCM WAV — the format the Zia transcription model reliably
-// accepts. Uses the browser's own decoder, so whatever MediaRecorder produced
-// is guaranteed decodable here.
 async function toWav(blob) {
   const AC = window.AudioContext || window.webkitAudioContext;
   const ctx = new AC();
@@ -327,10 +287,7 @@ export async function transcribeAudio(input, language = 'en') {
     // Undecodable in this browser — send the original and let the model try.
     filename = input.name || 'recording.webm';
   }
-  // Send the raw audio bytes (not base64-in-JSON): ~25% smaller on the wire and
-  // it sidesteps the gateway content scan that intermittently drops the upload
-  // ("fetch failed"). Metadata rides in the query string. One retry covers a
-  // transient network drop.
+
   const qs = new URLSearchParams({
     mimetype: blob.type || 'audio/wav',
     filename,
@@ -364,11 +321,6 @@ export async function transcribeAudio(input, language = 'en') {
   if (!text) throw new Error('no speech detected in the audio');
   return text;
 }
-
-// Ask the RAG proxy function (server-side, same origin) for an answer. Returns
-// { text, components } — components are AG-UI-style typed specs (bar-chart,
-// pie-chart, table, cards) rendered by AguiRenderer. Falls back to an
-// explanatory message if the backend isn't reachable/configured yet.
 export async function generateReply(
   history, vision = [], attachments = [], sessionId = '', accessReason = '', model = ''
 ) {
@@ -400,30 +352,14 @@ export async function generateReply(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query,
-        // The conversation this turn belongs to. The backend keys its own
-        // memory on it, so continuity no longer depends on the browser
-        // remembering to send its history.
         session_id: sessionId,
-        // The officer's stated purpose for reaching victim identity on an
-        // offence against a woman or a child. Sent only when they have typed
-        // one — it is recorded against their badge in the audit trail, so it
-        // must never be inferred or defaulted on their behalf.
         ...(accessReason ? { access_reason: accessReason } : {}),
-        // Which LLM answers this turn — see MODEL_OPTIONS. Sent only when the
-        // officer picked something other than the backend's own default, so
-        // an empty/unrecognised value here just means "use the default".
         ...(model ? { model } : {}),
         history: shortTerm,
         summary,
         preferred_lang: currentLang(),
-        // What the officer is looking at, so follow-ups like "summarise this"
-        // resolve without them restating the record.
         page_context: capturePageContext(),
-        // Digests of any images attached to this message, parsed on attach.
         vision,
-        // Text pulled from any documents attached to this message, read in the
-        // browser on attach. Only the text travels — the file never leaves the
-        // officer's machine.
         attachments: attachments.map((a) => ({
           name: a.name,
           kind: a.kind,
@@ -446,17 +382,11 @@ export async function generateReply(
         ? ''
         : 'The RAG service responded but returned no answer text. ' +
           '(It may need documents configured, or the response field differs.)');
-    // The backend's grounding verdict, present only when it has something to
-    // say. Carried through so the answer and the warning about it can never
-    // be shown apart.
     return {
       text, components, sources, source: data.source,
       grounding: data.grounding || null,
       confidence: data.confidence || null,
       protectedAccess: data.protected_access || null,
-      // A file that carries an instruction aimed at this assistant is itself a
-      // finding — somebody wrote that document expecting a system like this to
-      // read it. Surfaced to the officer, not just to the audit trail.
       attachmentWarning: data.attachment_warning || null,
     };
   } catch (e) {
@@ -473,10 +403,7 @@ export async function generateReply(
 // Username lookup (Sherlock via Apify) — start + poll, not the normal
 // generateReply() pipeline. A run genuinely takes 60-110+ seconds (see
 // functions/rag/sherlock.js for why), so this polls the status endpoint on
-// an interval rather than making one request and waiting on it. `onProgress`
-// is called with a short status line each poll, for a "still running" label
-// next to the composer instead of the generic thinking phrases, which would
-// be actively misleading over a wait this long.
+// an interval rather than making one request and waiting on it.
 const SHERLOCK_POLL_MS = 4000;
 const SHERLOCK_MAX_POLLS = 45; // ~3 minutes before giving up client-side
 
@@ -535,7 +462,6 @@ export async function runSherlockLookup(username, onProgress) {
           'These are possible matches by username only, not verified identity — each link must be checked before being treated as a lead.';
         return { text, components: [], sources: [] };
       }
-      // status === 'running' — poll again
     }
     return {
       text: '⚠️ The username lookup is taking longer than expected. It may still finish on Apify\'s side — try again in a few minutes.',

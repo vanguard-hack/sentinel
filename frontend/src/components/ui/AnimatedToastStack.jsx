@@ -213,7 +213,7 @@ const ToastItem = memo(function ToastItem({ toast, index, onDismiss, icons, rend
         {renderToast ? (
           renderToast(toast)
         ) : (
-          <div className="ui-toast-row">
+          <div className={cx('ui-toast-row', !toast.description && 'ui-toast-row-center')}>
             <motion.span layout className={cx('ui-toast-icon-wrap', STATUS_CLASS[status])}>
               <AnimatePresence mode="popLayout" initial={false}>
                 <motion.span
