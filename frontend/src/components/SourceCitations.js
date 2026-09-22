@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   FileText, Database, Globe, Image as ImageIcon, ExternalLink, X, ArrowUpRight,
-  ShieldAlert, FileDown, Table as TableIcon, Loader,
+  ShieldAlert, FileDown, Table as TableIcon, Loader, ChevronDown,
 } from 'lucide-react';
 import {
   TYPES, TYPE_LABEL, isOpenable, subtitleOf, fieldLabel, columnsOf, locatePassage, externalUri,
@@ -50,13 +50,30 @@ const PAGES_EAGER = 3;
 
 export default function SourceCitations({ sources, onOpen }) {
   const [expanded, setExpanded] = useState(false);
+  // Open by default: the chips are how an officer checks an answer's basis,
+  // so hiding them behind a closed disclosure would bury the one thing this
+  // component exists to surface. Collapsible only so the row can be tucked
+  // away once it's been checked.
+  const [open, setOpen] = useState(true);
   if (!sources || !sources.length) return null;
   const visible = expanded ? sources : sources.slice(0, 4);
   return (
     <div className="as-cite-row">
-      <span className="as-cite-label">
-        {sources.length === 1 ? 'Source' : 'Sources'}
-      </span>
+      <button
+        type="button"
+        className="as-cite-toggle"
+        aria-expanded={open}
+        aria-label={`${sources.length === 1 ? 'Source' : 'Sources'} (${sources.length})`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="as-cite-toggle-label">{sources.length === 1 ? 'Source' : 'Sources'}</span>
+        {/* The count lives in CSS content, not text, so it can't collide with
+            a chip's own number badge when queried by visible text. */}
+        <span className="as-cite-count" data-count={sources.length} aria-hidden="true" />
+        <ChevronDown size={13} className="as-cite-chevron" aria-hidden="true" />
+      </button>
+      <div className={`as-cite-collapse${open ? ' as-cite-open' : ''}`}>
+      <div className="as-cite-collapse-inner">
       <div className="as-cite-chips">
         {visible.map((s) => {
           const Icon = iconFor(s);
@@ -155,6 +172,8 @@ export default function SourceCitations({ sources, onOpen }) {
             +{sources.length - 4} more
           </button>
         )}
+      </div>
+      </div>
       </div>
     </div>
   );

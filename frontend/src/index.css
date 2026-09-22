@@ -8456,20 +8456,58 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 
 .as-cite-row {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 6px 8px;
+  flex-direction: column;
+  gap: 6px;
   margin-top: 10px;
 }
-.as-cite-label {
+.as-cite-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  font: inherit;
   font-size: 0.7rem;
   font-weight: 500;
   letter-spacing: .4px;
-
   color: var(--text-4);
-  flex: 0 0 auto;
-  padding-top: 4px;
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  margin: -4px -2px;
+  cursor: pointer;
 }
+.as-cite-toggle:hover,
+.as-cite-toggle:focus-visible { color: var(--text-2); }
+.as-cite-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  background: var(--bg-3);
+  border-radius: 9999px;
+}
+.as-cite-count::after { content: attr(data-count); }
+.as-cite-chevron { transition: transform .16s ease; color: var(--text-4); }
+.as-cite-open .as-cite-chevron { transform: rotate(180deg); }
+
+/* Grid-rows collapse: animates open/closed without a JS measurement of
+   content height, and the content stays in the DOM (not display:none) so
+   nothing needs to re-fetch when reopened. */
+.as-cite-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows .2s ease;
+}
+.as-cite-collapse.as-cite-open { grid-template-rows: 1fr; }
+.as-cite-collapse-inner { overflow: hidden; min-height: 0; }
+@media (prefers-reduced-motion: reduce) { .as-cite-collapse { transition: none; } }
+
 .as-cite-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 
 .as-cite-chip {

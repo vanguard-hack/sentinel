@@ -104,7 +104,8 @@ test('a legacy string citation is shown but is not a button', () => {
   expect(isOpenable(legacy[0])).toBe(false);
   const { container } = render(<SourceCitations sources={legacy} onOpen={() => {}} />);
   expect(screen.getByText('CaseMaster')).toBeTruthy();
-  expect(container.querySelectorAll('button').length).toBe(0);
+  // The row's own collapse toggle is a button; no individual chip is.
+  expect(container.querySelectorAll('button:not(.as-cite-toggle)').length).toBe(0);
 });
 
 test('a Data Store citation shows the filter, the matched ids and the rows', () => {
