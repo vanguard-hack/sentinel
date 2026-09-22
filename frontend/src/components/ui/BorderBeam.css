@@ -26,7 +26,16 @@
   position: absolute;
   inset: -1px;
   border-radius: inherit;
-  padding: 1px;
+  /* The "border only" mask trick needs an actual border-WIDTH to separate
+     padding-box from border-box — those two boxes are only different regions
+     when border-width > 0. The previous `padding: 1px` never created that
+     gap (padding-box sits at the same edge as border-box when border-width
+     is 0), so the two mask layers below were identical and their XOR/exclude
+     was empty everywhere: confirmed live, an isolated copy of this exact
+     recipe rendered completely flat with zero visible ring at any size,
+     any background color, any rotation. `border: 1px solid transparent`
+     is what actually reserves the ring's width for the mask to reveal. */
+  border: 1px solid transparent;
   background: conic-gradient(from var(--beam-angle, 0deg), transparent 0deg 300deg, var(--primary) 330deg, var(--primary-hover) 345deg, transparent 360deg);
   -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
