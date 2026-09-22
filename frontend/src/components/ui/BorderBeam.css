@@ -12,6 +12,13 @@
   from { --beam-angle: 0deg; }
   to   { --beam-angle: 360deg; }
 }
+/* A slow hue drift on top of the sweep so the glow keeps shifting hue, not
+   just position — this is what reads as "colorful" rather than one static
+   tint moving around a ring. */
+@keyframes ui-border-beam-hue {
+  0%, 100% { filter: hue-rotate(-14deg) brightness(1.2) saturate(1.35); }
+  50%      { filter: hue-rotate(14deg)  brightness(1.2) saturate(1.35); }
+}
 .ui-border-beam { position: relative; border-radius: inherit; }
 /* .as-composer has its own rounded corners (var(--radius-lg)) AND its own
    max-width/centering (760px, margin: 0 auto) inside the full-width
@@ -24,24 +31,49 @@
 .ui-border-beam.as-composer-beam { border-radius: var(--radius-lg); max-width: 760px; margin: 0 auto; }
 .ui-border-beam-glow {
   position: absolute;
-  inset: -1px;
+  inset: -2px;
   border-radius: inherit;
-  /* The "border only" mask trick needs an actual border-WIDTH to separate
-     padding-box from border-box — those two boxes are only different regions
-     when border-width > 0. The previous `padding: 1px` never created that
-     gap (padding-box sits at the same edge as border-box when border-width
-     is 0), so the two mask layers below were identical and their XOR/exclude
-     was empty everywhere: confirmed live, an isolated copy of this exact
-     recipe rendered completely flat with zero visible ring at any size,
-     any background color, any rotation. `border: 1px solid transparent`
-     is what actually reserves the ring's width for the mask to reveal. */
-  border: 1px solid transparent;
-  background: conic-gradient(from var(--beam-angle, 0deg), transparent 0deg 300deg, var(--primary) 330deg, var(--primary-hover) 345deg, transparent 360deg);
-  -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
   pointer-events: none;
-  animation: ui-border-beam-spin 3s linear infinite;
+  opacity: 0.85;
+  /* A handful of soft colored blobs anchored around the box's edges/corners
+     — the same recipe libraries.dev's beam uses (verified by reading its
+     live computed styles): several radial-gradients, each one color fading
+     to transparent, placed at or just past the box's own edge so only their
+     inner portion paints inside it. */
+  background:
+    radial-gradient(90px 34px at 6% -10%,   rgba(255, 90, 130, .6), transparent),
+    radial-gradient(70px 30px at 30% -8%,   rgba(255, 170, 60, .6), transparent),
+    radial-gradient(50px 60px at -6% 60%,   rgba(70, 210, 150, .6), transparent),
+    radial-gradient(60px 40px at -6% 100%,  rgba(60, 170, 255, .6), transparent),
+    radial-gradient(100px 34px at 55% 104%, rgba(150, 90, 255, .6), transparent),
+    radial-gradient(80px 34px at 96% 102%,  rgba(255, 90, 190, .6), transparent),
+    radial-gradient(60px 46px at 104% 40%,  rgba(255, 140, 60, .6), transparent),
+    radial-gradient(70px 30px at 94% -8%,   rgba(94, 106, 210, .65), transparent);
+  /* Three-layer mask, each layer's composite operator naming how it combines
+     with everything before it:
+       1. padding-box solid  — base
+       2. border-box solid, "exclude" — XORs against layer 1, leaving only
+          the border-WIDTH ring (this needs a real `border`, not `padding` —
+          padding-box and border-box are the same region when border-width
+          is 0, so the earlier version of this file, which used `padding`
+          here, excluded nothing and rendered no ring at all; confirmed by
+          reproducing the exact recipe in isolation).
+       3. a wide conic-gradient window, "intersect" — ANDs a slowly-rotating
+          ~200-degree arc against the ring, so the glow isn't a full static
+          outline but breathes around the border as --beam-angle turns. */
+  mask:
+    linear-gradient(#000 0 0) padding-box,
+    linear-gradient(#000 0 0) exclude,
+    conic-gradient(from var(--beam-angle, 0deg),
+      transparent 0%, transparent 22%,
+      rgba(255, 255, 255, .3) 30%,
+      #fff 42%, #fff 82%,
+      rgba(255, 255, 255, .3) 92%,
+      transparent 100%) intersect;
+  border: 5px solid transparent;
+  animation:
+    ui-border-beam-spin 2.2s linear infinite,
+    ui-border-beam-hue 3.4s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .ui-border-beam.active { box-shadow: 0 0 0 1px var(--primary-focus); }
