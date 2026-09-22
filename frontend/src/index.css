@@ -3031,23 +3031,12 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   transition: width 0.2s ease, padding 0.2s ease;
   overflow: hidden;
 }
-/* Collapsed is an icon-only rail, not a hidden sidebar — every row already
-   carries a leading icon (session star/message, New chat's plus), so only
-   the trailing .sidebar-copy text needs to fade for the icons to line up
-   in both states. */
 .as-sidebar.collapsed {
-  width: 56px;
-  padding-left: 6px;
-  padding-right: 6px;
-}
-.as-sidebar.collapsed .as-new-btn,
-.as-sidebar.collapsed .as-session {
-  justify-content: center;
+  width: 0;
   padding-left: 0;
   padding-right: 0;
+  border-right: none;
 }
-.as-sidebar.collapsed .as-session-menu-wrap,
-.as-sidebar.collapsed .as-session-check { display: none; }
 
 .as-suggestions {
   display: flex;
@@ -4063,6 +4052,8 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   padding: 6px 8px; border: none; background: none; text-align: left;
   cursor: pointer; border-radius: 5px;
 }
+.as-model-item-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.as-model-item-main svg { flex-shrink: 0; color: var(--text-3); }
 .as-model-item-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .as-model-item-label { font-size: 0.78rem; color: var(--text-1); }
 .as-model-item-desc { font-size: 0.67rem; color: var(--text-4); }

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import {
   loadSessions, saveSessions, makeTitle, newSession, generateReply, runSherlockLookup, uid,
-  loadModel, saveModel, loadVoiceLang, saveVoiceLang,
+  loadModel, saveModel, loadVoiceLang,
   transcribeAudio, loadSessionsRemote, saveSessionRemote, saveSessionBeacon, deleteSessionRemote,
   consolidateMemory,
 } from '../utils/assistant';
@@ -18,7 +18,6 @@ import {
   attachState,
 } from '../utils/attachments';
 import ModelPicker from '../components/ModelPicker';
-import VoiceLangPicker from '../components/VoiceLangPicker';
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
 import Avatar from '../components/Avatar';
@@ -216,8 +215,7 @@ export default function Assistant() {
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
-  const [voiceLang, setVoiceLang] = useState(loadVoiceLang);
-  const chooseVoiceLang = (lang) => { setVoiceLang(lang); saveVoiceLang(lang); };
+  const [voiceLang] = useState(loadVoiceLang);
   // The citation the officer opened: which message, and which footnote number
   // within it. One at a time, held here rather than per message, so opening a
   // second source closes the first instead of stacking panels.
@@ -286,7 +284,13 @@ export default function Assistant() {
         waveSpeed: 1.8,
         easing: 'easeOutExpo',
       });
-      sweep.done.finally(() => { sweepingRef.current = false; });
+      const resetSweeping = () => { sweepingRef.current = false; };
+      sweep.done.finally(resetSweeping);
+      // playSweep is driven entirely by requestAnimationFrame, which a
+      // backgrounded tab or dropped frame can leave stalled forever — without
+      // this, one interrupted sweep would silently disable the celebration
+      // for the rest of the session.
+      setTimeout(resetSweeping, 570 + 80 + 500);
     };
     return () => {
       shaderRef.current?.destroy();
@@ -1426,7 +1430,6 @@ export default function Assistant() {
                   </span>
                 )}
                 <ModelPicker value={model} onChange={chooseModel} />
-                {canRecord && <VoiceLangPicker value={voiceLang} onChange={chooseVoiceLang} />}
                 {canRecord && (
                   <span className="as-mic-wrap">
                     <VoiceGlow listening={listening} thinking={sending} />
