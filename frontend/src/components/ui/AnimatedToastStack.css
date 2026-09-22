@@ -1,0 +1,114 @@
+/* frontend/src/components/ui/AnimatedToastStack.css */
+/* Plain-CSS translation of the Tailwind classes in the real component
+   (each rule notes the Tailwind utility it replaces). */
+
+.ui-toast-stack-root { /* pointer-events-none flex w-[calc(100vw-2rem)] max-w-sm gap-2 */
+  pointer-events: none;
+  display: flex;
+  width: calc(100vw - 2rem);
+  max-width: 384px;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ui-toast-col-reverse { flex-direction: column-reverse; }
+.ui-toast-col { flex-direction: column; }
+.ui-toast-fixed { position: fixed; z-index: 90; }
+.ui-toast-absolute { position: absolute; z-index: 20; }
+.ui-toast-pos-top-left { left: 16px; top: 16px; }
+.ui-toast-pos-top-center { left: 50%; top: 16px; transform: translateX(-50%); }
+.ui-toast-pos-top-right { right: 16px; top: 16px; }
+.ui-toast-pos-bottom-left { bottom: 24px; left: 16px; }
+.ui-toast-pos-bottom-center { bottom: 24px; left: 50%; transform: translateX(-50%); }
+.ui-toast-pos-bottom-right { bottom: 24px; right: 16px; }
+
+.ui-toast-item { /* pointer-events-auto relative will-change-transform */
+  pointer-events: auto;
+  position: relative;
+  will-change: transform;
+}
+
+.ui-toast-surface { /* relative overflow-hidden rounded-2xl border bg-card/95 p-3 shadow-2xl backdrop-blur-xl */
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-panel);
+  border: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--bg-1) 95%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28);
+}
+
+.ui-toast-row { display: flex; align-items: flex-start; gap: 12px; } /* flex items-start gap-3 */
+
+.ui-toast-icon-wrap { /* mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full */
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  width: 28px;
+  flex-shrink: 0;
+  border-radius: var(--r-pill);
+}
+.ui-toast-icon-neutral { color: var(--ink-subtle); background: var(--bg-3); }
+.ui-toast-icon-info { color: var(--primary); background: var(--primary-tint); }
+.ui-toast-icon-success { color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); }
+.ui-toast-icon-error { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
+.ui-toast-icon-slot { display: inline-flex; }
+.ui-toast-spin { display: inline-flex; animation: ui-toast-spin 1s linear infinite; }
+@keyframes ui-toast-spin { to { transform: rotate(360deg); } }
+
+.ui-toast-content { min-width: 0; flex: 1; } /* min-w-0 flex-1 */
+.ui-toast-title { /* truncate text-sm font-medium leading-5 */
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-toast-description { /* mt-0.5 line-clamp-2 text-xs leading-4 */
+  margin: 2px 0 0;
+  font-size: var(--fs-caption);
+  line-height: 16px;
+  color: var(--ink-subtle);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ui-toast-action { /* mt-2 h-7 rounded-full bg-primary/[0.06] px-3 text-xs font-medium hover:bg-primary/[0.1] */
+  margin-top: 8px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--primary-tint);
+  padding: 0 12px;
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+}
+.ui-toast-action:hover { background: color-mix(in srgb, var(--primary) 14%, transparent); }
+
+.ui-toast-close { /* h-7 w-7 rounded-full text-muted-foreground hover:bg-primary/[0.06] */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  width: 28px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink-subtle);
+  cursor: pointer;
+}
+.ui-toast-close:hover { background: var(--primary-tint); color: var(--ink); }

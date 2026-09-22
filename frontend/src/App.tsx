@@ -35,7 +35,6 @@ import AuditTracker from './components/AuditTracker';
 import OfflineBar from './components/OfflineBar';
 import ScrollToHash from './components/ScrollToHash';
 import { ConfirmProvider } from './components/ConfirmDialog';
-import { ToastProvider } from './components/ui/Toast';
 
 // Every feature route is wrapped in a role guard (see utils/access.js for the
 // feature → roles matrix) and every route change lands in the audit trail.
@@ -70,7 +69,6 @@ function AppRoutes() {
     <ErrorBoundary>
       <LayoutProvider>
         <ConfirmProvider>
-          <ToastProvider>
             <div className="app-shell">
             {/*
               First tab stop on every page. Without it, reaching the content by
@@ -121,7 +119,6 @@ function AppRoutes() {
               </Routes>
             </div>
           </div>
-          </ToastProvider>
         </ConfirmProvider>
       </LayoutProvider>
     </ErrorBoundary>

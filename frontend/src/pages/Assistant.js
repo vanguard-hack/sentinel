@@ -35,7 +35,7 @@ import {
 } from '../utils/dictation';
 import { useAccess } from '../context/AccessContext';
 import { slashQuery, filterCommands, parseCommand, closestCommand, leadingSlashToken } from '../utils/slashCommands';
-import { useToast } from '../components/ui/Toast';
+import { AnimatedToastStack, useAnimatedToastStack } from '../components/ui/AnimatedToastStack';
 import MessageScroller from '../components/ui/MessageScroller';
 import { BorderBeam } from 'border-beam';
 import { useThemeMode } from '../context/LayoutContext';
@@ -181,7 +181,7 @@ export default function Assistant() {
   const location = useLocation();
   const { user } = useAuth();
   const email = user?.email_id || null;
-  const { show: showToast, dismiss } = useToast();
+  const { toasts, showToast, updateToast, dismissToast } = useAnimatedToastStack();
 
   // Opening from the floating widget's "expand" passes the conversation to focus.
   const incomingId = location.state?.conversationId || null;
@@ -453,17 +453,20 @@ export default function Assistant() {
     setMenuId(null);
     const session = sessions.find((s) => s.id === id);
     if (!session) return;
-    const loadingId = showToast('Exporting conversation to PDF…', { tone: 'loading', duration: 0 });
+    const toastId = showToast({ status: 'loading', title: 'Exporting conversation to PDF…', duration: 0 });
     try {
       await exportConversationPdf(session);
-      dismiss(loadingId);
-      showToast('Exported', { tone: 'success' });
+      // duration must be re-passed here: updateToast only resets the
+      // auto-dismiss timer when the patch includes it, so a bare status/title
+      // patch on a duration:0 (never-auto-dismiss) toast would leave the
+      // "Exported" state stuck on screen forever, same as the loading state
+      // it replaced would have been if left unhandled.
+      updateToast(toastId, { status: 'success', title: 'Exported', duration: 4200 });
     } catch (e) {
       // This used to swallow every failure. An export that vanishes without a
       // word is the one outcome this must never produce — the officer waits
       // for a download that is never coming and assumes it worked.
-      dismiss(loadingId);
-      showToast(e?.message || 'The transcript could not be exported.', { tone: 'error' });
+      updateToast(toastId, { status: 'error', title: e?.message || 'The transcript could not be exported.', duration: 4200 });
     }
   };
 
@@ -1382,6 +1385,8 @@ export default function Assistant() {
           inside the message loop: only one can be open, and a panel nested in
           a scrolling thread inherits its clipping. */}
       {openSource && <SourceViewer source={openSource} onClose={() => setCitation(null)} />}
+
+      <AnimatedToastStack toasts={toasts} onDismiss={dismissToast} position="bottom-right" fixed />
     </div>
   );
 }

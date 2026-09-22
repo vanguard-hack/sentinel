@@ -16,7 +16,7 @@ export default function ActionButton({
     } catch {
       // Swallowed intentionally: a failed action stays in its normal state
       // rather than falsely claiming success — the caller is responsible for
-      // surfacing the failure (e.g. via useToast).
+      // surfacing the failure (e.g. via useAnimatedToastStack).
     }
   };
 

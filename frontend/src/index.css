@@ -4182,6 +4182,13 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   grid-template-columns: repeat(3, 4px);
   grid-template-rows: repeat(3, 4px);
   gap: 2px;
+  /* The dot grid and the phrase text are already centered on the same
+     flex cross-axis (align-items: center on .as-thinking, confirmed equal
+     via getBoundingClientRect) — this reads as misaligned anyway because
+     the solid grid block has a symmetric visual center while the text's
+     descenders (the "g" in "Working…") pull its visible ink downward.
+     A small optical nudge, not a real box-alignment fix. */
+  margin-top: 2px;
 }
 .as-thinking-grid span {
   background: var(--primary);
