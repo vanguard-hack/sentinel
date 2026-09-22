@@ -2828,7 +2828,11 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   padding: 8px 8px 8px 8px;
 
 }
-.as-composer:focus-within { border-color: var(--blue-500); }
+/* No :focus-within border-color swap here: BorderBeam (wrapping this
+   element) already paints an animated var(--primary) glow on the same
+   focus state — the two used to be the identical static color and stacked
+   exactly on top of each other, so the animated beam was invisible against
+   its own twin. BorderBeam is now the only focus treatment. */
 .as-attach-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px 8px; }
 .as-attach-chip {
   display: inline-flex; align-items: center; gap: 6px;
