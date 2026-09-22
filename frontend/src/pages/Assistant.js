@@ -4,7 +4,7 @@ import {
   Plus, MessageSquare, Trash2,
   Paperclip, Mic, ArrowUp, X, Shield, FileText, PanelLeft,
   Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, MoreVertical,
-  Star, Pencil, FileDown, CheckSquare, AlertTriangle, ShieldAlert,
+  Star, Pencil, FileDown, CheckSquare, AlertTriangle, ShieldAlert, Search,
 } from 'lucide-react';
 import {
   loadSessions, saveSessions, makeTitle, newSession, generateReply, runSherlockLookup, uid,
@@ -38,6 +38,7 @@ import { slashQuery, filterCommands, parseCommand, closestCommand, leadingSlashT
 import { AnimatedToastStack, useAnimatedToastStack } from '../components/ui/AnimatedToastStack';
 import MessageScroller from '../components/ui/MessageScroller';
 import { BorderBeam } from 'border-beam';
+import { createShader, playSweep, accentChain, ACCENTS } from 'glimm';
 import { useThemeMode } from '../context/LayoutContext';
 import VoiceGlow from '../components/ui/VoiceGlow';
 import ActionButton from '../components/ui/ActionButton';
@@ -176,6 +177,18 @@ const canRecord =
   navigator.mediaDevices &&
   typeof navigator.mediaDevices.getUserMedia === 'function';
 
+// glimm's built-in "prism" palette is only cyan→indigo→magenta; build a true
+// full-spectrum rainbow for the model-upgrade celebration instead.
+const RAINBOW = accentChain([
+  ACCENTS.red,
+  ACCENTS.orange,
+  ACCENTS.yellow,
+  ACCENTS.green,
+  ACCENTS.cyan,
+  ACCENTS.blue,
+  ACCENTS.purple,
+]);
+
 export default function Assistant() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -188,6 +201,9 @@ export default function Assistant() {
   const [sessions, setSessions] = useState(() => loadSessions());
   const [activeId, setActiveId] = useState(() => incomingId || loadSessions()[0]?.id || null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
+  const [sessionQuery, setSessionQuery] = useState('');
+  const sessionSearchRef = useRef(null);
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState([]); // { id, name, size, type, url? }
   const [sending, setSending] = useState(false);
@@ -216,8 +232,67 @@ export default function Assistant() {
   // Which LLM answers the next turn — persisted so the officer's pick
   // survives a reload rather than silently reverting to the default.
   const [model, setModel] = useState(loadModel);
-  const chooseModel = useCallback((m) => { setModel(m); saveModel(m); }, []);
+  const glimmRef = useRef(null);
+  const shaderRef = useRef(null);
+  const sweepingRef = useRef(false);
+  // Picking Claude Opus 5 — Sentinel's flagship — fires the rainbow sweep
+  // below; indirected through a ref so chooseModel (defined once) can call
+  // the celebration function (redefined whenever the shader is recreated)
+  // without either depending on the other's identity.
+  const celebrateModelRef = useRef(() => {});
+  const chooseModel = useCallback((m) => {
+    setModel(m);
+    saveModel(m);
+    if (m === 'claude') celebrateModelRef.current();
+  }, []);
   const menuRef = useRef(null);
+
+  // createShader seeds its internal hueShift from Math.random(), which would
+  // make the sweep a different colour on every reload — pin it so the
+  // rainbow is identical each time.
+  const makeShader = useCallback(() => {
+    const canvas = glimmRef.current;
+    if (!canvas) return null;
+    const random = Math.random;
+    Math.random = () => 0;
+    try {
+      return createShader({ canvas, palette: RAINBOW, direction: 'ltr', bandTight: 10, swellAmount: 0.85 });
+    } finally {
+      Math.random = random;
+    }
+  }, []);
+
+  useEffect(() => {
+    shaderRef.current = makeShader();
+    celebrateModelRef.current = () => {
+      if (sweepingRef.current) return;
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      // Recreate the shader per sweep so uTime restarts at 0 — the hue phase
+      // (which drifts with time) is then identical on every trigger.
+      shaderRef.current?.destroy();
+      const shader = makeShader();
+      shaderRef.current = shader;
+      if (!shader) return;
+      sweepingRef.current = true;
+      const sweep = playSweep(shader, {
+        palette: RAINBOW,
+        direction: 'ltr',
+        sweepMs: 570,
+        outroMs: 80,
+        peakAlpha: 1.3,
+        bandTight: 10,
+        brightness: 1.4,
+        swellAmount: 1,
+        waveSpeed: 1.8,
+        easing: 'easeOutExpo',
+      });
+      sweep.done.finally(() => { sweepingRef.current = false; });
+    };
+    return () => {
+      shaderRef.current?.destroy();
+      shaderRef.current = null;
+    };
+  }, [makeShader]);
 
   // Close the kebab menu on outside click.
   useEffect(() => {
@@ -228,6 +303,10 @@ export default function Assistant() {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [menuId]);
+
+  useEffect(() => {
+    if (sessionSearchOpen) sessionSearchRef.current?.focus();
+  }, [sessionSearchOpen]);
 
   // Up/Down history navigation through this session's past questions.
   const histRef = useRef({ idx: null, draft: '' });
@@ -272,6 +351,9 @@ export default function Assistant() {
   const openSource = citation
     ? (sourcesByMessage.get(citation.messageId) || []).find((c) => c.n === citation.n) || null
     : null;
+  const visibleSessions = sessionQuery.trim()
+    ? sessions.filter((s) => s.title.toLowerCase().includes(sessionQuery.trim().toLowerCase()))
+    : sessions;
   // A source panel belongs to the message it was opened from — switching
   // conversations must not leave it hanging over a different thread.
   useEffect(() => { setCitation(null); }, [activeId]);
@@ -968,7 +1050,8 @@ export default function Assistant() {
             disabled={onBlankNewChat}
             title={onBlankNewChat ? 'You already have a new chat open' : 'Start a new chat'}
           >
-            <Plus size={16} /> New chat
+            <Plus size={16} />
+            <span className="sidebar-copy">New chat</span>
           </button>
           {selectMode && (
             <div className="as-select-bar">
@@ -990,10 +1073,46 @@ export default function Assistant() {
               </div>
             </div>
           )}
-          <div className="as-history-label">Chat History</div>
+          <div className="as-history-row">
+            <div className={`as-history-label${sessionSearchOpen ? ' as-history-fade' : ''}`}>Chats</div>
+            <button
+              type="button"
+              className={`as-history-search-btn${sessionSearchOpen ? ' as-history-fade' : ''}`}
+              onClick={() => setSessionSearchOpen(true)}
+              aria-label="Search chats"
+              title="Search chats"
+            >
+              <Search size={14} />
+            </button>
+            <div className={`as-history-search${sessionSearchOpen ? ' open' : ''}`}>
+              <Search size={13} className="as-history-search-icon" aria-hidden="true" />
+              <input
+                ref={sessionSearchRef}
+                className="as-history-search-input"
+                value={sessionQuery}
+                onChange={(e) => setSessionQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') { setSessionSearchOpen(false); setSessionQuery(''); }
+                }}
+                placeholder="Search chats"
+                aria-label="Search chat history"
+              />
+              <button
+                type="button"
+                className="as-history-search-close"
+                aria-label="Close chat search"
+                onClick={() => { setSessionSearchOpen(false); setSessionQuery(''); }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
           <div className="as-session-list">
             {sessions.length === 0 && <p className="as-empty-hint">No conversations yet.</p>}
-            {sessions.map((s) => (
+            {sessions.length > 0 && sessionQuery.trim() && visibleSessions.length === 0 && (
+              <p className="as-empty-hint">No chats found.</p>
+            )}
+            {visibleSessions.map((s) => (
               <div
                 key={s.id}
                 className={`as-session ${s.id === activeId ? 'active' : ''}`}
@@ -1034,7 +1153,7 @@ export default function Assistant() {
                     onBlur={() => commitRename(s.id, renameValue)}
                   />
                 ) : (
-                  <span className="as-session-title">{s.title}</span>
+                  <span className="as-session-title sidebar-copy">{s.title}</span>
                 )}
 
                 {!selectMode && renamingId !== s.id && (
@@ -1207,6 +1326,12 @@ export default function Assistant() {
               borderRadius={16}
             >
             <div className="as-composer">
+              {/* rainbow glimm sweep — invisible at rest, plays a one-shot
+                  celebration when the officer picks the flagship model.
+                  Explicit w/h: a <canvas> is a replaced element and won't
+                  stretch to inset-0 alone, which feeds back into the
+                  shader's own ResizeObserver. */}
+              <canvas ref={glimmRef} aria-hidden="true" className="as-composer-glimm" />
               {attachments.length > 0 && (
                 <div className="as-attach-row">
                   {attachments.map((a) => (

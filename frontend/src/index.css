@@ -2711,27 +2711,110 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  background: var(--blue-500);
+  padding: 8px 10px;
+  background: none;
   border: none;
   border-radius: var(--radius-sm);
-  color: #fff;
+  color: var(--text-1);
   font-family: var(--font);
   font-size: 13px;
   font-weight: 500;
+  text-align: left;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.12s;
 }
-.as-new-btn:hover { background: var(--blue-600); }
-.as-history-label {
+.as-new-btn:hover { background: var(--hover-overlay); }
+
+/* Text that disappears in the collapsed icon rail — width and opacity
+   animate together so the icon in front of it never has to jump. */
+.sidebar-copy {
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 1;
+  max-width: 200px;
+  transition: opacity 0.15s ease, max-width 0.2s ease;
+}
+.as-sidebar.collapsed .sidebar-copy { opacity: 0; max-width: 0; pointer-events: none; }
+
+.as-history-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 24px;
   margin-top: 14px;
-  padding: 0 8px 2px;
+  padding: 0 2px;
+}
+.as-history-label {
+  flex: 1;
+  padding: 0 6px 2px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
-
   color: var(--text-4);
+  transition: opacity 0.15s ease;
 }
+.as-history-fade { opacity: 0; pointer-events: none; }
+.as-history-search-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-4);
+  cursor: pointer;
+  transition: opacity 0.15s ease, background 0.12s ease, color 0.12s ease;
+}
+.as-history-search-btn:hover { background: var(--hover-overlay); color: var(--text-1); }
+/* The expanding field overlays the label + search trigger rather than
+   growing the row's own width — a plain crossfade stands in for the
+   right-to-left width animation the reference design used. */
+.as-history-search {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+.as-history-search.open { opacity: 1; pointer-events: auto; }
+.as-history-search-icon { flex-shrink: 0; color: var(--text-4); }
+.as-history-search-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  font-family: var(--font);
+  font-size: 12.5px;
+  color: var(--text-1);
+}
+.as-history-search-input::placeholder { color: var(--text-4); }
+.as-history-search-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: none;
+  border: none;
+  color: var(--text-4);
+  cursor: pointer;
+}
+.as-history-search-close:hover { color: var(--text-1); }
+.as-sidebar.collapsed .as-history-row,
+.as-sidebar.collapsed .as-select-bar { display: none; }
+
 .as-session-list { flex: 1; overflow-y: auto; margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
 .as-empty-hint { color: var(--text-4); font-size: 12px; padding: 10px; }
 .as-session {
@@ -2826,6 +2909,8 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* ── Composer ── */
 .as-composer-wrap { padding: 6px 20px 14px; position: relative; }
 .as-composer {
+  position: relative;
+  isolation: isolate;
   max-width: 760px;
   margin: 0 auto;
   background: var(--bg-1);
@@ -2833,6 +2918,15 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   border-radius: var(--radius-lg);
   padding: 8px 8px 8px 8px;
 
+}
+/* border-radius clips the canvas's own drawing to the composer's rounded
+   corners — overflow:hidden on .as-composer itself would also clip the
+   model-picker's dropdown, which must overflow above this box. */
+.as-composer-glimm {
+  position: absolute; inset: 0; z-index: -1;
+  width: 100%; height: 100%;
+  border-radius: inherit;
+  pointer-events: none;
 }
 /* No :focus-within border-color swap here: the border-beam package
    (wrapping this element) already paints its own glow on the same focus
@@ -2934,17 +3028,26 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* ── Assistant: sidebar toggle + suggestions ── */
 .as-sidebar-toggle { margin-right: 4px; }
 .as-sidebar {
-  transition: width 0.2s ease, opacity 0.15s ease, padding 0.2s ease;
+  transition: width 0.2s ease, padding 0.2s ease;
   overflow: hidden;
 }
+/* Collapsed is an icon-only rail, not a hidden sidebar — every row already
+   carries a leading icon (session star/message, New chat's plus), so only
+   the trailing .sidebar-copy text needs to fade for the icons to line up
+   in both states. */
 .as-sidebar.collapsed {
-  width: 0;
+  width: 56px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+.as-sidebar.collapsed .as-new-btn,
+.as-sidebar.collapsed .as-session {
+  justify-content: center;
   padding-left: 0;
   padding-right: 0;
-  opacity: 0;
-  border-right: none;
-  pointer-events: none;
 }
+.as-sidebar.collapsed .as-session-menu-wrap,
+.as-sidebar.collapsed .as-session-check { display: none; }
 
 .as-suggestions {
   display: flex;
@@ -3949,12 +4052,17 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.3);
   display: flex; flex-direction: column;
 }
+.as-model-highlight {
+  position: absolute; left: 4px; right: 4px; z-index: 0;
+  background: var(--hover-overlay); border-radius: 5px; pointer-events: none;
+  transition: top 180ms cubic-bezier(0.23,1,0.32,1), height 180ms cubic-bezier(0.23,1,0.32,1), opacity 120ms ease;
+}
 .as-model-item {
+  position: relative; z-index: 1;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 6px 8px; border: none; background: none; text-align: left;
   cursor: pointer; border-radius: 5px;
 }
-.as-model-item:hover { background: var(--hover-overlay); }
 .as-model-item-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .as-model-item-label { font-size: 0.78rem; color: var(--text-1); }
 .as-model-item-desc { font-size: 0.67rem; color: var(--text-4); }
@@ -8413,11 +8521,17 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
  color: var(--text-3);
 }
 .sc-item {
+  position: relative; z-index: 1;
   display: flex; align-items: baseline; gap: 9px; width: 100%; text-align: left;
   padding: 7px 9px; cursor: pointer; font: inherit;
   background: none; border: 0; border-radius: 8px;
 }
-.sc-item.active { background: color-mix(in srgb, var(--blue-400) 12%, transparent); }
+.sc-highlight {
+  position: absolute; left: 6px; right: 6px; z-index: 0;
+  background: color-mix(in srgb, var(--blue-400) 12%, transparent);
+  border-radius: 8px; pointer-events: none;
+  transition: top 180ms cubic-bezier(0.23,1,0.32,1), height 180ms cubic-bezier(0.23,1,0.32,1), opacity 120ms ease;
+}
 .sc-name {
   flex: 0 0 auto; font-family: var(--font-mono); font-size: 12.5px;
   font-weight: 500; color: var(--blue-600);
