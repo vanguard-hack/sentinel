@@ -6,6 +6,7 @@ import {
   loadVoiceLang, saveVoiceLang,
 } from '../utils/assistant';
 import { useAuth } from '../context/AuthContext';
+import { useThemeMode } from '../context/LayoutContext';
 import AguiRenderer from './AguiRenderer';
 import RichText from './RichText';
 import SourceCitations, { SourceViewer } from './SourceCitations';
@@ -13,7 +14,7 @@ import { normaliseSources } from '../utils/sources';
 import Thinking from './Thinking';
 import VoiceLangPicker from './VoiceLangPicker';
 import MessageScroller from './ui/MessageScroller';
-import BorderBeam from './ui/BorderBeam';
+import { BorderBeam } from 'border-beam';
 
 // Floating assistant: a bubble in the bottom-right that expands into a compact
 // chat. Full parity with the assistant page — suggested questions, voice input
@@ -54,6 +55,7 @@ export default function ChatWidget() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [composerFocused, setComposerFocused] = useState(false);
+  const [isDark] = useThemeMode();
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [voiceLang, setVoiceLang] = useState(loadVoiceLang);
@@ -240,7 +242,12 @@ export default function ChatWidget() {
             )}
           </MessageScroller>
 
-          <BorderBeam active={composerFocused || sending} className="cw-composer-beam">
+          <BorderBeam
+            active={composerFocused || sending}
+            className="cw-composer-beam"
+            size="md"
+            theme={isDark ? 'dark' : 'light'}
+          >
           <div className="cw-composer">
             <input
               ref={inputRef}
