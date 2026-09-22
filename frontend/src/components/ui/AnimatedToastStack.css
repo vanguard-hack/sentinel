@@ -33,8 +33,13 @@
   position: relative;
   overflow: hidden;
   border-radius: var(--r-panel);
-  border: 1px solid var(--hairline);
-  background: color-mix(in srgb, var(--bg-1) 95%, transparent);
+  border: 1px solid var(--hairline-strong);
+  /* bg-card in the reference is a surface distinct from the page background
+     by design; --bg-1 is this app's lowest elevation tier (barely different
+     from --canvas in either theme — confirmed live: the toast was nearly
+     invisible against the page in both light and dark). --bg-4 is the most
+     elevated tier, which is what an overlay notification actually needs. */
+  background: color-mix(in srgb, var(--bg-4) 95%, transparent);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   padding: 12px;
