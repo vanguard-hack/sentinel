@@ -330,6 +330,15 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    console keeps its density. */
 @media (pointer: coarse) {
   :root { --h-sm: 36px; --h-md: 44px; --h-lg: 44px; }
+  /* Controls that set their own height are not reached by the variables
+     above, so on a touchscreen they stayed at their mouse size — 26px for a
+     language button, ~24px for a segmented item, 32px for .aa-btn. Two of
+     those three sit in the top bar, which on a phone is the strip a thumb
+     actually lands on. The pill's own padding carries each of these the rest
+     of the way to a ~44px target. */
+  .lang-seg button { height: 40px; }
+  .ui-segmented-item { min-height: 40px; }
+  .aa-btn { height: 40px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
