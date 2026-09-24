@@ -89,10 +89,6 @@ function OfficerRow({ label, sub, officer, onOpenPhoto }) {
 
 const DATA_URL = `${process.env.PUBLIC_URL}/maps/india.json`;
 const POLICE_URL = `${process.env.PUBLIC_URL}/maps/karnataka-police-stations.geojson`;
-// Derived offline from FIR Narcotics cases by dataset/fir/generate_smuggling_corridors.py —
-// districts with elevated case density, chained into a route. A pattern in past
-// seizures, not a verified ground-truth trafficking map.
-const CORRIDOR_URL = `${process.env.PUBLIC_URL}/maps/smuggling-corridors.json`;
 const INDIA_CENTER = [14.9, 76.2]; // Karnataka centroid — the map never leaves the state
 const INDIA_ZOOM = 6.4;
 const POLICE_STATE = 'Karnataka'; // the state our police-station dataset covers
@@ -424,7 +420,6 @@ export default function CrimeMap() {
     let pulseLayer = null;
     let policeLayer = null;
     let policeOnLocal = true;
-    let corridors = []; // raw corridor records, once loaded — feeds computePatrolRoute's candidates only, no visual layer
     let patrolLayer = null;
     let patrolOnLocal = false;
     let patrolSegments = []; // latest computed per-car stop sequences, for the "Navigate" handoff
@@ -542,10 +537,8 @@ export default function CrimeMap() {
     const setDistrictMode2 = (m) => { districtModeLocal = m; if (districtsLayer) districtsLayer.setStyle(districtStyleFn); };
 
     // ── Patrol route ──
-    // Tour over the current district's hottest points plus any
-    // smuggling-corridor waypoint that touches this district, so the
-    // suggested route covers both crime density and flagged corridor
-    // segments. Deliberately small: a real patrol route is a short list of
+    // Tour over the current district's hottest points, so the suggested route
+    // concentrates on crime density. Deliberately small: a real patrol route is a short list of
     // the highest-priority hotspots in an efficient order, not a tour of
     // every hotspot in the district — the hot-spots-policing literature this
     // feature is built on (Kim et al. 2023, the Braga et al. 2019 Campbell
@@ -580,18 +573,8 @@ export default function CrimeMap() {
       const severityScore = (p) => p.intensity * (CATEGORY_SEVERITY[p.category] || 1);
       const candidates = [...inBounds]
         .sort((a, b) => severityScore(b) - severityScore(a))
-        .slice(0, MAX_STOPS - 1) // leave room for a corridor waypoint below
-        .map((p) => ({ lat: p.lat, lng: p.lng, label: `${p.category} hotspot`, corridor: false }));
-
-      corridors
-        .filter((c) => c.districts.includes(dname))
-        .forEach((c) => {
-          const idx = c.districts.indexOf(dname);
-          const [lat, lng] = c.waypoints[idx];
-          if (!candidates.some((s) => s.corridor && s.lat === lat && s.lng === lng)) {
-            candidates.push({ lat, lng, label: c.label, corridor: true });
-          }
-        });
+        .slice(0, MAX_STOPS)
+        .map((p) => ({ lat: p.lat, lng: p.lng, label: `${p.category} hotspot` }));
 
       if (candidates.length < 2) { setPatrolInfo(null); return; }
       const stops = candidates.slice(0, MAX_STOPS);
@@ -819,13 +802,6 @@ export default function CrimeMap() {
         applyPolice(current.state); // show now if Karnataka is already selected
       })
       .catch(() => { /* police layer optional — ignore load failure */ });
-
-    // ── Load smuggling / trafficking corridor data (no visual toggle — this
-    // only feeds computePatrolRoute's corridor-waypoint candidates) ──
-    fetch(CORRIDOR_URL)
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((list) => { corridors = list; })
-      .catch(() => { /* corridor data optional — ignore load failure */ });
 
     return () => {
       window.removeEventListener('resize', onResize);
