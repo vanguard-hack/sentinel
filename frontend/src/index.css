@@ -4602,6 +4602,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
     display: flex;
     align-items: center;
     justify-content: space-between;
+    /* Measured at 185px inside a 210px drawer — it fits, with about 7px to
+       spare. wrap is the insurance: should a fourth language ever be added,
+       the row stacks rather than running out of the drawer. */
+    flex-wrap: wrap;
     gap: 8px;
     padding: 2px 2px 10px;
     margin-bottom: 8px;

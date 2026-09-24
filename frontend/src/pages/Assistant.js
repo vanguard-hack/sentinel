@@ -467,6 +467,14 @@ export default function Assistant() {
   // Only allow starting a new chat when the current one has content — prevents
   // stacking multiple empty "New chat" conversations.
   const onBlankNewChat = !activeId || messages.length === 0;
+  // Under 560px the conversations list overlays the chat rather than sitting
+  // beside it, so anything that opens a conversation has to get out of the way
+  // — otherwise the list is left covering the very thing it just opened. The
+  // query matches the CSS rule that makes it an overlay in the first place.
+  const dismissSessionOverlay = useCallback(() => {
+    if (window.matchMedia('(max-width: 560px)').matches) setSidebarOpen(false);
+  }, []);
+
   const startNewChat = useCallback(() => {
     // Leaving a conversation ends it: consolidate before the id is dropped.
     if (activeId) consolidateMemory(activeId);
@@ -474,14 +482,16 @@ export default function Assistant() {
     setInput('');
     setAttachments([]);
     histRef.current = { idx: null, draft: '' };
+    dismissSessionOverlay();
     textareaRef.current?.focus();
-  }, [activeId]);
+  }, [activeId, dismissSessionOverlay]);
 
   const selectSession = (id) => {
     setActiveId(id);
     setInput('');
     setAttachments([]);
     histRef.current = { idx: null, draft: '' };
+    dismissSessionOverlay();
   };
 
   // Wipe the active conversation's messages but keep the session itself.
