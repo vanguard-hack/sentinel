@@ -73,7 +73,9 @@ export default function ModelPicker({ value, onChange }) {
         title={`Model: ${current.label} — click to change`}
       >
         {CurrentLogo && <CurrentLogo size={14} />}
-        {current.label}
+        {/* Both labels ship; CSS shows one. See MODEL_OPTIONS.short. */}
+        <span className="as-model-label">{current.label}</span>
+        <span className="as-model-label-short">{current.short || current.label}</span>
         <ChevronDown size={13} />
       </button>
       {open && pos && createPortal(

@@ -17,6 +17,8 @@ import {
   contextKind, unusableReason, readForContext, contextLabel, contextDetail,
   attachState,
 } from '../utils/attachments';
+import { detectKind } from '../utils/extract';
+import { sizeOf } from '../utils/provenance';
 import ModelPicker from '../components/ModelPicker';
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
@@ -43,6 +45,35 @@ import VoiceGlow from '../components/ui/VoiceGlow';
 import ActionButton from '../components/ui/ActionButton';
 
 import { useTranslation } from 'react-i18next';
+
+// The composer's corner radius is the one value CSS cannot keep to itself:
+// BorderBeam traces a rounded rect at whatever number it is handed, so the
+// narrow-screen radius has to reach JavaScript too or the beam cuts corners
+// inside the box it is meant to outline. Matches the 620px breakpoint in
+// index.css — the two are a pair.
+const NARROW_COMPOSER = '(max-width: 620px)';
+function useNarrowComposer() {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(NARROW_COMPOSER).matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW_COMPOSER);
+    const sync = () => setNarrow(mq.matches);
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+  return narrow;
+}
+
+// The badge on an attachment card. Reading it off the filename rather than a
+// format→label table means a file nobody anticipated still names itself — an
+// .rtf reads "RTF", not a generic document glyph. Four characters is what the
+// badge holds; longer extensions are made up anyway.
+const extLabel = (name = '') => {
+  const dot = name.lastIndexOf('.');
+  const ext = dot > 0 ? name.slice(dot + 1) : '';
+  return (ext || 'FILE').slice(0, 4).toUpperCase();
+};
 
 /**
  * What in this answer was NOT read from the records.
@@ -200,6 +231,7 @@ export default function Assistant() {
   const [sessions, setSessions] = useState(() => loadSessions());
   const [activeId, setActiveId] = useState(() => incomingId || loadSessions()[0]?.id || null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const narrowComposer = useNarrowComposer();
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [sessionQuery, setSessionQuery] = useState('');
   const sessionSearchRef = useRef(null);
@@ -905,6 +937,11 @@ export default function Assistant() {
           size: f.size,
           type: f.type,
           kind,
+          // `kind` is the coarse routing decision (image / document / audio /
+          // unusable). This is the specific format, and it only decides what
+          // the card's badge says and what colour it is. Taken here while the
+          // real File is still in hand rather than re-derived from the name.
+          fileKind: detectKind(f),
           url: f.type.startsWith('image/') ? URL.createObjectURL(f) : null,
           // Kept only for images, only long enough to be re-encoded for the
           // VLM pass at send time (see onSend) — the officer's browser
@@ -1337,7 +1374,7 @@ export default function Assistant() {
               className="as-composer-beam"
               size="md"
               theme={isDark ? 'dark' : 'light'}
-              borderRadius={16}
+              borderRadius={narrowComposer ? 26 : 16}
             >
             <div className="as-composer">
               {/* rainbow glimm sweep — invisible at rest, plays a one-shot
@@ -1350,24 +1387,38 @@ export default function Assistant() {
                 <div className="as-attach-row">
                   {attachments.map((a) => (
                     <span
-                      className={`as-attach-chip ${attachState(a)}`}
+                      className={`as-attach-card ${attachState(a)}`}
                       key={a.id}
                       title={`${a.name}\n${contextDetail(a)}`}
                     >
-                      {a.url ? (
-                        <img src={a.url} alt="" className="as-attach-thumb" />
-                      ) : (
-                        <FileText size={13} />
-                      )}
-                      <span className="as-attach-name">{a.name}</span>
-                      {/* Silent when a file reads fine — only worth a tag when
-                          there's something the officer needs to know: still
-                          loading, unreadable, or (for audio) transcribed. A
-                          file the assistant will not see must not look like
-                          one it will. */}
-                      {contextLabel(a) && <span className="as-attach-tag">{contextLabel(a)}</span>}
-                      <button onClick={() => removeAttachment(a.id)} title="Remove">
-                        <X size={12} />
+                      {/* An image shows itself; everything else shows a badge
+                          carrying its own extension, so a format nobody
+                          mapped still names itself correctly. data-kind only
+                          picks the colour. */}
+                      <span className="as-attach-icon" data-kind={a.fileKind}>
+                        {a.url
+                          ? <img src={a.url} alt="" className="as-attach-thumb" />
+                          : <span className="as-attach-ext">{extLabel(a.name)}</span>}
+                      </span>
+                      <span className="as-attach-meta">
+                        <span className="as-attach-name">{a.name}</span>
+                        <span className="as-attach-sub">
+                          <span className="as-attach-size">{sizeOf({ bytes: a.size })}</span>
+                          {/* Silent when a file reads fine — only worth a tag
+                              when there's something the officer needs to know:
+                              still loading, unreadable, or (for audio)
+                              transcribed. A file the assistant will not see
+                              must not look like one it will. */}
+                          {contextLabel(a) && <span className="as-attach-tag">{contextLabel(a)}</span>}
+                        </span>
+                      </span>
+                      <button
+                        className="as-attach-del"
+                        onClick={() => removeAttachment(a.id)}
+                        title="Remove"
+                        aria-label={`Remove ${a.name}`}
+                      >
+                        <X size={13} />
                       </button>
                     </span>
                   ))}
@@ -1407,7 +1458,12 @@ export default function Assistant() {
                     ref={textareaRef}
                     className="as-input"
                     rows={1}
-                    placeholder={t('slash.placeholder', 'Ask a question or type / for commands…')}
+                    placeholder={narrowComposer
+                      // ~170px of room on a phone, where the full line is cut
+                      // off mid-word. Slash commands still work; the hint for
+                      // them is what goes, not the feature.
+                      ? t('slash.placeholderShort', 'Ask anything')
+                      : t('slash.placeholder', 'Ask a question or type / for commands…')}
                     value={input}
                     onChange={(e) => {
                       setInput(e.target.value);
