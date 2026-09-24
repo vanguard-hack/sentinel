@@ -1709,6 +1709,16 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .cf-search-input:focus { outline: none; border-color: var(--blue-500); }
 .cf-search-input:disabled { opacity: 0.55; cursor: not-allowed; }
 .cf-search-input::placeholder { color: var(--text-4); }
+
+/* .cf-toolbar-controls already wraps, but .cf-filter is one inline-flex pill
+   holding column + operator + a 240px search box — ~570px that could not
+   break, so on a phone it hung off the right edge and took the document with
+   it. Let the pill wrap internally and let the search take what is left. */
+@media (max-width: 620px) {
+  .cf-filter { flex-wrap: wrap; }
+  .cf-search { flex: 1 1 160px; min-width: 0; }
+  .cf-search-input { width: 100%; }
+}
 .cf-search-clear {
   position: absolute;
   right: 8px;
@@ -3436,6 +3446,14 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 .ai-viewtab:hover { color: var(--text-0); }
+/* Five tabs come to ~508px and the strip could not wrap or scroll, so it
+   forced the page sideways on a phone. Scrolling the strip is the same
+   answer .pp-tabs already uses; wrapping would stack five pills into a
+   three-row block that reads as navigation rather than as one control. */
+@media (max-width: 620px) {
+  .ai-viewtabs { display: flex; max-width: 100%; overflow-x: auto; }
+  .ai-viewtab { flex: none; }
+}
 .ai-viewtab.active {
   background: var(--bg-1);
   color: var(--text-0);
@@ -4350,7 +4368,9 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   position: absolute;
   left: 8px;
   top: -48px;
-  z-index: 1000;
+  /* Above the drawer (1050), which is the first thing it would otherwise
+     disappear behind once that cleared Leaflet. */
+  z-index: 1060;
   padding: 10px 16px;
   border-radius: var(--radius-sm);
   background: var(--blue-500);
@@ -4382,7 +4402,8 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
      lifts — see the ladder note in the token block. */
   background: var(--bg-0);
   border-right: 1px solid var(--border);
-  z-index: 40;
+  /* Pairs with .app-scrim — see the note there for why this clears 1000. */
+  z-index: 1050;
   transition: width 0.18s ease;
 }
 .app-sidebar.rail { width: 60px; }
@@ -4701,6 +4722,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .topbar-spacer { flex: 1; }
 .topbar-global { margin-left: 12px; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
+/* Holds the trailing cluster — theme, clock, language, search, page actions.
+   Same 16px rhythm the bar itself uses, so this is a no-op on desktop; it
+   exists so the narrow-screen rule can move all five as one row. */
+.topbar-tools { display: flex; align-items: center; gap: 16px; }
 
 /* ── Global search: top-bar trigger ── */
 .gs-trigger {
@@ -4850,13 +4875,20 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .topbar-search .nav-search { max-width: none; width: 100%; }
 .topbar-search .nav-search-input { height: 42px; border-radius: 12px; font-size: 14px; }
 
-/* Scrim behind the mobile drawer */
+/* Scrim behind the mobile drawer.
+
+   1049/1050 rather than 39/40 because Leaflet's own chrome and the Crime Map
+   panels built on it sit at 800–1000, and the drawer is shell chrome: it has
+   to cover the page, not the other way round. At 40 the drawer opened BEHIND
+   the map's info panel and controls on the one page where a phone user most
+   needs the navigation. Still below .map-lightbox (2000), which is a true
+   modal and should cover everything. */
 .app-scrim {
   display: none;
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
-  z-index: 39;
+  z-index: 1049;
   opacity: 0;
   transition: opacity 0.18s;
 }
@@ -4885,6 +4917,46 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   .sb-collapse { display: none; }
   .topbar-menu { display: flex; }
   .app-scrim.show { display: block; opacity: 1; }
+}
+
+/* ── Responsive: the top bar on a phone ───────────────────────────────────
+   The bar is a row of fixed-width chrome — hamburger, breadcrumb, theme
+   toggle, clock, three-language switcher, search — plus whatever the page
+   hangs on the end. That sums to ~480px and the bar never wrapped, so below
+   about 500px it pushed the DOCUMENT wide: every page scrolled sideways on a
+   phone. Worse, flex-shrink took the slack out of the hamburger, squeezing it
+   from 36px to 19px — the one control a phone user cannot do without, and the
+   only way to the navigation once the sidebar is off-canvas.
+
+   720px already collapses the search to an icon. These two steps carry it the
+   rest of the way. */
+@media (max-width: 620px) {
+  .topbar { column-gap: 8px; padding: 6px 12px; }
+  /* Whatever has to give, it is not the way into the navigation. */
+  .topbar-menu, .topbar-global { flex: none; }
+  .topbar-crumbs { flex-shrink: 1; overflow: hidden; }
+  /* The phone's own status bar already shows the time. */
+  .topbar-clock { display: none; }
+  .topbar-tools { gap: 8px; }
+  /* Icon-plus-label buttons keep the icon; the label is already on the
+     element's title/aria-label, so nothing becomes unnameable. */
+  .topbar-actions button > span { display: none; }
+}
+
+/* Under ~470px a single row can only fit by crushing the breadcrumb to
+   nothing, and the breadcrumb is the page title. So below that the bar
+   becomes two deliberate rows — title, then tools — rather than one row
+   with the title squeezed out. Every phone in portrait lands here. */
+@media (max-width: 520px) {
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    height: auto;
+    min-height: 52px;
+  }
+  .topbar-spacer { display: none; }
+  .topbar-crumbs { flex: 1 1 auto; }
+  .topbar-tools { flex: 1 0 100%; justify-content: flex-end; }
 }
 
 /* Old per-page nav bars are superseded by the shell; keep them from doubling

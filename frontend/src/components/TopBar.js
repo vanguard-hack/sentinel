@@ -56,19 +56,27 @@ export default function TopBar({ title, parent, parentTo, search, children }) {
           space between it and the header's actual right edge. This spacer
           keeps the same effect for every page, search box or not. */}
       {search ? <div className="topbar-search">{search}</div> : <div className="topbar-spacer" />}
-      <SegmentedControl
-        aria-label="Theme"
-        items={[
-          { id: 'light', label: '', Icon: Sun, srLabel: 'Light mode' },
-          { id: 'dark', label: '', Icon: Moon, srLabel: 'Dark mode' },
-        ]}
-        selected={isDark ? 'dark' : 'light'}
-        onChange={(id) => setIsDark(id === 'dark')}
-      />
-      <LiveClock />
-      <LanguageSwitcher />
-      <div className="topbar-global"><GlobalSearch /></div>
-      {children && <div className="topbar-actions">{children}</div>}
+
+      {/* One wrapper around everything trailing, so the narrow-screen rule has
+          a single thing to move. Left as loose siblings, the bar overflowed on
+          a phone and each control wrapped independently, which put the search
+          on one row and the language switcher on another. On desktop the
+          wrapper is inert: it carries the same 16px gap the bar already had. */}
+      <div className="topbar-tools">
+        <SegmentedControl
+          aria-label="Theme"
+          items={[
+            { id: 'light', label: '', Icon: Sun, srLabel: 'Light mode' },
+            { id: 'dark', label: '', Icon: Moon, srLabel: 'Dark mode' },
+          ]}
+          selected={isDark ? 'dark' : 'light'}
+          onChange={(id) => setIsDark(id === 'dark')}
+        />
+        <LiveClock />
+        <LanguageSwitcher />
+        <div className="topbar-global"><GlobalSearch /></div>
+        {children && <div className="topbar-actions">{children}</div>}
+      </div>
     </header>
   );
 }
