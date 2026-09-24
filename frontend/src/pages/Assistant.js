@@ -1374,7 +1374,7 @@ export default function Assistant() {
               className="as-composer-beam"
               size="md"
               theme={isDark ? 'dark' : 'light'}
-              borderRadius={narrowComposer ? 26 : 16}
+              borderRadius={narrowComposer ? 20 : 16}
             >
             <div className="as-composer">
               {/* rainbow glimm sweep — invisible at rest, plays a one-shot
@@ -1418,7 +1418,7 @@ export default function Assistant() {
                         title="Remove"
                         aria-label={`Remove ${a.name}`}
                       >
-                        <X size={13} />
+                        <X size={11} />
                       </button>
                     </span>
                   ))}

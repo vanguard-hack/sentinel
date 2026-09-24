@@ -73,10 +73,10 @@ export default function ModelPicker({ value, onChange }) {
         title={`Model: ${current.label} — click to change`}
       >
         {CurrentLogo && <CurrentLogo size={14} />}
-        {/* Both labels ship; CSS shows one. See MODEL_OPTIONS.short. */}
+        {/* Label and caret are both dropped on a phone, where the trigger is
+            its logo alone — the menu still names every model in full. */}
         <span className="as-model-label">{current.label}</span>
-        <span className="as-model-label-short">{current.short || current.label}</span>
-        <ChevronDown size={13} />
+        <ChevronDown size={13} className="as-model-caret" />
       </button>
       {open && pos && createPortal(
         <div

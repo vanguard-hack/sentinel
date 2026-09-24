@@ -34,14 +34,10 @@ export function saveVoiceLang(lang) {
 }
 
 // The assistant's model switcher. 
-// `short` is what the trigger shows once the composer is a single row on a
-// phone — the full label is ~95px of text there, which is most of the space
-// the question itself needs. Both are rendered and CSS picks one, so the
-// swap costs no resize listener. Menu rows always show the full label.
 export const MODEL_OPTIONS = [
-  { key: 'groq', label: 'GPT-OSS-120B', short: 'GPT-OSS', desc: 'Groq · fast, default' },
-  { key: 'glm', label: 'GLM-4.7-Flash', short: 'GLM-4.7', desc: 'Zoho Catalyst-hosted' },
-  { key: 'claude', label: 'Claude Opus 5', short: 'Opus 5', desc: 'Anthropic' },
+  { key: 'groq', label: 'GPT-OSS-120B', desc: 'Groq · fast, default' },
+  { key: 'glm', label: 'GLM-4.7-Flash', desc: 'Zoho Catalyst-hosted' },
+  { key: 'claude', label: 'Claude Opus 5', desc: 'Anthropic' },
 ];
 const MODEL_KEYS = MODEL_OPTIONS.map((m) => m.key);
 const DEFAULT_MODEL = 'groq';

@@ -2974,17 +2974,17 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 
    The state border stays, and it is the part that matters: green when the
    assistant will read this file, amber when it will not. */
-.as-attach-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 6px 8px; }
+.as-attach-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px 6px; }
 .as-attach-card {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
   min-width: 0;
-  max-width: 260px;
-  padding: 8px 10px 8px 8px;
+  max-width: 200px;
+  padding: 4px 6px 4px 4px;
   background: var(--bg-2);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 9px;
 }
 /* The neutral tile. An image fills it; a badge sits centred inside it. */
 .as-attach-icon {
@@ -2992,9 +2992,9 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   flex: none;
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   overflow: hidden;
   background: var(--bg-3);
 }
@@ -3005,12 +3005,12 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .as-attach-ext {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
   background: var(--text-4);
   color: #fff;
-  font-size: 8px;
+  font-size: 6px;
   font-weight: 700;
   letter-spacing: -0.02em;
   font-family: var(--font);
@@ -3023,29 +3023,31 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .as-attach-icon[data-kind="audio"] .as-attach-ext { background: #7c3aed; }
 .as-attach-icon[data-kind="video"] .as-attach-ext { background: #be185d; }
 
-.as-attach-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.as-attach-meta { display: flex; flex-direction: column; gap: 0; min-width: 0; }
 .as-attach-name {
-  font-size: 12.5px;
+  font-size: 11.5px;
+  line-height: 1.35;
   font-weight: 500;
   color: var(--text-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.as-attach-sub { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.as-attach-size { font-size: 11.5px; color: var(--text-4); flex: none; }
+.as-attach-sub { display: flex; align-items: center; gap: 5px; min-width: 0; line-height: 1.3; }
+.as-attach-size { font-size: 10px; color: var(--text-4); flex: none; }
 /* What the vision pre-parser made of an attached image. Muted: it is a
    reassurance that the file was read, not a headline. */
 .as-attach-tag {
   flex-shrink: 1;
   min-width: 0;
-  padding: 1px 6px;
-  border-radius: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
   background: var(--bg-3);
   color: var(--text-4);
-  font-size: 10.5px;
+  font-size: 9.5px;
   letter-spacing: .01em;
   text-transform: lowercase;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -3053,10 +3055,10 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   flex: none;
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
-  margin-left: 2px;
-  border-radius: 6px;
+  width: 18px;
+  height: 18px;
+  margin-left: 1px;
+  border-radius: 5px;
   background: none;
   border: none;
   color: var(--text-4);
@@ -3122,34 +3124,37 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    wraps beneath it — the arrangement every chat composer uses at this width.
    order:-1 is what puts the textarea above the attach button, which precedes
    it in the DOM. */
-/* ── The composer on a phone: one row, stadium-rounded ────────────────────
-   Everything fits on a single line once each control is cut to its icon and
-   the model trigger shows its short label — attach 34, model ~86, mic 34,
-   send 36, which leaves the question about 170px at 390px. That is the whole
-   trick: an earlier attempt kept the full-size controls and had to stack the
-   input above them, and before that they shared a row and squeezed the
-   textarea to ~100px.
+/* ── The composer on a phone ──────────────────────────────────────────────
+   Modelled on the Claude and ChatGPT mobile composers: one slim row, no
+   chrome on the controls, and as little height as the thing can take. Every
+   control drops to a 30px borderless icon — the model trigger included, which
+   keeps only its provider logo, since its label was ~86px of a 390px screen
+   and the menu it opens still names all three models in full.
 
-   The radius is 26px rather than 9999px so a composer that has grown to
-   several lines stays a rounded box instead of a lozenge; at the one-line
-   height it reads as a pill either way. It is passed to BorderBeam too — the
-   beam traces whatever radius it is given, and a mismatch shows up as corners
-   cutting inside the box. */
+   That leaves roughly 250px for the question, against 170px when the trigger
+   still carried text and ~100px in the version that squeezed everything onto
+   one row at full size. Total height lands near 40px.
+
+   Radius 20px is half that height, so it reads as a pill while it is one line
+   and stays a sanely rounded box once it has grown to several. BorderBeam is
+   handed the same number — it traces whatever radius it is given, and a
+   mismatch shows as corners cutting inside the box. */
 @media (max-width: 620px) {
-  .as-composer-wrap { padding: 6px 12px 12px; }
-  .as-composer { border-radius: 26px; padding: 5px 6px; }
-  .as-composer-main { align-items: center; gap: 2px; }
-  .as-comp-btn { width: 34px; height: 34px; }
-  .as-input, .as-input-highlight { padding: 8px 4px; }
-  /* .as-send-btn is NOT here: it is declared further down this file, and a
-     media query adds no specificity, so an override written here loses to it.
-     Its rule sits directly after that declaration instead. */
-  /* .as-dictating is NOT here either — same reason as .as-send-btn. Its rule
-     sits after its own declaration near the end of this file. */
-  /* An attachment row inside a stadium-rounded box has to keep clear of the
-     curve, and the cards go full-width rather than sitting two to a cramped
-     row. */
-  .as-attach-row { padding: 4px 4px 8px 6px; }
+  .as-composer-wrap { padding: 4px 10px 10px; }
+  .as-composer { border-radius: 20px; padding: 4px; }
+  .as-composer-main { align-items: center; gap: 1px; }
+  .as-comp-btn { width: 30px; height: 30px; }
+  .as-comp-btn svg { width: 17px; height: 17px; }
+  /* 16px is not a style choice: iOS Safari zooms the page in whenever a field
+     under 16px takes focus, and it does not zoom back out afterwards. The
+     highlight layer sits exactly behind the textarea, so it has to move in
+     step or the coloured slash-command token drifts off its own text. */
+  .as-input, .as-input-highlight { padding: 6px 6px; font-size: 16px; }
+  /* .as-send-btn and .as-dictating are NOT here: both are declared further
+     down this file, and a media query adds no specificity, so an override
+     written here would lose to them. Each has its own rule placed directly
+     after its declaration. */
+  .as-attach-row { padding: 3px 4px 6px 5px; gap: 5px; }
   .as-attach-card { max-width: 100%; }
 }
 .as-send-btn {
@@ -3166,7 +3171,8 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    up: same specificity, and a media query does not break the tie — only
    source order does. */
 @media (max-width: 620px) {
-  .as-send-btn { width: 36px; height: 36px; border-radius: 9999px; }
+  .as-send-btn { width: 30px; height: 30px; border-radius: 9999px; }
+  .as-send-btn svg { width: 16px; height: 16px; }
 }
 .as-disclaimer { max-width: 760px; margin: 8px auto 0; text-align: center; font-size: 11px; color: var(--text-4); }
 
@@ -4205,13 +4211,14 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 }
 .as-model-trigger:hover { background: var(--hover-overlay); color: var(--text-1); }
 .as-model-trigger svg { color: var(--text-4); }
-/* Only one of the two labels is ever shown — the short one takes over once
-   the composer is a single row on a phone. See MODEL_OPTIONS.short. */
-.as-model-label-short { display: none; }
+/* On a phone the trigger is its logo and nothing else: a 30px tap target to
+   match the other composer controls. Label and chevron go — the menu it opens
+   still names every model in full, so nothing is lost but the ~86px the label
+   was costing the question. */
 @media (max-width: 620px) {
-  .as-model-trigger { height: 34px; padding: 0 8px; gap: 4px; background: none; }
+  .as-model-trigger { width: 30px; height: 30px; padding: 0; gap: 0; background: none; justify-content: center; }
   .as-model-label { display: none; }
-  .as-model-label-short { display: inline; }
+  .as-model-caret { display: none; }
 }
 .as-model-menu {
   /* Right-anchored: the trigger sits near the composer's right edge (beside
