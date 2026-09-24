@@ -482,6 +482,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   align-items: center;
   justify-content: center;
   height: 100vh;
+  height: 100dvh;
   background: var(--bg-0);
 }
 
@@ -509,6 +510,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* ── Dashboard ─────────────────────────────────────────────────────────── */
 .db-page {
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--bg-0);
   display: flex;
   flex-direction: column;
@@ -891,6 +893,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .map-page {
   position: relative;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--bg-0);
@@ -1573,6 +1576,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* ── Case Files — Data Store browser ── */
 .cf-page {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--bg-0);
@@ -2018,6 +2022,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* ── Reports — analytics dashboard ── */
 .rp-page {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--bg-0);
@@ -2713,8 +2718,10 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .rp-sort-btn:hover { background: var(--bg-3); color: var(--text-0); border-color: var(--border-bright); }
 
 /* ── Assistant — chatbot ── */
-.as-page { height: 100vh; display: flex; flex-direction: column; background: var(--bg-0); }
-.as-body { flex: 1; display: flex; min-height: 0; }
+.as-page { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--bg-0); }
+/* position: relative so the sessions sidebar can overlay the chat on a phone
+   instead of taking a column out of a 390px screen — see the 560px rule. */
+.as-body { flex: 1; display: flex; min-height: 0; position: relative; }
 
 /* ── Sessions sidebar ── */
 .as-sidebar {
@@ -3026,6 +3033,29 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   max-height: 200px;
 }
 .as-input::placeholder { color: var(--text-4); }
+
+/* The composer keeps the textarea and the whole toolbar — attach, model
+   picker, mic, send — on ONE flex row. At 760px that is comfortable; at
+   390px the toolbar's fixed widths come to ~260px and the textarea is left
+   with about 100px, so the placeholder wrapped one word per line and typed
+   text was clipped to a few characters. Start the mic and the "Listening…"
+   indicator joins the same row and it collapses further.
+
+   So on a narrow screen the input takes a row of its own and the toolbar
+   wraps beneath it — the arrangement every chat composer uses at this width.
+   order:-1 is what puts the textarea above the attach button, which precedes
+   it in the DOM. */
+@media (max-width: 620px) {
+  .as-composer-wrap { padding: 6px 12px 12px; }
+  .as-composer-main { flex-wrap: wrap; align-items: center; }
+  .as-input-wrap { order: -1; flex: 1 0 100%; }
+  /* The toolbar row comes to ~270px of the ~348px available; adding the
+     "Listening…" chip tips it to ~370px and pushes Send onto a third row of
+     its own. The chip is the one thing there that is said twice — the mic
+     button turns red and pulses, and the line under the composer reads
+     "Recording — click the mic again to stop." */
+  .as-dictating { display: none; }
+}
 .as-send-btn {
   flex-shrink: 0;
   width: 38px; height: 38px;
@@ -3040,8 +3070,22 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 @media (max-width: 760px) {
   .as-sidebar { width: 210px; }
 }
+/* The conversations list was display:none here, which left the toggle in the
+   top bar doing nothing at all on a phone — pressing it changed aria-pressed
+   and nothing else. A 210px column genuinely does not fit beside the chat at
+   390px, but it does not have to sit beside it: the same off-canvas treatment
+   the app's own nav drawer uses works here. .as-sidebar.collapsed already
+   animates the width to 0, so closed still means closed and the default
+   (sidebarOpen = false) still starts the page with the chat full-width. */
 @media (max-width: 560px) {
-  .as-sidebar { display: none; }
+  .as-sidebar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 30;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.3);
+  }
 }
 
 /* ── Assistant: sidebar toggle + suggestions ── */
@@ -4366,6 +4410,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .app-shell {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--bg-0);
 }
 
@@ -4405,6 +4450,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   /* Chrome sits flush on the canvas so that cards are the only surface that
@@ -4544,36 +4590,26 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   flex-direction: column;
   gap: 4px;
 }
-.sb-theme { color: var(--text-3); }
+/* Theme and language, for the widths where the top bar has no room for them.
+   Hidden everywhere else — above 620px they live in the bar, and showing
+   both copies at once would be two controls for one setting.
 
-/* Expanded theme switch — segmented Light | Dark slider */
-.sb-theme-seg {
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  margin-bottom: 6px;
-  border-radius: 12px;
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-}
-.sb-theme-opt {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 7px 6px;
-  border-radius: 8px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-3);
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
-}
-.sb-theme-opt:hover { color: var(--text-1); }
-.sb-theme-opt.active {
-  background: var(--bg-1);
-  color: var(--text-0);
-
+   (This replaces .sb-theme / .sb-theme-seg / .sb-theme-opt, which styled a
+   theme switch that had already moved to the top bar; no JSX referenced them.) */
+.sb-settings { display: none; }
+@media (max-width: 620px) {
+  .sb-settings {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 2px 10px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  /* The drawer is narrower than the bar was, so the language switcher gives
+     up its outer margin and both controls sit flush to the drawer's padding. */
+  .sb-settings .lang-seg { margin-left: 0; }
 }
 
 .sb-profile { position: relative; }
@@ -4634,6 +4670,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   flex: 1;
   min-width: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -4908,6 +4945,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
     position: fixed;
     left: 0; top: 0;
     height: 100vh;
+    height: 100dvh;
     transform: translateX(-100%);
     transition: transform 0.2s ease;
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.3);
@@ -4947,25 +4985,16 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   /* The phone's own status bar already shows the time. */
   .topbar-clock { display: none; }
   .topbar-tools { gap: 8px; }
+  /* Theme and language move to the nav drawer at this width — see .sb-settings.
+     They are account settings rather than page chrome, and keeping them here
+     is what forced the bar onto a second row and left it looking packed. With
+     them gone the bar is one row again: way in, where you are, search, and
+     whatever this page offers. */
+  .topbar-tools .ui-segmented,
+  .topbar-tools .lang-seg { display: none; }
   /* Icon-plus-label buttons keep the icon; the label is already on the
      element's title/aria-label, so nothing becomes unnameable. */
   .topbar-actions button > span { display: none; }
-}
-
-/* Under ~470px a single row can only fit by crushing the breadcrumb to
-   nothing, and the breadcrumb is the page title. So below that the bar
-   becomes two deliberate rows — title, then tools — rather than one row
-   with the title squeezed out. Every phone in portrait lands here. */
-@media (max-width: 520px) {
-  .topbar {
-    flex-wrap: wrap;
-    row-gap: 6px;
-    height: auto;
-    min-height: 52px;
-  }
-  .topbar-spacer { display: none; }
-  .topbar-crumbs { flex: 1 1 auto; }
-  .topbar-tools { flex: 1 0 100%; justify-content: flex-end; }
 }
 
 /* Old per-page nav bars are superseded by the shell; keep them from doubling
@@ -9418,6 +9447,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
    app already follows this split (.cf-page / .cf-body, .pp-body). */
 .page {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--bg-0);
