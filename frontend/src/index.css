@@ -4211,14 +4211,15 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 }
 .as-model-trigger:hover { background: var(--hover-overlay); color: var(--text-1); }
 .as-model-trigger svg { color: var(--text-4); }
-/* On a phone the trigger is its logo and nothing else: a 30px tap target to
-   match the other composer controls. Label and chevron go — the menu it opens
-   still names every model in full, so nothing is lost but the ~86px the label
-   was costing the question. */
+.as-model-label-short { display: none; }
+/* On a phone: short name plus caret, no logo — about 68px, against ~150px for
+   the full label. A name is what has to survive; the provider marks only read
+   as providers when they sit beside one. */
 @media (max-width: 620px) {
-  .as-model-trigger { width: 30px; height: 30px; padding: 0; gap: 0; background: none; justify-content: center; }
+  .as-model-trigger { height: 30px; padding: 0 6px; gap: 3px; background: none; font-size: 0.72rem; }
+  .as-model-logo { display: none; }
   .as-model-label { display: none; }
-  .as-model-caret { display: none; }
+  .as-model-label-short { display: inline; }
 }
 .as-model-menu {
   /* Right-anchored: the trigger sits near the composer's right edge (beside
