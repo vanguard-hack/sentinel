@@ -1588,15 +1588,15 @@ export default function Assistant() {
             </div>
             </BorderBeam>
             </VoiceBeam>
-            {!narrowComposer && (
+            {/* Only speaks when it has something to say. The idle blurb that
+                used to sit here said nothing the page does not already. */}
+            {!narrowComposer && (voiceError || transcribing || listening) && (
               <p className={`as-disclaimer ${voiceError ? 'as-voice-error' : ''}`}>
                 {voiceError
                   ? `Voice input: ${voiceError}`
                   : transcribing
                   ? 'Transcribing audio with Zia…'
-                  : listening
-                  ? 'Recording — click the mic again to stop.'
-                  : 'Sentinel Assistant — answers come from the FIR Data Store and the knowledge base.'}
+                  : 'Recording — click the mic again to stop.'}
               </p>
             )}
           </div>
