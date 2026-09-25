@@ -2965,6 +2965,10 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    see. ponytail: duplicates .as-composer's 760px rather than reading it
    from one shared place; if that value ever changes, update both. */
 .as-composer-beam { max-width: 760px; margin: 0 auto; }
+/* Same reasoning, same fix, one layer out: VoiceBeam's own wrapper has no
+   width constraint of its own either, so without this it stretched to
+   .as-composer-wrap's full width instead of tracing the visible box. */
+.as-voice-beam { max-width: 760px; margin: 0 auto; }
 /* ── Composer attachments ─────────────────────────────────────────────────
    A card per file rather than a one-line pill: a 40px tile carrying either
    the image itself or a badge naming the format, then the filename over its

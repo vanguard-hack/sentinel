@@ -41,7 +41,7 @@ import MessageScroller from '../components/ui/MessageScroller';
 import { BorderBeam } from 'border-beam';
 import { createShader, playSweep, accentChain, ACCENTS } from 'glimm';
 import { useThemeMode } from '../context/LayoutContext';
-import VoiceGlow from '../components/ui/VoiceGlow';
+import { VoiceBeam } from 'voice-glow';
 import ActionButton from '../components/ui/ActionButton';
 
 import { useTranslation } from 'react-i18next';
@@ -248,6 +248,12 @@ export default function Assistant() {
   const [transcribing, setTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
   const [voiceLang] = useState(loadVoiceLang);
+  // A MediaStream for VoiceBeam to analyse — only ever non-null on a phone,
+  // while listening. On the recorder path this is the exact stream being
+  // recorded, reused rather than opened twice; the Web Speech path holds no
+  // stream of its own (the browser's own recogniser owns the microphone), so
+  // toggleMic opens a second, analysis-only one just for this. See toggleMic.
+  const [micVisualStream, setMicVisualStream] = useState(null);
   // The citation the officer opened: which message, and which footnote number
   // within it. One at a time, held here rather than per message, so opening a
   // second source closes the first instead of stacking panels.
@@ -1023,16 +1029,44 @@ export default function Assistant() {
     if (voiceLang === 'en' && dictationSupported()) {
       typedRef.current = input;
       setVoiceError(null);
+
+      // The recogniser owns the microphone itself and hands back words, not
+      // audio — VoiceBeam needs a MediaStream, so this path opens a second,
+      // analysis-only one just for the glow. Only on a phone, where the beam
+      // is the only thing that would use it; on desktop it would be a mic
+      // grabbed a second time for an effect nobody sees. `stopped` guards the
+      // ordinary race where dictation ends (a quick tap, or send()) before
+      // this permission prompt resolves — without it the stream opens with
+      // nothing left to close it, and the light next to the browser's tab
+      // stays on.
+      let visualStream = null;
+      let stopped = false;
+      if (narrowComposer) {
+        navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        }).then((s) => {
+          if (stopped) { s.getTracks().forEach((t) => t.stop()); return; }
+          visualStream = s;
+          setMicVisualStream(s);
+        }).catch(() => {}); // no glow reaction; dictation itself does not depend on this
+      }
+      const endVisualStream = () => {
+        stopped = true;
+        if (visualStream) visualStream.getTracks().forEach((t) => t.stop());
+        setMicVisualStream(null);
+      };
+
       const handle = startDictation({
         lang: voiceLang,
         onText: ({ final, interim }) => {
           setInput(composeDictated(typedRef.current, final, interim));
         },
-        onError: (msg) => { setVoiceError(msg); setListening(false); },
+        onError: (msg) => { setVoiceError(msg); setListening(false); endVisualStream(); },
         onEnd: (final) => {
           setListening(false);
           setInput(composeDictated(typedRef.current, final, ''));
           textareaRef.current?.focus();
+          endVisualStream();
         },
       });
       if (handle) {
@@ -1041,16 +1075,22 @@ export default function Assistant() {
         return;
       }
       // startDictation reported why; fall through to the recorder.
+      endVisualStream();
     }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // This IS the stream being recorded — handing it to VoiceBeam too costs
+      // nothing further and needs no second permission prompt, unlike the
+      // dictation path above.
+      if (narrowComposer) setMicVisualStream(stream);
       const rec = new MediaRecorder(stream);
       const chunks = [];
       rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         setListening(false);
+        setMicVisualStream(null);
         const abandoned = discardRecordingRef.current;
         discardRecordingRef.current = false;
         if (abandoned) return; // ended by sending; the question has already gone
@@ -1369,6 +1409,22 @@ export default function Assistant() {
                 onPick={applyCommand}
               />
             )}
+            {/* Outermost, so its ambient bloom sits BEHIND the composer's own
+                background and BorderBeam's crisp stroke — an officer reads
+                the box on top of the glow, not a glow on top of the box,
+                which is what the reference (inspora.design/posts/voice-effect)
+                shows. Always mounted, like BorderBeam beside it; `active`
+                is what actually confines it to a phone — off, it costs no
+                audio analysis, just an idle wrapper div. */}
+            <VoiceBeam
+              type="default"
+              theme={isDark ? 'dark' : 'light'}
+              active={narrowComposer}
+              stream={micVisualStream}
+              processing={narrowComposer && sending}
+              borderRadius={narrowComposer ? 20 : 16}
+              className="as-voice-beam"
+            >
             <BorderBeam
               active={composerFocused || sending}
               className="as-composer-beam"
@@ -1498,7 +1554,10 @@ export default function Assistant() {
                 <ModelPicker value={model} onChange={chooseModel} />
                 {canRecord && (
                   <span className="as-mic-wrap">
-                    <VoiceGlow listening={listening} thinking={sending} />
+                    {/* The old per-button pulse (VoiceGlow) is retired — the
+                        composer-wide VoiceBeam above is now what says a
+                        microphone is open, and a second, smaller indicator
+                        right beside it would only repeat that. */}
                     <button
                       className={`as-comp-btn ${listening ? 'listening' : ''} ${transcribing ? 'transcribing' : ''}`}
                       onClick={toggleMic}
@@ -1528,6 +1587,7 @@ export default function Assistant() {
               </div>
             </div>
             </BorderBeam>
+            </VoiceBeam>
             <p className={`as-disclaimer ${voiceError ? 'as-voice-error' : ''}`}>
               {voiceError
                 ? `Voice input: ${voiceError}`
