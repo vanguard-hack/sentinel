@@ -1486,7 +1486,7 @@ export default function Assistant() {
                   onClick={() => fileRef.current?.click()}
                   title="Attach files"
                 >
-                  <Paperclip size={18} />
+                  {narrowComposer ? <Plus size={18} /> : <Paperclip size={18} />}
                 </button>
                 <input
                   ref={fileRef}
@@ -1588,15 +1588,17 @@ export default function Assistant() {
             </div>
             </BorderBeam>
             </VoiceBeam>
-            <p className={`as-disclaimer ${voiceError ? 'as-voice-error' : ''}`}>
-              {voiceError
-                ? `Voice input: ${voiceError}`
-                : transcribing
-                ? 'Transcribing audio with Zia…'
-                : listening
-                ? 'Recording — click the mic again to stop.'
-                : 'Sentinel Assistant — answers come from the FIR Data Store and the knowledge base.'}
-            </p>
+            {!narrowComposer && (
+              <p className={`as-disclaimer ${voiceError ? 'as-voice-error' : ''}`}>
+                {voiceError
+                  ? `Voice input: ${voiceError}`
+                  : transcribing
+                  ? 'Transcribing audio with Zia…'
+                  : listening
+                  ? 'Recording — click the mic again to stop.'
+                  : 'Sentinel Assistant — answers come from the FIR Data Store and the knowledge base.'}
+              </p>
+            )}
           </div>
         </main>
       </div>

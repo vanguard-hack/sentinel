@@ -6,12 +6,11 @@ import {
   Home, AlertTriangle, Map, Brain, Database,
   MessageSquare, Users, ChevronRight, LogOut,
   UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, Headset, Building2, CalendarClock,
-  ScrollText, Images, ChevronsUpDown, ShieldOff, Sun, Moon } from 'lucide-react';
+  ScrollText, Images, ChevronsUpDown, ShieldOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccess } from '../context/AccessContext';
-import { useLayout, useThemeMode } from '../context/LayoutContext';
+import { useLayout } from '../context/LayoutContext';
 import LanguageSwitcher from './LanguageSwitcher';
-import SegmentedControl from './ui/SegmentedControl';
 import { canAccess, ROLE_LABELS } from '../utils/access';
 import { logAudit } from '../utils/audit';
 import Avatar from './Avatar';
@@ -49,7 +48,6 @@ export default function Sidebar() {
   const { user, signOut } = useAuth();
   const { role: appRole, isAdmin, ready } = useAccess();
   const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen } = useLayout();
-  const [isDark, setIsDark] = useThemeMode();
   const [menuOpen, setMenuOpen] = useState(false);
   const profileRef = useRef(null);
 
@@ -167,21 +165,13 @@ export default function Sidebar() {
         </nav>
 
         <div className="sb-footer">
-          {/* Phone-width home for theme and language. The top bar cannot hold
-              them at 390px without spilling onto a second row, and they are
-              account settings rather than page chrome — the rest of which is
-              already in this drawer. CSS decides which copy is visible, so
-              only one is ever on screen. */}
+          {/* Phone-width home for the language switcher. The top bar cannot
+              hold it at 390px without spilling onto a second row, and it is
+              an account setting rather than page chrome — the rest of which
+              is already in this drawer. Theme now lives only in the top bar's
+              ThemeToggle, visible at every width, so it is not duplicated
+              here. */}
           <div className="sb-settings">
-            <SegmentedControl
-              aria-label="Theme"
-              items={[
-                { id: 'light', label: '', Icon: Sun, srLabel: 'Light mode' },
-                { id: 'dark', label: '', Icon: Moon, srLabel: 'Dark mode' },
-              ]}
-              selected={isDark ? 'dark' : 'light'}
-              onChange={(id) => setIsDark(id === 'dark')}
-            />
             <LanguageSwitcher />
           </div>
 

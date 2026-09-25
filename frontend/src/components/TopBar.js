@@ -1,12 +1,12 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Home, Sun, Moon } from 'lucide-react';
+import { Menu, Home } from 'lucide-react';
 import { useLayout, useThemeMode } from '../context/LayoutContext';
 import GlobalSearch from './GlobalSearch';
 import LanguageSwitcher from './LanguageSwitcher';
 import LiveClock from './LiveClock';
 import Tooltip from './ui/Tooltip';
-import SegmentedControl from './ui/SegmentedControl';
+import ThemeToggle from './ui/ThemeToggle';
 
 // Slim per-page header inside the app shell. Left: mobile menu button + a
 // breadcrumb trail (home icon / current module). Center: optional search.
@@ -63,15 +63,7 @@ export default function TopBar({ title, parent, parentTo, search, children }) {
           on one row and the language switcher on another. On desktop the
           wrapper is inert: it carries the same 16px gap the bar already had. */}
       <div className="topbar-tools">
-        <SegmentedControl
-          aria-label="Theme"
-          items={[
-            { id: 'light', label: '', Icon: Sun, srLabel: 'Light mode' },
-            { id: 'dark', label: '', Icon: Moon, srLabel: 'Dark mode' },
-          ]}
-          selected={isDark ? 'dark' : 'light'}
-          onChange={(id) => setIsDark(id === 'dark')}
-        />
+        <ThemeToggle isDark={isDark} onChange={setIsDark} />
         <LiveClock />
         <LanguageSwitcher />
         <div className="topbar-global"><GlobalSearch /></div>

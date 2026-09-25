@@ -3144,16 +3144,19 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    handed the same number — it traces whatever radius it is given, and a
    mismatch shows as corners cutting inside the box. */
 @media (max-width: 620px) {
-  .as-composer-wrap { padding: 4px 10px 10px; }
-  .as-composer { border-radius: 20px; padding: 4px; }
+  /* Bottom padding is minimal on purpose — the disclaimer line that used to
+     sit under the bar on a phone is gone (see .as-disclaimer / narrowComposer
+     below), so there is nothing left to give room to. */
+  .as-composer-wrap { padding: 4px 10px 4px; }
+  .as-composer { border-radius: 22px; padding: 6px; }
   .as-composer-main { align-items: center; gap: 1px; }
-  .as-comp-btn { width: 30px; height: 30px; }
-  .as-comp-btn svg { width: 17px; height: 17px; }
+  .as-comp-btn { width: 34px; height: 34px; }
+  .as-comp-btn svg { width: 18px; height: 18px; }
   /* 16px is not a style choice: iOS Safari zooms the page in whenever a field
      under 16px takes focus, and it does not zoom back out afterwards. The
      highlight layer sits exactly behind the textarea, so it has to move in
      step or the coloured slash-command token drifts off its own text. */
-  .as-input, .as-input-highlight { padding: 6px 6px; font-size: 16px; }
+  .as-input, .as-input-highlight { padding: 8px 6px; font-size: 16px; }
   /* .as-send-btn and .as-dictating are NOT here: both are declared further
      down this file, and a media query adds no specificity, so an override
      written here would lose to them. Each has its own rule placed directly
@@ -3175,8 +3178,8 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    up: same specificity, and a media query does not break the tie — only
    source order does. */
 @media (max-width: 620px) {
-  .as-send-btn { width: 30px; height: 30px; border-radius: 9999px; }
-  .as-send-btn svg { width: 16px; height: 16px; }
+  .as-send-btn { width: 34px; height: 34px; border-radius: 9999px; }
+  .as-send-btn svg { width: 17px; height: 17px; }
 }
 .as-disclaimer { max-width: 760px; margin: 8px auto 0; text-align: center; font-size: 11px; color: var(--text-4); }
 
@@ -4517,7 +4520,26 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .inc-date { font-size: 0.8rem; color: var(--text-4); }
 .inc-chevron { color: var(--text-4); transition: transform 0.15s; }
 .inc-card.open .inc-chevron { transform: rotate(180deg); }
-@media (max-width: 760px) { .inc-where, .inc-date { display: none; } }
+@media (max-width: 760px) {
+  .inc-where, .inc-date { display: none; }
+  /* Crime number and type used to sit side by side in one row, competing
+     with the status pill and chevron for the same ~300px — the number alone
+     (19 digits, mono) left almost nothing for the type, so the row read as
+     cramped/overlapping on a phone. Stacking them is the same information,
+     just given its own line each. */
+  .inc-head-main { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .inc-crimeno { font-size: 0.74rem; }
+}
+@media (max-width: 620px) {
+  /* The search box and status filter sat side by side at fixed widths and
+     neither fit — the search placeholder was clipped to a few characters.
+     Full width, stacked, is the same toolbar with room to actually read. */
+  .inc-toolbar { flex-direction: column; align-items: stretch; }
+  .inc-toolbar .cf-search,
+  .inc-toolbar .cf-search-input,
+  .inc-toolbar .cf-select { width: 100%; }
+  .inc-count { margin-left: 0; align-self: flex-end; }
+}
 .inc-body { padding: 4px 16px 18px; border-top: 1px solid var(--border-1); }
 .inc-facts { font-size: 0.86rem; color: var(--text-2); line-height: 1.55; margin: 14px 0 16px; }
 .inc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
@@ -4713,9 +4735,9 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   flex-direction: column;
   gap: 4px;
 }
-/* Theme and language, for the widths where the top bar has no room for them.
-   Hidden everywhere else — above 620px they live in the bar, and showing
-   both copies at once would be two controls for one setting.
+/* Language, for the width where the top bar has no room for it. Hidden
+   everywhere else — above 620px it lives in the bar. Theme lives only in the
+   top bar's ThemeToggle at every width, so it is not duplicated here.
 
    (This replaces .sb-theme / .sb-theme-seg / .sb-theme-opt, which styled a
    theme switch that had already moved to the top bar; no JSX referenced them.) */
@@ -4724,18 +4746,12 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   .sb-settings {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    /* Measured at 185px inside a 210px drawer — it fits, with about 7px to
-       spare. wrap is the insurance: should a fourth language ever be added,
-       the row stacks rather than running out of the drawer. */
-    flex-wrap: wrap;
-    gap: 8px;
     padding: 2px 2px 10px;
     margin-bottom: 8px;
     border-bottom: 1px solid var(--border);
   }
   /* The drawer is narrower than the bar was, so the language switcher gives
-     up its outer margin and both controls sit flush to the drawer's padding. */
+     up its outer margin and sits flush to the drawer's padding. */
   .sb-settings .lang-seg { margin-left: 0; }
 }
 
@@ -5112,12 +5128,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   /* The phone's own status bar already shows the time. */
   .topbar-clock { display: none; }
   .topbar-tools { gap: 8px; }
-  /* Theme and language move to the nav drawer at this width — see .sb-settings.
-     They are account settings rather than page chrome, and keeping them here
-     is what forced the bar onto a second row and left it looking packed. With
-     them gone the bar is one row again: way in, where you are, search, and
-     whatever this page offers. */
-  .topbar-tools .ui-segmented,
+  /* Language moves to the nav drawer at this width — see .sb-settings. It is
+     an account setting rather than page chrome, and keeping it here is what
+     forced the bar onto a second row and left it looking packed. Theme stays
+     — ThemeToggle is compact enough to hold its place at every width. */
   .topbar-tools .lang-seg { display: none; }
   /* Icon-plus-label buttons keep the icon; the label is already on the
      element's title/aria-label, so nothing becomes unnameable. */

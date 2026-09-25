@@ -33,8 +33,7 @@ export function ZaiLogo({ size = 14, className }) {
 export function GroqLogo({ size = 14, className }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" fill="none" />
-      <path d="M12 7v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z" fill="currentColor" />
     </svg>
   );
 }
