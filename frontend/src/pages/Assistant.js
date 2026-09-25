@@ -265,6 +265,8 @@ export default function Assistant() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
+  const [feedbackPromptId, setFeedbackPromptId] = useState(null); // negative-feedback reason modal
+  const [feedbackReasonText, setFeedbackReasonText] = useState('');
   // Which LLM answers the next turn — persisted so the officer's pick
   // survives a reload rather than silently reverting to the default.
   const [model, setModel] = useState(loadModel);
@@ -974,20 +976,35 @@ export default function Assistant() {
     return navigator.clipboard.writeText(m.content);
   };
 
-  // Toggle thumbs-up / thumbs-down feedback on an assistant message.
-  const setFeedback = (msgId, value) => {
+  // Toggle thumbs-up / thumbs-down feedback on an assistant message. A
+  // negative rating carries an optional reason (set via the modal below);
+  // toggling it off, or re-rating positive, clears any reason it had.
+  const setFeedback = (msgId, value, reason = null) => {
     setSessions((prev) =>
       prev.map((s) =>
         s.id === activeId
           ? {
               ...s,
               messages: s.messages.map((m) =>
-                m.id === msgId ? { ...m, feedback: m.feedback === value ? null : value } : m
+                m.id === msgId
+                  ? m.feedback === value
+                    ? { ...m, feedback: null, feedbackReason: null }
+                    : { ...m, feedback: value, feedbackReason: value === 'down' ? reason : null }
+                  : m
               ),
             }
           : s
       )
     );
+  };
+
+  const openFeedbackPrompt = (msgId) => {
+    setFeedbackReasonText('');
+    setFeedbackPromptId(msgId);
+  };
+  const submitFeedbackReason = () => {
+    setFeedback(feedbackPromptId, 'down', feedbackReasonText.trim());
+    setFeedbackPromptId(null);
   };
 
   // Feed a finished audio blob/file through Zia and append the transcript to
@@ -1366,7 +1383,7 @@ export default function Assistant() {
                           </button>
                           <button
                             className={m.feedback === 'down' ? 'active down' : ''}
-                            onClick={() => setFeedback(m.id, 'down')}
+                            onClick={() => (m.feedback === 'down' ? setFeedback(m.id, 'down') : openFeedbackPrompt(m.id))}
                             title="Bad response"
                             aria-label="Bad response"
                             aria-pressed={m.feedback === 'down'}
@@ -1632,6 +1649,26 @@ export default function Assistant() {
             <div className="as-modal-actions">
               <button className="as-modal-cancel" onClick={() => setConfirmBulk(false)}>Cancel</button>
               <button className="as-modal-delete" onClick={bulkDelete}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {feedbackPromptId && (
+        <div className="as-modal-overlay" onClick={() => setFeedbackPromptId(null)}>
+          <div className="as-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>What was wrong with this response?</h3>
+            <p>Optional — helps us understand what to fix. Left blank, we still record the rating.</p>
+            <textarea
+              className="as-feedback-textarea"
+              value={feedbackReasonText}
+              onChange={(e) => setFeedbackReasonText(e.target.value)}
+              placeholder="e.g. incorrect crime numbers, missed a source, wrong district…"
+              maxLength={500}
+              autoFocus
+            />
+            <div className="as-modal-actions">
+              <button className="as-modal-cancel" onClick={() => setFeedbackPromptId(null)}>Cancel</button>
+              <button className="as-modal-submit" onClick={submitFeedbackReason}>Submit</button>
             </div>
           </div>
         </div>

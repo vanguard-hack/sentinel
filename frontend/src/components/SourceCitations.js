@@ -70,7 +70,7 @@ export default function SourceCitations({ sources, onOpen }) {
         {/* The count lives in CSS content, not text, so it can't collide with
             a chip's own number badge when queried by visible text. */}
         <span className="as-cite-count" data-count={sources.length} aria-hidden="true" />
-        <ChevronDown size={13} className="as-cite-chevron" aria-hidden="true" />
+        <ChevronDown size={15} className="as-cite-chevron" aria-hidden="true" />
       </button>
       <div className={`as-cite-collapse${open ? ' as-cite-open' : ''}`}>
       <div className="as-cite-collapse-inner">
