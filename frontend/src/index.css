@@ -10245,3 +10245,31 @@ span.inv-status-dot {
 }
 @keyframes as-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 
+
+/* ── Reports: festival & event windows ─────────────────────────────────────
+   Two percentage columns sit side by side on purpose: the month-held-constant
+   figure is the claim, the annual one is the naive comparison it corrects.
+   The naive column is deliberately quieter so it reads as context, not as a
+   second finding. */
+.ev-wrap { display: flex; flex-direction: column; gap: 10px; }
+.ev-table td { vertical-align: middle; }
+.ev-cat {
+  display: block;
+  font-size: 11px;
+  color: var(--text-4);
+  letter-spacing: 0;
+}
+.ev-span { color: var(--text-3); font-size: 12.5px; white-space: nowrap; }
+.fc-table td.ev-primary { color: var(--text-0); font-weight: var(--fw-medium); }
+.fc-table td.ev-naive { color: var(--text-4); }
+.ev-verdict {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+.ev-above { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }
+.ev-below { background: color-mix(in srgb, var(--green) 14%, transparent); color: var(--green); }
+.ev-noise { background: var(--bg-3); color: var(--text-3); }

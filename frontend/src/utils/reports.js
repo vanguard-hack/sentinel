@@ -7,6 +7,7 @@
 // selected window entirely client-side — so changing the range is instant and
 // filters the whole report, not just the trend chart.
 import { fetchSharedCases, fetchSharedAccused, fetchSnapshotTable } from './datastore';
+import { eventWindows } from './eventCalendar';
 
 const labelOf = (v) => {
   if (v === null || v === undefined || v === '') return '—';
@@ -620,6 +621,11 @@ export function computeReport(raw, masters, rangeKey, custom) {
   }
   const seasonality = { day: { days: seasonDays }, month: seasonMonth, week: seasonWeek };
 
+  // Festival and public-event windows, each measured against its own month's
+  // ordinary days rather than the annual mean — see utils/eventCalendar.js for
+  // why that distinction is the whole feature.
+  const eventWindowRows = eventWindows(raw.cases);
+
   // Chargesheet filing lag + average investigation time by head.
   const LAG_BUCKETS = [
     { label: '≤ 30 days', to: 30 }, { label: '31–60', to: 60 }, { label: '61–90', to: 90 },
@@ -799,6 +805,7 @@ export function computeReport(raw, masters, rangeKey, custom) {
     trendByHead,
     arrestSeries,
     seasonality,
+    eventWindows: eventWindowRows,
     csLag,
     investTimeByHead,
     gravitySplit,

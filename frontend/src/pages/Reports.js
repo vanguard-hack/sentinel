@@ -21,6 +21,74 @@ import TopBar from '../components/TopBar';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 
+// Festival / public-event windows.
+//
+// Two percentages per row, deliberately. "vs same month" holds the calendar
+// month constant and is the only one that can be called a festival effect;
+// "vs year" is the naive comparison against the annual daily mean. Where they
+// disagree — and on this dataset they mostly do — the difference is the
+// seasonal month the festival happens to fall in, not the festival.
+//
+// The verdict column uses a Poisson noise floor (|z| < 2), because a nine-day
+// window holding a couple of hundred FIRs swings several percent on nothing.
+// Without it every row reads as a finding.
+const pctStr = (v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
+
+function EventWindows({ rows }) {
+  const VERDICT = {
+    above: { label: 'Above baseline', cls: 'ev-above' },
+    below: { label: 'Below baseline', cls: 'ev-below' },
+    noise: { label: 'Within noise', cls: 'ev-noise' },
+  };
+  const flagged = rows.filter((r) => r.verdict !== 'noise').length;
+  return (
+    <div className="ev-wrap">
+      <div className="cf-scroll">
+        <table className="fc-table ev-table">
+          <thead>
+            <tr>
+              <th>Window</th><th>Span</th><th>FIRs</th>
+              <th className="num">vs same month</th><th className="num">vs year</th><th>Reading</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const v = VERDICT[r.verdict];
+              return (
+                <tr key={r.name}>
+                  <td>
+                    {r.name}
+                    <span className="ev-cat">{r.category}</span>
+                  </td>
+                  <td className="ev-span">
+                    {r.windowDays} days · {r.occurrences} year{r.occurrences === 1 ? '' : 's'}
+                  </td>
+                  <td className="ft-num">{r.observed.toLocaleString()}</td>
+                  <td className="ft-num ev-primary">{pctStr(r.deviation)}</td>
+                  <td className="ft-num ev-naive">{pctStr(r.vsAnnual)}</td>
+                  <td><span className={`ev-verdict ${v.cls}`}>{v.label}</span></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="cl-cal-note">
+        Each window is the festival day ± a few days, pooled across every year the data
+        covers it in full. <b>vs same month</b> compares it against the ordinary days of
+        the month it falls in; <b>vs year</b> against the annual daily mean. Read the two
+        together: FIR volume already varies by month, so a window can look busy on the
+        second column purely because of the season it sits in — which is what the first
+        column removes.{' '}
+        {flagged === 0
+          ? 'On this data no window clears the Poisson noise floor once the month is held constant, so none of these is evidence of a festival effect.'
+          : `${flagged} window${flagged === 1 ? '' : 's'} clear${flagged === 1 ? 's' : ''} that floor.`}
+        {' '}Synthetic hackathon data — the method is what is being shown.
+      </p>
+    </div>
+  );
+}
+
 function Card({ id, title, subtitle, wide, two, hero, full, banner, tall, section, children }) {
   const span = [
     full && 'rp-card-full',
@@ -478,6 +546,20 @@ export default function Reports() {
               <Card title="Seasonality" subtitle="FIR registrations · past 12 months" banner section="Socio-economic & seasonality">
                 <HeatGrid periods={data.seasonality} defaultPeriod="day" />
               </Card>
+
+              {/* Festival windows. The headline is the month-held-constant
+                  figure; the annual column sits beside it because the gap
+                  between the two IS the finding — see utils/eventCalendar.js. */}
+              {data.eventWindows?.length > 0 && (
+                <Card
+                  title="Festival &amp; event windows"
+                  subtitle="FIR registrations inside each window, against the same month's ordinary days"
+                  banner
+                  section="Socio-economic & seasonality"
+                >
+                  <EventWindows rows={data.eventWindows} />
+                </Card>
+              )}
 
               {/* Band 5 — the trend, flanked by two legal lists. */}
               <Card id="chart-trend-head" title="Crime trend by head" subtitle="Monthly registrations · top 5 crime heads" hero section="Legal trends & investigation time">
