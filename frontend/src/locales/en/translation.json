@@ -113,7 +113,8 @@
     "page": "page",
     "updated": "Updated",
     "noResults": "No results",
-    "retry": "Try again"
+    "retry": "Try again",
+    "more": "More"
   },
   "records": {
     "title": "Records",

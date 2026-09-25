@@ -6,7 +6,7 @@ import {
   Home, AlertTriangle, Map, Brain, Database,
   MessageSquare, Users, ChevronRight, LogOut,
   UserCircle, PanelLeftClose, ShieldCheck, NotebookPen, Headset, Building2, CalendarClock,
-  ScrollText, Images, ChevronsUpDown, ShieldOff } from 'lucide-react';
+  ScrollText, Images, ChevronsUpDown, ShieldOff, Grip } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAccess } from '../context/AccessContext';
 import { useLayout } from '../context/LayoutContext';
@@ -41,13 +41,30 @@ const NAV = [
   { to: '/access', Icon: ShieldCheck, key: 'access' },
 ];
 
+// Phone navigation is a bottom bar, not the off-canvas drawer. A bar holds
+// about five slots against a thirteen-item feature list, so four destinations
+// live in it and "More" opens the drawer this component already renders —
+// which is where the full list, the language switcher and the account menu
+// live. Any of these four a role cannot reach is backfilled from whatever it
+// can, so the bar is never short a slot.
+const BOTTOM_KEYS = ['reports', 'incidents', 'crimeMap', 'assistant'];
+const BOTTOM_SLOTS = 4;
+
+// Exported for its own test: the backfill is the part with a way to be wrong.
+export function bottomNavItems(nav, keys = BOTTOM_KEYS, slots = BOTTOM_SLOTS) {
+  return [
+    ...keys.map((k) => nav.find((i) => i.key === k)).filter(Boolean),
+    ...nav.filter((i) => !keys.includes(i.key)),
+  ].slice(0, slots);
+}
+
 export default function Sidebar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { t } = useTranslation();
   const { user, signOut } = useAuth();
   const { role: appRole, isAdmin, ready } = useAccess();
-  const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen } = useLayout();
+  const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen, toggleMobile } = useLayout();
   const [menuOpen, setMenuOpen] = useState(false);
   const profileRef = useRef(null);
 
@@ -87,6 +104,8 @@ export default function Sidebar() {
 
   const labelFor = (item) =>
     item.label || t(`modules.${item.labelKey || item.key}.label`, item.key);
+
+  const bottom = bottomNavItems(nav);
 
   const go = (item) => {
     if (item.soon || !item.to) return;
@@ -221,6 +240,32 @@ export default function Sidebar() {
           </div>
         </div>
       </aside>
+
+      {/* Phone only — CSS keeps it out of the layout above 900px. The label is
+          truncated when it has to be (Kannada and Hindi module names run long),
+          so the full one stays on the title. */}
+      <nav className="app-bottomnav" aria-label="Primary">
+        {bottom.map((item) => (
+          <button
+            key={item.key}
+            className={`bn-item ${pathname.startsWith(item.to) ? 'active' : ''}`}
+            onClick={() => go(item)}
+            title={labelFor(item)}
+          >
+            <item.Icon size={21} strokeWidth={1.8} />
+            <span className="bn-label">{labelFor(item)}</span>
+          </button>
+        ))}
+        <button
+          className={`bn-item ${mobileOpen ? 'active' : ''}`}
+          onClick={toggleMobile}
+          aria-expanded={mobileOpen}
+          title={t('common.more', 'More')}
+        >
+          <Grip size={21} strokeWidth={1.8} />
+          <span className="bn-label">{t('common.more', 'More')}</span>
+        </button>
+      </nav>
     </>
   );
 }

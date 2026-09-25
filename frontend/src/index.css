@@ -5109,8 +5109,104 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   .app-sidebar.rail .sb-item { justify-content: flex-start; }
   .app-sidebar.mobile-open { transform: translateX(0); }
   .sb-collapse { display: none; }
-  .topbar-menu { display: flex; }
   .app-scrim.show { display: block; opacity: 1; }
+  /* The bottom bar's "More" is the way into the drawer now, so the top bar's
+     hamburger would be a second door to the same room. */
+  .topbar-menu { display: none; }
+  /* Every page has to clear the floating bar, which is out of flow. The
+     Assistant composer is the tight case: it sits at the bottom of an
+     in-flow flex column, so without this the bar covers it. */
+  .app-main { padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* ── Phone: glassmorphism bottom nav ──────────────────────────────────────
+   Floats over the page rather than docking to its edge, so the blur has
+   something to blur — a bar flush against the canvas reads as a solid strip.
+   `color-mix` on the surface token keeps one rule working in both themes:
+   translucent white over the light canvas, translucent near-black over the
+   dark one. The inset top highlight is the reference's "pixel rendered" edge.
+
+   z-index 999 is deliberate and load-bearing. Modal overlays in this app sit
+   at 1000 (.as-modal-overlay, the confirm dialog) and the nav drawer's scrim
+   at 1049 — a bar above those would float over a dialog's own buttons, which
+   is a functional break rather than a cosmetic one. Under them it just
+   disappears while the dialog is up, which is correct. The bar clears page
+   content because .app-main reserves room for it below, not because it
+   out-stacks anything. */
+.app-bottomnav { display: none; }
+
+@media (max-width: 900px) {
+  .app-bottomnav {
+    display: flex;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    z-index: 999;
+    gap: 2px;
+    padding: 6px 6px 5px;
+    border-radius: 26px;
+    background: color-mix(in srgb, var(--bg-1) 70%, transparent);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border: 1px solid color-mix(in srgb, var(--hairline-strong) 65%, transparent);
+    box-shadow:
+      0 10px 30px rgba(0, 0, 0, 0.16),
+      inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  }
+  .bn-item {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    /* 44px of tap target, per the touch-target floor the rest of the
+       responsive rules hold to. */
+    min-height: 44px;
+    padding: 5px 2px;
+    border: 0;
+    background: none;
+    border-radius: 20px;
+    color: var(--text-3);
+    font-family: inherit;
+    font-size: 10.5px;
+    font-weight: var(--fw-medium);
+    letter-spacing: 0;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+  .bn-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bn-item.active {
+    color: var(--primary);
+    background: var(--primary-tint);
+  }
+  /* Overrides lucide's stroke-width attribute — a CSS property beats a
+     presentation attribute — so the active icon reads heavier, not just
+     coloured. */
+  .bn-item.active svg { stroke-width: 2.2px; }
+  .bn-item:active { background: var(--hover-overlay); }
+}
+
+/* Dark canvas: white at 50% is a bright seam on near-black, and the shadow
+   has nothing to fall on. */
+[data-theme="dark"] .app-bottomnav {
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* No backdrop-filter (older Firefox, or the user's own blocklist) means the
+   bar would be a see-through box with page text running under the labels.
+   Fall back to an opaque surface. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .app-bottomnav { background: var(--bg-1); }
 }
 
 /* ── Responsive: the top bar on a phone ───────────────────────────────────
