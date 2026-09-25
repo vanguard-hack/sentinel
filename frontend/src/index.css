@@ -4285,7 +4285,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .as-select-del:disabled { opacity: 0.5; cursor: default; }
 
 .as-modal-overlay {
-  position: fixed; inset: 0; z-index: 1000;
+  position: fixed; inset: 0; z-index: 1100;
   background: rgba(0,0,0,0.5);
   display: flex; align-items: center; justify-content: center;
 }
@@ -5144,13 +5144,26 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
    translucent white over the light canvas, translucent near-black over the
    dark one. The inset top highlight is the reference's "pixel rendered" edge.
 
-   z-index 999 is deliberate and load-bearing. Modal overlays in this app sit
-   at 1000 (.as-modal-overlay, the confirm dialog) and the nav drawer's scrim
-   at 1049 — a bar above those would float over a dialog's own buttons, which
-   is a functional break rather than a cosmetic one. Under them it just
-   disappears while the dialog is up, which is correct. The bar clears page
-   content because .app-main reserves room for it below, not because it
-   out-stacks anything. */
+   The layer order here is load-bearing, and 999 was wrong. The Crime Map's
+   own chrome (.map-controls, .map-legend, .map-hint, .map-status) sits at
+   1000 INSIDE the page, so the zoom buttons covered the bar and swallowed
+   every tap once an officer reached that route — the bar looked fine and
+   simply stopped working. The bar has to out-stack in-page chrome.
+
+   It must still sit under anything modal, or it floats over a dialog's own
+   buttons. So the app's top of the stack now reads:
+
+     1000  in-page chrome (map controls, legend, hint, status)
+     1001  .app-bottomnav
+     1049  .app-scrim          nav drawer's scrim
+     1050  .app-sidebar        nav drawer
+     1060  .skip-link
+     1100  modal scrims        .cd-scrim, .as-modal-overlay
+     2000  .map-lightbox
+
+   .cd-scrim was at 400 and .as-modal-overlay at 1000, which put both under
+   the drawer and the map's own controls — a confirm dialog on the Crime Map
+   was already being covered before this bar existed. Both move to 1100. */
 .app-bottomnav { display: none; }
 
 @media (max-width: 900px) {
@@ -5160,8 +5173,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
     left: 12px;
     right: 12px;
     bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-    z-index: 999;
-    gap: 2px;
+    z-index: 1001;
+    /* No gap: the sliding bubble below moves in whole item-widths, which
+       only lands true if the items tile the row exactly. */
+    gap: 0;
     padding: 6px 6px 5px;
     border-radius: 26px;
     background: color-mix(in srgb, var(--bg-1) 70%, transparent);
@@ -5175,6 +5190,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   .bn-item {
     flex: 1 1 0;
     min-width: 0;
+    /* Above the bubble, which is a later sibling and would otherwise paint
+       over the icon and label it is supposed to sit behind. */
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -5201,9 +5220,42 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .bn-item.active {
-    color: var(--primary);
-    background: var(--primary-tint);
+  .bn-item.active { color: var(--primary); }
+
+  /* The travelling glass bubble.
+     Width is one slot — (row minus its padding) / item count — so a move of
+     one position is exactly translateX(100%) of the bubble's own box. That
+     is why this needs no measurement, no refs and no resize observer: the
+     items are flex: 1 1 0 with no gap, so they tile the row evenly and the
+     arithmetic holds at every width and every item count. */
+  .bn-bubble {
+    position: absolute;
+    top: 6px;
+    bottom: 5px;
+    left: 6px;
+    width: calc((100% - 12px) / var(--bn-n));
+    transform: translateX(calc(var(--bn-i) * 100%));
+    border-radius: 20px;
+    background: color-mix(in srgb, var(--bg-1) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--hairline-strong) 55%, transparent);
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.10),
+      inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    pointer-events: none;
+    z-index: 0;
+    /* Overshoot-free spring: fast off the mark, settling long — the iOS
+       tab-bar feel without a physics library. */
+    transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+  }
+  /* Nothing in the bar matches the route (a section reached from the drawer),
+     so there is no slot to sit in. */
+  .bn-bubble-hidden { opacity: 0; }
+
+  /* Bottom-anchored map chrome would otherwise sit behind the bar. It is
+     positioned inside the map canvas, which runs to the foot of the viewport
+     — .app-main's padding does not lift it. */
+  .map-controls, .map-hint {
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   }
   /* Overrides lucide's stroke-width attribute — a CSS property beats a
      presentation attribute — so the active icon reads heavier, not just
@@ -5218,6 +5270,19 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   box-shadow:
     0 10px 30px rgba(0, 0, 0, 0.55),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+[data-theme="dark"] .bn-bubble {
+  background: color-mix(in srgb, var(--bg-3) 92%, transparent);
+  box-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* The bubble still moves — it just arrives immediately. Removing the
+   transition outright is what this setting asks for; removing the bubble
+   would take the "you are here" cue with it. */
+@media (prefers-reduced-motion: reduce) {
+  .bn-bubble { transition: none; }
 }
 
 /* No backdrop-filter (older Firefox, or the user's own blocklist) means the
@@ -8189,7 +8254,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 
 /* Anchored near the top: a confirmation is a quick interruption, not a page. */
 .cd-scrim {
-  position: fixed; inset: 0; z-index: 400;
+  position: fixed; inset: 0; z-index: 1100;
   display: flex; align-items: flex-start; justify-content: center;
   padding: 46px 16px 16px;
   background: rgba(15, 23, 42, .28);

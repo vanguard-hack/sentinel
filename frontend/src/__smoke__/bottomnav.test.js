@@ -14,19 +14,19 @@ const { bottomNavItems } = require('../components/Sidebar');
 // a full bar rather than a gap where the button should be.
 
 const item = (key) => ({ key, to: `/${key}`, Icon: () => null });
-const FULL = ['reports', 'incidents', 'crimeMap', 'aiAnalytics', 'caseFiles', 'assistant', 'access']
-  .map(item);
+const FULL = ['reports', 'aiAnalytics', 'assistant', 'investigationDiary', 'reportStudio',
+  'records', 'caseFiles', 'crimeMap', 'incidents', 'access'].map(item);
 
 test('the preferred four fill the bar, in their own order not the sidebar’s', () => {
   expect(bottomNavItems(FULL).map((i) => i.key))
-    .toEqual(['reports', 'incidents', 'crimeMap', 'assistant']);
+    .toEqual(['reports', 'aiAnalytics', 'assistant', 'reportStudio']);
 });
 
 test('a role that cannot reach one of the four still gets four slots', () => {
-  const nav = FULL.filter((i) => i.key !== 'crimeMap');
+  const nav = FULL.filter((i) => i.key !== 'reportStudio');
   const keys = bottomNavItems(nav).map((i) => i.key);
   expect(keys).toHaveLength(4);
-  expect(keys).not.toContain('crimeMap');
+  expect(keys).not.toContain('reportStudio');
   // Backfilled from what the role CAN reach, and never a duplicate.
   expect(new Set(keys).size).toBe(4);
 });

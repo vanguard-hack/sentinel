@@ -20,16 +20,16 @@ import Tooltip from './ui/Tooltip';
 // Every feature lives here. `soon` items are shown disabled.
 const NAV = [
   { to: '/reports', Icon: Home, key: 'reports' },
-  { to: '/incidents', Icon: AlertTriangle, key: 'incidents' },
-  { to: '/crime-map', Icon: Map, key: 'crimeMap' },
   { to: '/ai-analytics', Icon: Brain, key: 'aiAnalytics' },
-  { to: '/case-files', Icon: Database, key: 'caseFiles' },
+  { to: '/assistant', Icon: MessageSquare, key: 'assistant' },
   { to: '/investigation-diary', Icon: NotebookPen, key: 'investigationDiary' },
-  { to: '/action-queue', Icon: CalendarClock, key: 'actionQueue' },
   { to: '/report-studio', Icon: ScrollText, key: 'reportStudio' },
   { to: '/records', Icon: Images, key: 'records' },
+  { to: '/action-queue', Icon: CalendarClock, key: 'actionQueue' },
+  { to: '/case-files', Icon: Database, key: 'caseFiles' },
+  { to: '/crime-map', Icon: Map, key: 'crimeMap' },
+  { to: '/incidents', Icon: AlertTriangle, key: 'incidents' },
   { to: '/custody', Icon: Building2, key: 'custody' },
-  { to: '/assistant', Icon: MessageSquare, key: 'assistant' },
   {
     to: '/personnel', Icon: Users, key: 'personnel',
     children: [
@@ -47,7 +47,7 @@ const NAV = [
 // which is where the full list, the language switcher and the account menu
 // live. Any of these four a role cannot reach is backfilled from whatever it
 // can, so the bar is never short a slot.
-const BOTTOM_KEYS = ['reports', 'incidents', 'crimeMap', 'assistant'];
+const BOTTOM_KEYS = ['reports', 'aiAnalytics', 'assistant', 'reportStudio'];
 const BOTTOM_SLOTS = 4;
 
 // Exported for its own test: the backfill is the part with a way to be wrong.
@@ -106,6 +106,12 @@ export default function Sidebar() {
     item.label || t(`modules.${item.labelKey || item.key}.label`, item.key);
 
   const bottom = bottomNavItems(nav);
+  // Which slot the bubble sits in. The drawer's own button is the last slot,
+  // so opening it slides the bubble there; -1 means the route came from the
+  // drawer and no slot owns it.
+  const bubbleAt = mobileOpen
+    ? bottom.length
+    : bottom.findIndex((i) => pathname.startsWith(i.to));
 
   const go = (item) => {
     if (item.soon || !item.to) return;
@@ -245,6 +251,11 @@ export default function Sidebar() {
           truncated when it has to be (Kannada and Hindi module names run long),
           so the full one stays on the title. */}
       <nav className="app-bottomnav" aria-label="Primary">
+        <span
+          className={`bn-bubble ${bubbleAt < 0 ? 'bn-bubble-hidden' : ''}`}
+          style={{ '--bn-i': bubbleAt < 0 ? 0 : bubbleAt, '--bn-n': bottom.length + 1 }}
+          aria-hidden="true"
+        />
         {bottom.map((item) => (
           <button
             key={item.key}

@@ -17,8 +17,8 @@ export default function ThemeToggle({ isDark, onChange, className = '' }) {
       className={`theme-toggle ${className}`}
     >
       <span className="theme-toggle-track">
-        <Sun size={13} strokeWidth={2.2} className="theme-toggle-icon theme-toggle-icon-sun" />
-        <Moon size={13} strokeWidth={2.2} className="theme-toggle-icon theme-toggle-icon-moon" />
+        <Sun size={16} strokeWidth={2.2} className="theme-toggle-icon theme-toggle-icon-sun" />
+        <Moon size={16} strokeWidth={2.2} className="theme-toggle-icon theme-toggle-icon-moon" />
       </span>
     </Switch>
   );
