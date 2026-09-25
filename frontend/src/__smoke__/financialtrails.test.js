@@ -62,7 +62,7 @@ jest.mock('../utils/publicRefs', () => ({
 global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
 
 const FinancialTrails = require('../components/FinancialTrails').default;
-const { screenSanctions } = require('../utils/financial');
+const { screenSanctions, formatRs } = require('../utils/financial');
 
 test('the money-flow network draws to a canvas, not to hundreds of SVG nodes', async () => {
   const { container } = render(<FinancialTrails />);
@@ -135,9 +135,9 @@ test('screening is never triggered on mount, only by the button', async () => {
   expect(screenSanctions).not.toHaveBeenCalled();
 });
 
-test('the screen button names exactly how many accused it will check', async () => {
+test('the screen button is a plain labelled action', async () => {
   render(<FinancialTrails />);
-  await screen.findByText(/Screen 2 accused for sanctions\/PEP matches/);
+  await screen.findByText('Screen for sanctions');
 });
 
 test('a hit renders a flag on the matched row and nothing on a clean one', async () => {
@@ -146,7 +146,7 @@ test('a hit renders a flag on the matched row and nothing on a clean one', async
     P2: { found: false, matches: [] },
   });
   render(<FinancialTrails />);
-  const btn = await screen.findByText(/Screen 2 accused for sanctions\/PEP matches/);
+  const btn = await screen.findByText('Screen for sanctions');
   fireEvent.click(btn);
 
   expect(screenSanctions).toHaveBeenCalledWith([
@@ -160,12 +160,29 @@ test('a hit renders a flag on the matched row and nothing on a clean one', async
 
   const rowTwo = within(table).getByText('Suspect Two').closest('tr');
   expect(rowTwo.querySelector('.ft-flag-sanctions')).toBeNull();
+
+  // Both rows were checked, so both are tinted — the clean one included.
+  // That is the whole point: no chip on a tinted row means "checked, clean",
+  // not "not checked yet".
+  expect(rowOne.className).toMatch(/ft-screened/);
+  expect(rowTwo.className).toMatch(/ft-screened/);
+});
+
+test('an unscreened row carries no screened tint', async () => {
+  render(<FinancialTrails />);
+  const row = (await screen.findByText('Suspect Two')).closest('tr');
+  expect(row.className).not.toMatch(/ft-screened/);
+});
+
+test('formatRs groups a four-digit crore figure', () => {
+  expect(formatRs(40064000000)).toBe('\u20b94,006.40 Cr');
+  expect(formatRs(12500000)).toBe('\u20b91.25 Cr');
 });
 
 test('a screening failure shows the error instead of silently doing nothing', async () => {
   screenSanctions.mockRejectedValueOnce(new Error('Sanctions screening is not configured.'));
   render(<FinancialTrails />);
-  const btn = await screen.findByText(/Screen 2 accused for sanctions\/PEP matches/);
+  const btn = await screen.findByText('Screen for sanctions');
   fireEvent.click(btn);
   await screen.findByText('Sanctions screening is not configured.');
 });

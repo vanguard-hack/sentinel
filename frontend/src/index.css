@@ -2645,6 +2645,10 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 }
 
 .rp-legend li { cursor: pointer; border-radius: var(--radius-sm); padding: 3px 6px; margin: 0 -6px; transition: opacity 0.15s, background 0.12s; outline: none; }
+/* The row's hover affordance bleeds 6px past the list on both sides, which put
+   the share column hard against the card's own edge on a wide tile. Pad the
+   list back by more than the bleed so the numbers keep a margin. */
+.rp-legend:not(.rp-legend-row) { padding: 0 12px; }
 .rp-legend li:hover, .rp-legend li:focus-visible { background: var(--hover-overlay); }
 .rp-legend li.active .rp-legend-label { color: var(--text-0); font-weight: 500; }
 
@@ -7113,8 +7117,15 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 }
 .aa-export-menu button:hover { background: var(--bg-3); }
 
-/* Financial trails: flag chips on transactions */
-.ft-flags { display: flex; flex-wrap: wrap; gap: 4px; }
+/* Financial trails: flag chips on transactions.
+   `.ft-flags` is a <td>. `display: flex` took it out of the table's row box,
+   so the browser wrapped it in an anonymous cell that carries none of the
+   row's border-bottom — which is why the divider under the Typologies column
+   sat at its own level instead of lining up with the rest of the row. The
+   chips are inline-block, so ordinary inline flow wraps them without flex.
+   Qualified with .fc-table so it outranks `.fc-table tbody td { nowrap }`. */
+.fc-table td.ft-flags { white-space: normal; }
+.fc-table td.ft-flags > * { margin: 2px 4px 2px 0; }
 .ft-flag {
   display: inline-block;
   padding: 1px 8px;
@@ -7266,6 +7277,12 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   vertical-align: top;
 }
 .fc-table td.ft-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Screened rows carry a faint tint, so "no sanctions chip" reads as
+   "checked, clean" rather than "not checked yet". */
+/* :not(:hover) so the row's own hover feedback still reads through the tint —
+   this rule sits later in the file than the shared hover rule and would
+   otherwise win the specificity tie. */
+.fc-table tbody tr.ft-screened:not(:hover) td { background: color-mix(in srgb, var(--blue-500) 6%, transparent); }
 
 /* Financial trails: extra breathing room above/below the tabular sections */
 .ft-section { margin-top: 22px; margin-bottom: 22px; }
@@ -7581,6 +7598,18 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 /* Custody search: the input itself must fill the grown container (it's fixed 240px by default) */
 .cust-filters .cf-search { flex: 1 1 340px; max-width: none; }
 .cust-filters .cf-search-input { width: 100%; }
+
+/* One row, not two. A native <select> sizes to its longest option, so
+   "All facilities" grew to a jail name and pushed the release-window filter
+   onto a second line. Cap them and let them shrink; the chevron padding keeps
+   the truncated label clear of the arrow. Wraps again once there genuinely
+   isn't room. */
+@media (min-width: 900px) {
+  .cust-filters { flex-wrap: nowrap; }
+  .cust-filters .cf-select { flex: 0 1 auto; min-width: 0; max-width: 165px; text-overflow: ellipsis; }
+  .cust-filters .cf-search { flex: 1 1 200px; }
+  .cust-count { white-space: nowrap; }
+}
 
 /* ── Report Studio ─────────────────────────────────────────────────────── */
 .rb-section-title { font-size: 13.5px; font-weight: 500; color: var(--text-1); margin: 18px 0 10px; }
@@ -10021,60 +10050,3 @@ span.inv-status-dot {
 }
 @keyframes as-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 
-/* ── Diary card delete ──────────────────────────────────────────────────────
-   The card itself is a button, so the delete sits beside it in a positioned
-   wrapper rather than inside it. It stays hidden until the card is hovered or
-   the control is focused, so a grid of diaries is not a grid of bins. */
-.inv-card-wrap { position: relative; display: flex; }
-.inv-card-wrap > .inv-card { flex: 1; min-width: 0; }
-/* The bin lands on the card's top-right, which is where the status chip lives.
-   The room is reserved on every card rather than only on hover: shifting the
-   chip out of the way at the moment the pointer arrives makes the row jump
-   under the cursor, and covering the case's status while offering to delete it
-   hides the one field worth reading first. */
-/* The bin sits 8px from the wrapper's edge at 26px wide, so it needs ~34px of
-   clearance from the card's right edge; the card's own 16px padding already
-   covers part of that, so this only has to add the remainder — was 28px,
-   nearly doubling up on padding the card already had. */
-.inv-card-wrap > .inv-card .inv-card-top { padding-right: 20px; }
-.inv-card-del {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-4);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s, color 0.15s, background 0.15s, border-color 0.15s;
-}
-.inv-card-wrap:hover .inv-card-del,
-.inv-card-del:focus-visible { opacity: 1; }
-.inv-card-del:hover {
-  color: var(--red);
-  background: color-mix(in srgb, var(--red) 12%, transparent);
-  border-color: color-mix(in srgb, var(--red) 35%, transparent);
-}
-/* Touch has no hover, so the control is always visible there. */
-@media (hover: none) { .inv-card-del { opacity: 1; } }
-
-.inv-del-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-  padding: 11px 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid color-mix(in srgb, var(--red) 40%, transparent);
-  background: color-mix(in srgb, var(--red) 8%, transparent);
-  font-size: 13px;
-  color: var(--text-1);
-}
-.inv-del-bar > span { flex: 1; min-width: 220px; }

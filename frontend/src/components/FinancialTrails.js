@@ -536,9 +536,7 @@ export default function FinancialTrails() {
               disabled={!aRows.length || screen.status === 'loading'}
               title="Screen the accused on this page against OpenSanctions' sanctions and PEP watchlists"
             >
-              {screen.status === 'loading'
-                ? 'Screening…'
-                : `Screen ${aRows.length} accused for sanctions/PEP matches`}
+              {screen.status === 'loading' ? 'Screening…' : 'Screen for sanctions'}
             </button>
             {screen.status === 'error' && <span className="ft-ai-error">{screen.error}</span>}
           </div>
@@ -552,7 +550,10 @@ export default function FinancialTrails() {
               </thead>
               <tbody>
                 {aRows.map((a) => (
-                  <tr key={a.person}>
+                  // Screened rows are tinted: every entity sent to
+                  // matchBatch comes back with an entry, hit or not, so
+                  // presence in results is exactly "this one was checked".
+                  <tr key={a.person} className={screen.results[a.person] ? 'ft-screened' : ''}>
                     <td className="ft-entity-cell">
                       {a.name} <span className="fc-pid">{a.person}</span>
                       <SanctionsFlag hit={screen.results[a.person]} />
