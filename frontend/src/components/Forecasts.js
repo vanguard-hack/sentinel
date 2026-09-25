@@ -47,6 +47,29 @@ const HORIZONS = [
 // Trim long histories so the forecast horizon stays readable on screen.
 const tail = (series, n = 24) => series.slice(-n);
 
+// The four additive factors behind the repeat-offender score, with the cap
+// each one contributes. The caps sum to 100 (see utils/predict.js), so a
+// factor's points double as its share of the maximum — one number, two
+// readings, which is what lets the bar and the figures under it agree.
+const WHY_PARTS = [
+  { key: 'frequency', label: 'Frequency', cap: 40 },
+  { key: 'recency', label: 'Recency', cap: 25 },
+  { key: 'severity', label: 'Severity', cap: 20 },
+  { key: 'network', label: 'Network', cap: 15 },
+];
+
+// Hover text. Two readings per factor, because they answer different
+// questions: points-of-cap says how hard this factor pushed, share-of-score
+// says how much of THIS offender's risk it accounts for.
+const whyTitle = (o) =>
+  WHY_PARTS
+    .map(({ key, label, cap }) => {
+      const pts = o.parts[key];
+      const share = o.score ? Math.round((pts / o.score) * 100) : 0;
+      return `${label}: ${pts} of ${cap} — ${share}% of this score`;
+    })
+    .join('\n') + `\n\nTotal ${o.score} of 100`;
+
 export default function Forecasts() {
   const [data, setData] = useState(null);   // { cases, accused } — risk & anomaly cards
   const [fc, setFc] = useState(null);       // live QuickML bundle — the three charts
@@ -324,16 +347,28 @@ export default function Forecasts() {
                     <td>{o.daysSince} days ago</td>
                     <td>{o.partners}</td>
                     <td>
-                      <div className="fc-why" title={
-                        `frequency ${o.parts.frequency} · recency ${o.parts.recency} · severity ${o.parts.severity} · network ${o.parts.network}`
-                      }>
-                        {['frequency', 'recency', 'severity', 'network'].map((k, i) => (
-                          <span
-                            key={k}
-                            className="fc-why-seg"
-                            style={{ width: `${o.parts[k]}%`, background: `var(--rp-cat-${i})` }}
-                          />
-                        ))}
+                      {/* The caps sum to 100, so a factor's points ARE its
+                          percentage of the maximum score — which is why the
+                          segment widths and the printed numbers are the same
+                          figure, and why the bar alone was unreadable: it
+                          showed the shares but never said what they were. */}
+                      <div className="fc-why-cell" title={whyTitle(o)}>
+                        <div className="fc-why">
+                          {WHY_PARTS.map(({ key }, i) => (
+                            <span
+                              key={key}
+                              className="fc-why-seg"
+                              style={{ width: `${o.parts[key]}%`, background: `var(--rp-cat-${i})` }}
+                            />
+                          ))}
+                        </div>
+                        <div className="fc-why-nums">
+                          {WHY_PARTS.map(({ key }, i) => (
+                            <span key={key} style={{ color: `var(--rp-cat-${i})` }}>
+                              {o.parts[key]}%
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -342,8 +377,10 @@ export default function Forecasts() {
             </table>
           </div>
           <div className="fc-why-legend">
-            {['Frequency', 'Recency', 'Severity', 'Network'].map((k, i) => (
-              <span key={k}><i style={{ background: `var(--rp-cat-${i})` }} /> {k}</span>
+            {WHY_PARTS.map(({ label, cap }, i) => (
+              <span key={label}>
+                <i style={{ background: `var(--rp-cat-${i})` }} /> {label} <em>≤{cap}</em>
+              </span>
             ))}
           </div>
         </Card>

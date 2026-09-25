@@ -6262,10 +6262,26 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .fc-tier-low { background: color-mix(in srgb, var(--green) 12%, transparent); color: var(--green); }
 [data-theme="dark"] .fc-tier-medium { color: var(--gold); }
 
+.fc-why-cell { display: flex; flex-direction: column; gap: 4px; width: 130px; cursor: help; }
 .fc-why { display: flex; width: 130px; height: 10px; border-radius: 4px; overflow: hidden; background: var(--bg-3); }
-.fc-why-seg { height: 100%; }
+.fc-why-seg { height: 100%; transition: opacity 0.12s ease; }
+/* The bar showed four shares and named none of them. These are the same
+   figures the widths encode — the caps sum to 100, so points are percent. */
+.fc-why-nums {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+/* Hovering the cell dims the bar slightly, so it reads as one hoverable
+   thing with a tooltip rather than decoration. */
+.fc-why-cell:hover .fc-why-seg { opacity: 0.55; }
+.fc-why-cell:hover .fc-why-nums { color: var(--text-0); }
 .fc-why-legend { display: flex; gap: 14px; margin-top: 10px; font-size: 11.5px; color: var(--text-3); }
 .fc-why-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 4px; margin-right: 5px; }
+.fc-why-legend em { font-style: normal; color: var(--text-4); }
 
 .fc-notes { list-style: none; display: flex; flex-direction: column; gap: 9px; font-size: 12.5px; color: var(--text-2); }
 .fc-notes li { display: flex; gap: 8px; align-items: flex-start; line-height: 1.5; }
