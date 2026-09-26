@@ -234,12 +234,10 @@ export async function fetchCrimeNetwork() {
   };
 }
 
-// Turn a network into a spec for <NetworkGraph>. Oversized rings are trimmed to
-// their highest-degree core so the force layout stays readable.
-// The whole ring, always. This used to keep only the 60 best-connected members
-// and silently drop every edge touching the rest, so the graph disagreed with
-// the "N members · M links" header above it. An investigator comparing the two
-// has no way to tell which is right, so the graph now renders the ring in full.
+// Turn a network into a spec for <NetworkGraph>. Renders the WHOLE ring,
+// always — trimming to the top-60 best-connected members used to silently
+// drop edges, so the graph disagreed with the "N members · M links" header
+// above it.
 // ── Person naming ───────────────────────────────────────────────────────────
 // Accused names in the FIR schema carry a leading initial and sometimes a
 // quoted alias: `D. Puneeth Naik`, `B. Basavaraj Pai "Chief"`. Splitting on the
@@ -288,23 +286,15 @@ export function networkToSpec(net) {
 }
 
 // ── Full-network overview ───────────────────────────────────────────────────
-// One node per RING, not per person.
+// One node per RING, not per person — drawing every member put ~1,000
+// unlabelled dots on screen with no legible structure. A node is a ring,
+// sized by membership, coloured by district, labelled by its leader; members
+// are one click away in the ring view.
 //
-// Drawing every member of every ring put ~1,000 unlabelled dots on screen: the
-// structure was there but nothing was legible, and no officer could tell one
-// cluster from another. Graph explorers that work at this scale (Connected
-// Papers, Obsidian's graph view) draw one labelled node per entity and let you
-// open it for detail — so a node here is a ring, sized by membership, coloured
-// by district, labelled by its leader. The members live one click away in the
-// ring view, which already draws them in full.
-//
-// EDGES between rings are attribute links, not co-offending. A ring is a
-// connected component of the co-offending graph, so two rings can never share
-// a member — if they did they would be one ring. These edges say "these groups
-// work the same district, or the same racket", which is a real lead derived
-// from the case records. Inventing person-to-person links across rings would
-// have made the picture connected by asserting relationships the records do
-// not support.
+// EDGES between rings are attribute links (same district, same racket), NOT
+// co-offending — two rings can never share a member (they'd be one ring).
+// Inventing person-to-person links across rings would assert relationships
+// the records don't support.
 
 // Rings sharing operating ground or crime type. Within a district rings hang
 // off the district's largest; district hubs are then bridged where they share

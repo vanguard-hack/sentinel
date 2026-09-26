@@ -110,20 +110,17 @@ const CITY_HOTSPOTS = [
   { city: 'Hassan',     lat: 13.00, lng: 76.10, n: 7 },
 ];
 const CATEGORIES = ['Theft', 'Assault', 'Burglary', 'Vehicle', 'Fraud', 'Vandalism'];
-// Picking patrol stops by raw hotspot intensity alone treats every crime type
-// as equally costly. Two independent sources weight by social cost instead:
-// the Medellín hot-spots experiment (Collazos et al. 2019) built its crime
-// index from average sentence length per offence, and the Atlanta case study
-// surveyed in Ramakrishnan et al. 2024 folds community impact into hotspot
-// selection. Same idea here — a violent category outranks a public-order one
-// of equal raw intensity when choosing which points to patrol.
-// Vandalism sat lowest (0.6) on harm intuition alone. Braga, Turchan,
-// Papachristos & Hureau's 2019 Campbell systematic review (65 studies, 78
-// tests) found disorder offenses carry the SECOND-largest measured hot-spots
-// effect size (d=0.161, Table 5) — behind only drug offenses and ahead of
-// both property (0.124) and violent crime (0.102). Harm still sets the
-// overall order (a violent-crime hotspot outranks a disorder one of equal
-// intensity), but the gap is narrowed rather than left at pure intuition.
+// Patrol stops are weighted by social cost, not raw hotspot intensity alone
+// — a violent category outranks a public-order one of equal raw intensity.
+// Follows Collazos et al. 2019 (Medellín hot-spots: crime index from average
+// sentence length) and Ramakrishnan et al. 2024 (Atlanta: community impact
+// folded into hotspot selection).
+//
+// Vandalism was 0.6 on harm intuition alone; Braga, Turchan, Papachristos &
+// Hureau's 2019 Campbell review (65 studies, 78 tests) found disorder
+// offenses carry the SECOND-largest hot-spots effect size (d=0.161) — behind
+// drug, ahead of property (0.124) and violent crime (0.102). Harm still
+// sets the overall order; the gap is narrowed rather than left at intuition.
 const CATEGORY_SEVERITY = { Assault: 1.3, Vehicle: 1.1, Burglary: 1.0, Theft: 0.9, Fraud: 0.7, Vandalism: 0.75 };
 
 function generateHotspots() {

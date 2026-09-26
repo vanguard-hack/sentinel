@@ -91,20 +91,13 @@ export async function exportReportPdf(element, filename) {
 }
 
 // ── Home dashboard → sectioned, titled PDF ──────────────────────────────────
-// exportReportPdf() above treats the report as one flat list of blocks and
-// stretches every one of them to the full page width. That is right for a
-// standalone chart and wrong here: it turned a page of small KPI tiles and
-// donuts into one oversized image per page, with nothing on the page saying
-// what any of it had to do with its neighbours.
-//
-// This walks the same rendered DOM but groups cards by the `data-pdf-section`
-// attribute Reports.js's Card() stamps on every card (see that file's Band
-// comments — the section names below ARE those bands). Each section gets its
-// own page, a real vector header and title (not a screenshot, so it stays
-// crisp at any zoom), and its cards packed several to a row instead of one
-// per page — the column count follows each run's own aspect ratio, so eight
-// short, wide KPI tiles pack 4-across and a pair of squarer donuts pack
-// 2-across, matching what the row would actually hold on screen.
+// exportReportPdf() above stretches every block to full page width — right
+// for a standalone chart, wrong here (one oversized image per small KPI
+// tile, no sense of grouping). This groups cards by the `data-pdf-section`
+// attribute Reports.js's Card() stamps (section names below ARE its Bands),
+// giving each section its own page with a real vector header and cards
+// packed several to a row — column count follows each run's own aspect
+// ratio, so wide KPI tiles pack 4-across and squarer donuts pack 2-across.
 export async function exportHomeReportPdf(element, meta = {}) {
   if (!element) throw new Error('nothing to export');
   const bg =
@@ -142,18 +135,13 @@ export async function exportHomeReportPdf(element, meta = {}) {
   }
   if (!sections.length) throw new Error('nothing to export');
 
-  // Capture every block ONCE, up front, so the layout pass below is pure
-  // arithmetic and never blocks on html2canvas mid-page. Blocks are captured
-  // through a small concurrency pool rather than one `await` at a time OR a
-  // bare Promise.all: a Home report runs 30+ of these (8 KPI tiles, the
-  // trend chart, 24 more cards), and each html2canvas call clones the
-  // ENTIRE page DOM into its own iframe. A bare Promise.all launches all 30+
-  // of those clones at once — that's not parallelism, it's a resource
-  // spike: it stayed slow (CPU/memory contention negated the concurrency
-  // win) and produced undersized, illegible captures for some charts
-  // (an iframe starved of a settled layout before html2canvas read its
-  // size). A pool of a few at a time keeps most of the speed win — captures
-  // still overlap their font/image-ready waits — without the 30-way pileup.
+  // Capture every block ONCE up front, through a small concurrency pool —
+  // not one `await` at a time, not a bare Promise.all. Each html2canvas call
+  // clones the ENTIRE page DOM into its own iframe; a bare Promise.all on a
+  // 30+-block Home report launched 30+ clones at once, a resource spike that
+  // stayed slow (CPU/memory contention) AND produced undersized, illegible
+  // captures (an iframe starved of settled layout before html2canvas read
+  // its size). A pool of a few at a time keeps most of the speed win.
   // ponytail: fixed pool size, not tuned to device/memory; raise it (or make
   // it adaptive) if profiling on a real report shows room to go faster.
   const CAPTURE_CONCURRENCY = 4;

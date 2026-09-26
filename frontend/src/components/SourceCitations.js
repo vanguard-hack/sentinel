@@ -12,24 +12,15 @@ import { provenanceOf, isPaper, isMedia, sizeOf } from '../utils/provenance';
 
 // Interactive source attribution for an assistant answer.
 //
-// A citation an officer cannot open is a claim, not a source. So a chip is not
-// a label with a tooltip: it opens the thing itself. A scanned FIR shows its
-// photographed pages, a filed spreadsheet shows its tables and its text, a
-// recording plays, a database citation lists the rows the query matched, and a
-// web source carries its full URL rather than a bare site name.
+// A citation an officer cannot open is a claim, not a source: a chip opens
+// the thing itself — a scanned FIR's photographed pages, a spreadsheet's own
+// tables, a recording, the matched database rows, a web source's full URL.
+// The passage the assistant actually read is highlighted inside the
+// document's own text — seeing the sentence is verification, not just
+// provenance.
 //
-// And it goes one step past "here is the document": the passage the assistant
-// actually read is highlighted inside the document's own text. Knowing which
-// file an answer came from is provenance; seeing the sentence is verification.
-//
-// Every openable type shares one centred popup, regardless of what it holds —
-// a document's page images, a record's field list, an OCR digest. A Data
-// Store citation used to slide in from the edge as a drawer instead, on the
-// theory that a record is read against the answer beside it; in practice
-// that read as two different features for the same "here is the source"
-// question, so it now opens exactly like everything else. A web page is the
-// one exception: it belongs to the browser, so its chip is a real link
-// straight to the URL rather than a popup around it.
+// Every type shares one centred popup. The one exception is a web page,
+// which is a real link straight to the URL rather than a popup around it.
 
 const ICONS = {
   [TYPES.RAG_DOCUMENT]: FileText,

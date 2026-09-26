@@ -2,21 +2,13 @@ import React, { createContext, useContext, useState, useCallback, useRef } from 
 import * as XLSX from 'xlsx';
 import { ALL_TABLES, fetchAllRows } from '../utils/datastore';
 
-// The Data Store → Excel export used to live entirely inside CaseFiles.js:
-// its progress lived in that page's own useState, and the loop that walked
-// every table ran inside a callback owned by that component. Both looked
-// fine until an officer switched pages mid-export — React unmounted
-// CaseFiles, the progress readout vanished, and there was no way to tell
-// whether the export was still happening or had been abandoned. (In practice
-// the fetch loop itself does not get cancelled by an unmount — nothing here
-// ties it to a component — but there was no evidence of that from the UI,
-// which reads as "it stopped".)
-//
-// Moving the state and the loop up to a provider mounted once above the
-// router fixes that: the export is now a background job the whole app can
-// see progress on, and switching pages no longer touches it. `startExport`
-// is guarded against a second concurrent run the same way the old local
-// state was.
+// The Data Store -> Excel export used to live entirely inside CaseFiles.js.
+// Switching pages mid-export unmounted the component, the progress readout
+// vanished, and there was no way to tell whether the export was still
+// running or abandoned (the fetch loop itself kept going — there was just
+// no UI evidence of that). Moved to a provider above the router so the
+// export is a background job the whole app can see progress on.
+// `startExport` guards against a second concurrent run.
 const ExportContext = createContext(null);
 
 export function ExportProvider({ children }) {

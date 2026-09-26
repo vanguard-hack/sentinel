@@ -1,36 +1,12 @@
-// The morning action queue.
+// Morning action queue — "what do I do before lunch?" rather than "what
+// happened?". Each row: a finding (claim about the file), a consequence
+// (what the law does about it) and an action.
 //
-// Everything else in Sentinel answers "what happened?". This answers "what do
-// I do before lunch?", which is a different question and the one an officer
-// actually opens a system to ask.
+// Legal citations are marked unverified. Every obligation can be dismissed
+// as done-off-system with a reason, or it becomes noise officers scroll past.
 //
-// The design rule for every card: a finding is a claim about the FILE, a
-// consequence is what the law does about it, and an action is what to do. The
-// consequence is the part that earns the card its place — "no witness
-// statements" is a checklist item that gets ignored, "no independent
-// corroboration, and an accused in custody on it" is a reason to move today.
-//
-// Two things kept deliberately visible:
-//   • Legal citations are marked unverified, matching the rest of the legal
-//     layer. A countdown that cites a section is more useful than one that
-//     does not, but only if nobody is invited to rely on the number.
-//   • Every obligation can be dismissed as done-off-system with a reason. An
-//     alert that cannot be dismissed is an alert officers learn to scroll
-//     past, and that is how this page would die.
-//
-// LAID OUT AS A TABLE, NOT A COLUMN OF CARDS
-//
-// The first version gave every obligation a tall card carrying its finding,
-// consequence, citation and action. That reads well for three obligations and
-// is unusable for forty: a supervisor scrolls past the one thing they opened
-// the page to find, and the page's own claim — that it sorts itself — is
-// invisible when only two rows fit on screen.
-//
-// So the queue is a sortable table with one line per obligation, and the prose
-// lives behind a row that expands. Nothing was dropped; it is simply no longer
-// all shouted at once. The counts moved into stat tiles at the top for the same
-// reason — "3 overdue" is the number a supervisor came for, and it should not
-// have to be assembled from a sentence.
+// A sortable table, not cards — cards read well for 3 obligations and are
+// unusable for 40; the prose lives behind an expandable row instead.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {

@@ -103,20 +103,12 @@ const RS = (rnd, lo, hi) => lo + Math.floor(rnd() * (hi - lo));
 
 // ── Real branch codes, for synthetic accounts ─────────────────────────────
 //
-// The accounts in this module are invented; the BRANCHES they sit at are not.
-// Each shell or mule account is pinned to a genuine Karnataka IFSC, so
-// resolving it through the public IFSC directory (see utils/publicRefs) turns
-// "SHELL-4821" into "Karnataka Bank, Vidyaranyapura, Bangalore" and the money
-// acquires a geography — which is the question an investigator actually asks
-// about layering: where did it go.
-//
-// Every code below was verified against the live directory rather than
-// guessed, and they are spread across districts on purpose: a laundering chain
-// that never leaves one branch demonstrates nothing.
-//
-// Nothing here makes the transactions real. The generator still synthesises
-// them, the UI still says so, and the only genuine thing on the screen is which
-// branch a code belongs to.
+// Accounts here are invented; the BRANCHES they sit at are not. Each shell or
+// mule account is pinned to a genuine, verified Karnataka IFSC (see
+// utils/publicRefs), so a laundering chain acquires a real geography —
+// spread across districts on purpose, since a chain that never leaves one
+// branch demonstrates nothing. The transactions are still synthetic; only
+// the branch a code resolves to is real.
 export const BRANCH_POOL = [
   'KARB0000123', // Karnataka Bank, Vidyaranyapura, Bangalore
   'HDFC0000053', // HDFC, Koramangala, Bangalore

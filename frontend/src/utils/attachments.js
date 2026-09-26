@@ -1,21 +1,12 @@
-// What an attachment in the composer actually gives the assistant.
+// A file attached to a question is READ in the browser and its text travels
+// with the question as context — the same extraction Records uses to file a
+// document, run for one message instead. Parsing is client-side: it's format
+// work, not intelligence, and keeps large files off the function's request
+// budget — only the extracted text is sent.
 //
-// Attaching a file and having nothing happen is the worst version of this
-// feature: the officer sees their seizure list sitting on the message, asks
-// "what's the total value here?", and gets an answer drawn from everything
-// except the file in front of them. So a file attached to a question is READ
-// in the browser and its text travels with the question as context — the same
-// extraction Records already uses to file a document, run for one message
-// instead.
-//
-// Everything happens client-side. The parsing is format work, not
-// intelligence, and doing it here keeps large files off the function's request
-// budget entirely — only the extracted text is sent.
-//
-// The status each file reports back is not decoration. An officer has to be
-// able to tell, before they hit send, whether the assistant will actually see
-// what they attached; a chip that looks the same whether the file was read or
-// silently dropped is how you end up trusting an answer that never saw it.
+// The status each file reports back is not decoration: an officer must be
+// able to tell, before hitting send, whether the assistant will actually see
+// what they attached.
 
 import { detectKind } from './extract';
 

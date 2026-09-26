@@ -1,31 +1,19 @@
-// Patrol-route optimization for the Crime Map's "Patrol route" toggle, plus
-// the question a route like this actually needs answered: does visiting the
-// SAME stops in an optimized order help, compared to a random order?
+// Patrol-route optimization for the Crime Map's "Patrol route" toggle:
+// does visiting the SAME stops in an optimized order help, vs random order?
 //
-// The route actually drawn (optimalOrder, below) is exact-optimal — found by
-// brute force — for up to BRUTE_FORCE_LIMIT (8) stops, which CrimeMap's
-// MAX_STOPS matches deliberately: a real patrol route is a short list of the
-// highest-priority hotspots in an efficient order, not a tour of every
-// hotspot in a district, so brute force is the normal path here, not a
-// best-case fallback. nearestNeighborOrder remains as optimalOrder's own
-// fallback if that cap is ever raised past what brute force can cover, and
-// as the construction step for validatePatrolRoute's random-baseline
-// comparison.
+// optimalOrder is exact (brute force) up to BRUTE_FORCE_LIMIT (8) stops,
+// which CrimeMap's MAX_STOPS matches deliberately — a real patrol route is a
+// short priority list, not a full-district tour. nearestNeighborOrder is
+// the fallback if that cap ever rises, and the construction step for
+// validatePatrolRoute's random-baseline comparison.
 //
-// The random-baseline method mirrors Kim et al. 2023, "Hotspots-based patrol
-// route optimization for smart policing" (Heliyon) — they validate their
-// optimized route against random routes two ways: is the tour itself
-// shorter, and does it put an officer closer, on average, to a random
-// incident in the patrol area. validatePatrolRoute answers the same two
-// questions.
+// Random-baseline method follows Kim et al. 2023, "Hotspots-based patrol
+// route optimization for smart policing" (Heliyon): validate against random
+// routes on tour length AND average distance to a random incident.
 //
-// One honest difference: Kim et al. measure real travel time from a live
-// navigation API reflecting road network and traffic. This is straight-line
-// distance, the same simplification the rest of the patrol-route feature
-// already uses (there is no road-network data behind Sentinel's map). The
-// random-baseline comparison is still meaningful on its own terms — it
-// measures whether the ORDERING helps, not whether the underlying distance
-// model is road-accurate.
+// Honest gap: this uses straight-line distance, not Kim et al.'s live
+// navigation API — Sentinel's map has no road-network data. The comparison
+// still measures whether the ORDERING helps, not road-accuracy.
 
 const R_M = 6371000; // Earth radius, metres.
 

@@ -697,25 +697,17 @@ export function Scatter({ data, xLabel = 'x', yLabel = 'y', height = 200 }) {
 }
 
 // Forecast chart — historical actuals as a solid line, forecast mean as a
-// dashed line, and the confidence interval as a shaded band.
+// dashed line, the confidence interval as a shaded band.
 //
-// Hovering reads out ON the chart: a crosshair down the period under the
-// cursor and a card beside it carrying the value, and the 95% interval when
-// the period is a prediction. It used to put that text in a caption line ABOVE
-// the plot, which meant reading a value required looking away from the point
-// you were pointing at — and on a wide card that was most of the screen's
-// width away.
+// Hovering reads out ON the chart (crosshair + a card beside the cursor with
+// the value and 95% interval), not in a caption above the plot, which forced
+// looking away from the point you're pointing at.
 //
-// Both axes are drawn: a y scale to a nice ceiling with dashed gridlines, and
-// x ticks under the plot at the periods they belong to. Before this the chart
-// had neither — the y extent was unlabelled, so a reader could see the shape
-// of a forecast but not the size of it, and the x labels sat in a flex row
-// underneath that spread them evenly rather than putting them beneath their
-// own points.
+// Both axes are drawn: a y scale to a nice ceiling with gridlines, x ticks
+// under the plot at their own points (not evenly spread underneath).
 //
-// `unit` names the time bucket in the caption and the axis titles. The
-// crime-volume forecasts are monthly; anything still passing weekly series
-// keeps the old wording.
+// `unit` names the time bucket in the caption and axis titles — monthly for
+// crime-volume forecasts, weekly for anything else still passing that in.
 const FC_AXIS = {
   months: { x: 'Month', y: 'FIRs per month' },
   weeks: { x: 'Week', y: 'FIRs per week' },

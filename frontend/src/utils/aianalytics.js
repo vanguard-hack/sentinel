@@ -170,28 +170,18 @@ function mulberry32(seed) {
   };
 }
 
-// A CLEARLY-LABELLED illustrative lead-in for the years before this
-// (synthetic) dataset's own coverage starts — this platform's underlying
-// case data only ever covers 2023 through mid-2026 (see CLAUDE.md); there is
-// no real record, synthetic or otherwise, behind anything earlier. Rather
-// than pretend to know a 13-year trend that was never modelled, each year is
-// a bounded deterministic walk off the first REAL year's level — a
-// plausible-looking, admittedly-decorative backdrop, not a second forecast.
-// Every point carries `illustrative: true`, which is what TrendArea uses to
-// draw it dashed and unmistakably apart from the actual recorded years — see
-// completePartialYear and forecastYears below for how those, by contrast,
-// both stay strictly evidence-based.
+// A clearly-labelled illustrative lead-in for the years before this
+// (synthetic) dataset's own coverage starts (2023–mid-2026, see CLAUDE.md) —
+// a bounded deterministic walk off the first REAL year's level, not a second
+// forecast. Every point carries `illustrative: true`, which is what
+// TrendArea uses to draw it dashed and apart from real years.
 //
-// This used to draw each year INDEPENDENTLY around the anchor. Independent
-// noise, once TrendArea's natural-spline curve smooths it, reliably reads as
-// a near-periodic wave — a natural spline enforces second-derivative
-// continuity, which low-pass-filters white noise into something that looks
-// like seasonality that was never in the data. An AR(1) walk (each year
-// keeps most of the previous year's deviation and adds a fresh shock) fixes
-// that at the source: multi-year runs stay above or below the anchor the way
-// real crime-count history does, and the path never repeats a fixed period.
-// `dev` is clamped so 13 correlated steps can't drift the whole backdrop
-// implausibly far from the real data it leads into.
+// Each year must NOT be drawn independently around the anchor: independent
+// noise, once TrendArea's natural-spline curve smooths it, low-pass-filters
+// into something that reads as seasonality that was never in the data. An
+// AR(1) walk (each year keeps most of the previous year's deviation, adds a
+// fresh shock) fixes that at the source. `dev` is clamped so correlated
+// steps can't drift the backdrop implausibly far from the real data.
 export function illustrativeHistory(series, years = 13, seed = 20100101) {
   if (!series.length) return [];
   const anchor = series[0].value;

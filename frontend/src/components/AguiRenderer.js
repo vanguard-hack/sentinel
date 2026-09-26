@@ -11,20 +11,13 @@ import { renderCell, renderInline, normaliseText } from '../utils/richFormat';
 import GeoHeatMap from './GeoHeatMap';
 import NetworkGraph from './NetworkGraph';
 
-// AG-UI-style static generative UI renderer for the assistant.
-// The RAG backend proposes typed component specs; this module validates and
-// renders them with app-owned components — the agent never injects markup.
+// AG-UI-style static generative UI renderer for the assistant. The RAG
+// backend proposes typed component specs; this module validates and renders
+// them with app-owned dashboard components — the agent never injects markup.
+// A model can only propose what's in this list, so widening it widens what
+// the assistant can usefully answer.
 //
 // Supported specs (see functions/rag/index.js AGUI_INSTRUCTION):
-// The vocabulary was six types for a long time, which quietly shaped what the
-// assistant would answer: asked for a trend it drew a bar chart, asked for a
-// composition it drew a table. A model can only propose what the renderer can
-// draw, so widening this list widens the questions worth asking.
-//
-// Every chart below is an app-owned primitive that already existed for the
-// dashboards — the assistant now reaches the same drawing code the rest of
-// Sentinel uses, rather than a reduced version of it.
-//
 //   { type: 'bar-chart',         title, data: [{ label, value }] }
 //   { type: 'pie-chart',         title, data: [{ label, value }] }
 //   { type: 'line-chart',        title, data: [{ label, value }] }

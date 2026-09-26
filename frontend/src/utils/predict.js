@@ -331,24 +331,18 @@ export function detectModelAnomalies(fc) {
 
 // ── Live forecasts from the deployed QuickML models ──────────────────────────
 //
-// The three volume charts are NOT computed here. Each comes from its own
-// deployed QuickML regression pipeline, via /server/rag/forecast:
-//
-//   firvolume_train   1 series   the force-wide monthly total
+// The three volume charts come from deployed QuickML regression pipelines
+// via /server/rag/forecast, not computed here:
+//   firvolume_train   1 series   force-wide monthly total (its own model,
+//                                 NOT a sum of the 31 district outputs)
 //   crimehead_train  10 series   one per crime head
 //   district_train   31 series   one per district
 //
-// The force-wide total is that first model's own prediction, NOT a sum of the
-// district model's 31 outputs — an earlier design summed them and this comment
-// still described it.
+// All series x all six horizons (252 calls) are fetched once and cached; the
+// UI re-slices the cached bundle rather than predicting again.
 //
-// The bundle carries every series at all six horizons — 42 x 6 = 252 model
-// calls — and is cached, so switching crime head, district or horizon in the
-// UI re-slices what the models already returned rather than predicting again.
-//
-// Holt smoothing below is still used for the district-risk table's "predicted
-// next 4 weeks" column, which is a ranking aid rather than a published
-// forecast.
+// Holt smoothing below still drives the district-risk table's "predicted
+// next 4 weeks" column — a ranking aid, not a published forecast.
 export async function fetchForecasts() {
   const res = await fetch('/server/rag/forecast', {
     method: 'POST',

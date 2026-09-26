@@ -12,10 +12,9 @@
 //     tesseract-worker.min.js and public/tessdata) provides word-level
 //     bounding boxes instead.
 //
-// Everything here runs in the browser, matching how PDF text extraction
-// already works in utils/attachments.js — OCR is too slow/heavy to run
-// inside a Catalyst function without risking a timeout, and shipping a
-// large file to the server and back would double the transfer for no gain.
+// Runs entirely in the browser (matching utils/attachments.js): OCR is too
+// slow for a Catalyst function without risking a timeout, and round-tripping
+// the file to the server would double the transfer for no gain.
 
 export const MAX_PAGES = 15;
 // Per-page ceiling on the pdf.js/Tesseract calls below. Extraction can hang
