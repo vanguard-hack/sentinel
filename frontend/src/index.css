@@ -10092,6 +10092,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   background: var(--bg-2); border: 1px solid var(--border);
   font-size: 11px; line-height: 1.65; color: var(--text-3);
 }
+.cl-cal-note code { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-2); }
 
 .inv-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 

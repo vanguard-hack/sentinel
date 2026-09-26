@@ -181,6 +181,17 @@ export default function CrimeLinks() {
             <Kpi value={s.largest.toLocaleString()} label="Largest network" />
             <Kpi value={s.repeat.toLocaleString()} label="Repeat offenders" />
           </div>
+          <p className="cl-cal-note">
+            Every figure here keys on <code>Accused.PersonID</code> holding one stable id per
+            person across FIRs. The organizers' schema does not — PersonID there is a per-case
+            accused serial (A1, A2…), which recurs across different people, not the same person
+            across cases. This dataset's generator overwrites it with a synthesised global
+            offender id specifically so a co-offending network exists to analyse (see
+            dataset/fir/generate_accused_network.py). Real cross-FIR identity is a genuinely hard
+            resolution problem — fuzzy matching on name, age and location, imperfectly —
+            not a column lookup. Synthetic hackathon data; the method is what is being
+            shown, not a claim that KSP's live Accused table carries this identity today.
+          </p>
         </div>
       </section>
 
