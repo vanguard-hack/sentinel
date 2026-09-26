@@ -29,6 +29,10 @@ dataset/import/configs_txt/
 # Editor settings
 .vscode/
 
+# Claude Code's own local state (settings, scheduled-task locks, worktrees) —
+# machine-specific, not project config. CLAUDE.md itself stays tracked.
+.claude/
+
 # Catalyst CLI debug logs
 catalyst-debug.log
 
