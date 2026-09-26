@@ -15,7 +15,7 @@ framework and running end-to-end on **Zoho Catalyst**.
 ![React](https://img.shields.io/badge/React-19-61dafb?style=for-the-badge&logo=react&logoColor=white)
 ![Node](https://img.shields.io/badge/Node-20-3c873a?style=for-the-badge&logo=node.js&logoColor=white)
 ![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088ff?style=for-the-badge&logo=githubactions&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1%2C814%20passing-0f9d58?style=for-the-badge)
+![Tests](https://img.shields.io/badge/tests-2%2C081%20passing-0f9d58?style=for-the-badge)
 
 </div>
 
@@ -38,26 +38,24 @@ feature — including the **Access & Audit** console and role management — is 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Objectives](#objectives)
-3. [Key Features](#key-features)
-4. [Architecture](#architecture)
-5. [Tech Stack](#tech-stack)
-6. [Zoho Catalyst Services Used](#zoho-catalyst-services-used)
-7. [Project Structure](#project-structure)
-8. [The Dataset](#the-dataset)
-9. [The Forecasting Models](#the-forecasting-models)
-10. [REST API Reference](#rest-api-reference)
-11. [Prerequisites](#prerequisites)
-12. [Setup & Installation](#setup--installation)
-13. [Running Locally](#running-locally)
-14. [Build & Deploy](#build--deploy)
-15. [Testing](#testing)
-16. [Documentation](#documentation)
-17. [Roles & Access](#roles--access)
-18. [Security & Compliance](#security--compliance)
-19. [Future Scope](#future-scope)
-20. [Team](#team)
-21. [Copyright & Licence](#copyright--licence)
+2. [Key Features](#key-features)
+3. [Architecture](#architecture)
+4. [Tech Stack](#tech-stack)
+5. [Zoho Catalyst Services Used](#zoho-catalyst-services-used)
+6. [Project Structure](#project-structure)
+7. [The Dataset](#the-dataset)
+8. [The Forecasting Models](#the-forecasting-models)
+9. [REST API Reference](#rest-api-reference)
+10. [Prerequisites](#prerequisites)
+11. [Setup & Installation](#setup--installation)
+12. [Running Locally](#running-locally)
+13. [Build & Deploy](#build--deploy)
+14. [Testing](#testing)
+15. [Documentation](#documentation)
+16. [Roles & Access](#roles--access)
+17. [Security & Compliance](#security--compliance)
+18. [Team](#team)
+19. [Copyright & Licence](#copyright--licence)
 
 ---
 
@@ -84,7 +82,7 @@ CCTNS-aligned schema based on the ERD provided by the Hack2Skill team.
 
 ### 🏠 Home Dashboard
 
-A single-screen command view combining **8 headline KPIs with a 26-card bento grid**, giving a comprehensive snapshot of the crime situation across Karnataka.
+A single-screen command view combining **8 headline KPIs with a 25-card bento grid**, giving a comprehensive snapshot of the crime situation across Karnataka — down to festival-window registration rates measured against each window's own month, not the annual average, so a seasonal month doesn't get mistaken for a festival effect.
 
 **Time is a control, not a setting.** Today / Month / Year / 5 Years, or any custom date range,
 re-derives every KPI and every chart — so the same 25 questions can be asked of any
@@ -103,15 +101,16 @@ one-tap `tel:` call links, so a map lookup ends in a phone call rather than a se
 A full chat workspace at `/assistant`. An officer asks a question in plain
 English, Hindi or Kannada and a router decides how to answer it:
 
-- **Tool loop** — The model is given **11 tools** and runs as many
+- **Tool loop** — The model is given **12 tools** and runs as many
   lookups as one question needs before answering, batching independent ones into a single
   turn. This is the lane that answers questions the single-lane paths structurally cannot:
   ZCQL has no joins, so *"which FIRs were filed in Belagavi last month and who is accused in
   them"* is two dependent lookups, *"who has this man offended with"* is a graph walk, and
-  *"any abuse reports against this IP"* or *"check this crypto wallet"* is data nowhere in the
-  Data Store at all — three tools reach outside Sentinel for exactly that, each a live
-  per-query call that discloses plainly in its answer that the identifier just left the
-  platform. See [Assistant tools](#assistant-tools) for the full set.
+  *"any abuse reports against this IP"*, *"check this crypto wallet"* or *"who is the current
+  DGP of Karnataka"* is data nowhere in the Data Store at all — four tools reach outside
+  Sentinel for exactly that, each a live per-query call that discloses plainly in its answer
+  that the identifier (or query) just left the platform. See [Assistant
+  tools](#assistant-tools) for the full set.
 - **ZCQL lane** — The question is compiled to a validated, single-table ZCQL query against the
   live FIR schema, then enriched with master-table names and district rollups in code.
 - **RAG lane** — Legal, procedural and SOP questions are answered from a QuickML knowledge base.
@@ -146,9 +145,10 @@ business-hours. Patrol insights are derived from the data rather than written by
 
 #### Crime links — the co-offending network
 
-Two people are linked when they appear as accused in the **same FIR**, and `Accused.PersonID` is
-a *global* offender identity, so the same person is tracked **across** FIRs. That single fact is
-what makes the whole network possible.
+Two people are linked when they appear as accused in the **same FIR**, and a synthesised
+*global* `PersonID` (see [the schema note](#data-model-core-fir-schema)) tracks the same person
+**across** FIRs — the fact that makes the whole network possible, and one this build is explicit
+about being demo structure rather than a property of the real KSP schema.
 
 From it: **connected components → rings**, **degree centrality → leaders**, **local clustering →
 brokers vs lieutenants**. Every member is labelled **Kingpin / Broker / Repeat / Member** from
@@ -304,7 +304,9 @@ would be lost, the officer is warned *before* it happens, not after.
 Multilingual UI and answers (**English / हिन्दी / ಕನ್ನಡ**), global search with deep links into
 any tab, an **action queue** of investigative obligations with due dates, a help centre that
 emails the admin, per-user profiles with photos, light/dark themes, an accessibility gate in CI,
-and an error boundary that keeps one broken panel from taking the page down.
+and an error boundary that keeps one broken panel from taking the page down. On a phone the
+sidebar becomes a glassmorphism bottom bar (four destinations plus a drawer for the rest, with an
+iOS-style sliding highlight) rather than an off-canvas drawer with nothing underneath it.
 
 ---
 
@@ -357,7 +359,7 @@ flowchart TB
     subgraph Fn["rag — Catalyst Advanced I/O Function, Node 20"]
         direction TB
         Gate["Router gate<br/>IP blocklist → origin check → session check → rate limit"]
-        Handlers["61 routes, one gate"]
+        Handlers["67 routes, one gate"]
         Guard["Clearance filter + redaction<br/>tier 1 pre-prompt, tier 2 post-generation"]
         Gate --> Handlers --> Guard
     end
@@ -576,7 +578,7 @@ erDiagram
         int AccusedMasterID PK
         int CaseMasterID FK
         string AccusedName
-        string PersonID "global offender identity"
+        string PersonID "synthesised global id — see note below"
         int AgeYear
     }
     Employee {
@@ -587,9 +589,14 @@ erDiagram
     }
 ```
 
-> `Accused.PersonID` is a **global** offender identity rather than a per-case one. That single
-> decision is what makes the co-offending network, the case-linkage ranking and the custody
-> registry possible at all.
+> `Accused.PersonID` here is a **synthesised global offender id**, not a schema property. The
+> Hack2Skill ER diagram's `PersonID` is a per-case accused serial (`A1`, `A2`, …), which recurs
+> across different people rather than following one person across FIRs. This dataset's generator
+> deliberately overwrites it with a stable id per person so the co-offending network, case-linkage
+> ranking and custody registry have something real to analyse; the app's own Crime Links tab
+> carries the same disclosure. Resolving identity across FIRs on real records is a genuinely hard
+> fuzzy-matching problem (name, age, location), not a column lookup — see
+> `dataset/fir/generate_accused_network.py`.
 
 ### Deployment pipeline
 
@@ -697,7 +704,7 @@ Vision separately — and there is no self-managed server anywhere in the system
 | Catalyst service | How Sentinel uses it |
 | --- | --- |
 | **Web Hosting (Client)** | Serves the React bundle at `/app`. `postbuild` copies `index.html` → `404.html` so client-side routes survive a hard refresh. |
-| **Functions — Advanced I/O** | The single `rag` function (Node 20) is the entire backend: 61 routes — `/health` ahead of the gates, and 60 behind one router gate that enforces the IP blocklist, CSRF origin check, session check and rate limit before any handler runs. `apigate.test.js` counts them and fails if a route is ever dispatched ahead of the gate. Advanced I/O functions carry a hard **30-second** execution ceiling — the reason `/sherlock` is a start+poll pair of routes rather than one call (see [Assistant tools](#assistant-tools)). |
+| **Functions — Advanced I/O** | The single `rag` function (Node 20) is the entire backend: 67 routes — `/health` ahead of the gates, and 66 behind one router gate that enforces the IP blocklist, CSRF origin check, session check and rate limit before any handler runs. `apigate.test.js` counts them and fails if a route is ever dispatched ahead of the gate. Advanced I/O functions carry a hard **30-second** execution ceiling — the reason `/sherlock` is a start+poll pair of routes rather than one call (see [Assistant tools](#assistant-tools)). |
 | **Data Store (ZCQL)** | The 26-table CCTNS-aligned FIR schema, plus the `ChatConversations` table. Read **directly from the browser** over ZCQL for row-level browsing; whole tables for analytics arrive as one columnar snapshot per table read inside the datacentre; read and written with admin scope from the function. |
 | **Stratus (object storage)** | Investigation diary entries, evidence media, scanned source documents, per-day audit logs, user profiles and photos, Report Studio drafts, and CSV staging for `ds:import`. |
 | **Authentication & User Management** | Zoho OAuth sign-in, session verification on every API call, and the *App Administrator* project role that backs the `admin` app role — so admin can never be self-assigned. |
@@ -781,7 +788,6 @@ sentinel/
 │       │   ├── FinancialTrails.js   # AML typology-detection tab
 │       │   ├── GeoHeatMap.js        # District-shaded Karnataka heatmap
 │       │   ├── SocioCrimeMap.js     # Socio-economic indicators overlaid on crime
-│       │   ├── ChatWidget.js        # Compact assistant surface embedded in other pages
 │       │   ├── AguiRenderer.js      # Renders assistant replies as charts, tables, maps, cards
 │       │   ├── SourceCitations.js   # Interactive citation chips and the source viewer
 │       │   ├── Thinking.js          # Streaming "working on it" state for the assistant
@@ -852,13 +858,13 @@ sentinel/
 │       │   ├── hierarchyStore.js    # Unit/rank hierarchy used by the org chart
 │       │   └── socioeconomic.js     # District socio-economic indicators
 │       │
-│       └── __smoke__/               # 57 front-end suites (citations, extraction, PDF, i18n, sign-out, graphs, …)
+│       └── __smoke__/               # 79 front-end suites (citations, extraction, PDF, i18n, sign-out, graphs, …)
 │
 ├── functions/
 │   └── rag/                         # ── BACKEND ── the single Catalyst Advanced I/O function
-│       ├── index.js                 # Router gate + all 61 routes + the assistant lanes and tool loop
+│       ├── index.js                 # Router gate + all 67 routes + the assistant lanes and tool loop
 │       ├── zcql.js                  # Natural language → ZCQL compiler, validator and row enrichment
-│       ├── tools.js                 # The eleven clearance-filtered tools the model may call
+│       ├── tools.js                 # The twelve clearance-filtered tools the model may call
 │       ├── osint.js                 # IP/domain lookup — RDAP + AbuseIPDB, live per query
 │       ├── sanctions.js             # OpenSanctions aggregated watchlist search — live per query, no cache
 │       ├── crypto.js                # Bitcoin/Ethereum wallet lookup — blockstream.info + Etherscan
@@ -881,7 +887,7 @@ sentinel/
 │       ├── catalystVision.js        # Qwen3.6-35B-A3B — the QuickML `VLM` endpoint for deep image understanding
 │       ├── masters.json             # Snapshot of master tables, for enriching ZCQL results in code
 │       ├── catalyst-config.template.json  # Env-var template — copy to catalyst-config.json
-│       └── *.test.js                # 31 backend suites — no framework, one node script each
+│       └── *.test.js                # 38 backend suites — no framework, one node script each
 │
 ├── dataset/                             # ── DATASET ── synthetic Karnataka FIR data, generators, importers
 │   ├── fir/                         # The 26-table CCTNS-aligned schema (the live dataset)
@@ -1176,7 +1182,7 @@ POST /server/rag/<path>
 
 ### Assistant tools
 
-Within the TOOLS lane the model may call **11** tools. Each is dispatched through one
+Within the TOOLS lane the model may call **12** tools. Each is dispatched through one
 function ([`functions/rag/tools.js`](functions/rag/tools.js)), and that single choke point is
 where the caller's clearance filter and the result cap are applied — so a tool added later
 cannot forget either.
@@ -1194,6 +1200,7 @@ cannot forget either.
 | `osint_lookup` | IP address / domain registration (RDAP, keyless) and IP abuse-reputation (AbuseIPDB, free-tier keyed) — a live call per question. | The Data Store has no column for an IP or a domain. States plainly in every answer that the identifier just left Sentinel and left India. |
 | `sanctions_check` | Screens a name against OpenSanctions' aggregated watchlist API — UN, OFAC, EU, UK and other national sanctions lists, PEP registers, wanted lists, debarment and export-control lists (28+ source datasets), a live call per question. | The Data Store has no concept of a sanctions or watchlist hit. States plainly that the name just left Sentinel and left India, the same as the other two. |
 | `crypto_lookup` | Bitcoin (blockstream.info, keyless) or Ethereum (Etherscan, free-tier keyed) wallet balance and transaction activity — chain auto-detected from the address format. | The Data Store has no concept of a wallet address at all. |
+| `web_search` | Open-web search (Tavily) for a real-world fact true outside Sentinel entirely — a current office-holder, a public event, general knowledge. | The only tool that reaches the open web; the others answer as if nothing outside Sentinel's own records exists, which is wrong for this class of question, not merely unhelpful. |
 
 
 > **A fourth external capability, Sherlock (username enumeration via its Apify actor), is not a
@@ -1444,8 +1451,8 @@ CI runs all three automatically on every push to `main`.
 
 ## Testing
 
-**1,814 checks across 88 suites** — 1,287 backend checks in 31 suites and 527 frontend tests in
-57 — all passing as of the last run on `main`. Everything runs locally in well under a minute
+**2,081 checks across 117 suites** — 1,455 backend checks in 38 suites and 626 frontend tests in
+79 — all passing as of the last run on `main`. Everything runs locally in well under a minute
 and needs no database, no network and no credentials: the tests that cover platform behaviour
 assert against the *source* and against injected fakes rather than a live Catalyst project.
 
@@ -1475,10 +1482,10 @@ deliberate: **a guard tested by regex is a guard that passes while doing nothing
 | --- | :-: | --- |
 | `statutory.test.js` | 116 | Statutory citation and the BNS/BNSS mapping — the legal text an answer is allowed to assert. |
 | `analytics.test.js` | 113 | The snapshot endpoint: columnar encoding, per-table paging, clearance, and retrying a refused page instead of failing the whole build. |
-| `tools.test.js` | 130 | Tool schemas, dispatch and the bounded loop. Every tool must declare a name, description and schema with required inputs; `query_records` must warn the model that joins fail *and* tell it to use an `IN` clause instead; the clearance filter must run on every tool result; and — the one caught by reading a live server's own logs, not by anything testable from outside — every bare identifier the loop returns must actually be declared somewhere in it, not just the one name that happened to be missing once. |
+| `tools.test.js` | 144 | Tool schemas, dispatch and the bounded loop. Every tool must declare a name, description and schema with required inputs; `query_records` must warn the model that joins fail *and* tell it to use an `IN` clause instead; the clearance filter must run on every tool result; and — the one caught by reading a live server's own logs, not by anything testable from outside — every bare identifier the loop returns must actually be declared somewhere in it, not just the one name that happened to be missing once. |
 | `guard.test.js` | 77 | Prompt-injection defence. The threat model is **indirect** injection — attachments, OCR, seized documents — so retrieved content is fenced in a per-request random nonce a hostile document cannot close. |
 | `forecast.test.js` | 66 | The QuickML bundle: response-shape parsing per pipeline, band derivation from measured error, cache keying by origin month, and one model's outage never blanking the others. |
-| `sources.test.js` | 72 | The unified citation contract — how a database row, a knowledge-base passage, a digitised record and the three external lookups are each labelled, deduplicated and ordered, including the rule that a record whose title came from its filename is not printed twice, and that a lookup which found nothing produces no citation at all rather than an empty placeholder one. |
+| `sources.test.js` | 79 | The unified citation contract — how a database row, a knowledge-base passage, a digitised record and the three external lookups are each labelled, deduplicated and ordered, including the rule that a record whose title came from its filename is not printed twice, and that a lookup which found nothing produces no citation at all rather than an empty placeholder one. |
 | `protected.test.js` | 42 | Protected attributes (religion, caste, gender) stay out of every risk model and every prompt. |
 | `integrity.test.js` | 42 | Tamper-evidence on the audit trail — per-day seals, and a broken chain that reports itself. |
 | `apigate.test.js` | 41 | The security gate. Asserts on the router source itself that the session check is dispatched **before the first route**, that a missing session returns rather than falls through, and that the route count hasn't grown past what the gate covers — so a newly added endpoint cannot quietly land outside it. |
@@ -1487,12 +1494,13 @@ deliberate: **a guard tested by regex is a guard that passes while doing nothing
 | `noanswer.test.js` | 13 | One rule: if the assistant did not answer, it attributes nothing. A source chip beside *"the records don't hold this"* reads as though something was found and invites an officer to open a record that does not exist. |
 
 …plus `solar`, `bench`, `network`, `legal`, `i18n`, `purgeseeded`, `grounding`, `vision`,
-`router`, `keys`, `csrf`, `join`, `memory`, `sanctions`, `slash`, `osint`, `crypto`, `sherlock`
-and `geolocate`.
+`router`, `keys`, `csrf`, `join`, `memory`, `sanctions`, `slash`, `osint`, `crypto`, `sherlock`,
+`geolocate`, `agui`, `anonymize`, `catalystGLM`, `catalystVision`, `modelswitch`, `transcribe`
+and `websearch`.
 
 ### Frontend suites (`frontend/src/__smoke__/`)
 
-57 suites, 527 tests. Beyond rendering, several pin behaviour that had already gone wrong once
+79 suites, 626 tests. Beyond rendering, several pin behaviour that had already gone wrong once
 and would go wrong silently again:
 
 | Suite | Holds the line on |
@@ -1511,7 +1519,7 @@ and would go wrong silently again:
 
 Every push and pull request: install both workspaces → syntax-check the function → **regenerate
 the whole FIR dataset from the seeded generators** and assert `forecast_features.json` still
-matches it → run all 29 backend suites → run the 56 frontend suites → lint `src` as a hard gate
+matches it → run all 38 backend suites → run the 79 frontend suites → lint `src` as a hard gate
 (`__smoke__` is advisory) → the accessibility gate → production build → assert `build/404.html`
 exists. Only a green run on
 `main` proceeds to deploy, and the deploy then asserts three things against the **live** site:
@@ -1538,7 +1546,6 @@ no separate docs site, wiki or handbook to fall out of date.
 | Standing it up yourself | [Prerequisites](#prerequisites) → [Setup & Installation](#setup--installation) → [Running Locally](#running-locally) → [Build & Deploy](#build--deploy) |
 | What is tested, and what isn't | [Testing](#testing) |
 | Who can see what | [Roles & Access](#roles--access) · [Security & Compliance](#security--compliance) |
-| Where the project goes next | [Future Scope](#future-scope) |
 
 ### Diagrams
 
