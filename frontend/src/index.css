@@ -1796,7 +1796,8 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.cf-table tbody td:first-child {
+.cf-table tbody td:first-child,
+.cf-table tbody td.cf-rowid-cell {
   color: var(--text-3);
   font-family: var(--font-mono);
   font-size: var(--fs-caption);
@@ -10090,4 +10091,200 @@ span.inv-status-dot {
 }
 .ev-above { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }
 .ev-below { background: color-mix(in srgb, var(--green) 14%, transparent); color: var(--green); }
+
+/* ── Case Files — spreadsheet grid interactions ──────────────────────────────
+ * Range selection, keyboard nav, sort, column resize/pin/hide, row checks,
+ * copy. Read-only (Data Store has no write path here): no cell editing, fill
+ * handle, or undo. A page holds at most 100 rows, so no virtualization.
+ * Everything else layers onto the existing .cf-table shared skin. */
+.cf-table.cfg-fixed { table-layout: fixed; }
+
+.cfg-th { position: relative; cursor: default; }
+.cfg-th-inner { display: flex; align-items: center; gap: 4px; }
+.cfg-sortbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.cfg-sortbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cfg-sortbtn:hover { color: var(--text-0); }
+.cfg-sortbtn:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 1px; }
+.cfg-sort-icon { opacity: 0.45; flex-shrink: 0; }
+.cfg-sort-icon.active { opacity: 1; color: var(--primary); }
+.cfg-sort-priority { font-size: 9px; color: var(--text-4); margin-left: 1px; }
+
+.cfg-menubtn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-4);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.cfg-menubtn:hover { background: var(--bg-3); color: var(--text-1); }
+
+.cfg-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+.cfg-resize-handle:hover, .cfg-resize-handle:active {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+.cfg-colmenu, .cfg-colsmenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+  margin-top: 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+  min-width: 160px;
+}
+.cfg-colsmenu { max-height: 280px; overflow-y: auto; }
+.cfg-colmenu button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 9px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: var(--text-1);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.cfg-colmenu button:hover { background: var(--bg-3); }
+.cfg-colsmenu-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--text-1);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cfg-colsmenu-row:hover { background: var(--bg-3); }
+.cfg-colsmenu-row input { accent-color: var(--blue-500); cursor: pointer; }
+
+/* Pinned columns stick to the left edge; left offset is computed in JS since
+ * widths vary per column. */
+.cf-table th.cfg-pinned, .cf-table td.cfg-pinned {
+  position: sticky;
+  z-index: 3;
+  background: var(--bg-1);
+}
+.cf-table thead th.cfg-pinned { z-index: 4; background: var(--bg-2); }
+.cf-table tbody tr:hover td.cfg-pinned { background: var(--hover-overlay); }
+
+/* Row gutter — row number + checkbox, pinned to the left like a column. */
+.cfg-gutter-head, .cfg-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
+  text-align: center;
+}
+.cfg-gutter-head { background: var(--bg-2); }
+.cfg-gutter {
+  background: var(--bg-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: var(--fw-body);
+}
+.cf-table tbody tr:hover .cfg-gutter { background: var(--hover-overlay); }
+.cfg-rownum {
+  font-size: 10.5px;
+  color: var(--text-4);
+  font-family: var(--font-mono);
+  min-width: 18px;
+  text-align: right;
+}
+.cfg-gutter input, .cfg-gutter-head input { accent-color: var(--blue-500); cursor: pointer; }
+
+/* Active cell + range selection. */
+.cfg-cell { cursor: cell; user-select: none; }
+.cfg-cell.in-range { background: var(--primary-tint); }
+.cfg-cell.active-cell {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  position: relative;
+  z-index: 1;
+}
+.cf-table tbody tr:hover td.cfg-cell.in-range { background: var(--primary-tint); }
+.cf-table.cfg-fixed:focus { outline: none; }
+.cf-table.cfg-fixed:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: -2px; }
+
+/* Bulk-selection bar — a slim inline strip between the toolbar and the grid,
+ * not a modal or a full-width banner. */
+.cfg-bulkbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  margin-bottom: 8px;
+  background: color-mix(in srgb, var(--blue-400) 8%, var(--bg-1));
+  border: 1px solid var(--blue-500);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  color: var(--text-1);
+  flex-wrap: wrap;
+}
+.cfg-bulkbar-actions { display: flex; gap: 6px; margin-left: auto; }
+
+/* Visually hidden but still read by assistive tech — sort/copy/export announcements. */
+.cfg-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  .cfg-bulkbar-actions span { display: none; }
+  /* Row numbers drop first on a narrow screen; the gutter keeps its width
+   * (56px, matched by the JS-computed GUTTER_W that positions pinned
+   * columns) so the checkbox just re-centers instead of the two disagreeing. */
+  .cfg-rownum { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cfg-resize-handle, .cfg-sortbtn, .cfg-menubtn { transition: none; }
+}
 .ev-noise { background: var(--bg-3); color: var(--text-3); }

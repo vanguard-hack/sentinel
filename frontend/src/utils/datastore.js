@@ -203,12 +203,25 @@ export async function fetchColumns(table) {
   };
 }
 
+// Only a real column identifier reaches here (the sort UI reads keys off the
+// same fetched column list `column`/`filterColumn` already trust) but this is
+// the one spot a crafted key could reach raw SQL, so it's checked anyway.
+const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+function buildOrderBy(sort) {
+  const clauses = (sort || [])
+    .filter((s) => s && IDENT_RE.test(s.key))
+    .map((s) => `${s.key} ${s.dir === 'desc' ? 'DESC' : 'ASC'}`);
+  return clauses.length ? ` ORDER BY ${clauses.join(', ')}` : '';
+}
+
 // Fetch one page. Returns { rows, hasNext }. Asks for perPage+1 to detect a
 // following page without a COUNT query.
-export async function fetchPage({ table, page = 1, perPage = 50, column = 'ALL', search = '', op = 'contains', sample }) {
+export async function fetchPage({
+  table, page = 1, perPage = 50, column = 'ALL', search = '', op = 'contains', sample, sort,
+}) {
   const offset = (page - 1) * perPage;
   const where = buildWhere(column, search, sample?.[column], op);
-  const query = `SELECT * FROM ${table}${where} LIMIT ${offset}, ${perPage + 1}`;
+  const query = `SELECT * FROM ${table}${where}${buildOrderBy(sort)} LIMIT ${offset}, ${perPage + 1}`;
   const rows = await runQuery(query, table);
   const hasNext = rows.length > perPage;
   return { rows: hasNext ? rows.slice(0, perPage) : rows, hasNext };
