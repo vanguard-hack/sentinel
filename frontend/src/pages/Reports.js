@@ -47,7 +47,7 @@ function EventWindows({ rows }) {
         <table className="fc-table ev-table">
           <thead>
             <tr>
-              <th>Window</th><th>Span</th><th>FIRs</th>
+              <th>Window</th><th>Span</th><th className="num">FIRs</th>
               <th className="num">vs same month</th><th className="num">vs year</th><th>Reading</th>
             </tr>
           </thead>

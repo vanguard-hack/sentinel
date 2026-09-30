@@ -7,6 +7,7 @@ import {
 import TopBar from '../components/TopBar';
 import FileUpload from '../components/ui/FileUpload';
 import { useConfirm } from '../components/ConfirmDialog';
+import { AnimatedToastStack, useAnimatedToastStack } from '../components/ui/AnimatedToastStack';
 import {
   listRecords, deleteRecord, uploadScan, newBatchId, recordsToCsv, searchRecords,
   pdfToImages, isPdf, ingestExtracted, attachSource,
@@ -40,6 +41,8 @@ export default function Records() {
   const [preparing, setPreparing] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const { toasts, showToast, updateToast, dismissToast } = useAnimatedToastStack();
+  const selToastId = useRef(null);
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
 
@@ -309,6 +312,38 @@ export default function Records() {
       setBulkBusy(false);
     }
   };
+  const bulkRemoveRef = useRef(bulkRemove);
+  bulkRemoveRef.current = bulkRemove;
+
+  const handleDismissToast = (id) => {
+    if (id === selToastId.current) {
+      selToastId.current = null;
+      setSelected(new Set());
+    }
+    dismissToast(id);
+  };
+
+  // Selection is announced as a small floating toast instead of a full-width
+  // banner pushed into the page flow — same count/clear/delete controls, just
+  // not shaped like a modal. The toast's own × doubles as "clear selection".
+  useEffect(() => {
+    if (selected.size === 0) {
+      if (selToastId.current) { dismissToast(selToastId.current); selToastId.current = null; }
+      return;
+    }
+    const payload = bulkBusy
+      ? { status: 'loading', title: t('records.selectedCount', { count: selected.size }), dismissible: false, duration: 0 }
+      : {
+          status: 'info',
+          title: t('records.selectedCount', { count: selected.size }),
+          dismissible: true,
+          duration: 0,
+          action: { label: t('records.deleteSelected'), onClick: () => bulkRemoveRef.current() },
+        };
+    if (selToastId.current) updateToast(selToastId.current, payload);
+    else selToastId.current = showToast(payload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected.size, bulkBusy]);
 
   const exportCsv = () => {
     const blob = new Blob([recordsToCsv(filtered)], { type: 'text/csv;charset=utf-8' });
@@ -488,20 +523,6 @@ export default function Records() {
           </button>
         </div>
 
-        {selected.size > 0 && (
-          <div className="rb-bulkbar">
-            <span>{t('records.selectedCount', { count: selected.size })}</span>
-            <div className="rb-bulkbar-actions">
-              <button type="button" className="aa-btn" onClick={() => setSelected(new Set())}>
-                {t('records.clearSelection')}
-              </button>
-              <button type="button" className="aa-btn danger" disabled={bulkBusy} onClick={bulkRemove}>
-                {bulkBusy ? <Loader2 size={15} className="dg-spin" /> : <Trash2 size={15} />} {t('records.deleteSelected')}
-              </button>
-            </div>
-          </div>
-        )}
-
         {!records && <div className="aa-loading">{t('common.loading')}</div>}
         {records && !filtered.length && (
           <div className="rb-empty">
@@ -563,6 +584,8 @@ export default function Records() {
           ))}
         </div>
       </div>
+
+      <AnimatedToastStack toasts={toasts} onDismiss={handleDismissToast} position="bottom-center" fixed />
     </div>
   );
 }

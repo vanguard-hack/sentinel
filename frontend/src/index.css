@@ -8269,16 +8269,6 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .rb-filters .rb-select:hover { border-color: var(--border-bright); }
 .rb-filters .rb-select:focus { outline: none; border-color: var(--blue-500); }
 
-/* Records: bulk-selection bar */
-.rb-bulkbar {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin: -4px 0 12px; padding: 10px 14px;
-  background: color-mix(in srgb, var(--blue-400) 8%, var(--bg-1));
-  border: 1px solid var(--blue-500); border-radius: 10px;
-  font-size: 12.5px; color: var(--text-1);
-}
-.rb-bulkbar-actions { display: flex; gap: 8px; }
-
 /* Linked-case chip in the editor toolbar */
 .rb-caselink-chip {
   display: inline-flex; align-items: center; gap: 1px; height: 30px;
