@@ -6,15 +6,19 @@
   margin-bottom: 18px;
 }
 .ui-tab {
-  padding: 8px 12px;
-  font-size: var(--fs-sm);
+  padding: 0 var(--sp-md) 10px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: var(--fw-medium);
   color: var(--ink-subtle);
   border-bottom: 2px solid transparent;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  transition: color .2s, border-color .2s;
 }
+.ui-tab[aria-selected='false']:hover { color: var(--ink); }
 .ui-tab[aria-selected='true'] { color: var(--ink); border-bottom-color: var(--primary); }
 .ui-tab[data-focus-visible] { outline: 2px solid var(--primary-focus); outline-offset: -2px; }
 [role='tabpanel'][hidden] { display: none; }

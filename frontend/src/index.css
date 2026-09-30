@@ -145,14 +145,14 @@
   --h-lg: 36px;
 
   /* ── Table density ─────────────────────────────────────────────────────
-     One density for every table in the app. The reference has no table spec
-     — this is the product-scale extension, and every *-table rule below
-     resolves to it. */
-  --tbl-row-y:   9px;
-  --tbl-cell-x: 14px;
-  --tbl-head-y:  8px;
-  --tbl-font:  12.5px;
-  --tbl-head-font: 11.5px;
+     One density for every table in the app, matching the Sakani Table spec
+     (44px body rows / 40px header, 12px/16px cell padding, 14px body text) —
+     every *-table rule below resolves to it. */
+  --tbl-row-y:  12px;
+  --tbl-cell-x: 16px;
+  --tbl-head-y: 12px;
+  --tbl-font:  14px;
+  --tbl-head-font: 11px;
 
   /* ── Type ──────────────────────────────────────────────────────────────
      Inter is the reference's own recommended substitute for the Linear
@@ -387,14 +387,16 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .aa-table thead th, .aq-table thead th, .dg-table thead th,
 .as-src-table thead th, .ai-matrix thead th,
 .cf-table > thead th, .aa-table > thead th {
+  height: 40px;
   padding: var(--tbl-head-y) var(--tbl-cell-x);
   background: var(--bg-2);
   color: var(--text-3);
   text-align: left;
   font-size: var(--tbl-head-font);
-  font-weight: var(--fw-medium);
-  letter-spacing: 0;
-  text-transform: none;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   white-space: nowrap;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
@@ -403,8 +405,10 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 .cf-table tbody td, .fc-table tbody td, .cl-table tbody td,
 .aa-table tbody td, .aq-table tbody td, .dg-table tbody td,
 .as-src-table tbody td, .ai-matrix tbody td {
+  height: 44px;
   padding: var(--tbl-row-y) var(--tbl-cell-x);
-  color: var(--text-1);
+  color: var(--text-0);
+  line-height: 20px;
   border-bottom: 1px solid var(--border);
   border-top: 0;
   vertical-align: middle;

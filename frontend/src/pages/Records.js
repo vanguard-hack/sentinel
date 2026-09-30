@@ -8,6 +8,8 @@ import TopBar from '../components/TopBar';
 import FileUpload from '../components/ui/FileUpload';
 import { useConfirm } from '../components/ConfirmDialog';
 import { AnimatedToastStack, useAnimatedToastStack } from '../components/ui/AnimatedToastStack';
+import EmptyState from '../components/ui/EmptyState';
+import Skeleton from '../components/ui/Skeleton';
 import {
   listRecords, deleteRecord, uploadScan, newBatchId, recordsToCsv, searchRecords,
   pdfToImages, isPdf, ingestExtracted, attachSource,
@@ -523,12 +525,26 @@ export default function Records() {
           </button>
         </div>
 
-        {!records && <div className="aa-loading">{t('common.loading')}</div>}
-        {records && !filtered.length && (
-          <div className="rb-empty">
-            {records.length
-? t('records.noMatch') : t('records.empty')}
+        {!records && (
+          <div className="dg-grid">
+            {[0, 1, 2].map((i) => (
+              <div className="dg-card" key={i}>
+                <div className="dg-card-head">
+                  <Skeleton variant="rect" width={54} height={18} />
+                </div>
+                <Skeleton variant="text" width="70%" height={15} />
+                <Skeleton variant="text" height={12} />
+                <Skeleton variant="text" width="85%" height={12} />
+                <Skeleton variant="text" width={120} height={11} />
+              </div>
+            ))}
           </div>
+        )}
+        {records && !filtered.length && (
+          <EmptyState
+            type={records.length ? 'no-results' : 'no-data'}
+            description={records.length ? t('records.noMatch') : t('records.empty')}
+          />
         )}
 
         <div className="dg-grid">
