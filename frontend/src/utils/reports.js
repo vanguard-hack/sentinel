@@ -460,10 +460,14 @@ function buildCrimeSankey(wcases, headName, subHeadName, statusName, { maxMajors
   });
 
   const nid = (layer, label) => `L${layer}${SEP}${label}`;
+  // Sankey (new component) keeps nodes in the order given rather than
+  // re-sorting them itself — the caller decides what "the way people read
+  // them" means. Biggest-first is this chart's own choice, made here.
+  const byValDesc = (map) => [...map.entries()].sort((a, b) => b[1] - a[1]);
   const nodes = [];
-  mTot.forEach((v, label) => nodes.push({ id: nid(0, label), label, layer: 0, value: v, ci: ciOf(label) }));
-  sTot.forEach((v, label) => nodes.push({ id: nid(1, label), label, layer: 1, value: v, ci: ciOf(subCat(label)) }));
-  stTot.forEach((v, label) => nodes.push({ id: nid(2, label), label, layer: 2, value: v, ci: -1 }));
+  byValDesc(mTot).forEach(([label, v]) => nodes.push({ id: nid(0, label), label, layer: 0, value: v, ci: ciOf(label) }));
+  byValDesc(sTot).forEach(([label, v]) => nodes.push({ id: nid(1, label), label, layer: 1, value: v, ci: ciOf(subCat(label)) }));
+  byValDesc(stTot).forEach(([label, v]) => nodes.push({ id: nid(2, label), label, layer: 2, value: v, ci: -1 }));
 
   const links = [];
   l0.forEach((v, key) => { const [m, s] = key.split(SEP); links.push({ source: nid(0, m), target: nid(1, s), value: v, ci: ciOf(m) }); });

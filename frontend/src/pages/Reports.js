@@ -509,7 +509,14 @@ export default function Reports() {
                 id="chart-crime-types"
                 title="Crime flow"
                 subtitle="Category → type → outcome · ribbon width is case volume" full section="Case flow & time trends">
-                <Sankey spec={data.crimeSankey} />
+                <Sankey
+                  nodes={data.crimeSankey.nodes}
+                  links={data.crimeSankey.links}
+                  label="Crime category to type to outcome flow"
+                  columns={['Category', 'Type', 'Outcome']}
+                  unit="cases"
+                  totalLabel="FIRs"
+                />
               </Card>
               <Card id="chart-age-profile" title="Accused age profile" subtitle="Accused on record by age band" wide section="Case flow & time trends">
                 <BarList data={data.accusedAges} height={300} />

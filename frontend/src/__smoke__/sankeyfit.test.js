@@ -14,17 +14,15 @@ import React from 'react';
 import { render } from '@testing-library/react';
 import Sankey from '../components/Sankey';
 
-const spec = {
-  nodes: [
-    { id: 'a', label: 'Body offences', layer: 0, value: 10 },
-    { id: 'b', label: 'Theft', layer: 1, value: 10 },
-    { id: 'c', label: 'Convicted', layer: 2, value: 10 },
-  ],
-  links: [
-    { source: 'a', target: 'b', value: 10 },
-    { source: 'b', target: 'c', value: 10 },
-  ],
-};
+const nodes = [
+  { id: 'a', label: 'Body offences', layer: 0, value: 10 },
+  { id: 'b', label: 'Theft', layer: 1, value: 10 },
+  { id: 'c', label: 'Convicted', layer: 2, value: 10 },
+];
+const links = [
+  { source: 'a', target: 'b', value: 10 },
+  { source: 'b', target: 'c', value: 10 },
+];
 
 // setupTests stubs ResizeObserver at a fixed 800x320 for every chart in the
 // app; these override it per test so the box under assertion is the box the
@@ -32,7 +30,7 @@ const spec = {
 const REAL_RO = global.ResizeObserver;
 afterEach(() => { global.ResizeObserver = REAL_RO; });
 
-const draw = (w, h) => {
+const draw = (w, h, props = {}) => {
   global.ResizeObserver = class {
     constructor(cb) { this.cb = cb; }
 
@@ -42,7 +40,7 @@ const draw = (w, h) => {
 
     disconnect() {}
   };
-  const { container } = render(<Sankey spec={spec} />);
+  const { container } = render(<Sankey nodes={nodes} links={links} label="Crime flow" {...props} />);
   return container.querySelector('svg');
 };
 
@@ -60,8 +58,20 @@ test('the drawing stretches to the tile instead of letterboxing', () => {
 
 test('a box too small to label legibly is drawn at the floor and scrolls', () => {
   // Under these the labels collide with the ribbons; the wrapper scrolls
-  // rather than drawing something that cannot be read.
-  expect(draw(300, 120).getAttribute('viewBox')).toBe('0 0 520 260');
+  // rather than drawing something that cannot be read. Width stays at or
+  // above the upright breakpoint (420px) so this exercises the normal-layout
+  // floor specifically — the upright layout has its own floor, covered below.
+  expect(draw(430, 120).getAttribute('viewBox')).toBe('0 0 520 260');
+});
+
+test('below 420px wide the layout turns upright, with its own floor', () => {
+  // Columns run top to bottom below 420px — see the data-grid-style
+  // responsive spec this chart follows. The floor keeps enough height for a
+  // handful of stacked columns even when the tile itself is short.
+  const svg = draw(300, 120);
+  const [, , w, h] = svg.getAttribute('viewBox').split(' ').map(Number);
+  expect(w).toBe(300);
+  expect(h).toBeGreaterThanOrEqual(480);
 });
 
 test('the label gutters are measured from the actual label text, not a share of the width', () => {
@@ -84,7 +94,7 @@ test('the label gutters are measured from the actual label text, not a share of 
 });
 
 test('a longer label earns a wider gutter than a shorter one, at the same card width', () => {
-  const gutter = (s) => {
+  const gutter = (n) => {
     global.ResizeObserver = class {
       constructor(cb) { this.cb = cb; }
 
@@ -94,11 +104,11 @@ test('a longer label earns a wider gutter than a shorter one, at the same card w
 
       disconnect() {}
     };
-    const { container } = render(<Sankey spec={s} />);
+    const { container } = render(<Sankey nodes={n} links={links} label="Crime flow" />);
     return Number(container.querySelector('svg').querySelector('rect').getAttribute('x'));
   };
-  const short = { ...spec, nodes: [{ ...spec.nodes[0], label: 'Theft' }, ...spec.nodes.slice(1)] };
-  const long = { ...spec, nodes: [{ ...spec.nodes[0], label: 'Offences Against the Human Body' }, ...spec.nodes.slice(1)] };
+  const short = [{ ...nodes[0], label: 'Theft' }, ...nodes.slice(1)];
+  const long = [{ ...nodes[0], label: 'Offences Against the Human Body' }, ...nodes.slice(1)];
   expect(gutter(long)).toBeGreaterThan(gutter(short));
 });
 

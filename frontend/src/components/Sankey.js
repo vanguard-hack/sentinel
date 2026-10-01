@@ -1,52 +1,43 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
+import { useReducedMotion } from 'motion/react';
 import useMeasuredBox from './useMeasuredBox';
 
-// Self-contained 3-layer Sankey (no external lib). Consumes { nodes, links }
-// from utils/reports.buildCrimeSankey: nodes carry { id, label, layer, value,
-// ci } and links carry { source, target, value, ci }. `ci` is a category
-// colour index (-1 = neutral). Ribbon thickness and node height share one
-// scale, so a node's height equals the sum of its ribbons.
-// Every node in a layer needs a distinct colour, and ribbons take their source
-// node's colour, so a Sankey wants more slots than a bar chart does.
+// Multi-column Sankey: ribbons between stages, a full end-to-end trace on
+// hover/focus/tap, drifting particles, keyboard navigation, and an upright
+// layout below 420px. No external chart library — same hand-rolled SVG
+// approach the rest of this app's charts use, generalised from the old
+// fixed-3-layer version (category → type → outcome is still the only real
+// caller, via utils/reports.buildCrimeSankey, but nothing here assumes 3).
 //
-// This used to be eighteen literal hex values — eighteen chromatic accents in
-// a system that has one. It now cycles the six shared categorical slots and
-// varies opacity across the three passes instead of hue, so the chart stays
-// legible without inventing colours the rest of the app has never heard of.
+// `nodes`: { id, label, value?, column?, layer?, ci? }[] — column/layer are
+// read interchangeably (layer is what buildCrimeSankey already emits); if
+// neither is given, a node's column is inferred as its distance from a
+// source (a node nothing flows into). Nodes keep the ORDER given — the
+// caller decides what "the way people read them" means, this never re-sorts.
+// `links`: { source, target, value, ci? }[]. A node's value, when not given,
+// is the larger of what flows in and out.
+//
+// Every node in a column needs a distinct colour, and ribbons take their
+// source node's colour, so this cycles the app's six shared categorical
+// slots and varies opacity across columns instead of hue, rather than
+// inventing colours the rest of the app has never heard of.
 const PALETTE = ['var(--rp-cat-0)', 'var(--rp-cat-1)', 'var(--rp-cat-2)',
                  'var(--rp-cat-3)', 'var(--rp-cat-4)', 'var(--rp-cat-5)'];
 const OTHER = 'var(--text-4)';
-// Offset each layer into the palette so a category and a type in adjacent
-// columns are unlikely to land on the same hue. Co-prime with 6 so the two
-// offsets never collapse onto each other.
-const LAYER_OFFSET = [0, 2, 4];
-// Layers also separate by weight — solid, then two lighter passes — so a
-// three-column chart stays readable on six hues instead of eighteen.
-const LAYER_ALPHA = [1, 0.74, 0.5];
+const colorSlot = (i, col) => (i + ((col * 2) % PALETTE.length)) % PALETTE.length;
+const colorAlpha = (col) => Math.max(0.45, 1 - col * 0.26);
 
-const NW = 15;        // node bar width
-const GAP = 7;        // vertical gap between nodes in a layer
+const NW = 15;         // node bar thickness
+const GAP = 7;         // gap between nodes within a column
 const PAD_T = 14;
 const PAD_B = 14;
-
-/* Label gutters used to be a SHARE of the drawing width with a fixed floor —
- * which is exactly why long labels ("Crimes Against Body", "Under
- * investigation") got clipped by the SVG's own viewport edge: the floor was
- * tuned against whatever labels existed at the time, not measured against
- * the ones actually being drawn. SVG text does not wrap or ellipsize on
- * overflow, so a gutter even a few px too narrow clips silently.
- *
- * Gutters are now sized from the real rendered width of the longest label in
- * each outer layer, via a cached canvas measurement — the same technique a
- * browser uses internally, just done once up front instead of guessed. */
-const clamp = (lo, v, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+const HEADER_H = 20;   // reserved for column stage-name headers, normal layout only
+const UPRIGHT_MAX_WIDTH = 420; // matches the spec's own breakpoint
 
 const LABEL_FONT = "12px 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
-// Average glyph width for 12px Inter (~0.52em, typical for a sans-serif at
-// this weight) — this only runs when canvas 2D genuinely isn't available
-// (jsdom in tests; conceivably a locked-down real browser). Real browsers
-// measure the actual glyphs via canvas; this is only ever an approximation
-// for the fallback path.
+// Average glyph width for 12px Inter (~0.52em) — only used when canvas 2D
+// genuinely isn't available (jsdom in tests; conceivably a locked-down real
+// browser). Real browsers measure the actual glyphs via canvas.
 const FALLBACK_CHAR_WIDTH = 6.3;
 let measureCtx;
 function textWidth(s) {
@@ -67,55 +58,180 @@ function cachedTextWidth(s) {
   widthCache.set(s, w);
   return w;
 }
-const LABEL_GAP = 8;   // space between the node bar and its label, each side
-const LABEL_MARGIN = 6; // breathing room past the widest label
+const LABEL_GAP = 8;
+const LABEL_MARGIN = 6;
+const clamp = (lo, v, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
 
-export default function Sankey({ spec, width = 1000, height = 460 }) {
-  const [wrapRef, box] = useMeasuredBox(width, height);
-  // Below these the labels collide with each other and with the ribbons; the
-  // wrapper scrolls rather than drawing something that cannot be read.
-  const W = Math.max(520, box.w);
-  const drawH = Math.max(260, box.h);
-  // Measured against the actual labels being drawn, not guessed as a share
-  // of width — the bug this replaces. Still clamped: a floor so a short
-  // label set doesn't starve the ribbons of space, a ceiling so one
-  // pathological label can't eat half the chart (title tooltip covers that
-  // case instead).
-  const leftNodes = (spec?.nodes || []).filter((n) => n.layer === 0);
-  const rightNodes = (spec?.nodes || []).filter((n) => n.layer === 2);
-  const maxLeftLabel = Math.max(0, ...leftNodes.map((n) => cachedTextWidth(n.label)));
-  const maxRightLabel = Math.max(0, ...rightNodes.map((n) => cachedTextWidth(n.label)));
-  const PAD_L = clamp(92, NW + LABEL_GAP + maxLeftLabel + LABEL_MARGIN, W * 0.4);
-  const PAD_R = clamp(84, NW + LABEL_GAP + maxRightLabel + LABEL_MARGIN, W * 0.4);
-  const [hover, setHover] = useState(null); // node id or link idx
+// ── Column inference: a node's column defaults to its distance from a
+// source (a node with no incoming links), per the documented contract. Only
+// exercised when a caller supplies neither `column` nor `layer`. ──
+function inferColumns(nodeIds, links) {
+  const out = new Map(nodeIds.map((id) => [id, []]));
+  const inDeg = new Map(nodeIds.map((id) => [id, 0]));
+  links.forEach((l) => {
+    if (!out.has(l.source) || !inDeg.has(l.target)) return;
+    out.get(l.source).push(l.target);
+    inDeg.set(l.target, inDeg.get(l.target) + 1);
+  });
+  const col = new Map(nodeIds.map((id) => [id, 0]));
+  const queue = nodeIds.filter((id) => inDeg.get(id) === 0);
+  const seen = new Set(queue);
+  for (let i = 0; i < queue.length; i += 1) {
+    const id = queue[i];
+    out.get(id).forEach((t) => {
+      col.set(t, Math.max(col.get(t), col.get(id) + 1));
+      if (!seen.has(t)) { seen.add(t); queue.push(t); }
+    });
+  }
+  return col;
+}
+
+// ── Full-journey trace: hovering/focusing a node highlights every path that
+// reaches it AND every path it reaches; hovering a ribbon highlights the
+// paths that reach its source plus the paths its target reaches — the
+// specific journey through that one ribbon, not every other thing its
+// endpoints touch. ──
+function buildGraphIndex(links) {
+  const bySource = new Map();
+  const byTarget = new Map();
+  links.forEach((l, i) => {
+    (bySource.get(l.source) || bySource.set(l.source, []).get(l.source)).push(i);
+    (byTarget.get(l.target) || byTarget.set(l.target, []).get(l.target)).push(i);
+  });
+  return { bySource, byTarget };
+}
+function walk(startId, byDir, otherEnd, links) {
+  const nodes = new Set([startId]);
+  const linkIdx = new Set();
+  const stack = [startId];
+  while (stack.length) {
+    const id = stack.pop();
+    (byDir.get(id) || []).forEach((li) => {
+      linkIdx.add(li);
+      const next = otherEnd(links[li]);
+      if (!nodes.has(next)) { nodes.add(next); stack.push(next); }
+    });
+  }
+  return { nodes, linkIdx };
+}
+function traceFor(id, links, index) {
+  if (id == null) return null;
+  if (typeof id === 'number') {
+    // A specific ribbon: the chain into its source, the ribbon itself, the
+    // chain out of its target.
+    const l = links[id];
+    const up = walk(l.source, index.byTarget, (x) => x.source, links);
+    const down = walk(l.target, index.bySource, (x) => x.target, links);
+    return {
+      nodes: new Set([...up.nodes, ...down.nodes]),
+      linkIdx: new Set([...up.linkIdx, id, ...down.linkIdx]),
+    };
+  }
+  const up = walk(id, index.byTarget, (x) => x.source, links);
+  const down = walk(id, index.bySource, (x) => x.target, links);
+  return {
+    nodes: new Set([...up.nodes, ...down.nodes]),
+    linkIdx: new Set([...up.linkIdx, ...down.linkIdx]),
+  };
+}
+
+const cubicAt = (t, p0, p1, p2, p3) => {
+  const mt = 1 - t;
+  return mt * mt * mt * p0 + 3 * mt * mt * t * p1 + 3 * mt * t * t * p2 + t * t * t * p3;
+};
+
+export default function Sankey({
+  nodes: nodesProp, links: linksProp, label, columns, unit = '', totalLabel = 'the total',
+  formatValue, height = 340, particles, defaultParticles = true, onParticlesChange,
+  particleToggle = true, emptyLabel = 'No flows yet', className,
+}) {
+  const [wrapRef, box] = useMeasuredBox(960, height);
+  const reduceMotion = useReducedMotion();
+  const fmt = useMemo(() => formatValue || ((v) => v.toLocaleString()), [formatValue]);
+
+  const isControlled = particles !== undefined;
+  const [internalOn, setInternalOn] = useState(defaultParticles);
+  const particlesOn = (isControlled ? particles : internalOn) && !reduceMotion;
+  const toggleParticles = () => {
+    const next = !(isControlled ? particles : internalOn);
+    if (!isControlled) setInternalOn(next);
+    onParticlesChange?.(next);
+  };
+
+  const [traceKey, setTraceKey] = useState(null); // node id, or link index (number)
+  const [focusIdx, setFocusIdx] = useState(null); // { col, i } — keyboard cursor
+  const [announce, setAnnounce] = useState('');
+  const svgRef = useRef(null);
+
+  const links = useMemo(() => linksProp || [], [linksProp]);
+  const nodes = useMemo(() => (nodesProp || []).filter((n) => n && n.id != null), [nodesProp]);
+
+  const upright = box.w > 0 && box.w < UPRIGHT_MAX_WIDTH;
+  const W = Math.max(upright ? 260 : 520, box.w);
+  const drawH = Math.max(upright ? Math.max(480, height) : 260, box.h);
+
   const layout = useMemo(() => {
-    const nodes = spec?.nodes || [];
-    const links = spec?.links || [];
     if (!nodes.length || !links.length) return null;
+    const ids = nodes.map((n) => n.id);
+    const inferred = nodes.some((n) => n.column == null && n.layer == null) ? inferColumns(ids, links) : null;
+    const colOf = (n) => n.column ?? n.layer ?? inferred.get(n.id) ?? 0;
+    const numCols = Math.max(1, ...nodes.map(colOf)) + 1;
 
-    const layers = [0, 1, 2].map((L) =>
-      nodes.filter((n) => n.layer === L).sort((a, b) => b.value - a.value)
-    );
-    const total = layers[0].reduce((s, n) => s + n.value, 0) || 1;
-    const maxCount = Math.max(1, ...layers.map((l) => l.length));
-    const availH = drawH - PAD_T - PAD_B;
-    const scale = (availH - (maxCount - 1) * GAP) / total;
+    const byCol = Array.from({ length: numCols }, () => []);
+    nodes.forEach((n) => byCol[colOf(n)].push(n));
 
-    const midX0 = PAD_L + (W - PAD_L - PAD_R - NW) / 2;
-    const x0For = [PAD_L, midX0, W - PAD_R - NW];
+    // A node's value defaults to the larger of what flows in/out, per spec.
+    const outSum = new Map();
+    const inSum = new Map();
+    links.forEach((l) => {
+      outSum.set(l.source, (outSum.get(l.source) || 0) + l.value);
+      inSum.set(l.target, (inSum.get(l.target) || 0) + l.value);
+    });
+    const valueOf = (n) => n.value ?? Math.max(outSum.get(n.id) || 0, inSum.get(n.id) || 0);
+
+    const total = byCol[0].reduce((s, n) => s + valueOf(n), 0) || 1;
+    const maxCount = Math.max(1, ...byCol.map((c) => c.length));
+    const mainAxisSize = upright ? drawH : W;
+    const crossAxisSize = upright ? W : drawH;
+
+    // Label gutters, normal layout only: measured against the real labels in
+    // the first/last columns rather than guessed as a share of width — a
+    // gutter even a few px too narrow clips SVG text silently (it doesn't
+    // wrap or ellipsize). Clamped: a floor so a short label set doesn't
+    // starve the ribbons, a ceiling so one pathological label can't eat the
+    // chart (the hidden table and hover value cover that case instead).
+    let padStart = PAD_T;
+    let padEnd = PAD_B;
+    if (!upright) {
+      const maxLeft = Math.max(0, ...byCol[0].map((n) => cachedTextWidth(n.label)));
+      const maxRight = Math.max(0, ...byCol[numCols - 1].map((n) => cachedTextWidth(n.label)));
+      padStart = clamp(92, NW + LABEL_GAP + maxLeft + LABEL_MARGIN, mainAxisSize * 0.4);
+      padEnd = clamp(84, NW + LABEL_GAP + maxRight + LABEL_MARGIN, mainAxisSize * 0.4);
+    }
+    const headerPad = !upright && columns?.length ? HEADER_H : 0;
+    const crossAvail = crossAxisSize - PAD_T - PAD_B - headerPad;
+    const scale = (crossAvail - (maxCount - 1) * GAP) / total;
+
+    const mainInner = mainAxisSize - padStart - padEnd - NW;
+    const main0For = Array.from({ length: numCols }, (_, i) => (
+      padStart + (numCols === 1 ? 0 : (mainInner * i) / (numCols - 1))
+    ));
 
     const nodeMap = new Map();
-    layers.forEach((layer, L) => {
-      const heights = layer.map((n) => Math.max(2, n.value * scale));
-      const layerH = heights.reduce((s, h) => s + h, 0) + (layer.length - 1) * GAP;
-      let y = PAD_T + (availH - layerH) / 2;
-      layer.forEach((n, i) => {
-        const slot = (i + LAYER_OFFSET[L]) % PALETTE.length;
+    byCol.forEach((colNodes, col) => {
+      const heights = colNodes.map((n) => Math.max(2, valueOf(n) * scale));
+      const colH = heights.reduce((s, h) => s + h, 0) + (colNodes.length - 1) * GAP;
+      let cross = PAD_T + headerPad + (crossAvail - colH) / 2;
+      colNodes.forEach((n, i) => {
         const isOther = /^Other\b/i.test(n.label);
-        const color = isOther ? OTHER : PALETTE[slot];
-        const alpha = isOther ? 1 : LAYER_ALPHA[L];
-        nodeMap.set(n.id, { ...n, color, alpha, x0: x0For[L], x1: x0For[L] + NW, y0: y, y1: y + heights[i], oOut: 0, oIn: 0 });
-        y += heights[i] + GAP;
+        const color = isOther ? OTHER : PALETTE[colorSlot(n.ci ?? i, col)];
+        const alpha = isOther ? 1 : colorAlpha(col);
+        nodeMap.set(n.id, {
+          ...n, value: valueOf(n), color, alpha, col,
+          main0: main0For[col], main1: main0For[col] + NW,
+          cross0: cross, cross1: cross + heights[i],
+        });
+        cross += heights[i] + GAP;
       });
     });
 
@@ -130,81 +246,295 @@ export default function Sankey({ spec, width = 1000, height = 460 }) {
     const placed = links.map((l) => ({ ...l }));
     outBy.forEach((idxs, sid) => {
       const node = nodeMap.get(sid);
-      idxs.sort((a, b) => nodeMap.get(links[a].target).y0 - nodeMap.get(links[b].target).y0);
-      let off = node.y0;
-      idxs.forEach((i) => { const t = placed[i].value * scale; placed[i].sy0 = off; placed[i].sy1 = off + t; off += t; });
+      if (!node) return;
+      idxs.sort((a, b) => (nodeMap.get(links[a].target)?.cross0 ?? 0) - (nodeMap.get(links[b].target)?.cross0 ?? 0));
+      let off = node.cross0;
+      idxs.forEach((i) => { const t = placed[i].value * scale; placed[i].sCross0 = off; placed[i].sCross1 = off + t; off += t; });
     });
     inBy.forEach((idxs, tid) => {
       const node = nodeMap.get(tid);
-      idxs.sort((a, b) => nodeMap.get(links[a].source).y0 - nodeMap.get(links[b].source).y0);
-      let off = node.y0;
-      idxs.forEach((i) => { const t = placed[i].value * scale; placed[i].ty0 = off; placed[i].ty1 = off + t; off += t; });
+      if (!node) return;
+      idxs.sort((a, b) => (nodeMap.get(links[a].source)?.cross0 ?? 0) - (nodeMap.get(links[b].source)?.cross0 ?? 0));
+      let off = node.cross0;
+      idxs.forEach((i) => { const t = placed[i].value * scale; placed[i].tCross0 = off; placed[i].tCross1 = off + t; off += t; });
     });
 
-    return { nodeList: [...nodeMap.values()], nodeMap, links: placed, total };
-  }, [spec, W, drawH, PAD_L, PAD_R]);
+    return {
+      nodeList: [...nodeMap.values()], nodeMap, links: placed, total, numCols, byCol,
+      headerPad,
+    };
+  }, [nodes, links, upright, W, drawH, columns]);
 
-  if (!layout) return <div className="rp-empty">No data</div>;
-  const { nodeList, nodeMap, links, total } = layout;
+  const graphIndex = useMemo(() => buildGraphIndex(links), [links]);
+  const trace = useMemo(
+    () => (traceKey != null ? traceFor(traceKey, links, graphIndex) : null),
+    [traceKey, links, graphIndex],
+  );
 
-  const ribbon = (l) => {
-    const s = nodeMap.get(l.source);
-    const t = nodeMap.get(l.target);
-    const sx = s.x1;
-    const tx = t.x0;
-    const cx = (sx + tx) / 2;
-    return `M${sx},${l.sy0} C${cx},${l.sy0} ${cx},${l.ty0} ${tx},${l.ty0}`
-      + ` L${tx},${l.ty1} C${cx},${l.ty1} ${cx},${l.sy1} ${sx},${l.sy1} Z`;
+  // ── Keyboard navigation: Tab focuses the plot and the first node; arrows
+  // move within/across columns (axes swap in the upright layout); Home/End
+  // jump to the first/last column; Escape clears the highlight. ──
+  const moveFocus = useCallback((col, i) => {
+    if (!layout) return;
+    const c = Math.max(0, Math.min(layout.numCols - 1, col));
+    const list = layout.byCol[c];
+    if (!list?.length) return;
+    const idx = Math.max(0, Math.min(list.length - 1, i));
+    const n = list[idx];
+    setFocusIdx({ col: c, i: idx });
+    setTraceKey(n.id);
+    const full = layout.nodeMap.get(n.id);
+    const share = ((full.value / layout.total) * 100).toFixed(1);
+    const next = links.filter((l) => l.source === n.id).map((l) => layout.nodeMap.get(l.target)?.label).filter(Boolean);
+    setAnnounce(
+      `${n.label}: ${fmt(full.value)}${unit ? ` ${unit}` : ''}, ${share}% of ${totalLabel}`
+      + (next.length ? `. Flows to ${next.join(', ')}.` : '.'),
+    );
+  }, [layout, links, fmt, unit, totalLabel]);
+
+  const onKeyDown = (e) => {
+    if (!layout) return;
+    const alongMain = upright ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight'];
+    const alongCross = upright ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown'];
+    const cur = focusIdx || { col: 0, i: 0 };
+    if (e.key === 'Escape') { e.preventDefault(); setTraceKey(null); return; }
+    if (e.key === 'Home') { e.preventDefault(); moveFocus(0, 0); return; }
+    if (e.key === 'End') { e.preventDefault(); moveFocus(layout.numCols - 1, 0); return; }
+    if (alongCross.includes(e.key)) {
+      e.preventDefault();
+      const dir = e.key === alongCross[1] ? 1 : -1;
+      moveFocus(cur.col, cur.i + dir);
+      return;
+    }
+    if (alongMain.includes(e.key)) {
+      e.preventDefault();
+      const dir = e.key === alongMain[1] ? 1 : -1;
+      const targetCol = cur.col + dir;
+      const curNode = layout.byCol[cur.col]?.[cur.i];
+      const curFull = curNode && layout.nodeMap.get(curNode.id);
+      const list = layout.byCol[targetCol];
+      if (!curFull || !list?.length) { moveFocus(targetCol, 0); return; }
+      // Nearest node by position, not just the same index.
+      let bestI = 0, bestD = Infinity;
+      list.forEach((n, i) => {
+        const full = layout.nodeMap.get(n.id);
+        const d = Math.abs((full.cross0 + full.cross1) / 2 - (curFull.cross0 + curFull.cross1) / 2);
+        if (d < bestD) { bestD = d; bestI = i; }
+      });
+      moveFocus(targetCol, bestI);
+    }
+  };
+  const onFocus = () => { if (!focusIdx && layout) moveFocus(0, 0); };
+  const onBlur = () => { setFocusIdx(null); setTraceKey(null); };
+
+  const pct = (v) => (layout ? `${((v / layout.total) * 100).toFixed(1)}%` : '0%');
+  const dimmed = (key) => trace != null && !(typeof key === 'number' ? trace.linkIdx.has(key) : trace.nodes.has(key));
+
+  const mainPoint = (main, cross) => (upright ? [cross, main] : [main, cross]);
+  const ribbonPath = (l) => {
+    const s = layout.nodeMap.get(l.source);
+    const t = layout.nodeMap.get(l.target);
+    if (!s || !t) return '';
+    const sMain = s.main1, tMain = t.main0;
+    const cMain = (sMain + tMain) / 2;
+    const P = (main, cross) => mainPoint(main, cross).join(',');
+    return `M${P(sMain, l.sCross0)} C${P(cMain, l.sCross0)} ${P(cMain, l.tCross0)} ${P(tMain, l.tCross0)}`
+      + ` L${P(tMain, l.tCross1)} C${P(cMain, l.tCross1)} ${P(cMain, l.sCross1)} ${P(sMain, l.sCross1)} Z`;
   };
 
-  const pct = (v) => `${((v / total) * 100).toFixed(1)}%`;
+  // ── Particles: a canvas overlay, not SVG — cheaper to animate many dots,
+  // and the spec's own performance note is to draw them on one canvas. Count
+  // per ribbon scales with its share of the total so thick flows read as
+  // busier without needing the full 34/ribbon ceiling the single-flow demo
+  // in the docs uses (this chart typically shows many ribbons at once). ──
+  const canvasRef = useRef(null);
+  const [inView, setInView] = useState(true);
+  useEffect(() => {
+    const el = wrapRef && svgRef.current?.closest?.('.sk-wrap');
+    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0.01 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [wrapRef]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !layout || !particlesOn || !inView) return undefined;
+    const ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx) return undefined; // jsdom in tests has no 2D canvas context
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr;
+    canvas.height = drawH * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const specs = layout.links.map((l, i) => {
+      const s = layout.nodeMap.get(l.source);
+      const t = layout.nodeMap.get(l.target);
+      if (!s || !t) return null;
+      const sMain = s.main1, tMain = t.main0, cMain = (sMain + tMain) / 2;
+      const sCrossMid = (l.sCross0 + l.sCross1) / 2;
+      const tCrossMid = (l.tCross0 + l.tCross1) / 2;
+      const share = l.value / layout.total;
+      const count = Math.max(1, Math.min(10, Math.round(2 + share * 40)));
+      const particlesFor = Array.from({ length: count }, (_, p) => ({ offset: p / count }));
+      return {
+        i, color: s.color, dim: dimmed(i),
+        p0: mainPoint(sMain, sCrossMid), p1: mainPoint(cMain, sCrossMid),
+        p2: mainPoint(cMain, tCrossMid), p3: mainPoint(tMain, tCrossMid),
+        particlesFor,
+      };
+    }).filter(Boolean);
+
+    let raf;
+    const SPEED = 0.00028; // loops/ms, tuned so a wide chart's ribbons read as a steady drift
+    const draw = (now) => {
+      ctx.clearRect(0, 0, W, drawH);
+      specs.forEach((s) => {
+        ctx.fillStyle = `color-mix(in srgb, ${s.color} 100%, transparent)`;
+        ctx.globalAlpha = s.dim ? 0.08 : 0.85;
+        s.particlesFor.forEach((p) => {
+          const tt = (now * SPEED + p.offset) % 1;
+          const x = cubicAt(tt, s.p0[0], s.p1[0], s.p2[0], s.p3[0]);
+          const y = cubicAt(tt, s.p0[1], s.p1[1], s.p2[1], s.p3[1]);
+          ctx.beginPath();
+          ctx.arc(x, y, 1.6, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      });
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout, particlesOn, inView, W, drawH, traceKey]);
+
+  if (!layout) return <div className="rp-empty">{emptyLabel}</div>;
+  const { nodeList, links: placedLinks, numCols, headerPad } = layout;
+
+  const showHeaders = !upright && columns?.length && W / numCols > 56;
 
   return (
-    <div className="sk-wrap" ref={wrapRef}>
-      <svg viewBox={`0 0 ${W} ${drawH}`} preserveAspectRatio="none" className="sk-svg" role="img" aria-label="Crime category to type to outcome flow">
-        {/* ribbons */}
-        {links.map((l, i) => {
-          const dim = hover != null && hover !== l.source && hover !== l.target && hover !== `l${i}`;
+    <div className={`sk-wrap${className ? ` ${className}` : ''}`}>
+      <div className="sk-plot" ref={wrapRef}>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${drawH}`}
+        preserveAspectRatio="none"
+        className="sk-svg"
+        role="group"
+        aria-label={label}
+        tabIndex={0}
+        onKeyDown={onKeyDown}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        aria-activedescendant={focusIdx ? `sk-node-${layout.byCol[focusIdx.col]?.[focusIdx.i]?.id}` : undefined}
+      >
+        {showHeaders && layout.byCol.map((colNodes, col) => {
+          if (!colNodes.length) return null;
+          const n0 = layout.nodeMap.get(colNodes[0].id);
+          const cx = (n0.main0 + n0.main1) / 2;
           return (
-            <path
-              key={i}
-              d={ribbon(l)}
-              className={`sk-link ${dim ? 'sk-dim' : ''}`}
-              style={{ fill: nodeMap.get(l.source).color }}
-              onMouseEnter={() => setHover(`l${i}`)}
-              onMouseLeave={() => setHover(null)}
-            >
-              <title>{`${nodeMap.get(l.source).label} → ${nodeMap.get(l.target).label}: ${l.value.toLocaleString()} (${pct(l.value)})`}</title>
-            </path>
+            <text key={`h${col}`} x={cx} y={PAD_T + headerPad - 8} textAnchor="middle" className="sk-header">
+              {columns[col]}
+            </text>
           );
         })}
-        {/* nodes + labels */}
+
+        {placedLinks.map((l, i) => (
+          <path
+            key={i}
+            d={ribbonPath(l)}
+            className={`sk-link ${dimmed(i) ? 'sk-dim' : ''}`}
+            style={{ fill: layout.nodeMap.get(l.source)?.color }}
+            onMouseEnter={() => setTraceKey(i)}
+            onMouseLeave={() => setTraceKey(null)}
+            onClick={() => setTraceKey((cur) => (cur === i ? null : i))}
+          >
+            <title>
+              {`${layout.nodeMap.get(l.source)?.label} → ${layout.nodeMap.get(l.target)?.label}: `
+                + `${fmt(l.value)}${unit ? ` ${unit}` : ''} (${pct(l.value)})`}
+            </title>
+          </path>
+        ))}
+
         {nodeList.map((n) => {
-          const fill = n.color;
-          const fillOpacity = n.alpha;
-          const labelLeft = n.layer === 0;
+          const isFirst = n.col === 0;
+          const isLast = n.col === numCols - 1;
+          const rectAttrs = upright
+            ? { x: n.cross0, y: n.main0, width: Math.max(2, n.cross1 - n.cross0), height: NW }
+            : { x: n.main0, y: n.cross0, width: NW, height: Math.max(2, n.cross1 - n.cross0) };
+          const labelPos = upright
+            ? { x: (n.cross0 + n.cross1) / 2, y: n.main1 + 12, anchor: 'middle' }
+            : isFirst
+            ? { x: n.main0 - LABEL_GAP, y: (n.cross0 + n.cross1) / 2, anchor: 'end' }
+            : { x: n.main1 + LABEL_GAP, y: (n.cross0 + n.cross1) / 2, anchor: 'start' };
           return (
             <g
               key={n.id}
-              onMouseEnter={() => setHover(n.id)}
-              onMouseLeave={() => setHover(null)}
+              id={`sk-node-${n.id}`}
+              className={focusIdx && layout.byCol[focusIdx.col]?.[focusIdx.i]?.id === n.id ? 'sk-focused' : ''}
+              onMouseEnter={() => setTraceKey(n.id)}
+              onMouseLeave={() => setTraceKey(null)}
+              onClick={() => setTraceKey((cur) => (cur === n.id ? null : n.id))}
             >
-              <rect x={n.x0} y={n.y0} width={NW} height={Math.max(2, n.y1 - n.y0)} rx="2" className="sk-node" style={{ fill, fillOpacity }}>
-                <title>{`${n.label}: ${n.value.toLocaleString()} (${pct(n.value)})`}</title>
-              </rect>
+              <rect
+                {...rectAttrs}
+                rx="2"
+                className={`sk-node ${dimmed(n.id) ? 'sk-dim' : ''}`}
+                style={{ fill: n.color, fillOpacity: n.alpha }}
+              />
               <text
-                x={labelLeft ? n.x0 - 8 : n.x1 + 8}
-                y={(n.y0 + n.y1) / 2}
-                textAnchor={labelLeft ? 'end' : 'start'}
-                dominantBaseline="middle"
-                className="sk-label"
+                x={labelPos.x}
+                y={labelPos.y}
+                textAnchor={labelPos.anchor}
+                dominantBaseline={upright ? 'hanging' : 'middle'}
+                className={`sk-label ${dimmed(n.id) ? 'sk-dim' : ''}`}
               >
                 {n.label}
+                {(isFirst || isLast || upright) && (
+                  <tspan className="sk-label-val" dx="4">
+                    {fmt(n.value)}{unit ? ` ${unit}` : ''}
+                  </tspan>
+                )}
               </text>
             </g>
           );
         })}
       </svg>
+
+      {!reduceMotion && (
+        <canvas ref={canvasRef} className="sk-particles" style={{ display: particlesOn ? 'block' : 'none' }} aria-hidden="true" />
+      )}
+      </div>
+
+      {particleToggle && !reduceMotion && (
+        <button type="button" className="sk-toggle" onClick={toggleParticles} aria-pressed={particlesOn}>
+          {particlesOn ? 'Flow: on' : 'Flow: off'}
+        </button>
+      )}
+
+      <div className="sr-only" aria-live="polite">{announce}</div>
+
+      {/* The real data, for assistive tech — ribbons, particles, and labels
+          are decorative past this point. */}
+      <table className="sr-only">
+        <caption>{label}</caption>
+        <thead><tr><th>From</th><th>To</th><th>Value</th><th>Share of source</th></tr></thead>
+        <tbody>
+          {links.map((l, i) => {
+            const s = layout.nodeMap.get(l.source);
+            const sTotal = links.filter((x) => x.source === l.source).reduce((sum, x) => sum + x.value, 0) || 1;
+            return (
+              <tr key={i}>
+                <td>{s?.label ?? l.source}</td>
+                <td>{layout.nodeMap.get(l.target)?.label ?? l.target}</td>
+                <td>{fmt(l.value)}{unit ? ` ${unit}` : ''}</td>
+                <td>{`${((l.value / sTotal) * 100).toFixed(1)}%`}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
