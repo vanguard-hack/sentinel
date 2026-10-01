@@ -89,6 +89,9 @@ function zcql() {
   return q;
 }
 
+// Escape single quotes for safe embedding in a ZCQL string literal.
+const escLiteral = (s) => String(s).replace(/'/g, "''");
+
 // Normalise executeQuery's response into a flat array of row objects.
 // The SDK returns either an array or `{ content: [...] }`; some responses put a
 // non-array under `content`, so guard against anything that isn't an array.
@@ -122,6 +125,42 @@ export const FILTER_OPS = [
   { value: 'starts', label: 'starts with' },
   { value: 'ends', label: 'ends with' },
 ];
+const CMP_OPS = new Set(['>', '>=', '<', '<=']);
+
+// Type-aware WHERE clause with an operator. ZCQL's LIKE is case-sensitive and
+// doesn't apply to numeric columns, so numeric columns use direct comparison
+// (the sampled value detects the type) while text columns OR together common
+// capitalisation variants for a case-insensitive feel.
+const NUM_RE = /^-?\d+(\.\d+)?$/;
+function buildWhere(column, search, sampleValue, op = 'contains') {
+  const q = (search || '').trim();
+  if (!q || !column || column === 'ALL') return '';
+
+  const sample = sampleValue == null ? '' : String(sampleValue);
+  const numericColumn = typeof sampleValue === 'number' || (sample !== '' && NUM_RE.test(sample));
+
+  if (numericColumn) {
+    // A non-numeric query can't match a numeric column → sentinel = no rows.
+    if (!NUM_RE.test(q)) return ` WHERE ${column} = -987654321`;
+    // LIKE-style ops on a number fall back to equality (LIKE is invalid there).
+    const numOp = CMP_OPS.has(op) || op === '=' || op === '!=' ? op : '=';
+    return ` WHERE ${column} ${numOp} ${q}`;
+  }
+
+  // Text column.
+  if (CMP_OPS.has(op)) return ` WHERE ${column} ${op} '${escLiteral(q)}'`;
+
+  const title = q.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+  const variants = [...new Set([q, q.toLowerCase(), q.toUpperCase(), title])];
+  if (op === '=') return ' WHERE ' + variants.map((v) => `${column} = '${escLiteral(v)}'`).join(' OR ');
+  if (op === '!=') return ' WHERE ' + variants.map((v) => `${column} != '${escLiteral(v)}'`).join(' AND ');
+
+  const pat = op === 'starts' ? (v) => `${escLiteral(v)}%`
+    : op === 'ends' ? (v) => `%${escLiteral(v)}`
+    : (v) => `%${escLiteral(v)}%`;
+  return ' WHERE ' + variants.map((v) => `${column} LIKE '${pat(v)}'`).join(' OR ');
+}
+
 // Run an arbitrary ZCQL query and return flattened row objects. Used by the
 // Reports page for GROUP BY / aggregate queries. `table` is the FROM table name
 // (needed to un-nest the table-keyed response rows).
@@ -153,6 +192,30 @@ export async function runQuery(sql, table) {
     throw e;
   }
 }
+
+// Fetch the column list for a table plus one sample row (used to infer the
+// column types when filtering). Returns { columns: [], sample: {} } if empty.
+export async function fetchColumns(table) {
+  const rows = await runQuery(`SELECT * FROM ${table} LIMIT 0, 1`, table);
+  return {
+    columns: rows.length ? Object.keys(rows[0]) : [],
+    sample: rows[0] || {},
+  };
+}
+
+// Fetch one page. Returns { rows, hasNext }. Asks for perPage+1 to detect a
+// following page without a COUNT query.
+export async function fetchPage({ table, page = 1, perPage = 50, column = 'ALL', search = '', op = 'contains', sample }) {
+  const offset = (page - 1) * perPage;
+  const where = buildWhere(column, search, sample?.[column], op);
+  const query = `SELECT * FROM ${table}${where} LIMIT ${offset}, ${perPage + 1}`;
+  const rows = await runQuery(query, table);
+  const hasNext = rows.length > perPage;
+  return { rows: hasNext ? rows.slice(0, perPage) : rows, hasNext };
+}
+
+// Fetch every row of a table (paginated at the ZCQL per-query cap). Used by
+// the Excel export; `cap` is a safety limit per table.
 
 /* ── The analytics read cache ────────────────────────────────────────────────
  *
@@ -351,4 +414,19 @@ export async function fetchAllRows(table, { cap = 10000 } = {}) {
     if (rows.length < page) break;
   }
   return out;
+}
+
+// Best-effort total row count (drives the "N records" label). Returns null on
+// failure so the UI can still paginate via hasNext.
+export async function fetchCount({ table, column = 'ALL', search = '', op = 'contains', sample }) {
+  try {
+    const where = buildWhere(column, search, sample?.[column], op);
+    const rows = await runQuery(`SELECT COUNT(ROWID) AS cnt FROM ${table}${where}`, table);
+    const r = rows[0] || {};
+    const val = r.cnt ?? r.CNT ?? r['COUNT(ROWID)'] ?? Object.values(r)[0];
+    const n = Number(val);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
 }
