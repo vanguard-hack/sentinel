@@ -7,6 +7,7 @@ import TopBar from '../components/TopBar';
 import DateRangeCalendar from '../components/DateRangeCalendar';
 import { ROLE_LABELS, ASSIGNABLE_ROLES } from '../utils/access';
 import { logAudit } from '../utils/audit';
+import { csvCell } from '../utils/csv';
 import { useTranslation } from 'react-i18next';
 
 // CSV file glyph — a document with a "CSV" label band, matching the familiar
@@ -342,7 +343,7 @@ function AuditTab() {
   const exportCsv = () => {
     // ﻿ BOM so Excel opens the file as UTF-8.
     const csv = '﻿' + exportRows()
-      .map((row) => row.map((c) => `"${c.replace(/"/g, '""')}"`).join(','))
+      .map((row) => row.map(csvCell).join(','))
       .join('\r\n');
     download(
       `sentinel-audit-${from}-to-${to}.csv`,

@@ -16,6 +16,7 @@ import EmptyState from '../components/ui/EmptyState';
 import Skeleton from '../components/ui/Skeleton';
 import { useTranslation } from 'react-i18next';
 import { useExport } from '../context/ExportContext';
+import { csvCell, neutralizeFormula } from '../utils/csv';
 
 const OP_PLACEHOLDER = {
   contains: 'contains…', '=': 'equals…', '!=': 'not equals…',
@@ -297,7 +298,10 @@ export default function CaseFiles() {
     if (v === null || v === undefined || v === '') return '—';
     return String(v);
   };
-  const rawFmt = (v) => (v === null || v === undefined ? '' : String(v));
+  // Neutralized against CSV/TSV formula injection — a free-text field (a
+  // name, a note) starting with =, +, -, or @ must not turn into a live
+  // formula the moment someone pastes this into Excel or Sheets.
+  const rawFmt = (v) => neutralizeFormula(v === null || v === undefined ? '' : v);
 
   // ── Sort ──
   const sortInfo = (c) => {
@@ -473,9 +477,8 @@ export default function CaseFiles() {
   };
   const exportChecked = () => {
     const rowsForIds = checkedRows();
-    const esc = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-    const lines = [displayColumns.map(esc).join(',')];
-    rowsForIds.forEach((r) => lines.push(displayColumns.map((c) => esc(r[c])).join(',')));
+    const lines = [displayColumns.map(csvCell).join(',')];
+    rowsForIds.forEach((r) => lines.push(displayColumns.map((c) => csvCell(r[c])).join(',')));
     const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

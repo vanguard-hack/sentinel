@@ -1,3 +1,5 @@
+import { csvCell } from './csv';
+
 // Records Digitisation data layer.
 //
 // Scans are sent as hex (the same transport the investigation OCR endpoint
@@ -232,15 +234,14 @@ export async function attachSource(id, file) {
 }
 
 export function recordsToCsv(records) {
-  const esc = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
   const head = ['Title', 'Document type', 'Crime No.', 'File', 'Uploaded by', 'Uploaded at', 'Summary', 'Extracted text'];
-  const lines = [head.map(esc).join(',')];
+  const lines = [head.map(csvCell).join(',')];
   records.forEach((r) => {
     lines.push([
       r.title, r.docType, r.crimeNo || '', r.filename, r.uploadedByName || '',
       r.createdAt ? new Date(r.createdAt).toISOString() : '',
       r.summary || '', (r.text || '').slice(0, 20000),
-    ].map(esc).join(','));
+    ].map(csvCell).join(','));
   });
   return lines.join('\n');
 }
