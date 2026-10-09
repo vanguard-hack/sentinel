@@ -46,6 +46,18 @@ export function optionsFrom(rows, get, order) {
     : list.sort((a, b) => b.count - a.count);
 }
 
+// Table columns as [key, label, get?, order?]: `get` reads the cell value(s)
+// a filter matches on (no `get` = unfilterable column), `order` pins option
+// order for bands. One list drives the fields, the predicate and the headers.
+export const columnValue = (cols) => {
+  const by = Object.fromEntries(cols.map(([k, , get]) => [k, get]));
+  return (row, key) => by[key](row);
+};
+export const columnFields = (cols, rows, labels = {}) => cols.filter((c) => c[2]).map(([key, label, get, order]) => ({
+  key, label,
+  options: optionsFrom(rows, get, order).map((o) => ({ ...o, label: labels[key]?.(o.value) ?? o.value })),
+}));
+
 // Rendering thousands of list items stalls the popover; search narrows.
 const MAX_SHOWN = 200;
 
@@ -181,6 +193,19 @@ export function FilterBar({ fields, filters, onChange }) {
         <button type="button" className="flt-clear" onClick={() => onChange([])}>Clear</button>
       )}
     </div>
+  );
+}
+
+// A header cell carrying its column's filter.
+export function FilterTh({ col, fields, filters, onChange, className }) {
+  const field = fields.find((f) => f.key === col[0]);
+  return (
+    <th className={className}>
+      <span className="flt-th">
+        {col[1]}
+        {field && <ColumnFilter field={field} filters={filters} onChange={onChange} />}
+      </span>
+    </th>
   );
 }
 

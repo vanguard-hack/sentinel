@@ -7660,14 +7660,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .cust-filters .cf-search { flex: 1 1 340px; max-width: none; }
 .cust-filters .cf-search-input { width: 100%; }
 
-/* One row, not two. A native <select> sizes to its longest option, so
-   "All facilities" grew to a jail name and pushed the release-window filter
-   onto a second line. Cap them and let them shrink; the chevron padding keeps
-   the truncated label clear of the arrow. Wraps again once there genuinely
-   isn't room. */
+/* Search, filter chips and count on one line; chips wrap among themselves. */
 @media (min-width: 900px) {
   .cust-filters { flex-wrap: nowrap; }
-  .cust-filters .cf-select { flex: 0 1 auto; min-width: 0; max-width: 165px; text-overflow: ellipsis; }
+  .cust-filters .flt-bar { flex: 0 1 auto; min-width: 0; }
   .cust-filters .cf-search { flex: 1 1 200px; }
   .cust-count { white-space: nowrap; }
 }
@@ -9634,7 +9630,8 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   color: var(--text-4); font-size: 11.5px;
 }
 .aa-integrity-hint { flex-basis: 100%; color: var(--text-4); }
-.aa-btn-icon { width: 32px; height: 32px; padding: 0; justify-content: center; }
+.aa-btn-icon { width: 28px; height: 28px; padding: 0; justify-content: center; background: transparent; border-color: transparent; color: var(--text-2); }
+.aa-btn-icon:hover { background: var(--hover-overlay); color: var(--text-0); }
 
 /* ── Assistant: grounding warning ──────────────────────────────────────────
    Between the answer and its source chips, so an officer meets the caveat

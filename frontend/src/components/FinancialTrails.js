@@ -8,7 +8,7 @@ import {
   scoreBreakdown, narrateFinancial, screenSanctions,
 } from '../utils/financial';
 import MoneyFlowMap from './MoneyFlowMap';
-import { FilterBar, ColumnFilter, applyFilters, optionsFrom } from './ui/Filters';
+import { FilterBar, FilterTh, applyFilters, columnValue, columnFields } from './ui/Filters';
 
 // Numeric columns filter by band — a list of 11,000 distinct amounts is no
 // filter at all.
@@ -36,29 +36,8 @@ const TXN_COLS = [
   ['reason', 'Why flagged', (t) => t.reasons],
   ['fir', 'FIR', (t) => t.crimeNo],
 ];
-const getter = (cols) => {
-  const by = Object.fromEntries(cols.map(([k, , get]) => [k, get]));
-  return (row, key) => by[key](row);
-};
-const alertValue = getter(ALERT_COLS);
-const txnValue = getter(TXN_COLS);
-const fieldsFor = (cols, rows, labels = {}) => cols.filter((c) => c[2]).map(([key, label, get, order]) => ({
-  key, label,
-  options: optionsFrom(rows, get, order).map((o) => ({ ...o, label: labels[key]?.(o.value) ?? o.value })),
-}));
-
-// Header cell carrying its column's filter.
-function FilterTh({ col, fields, filters, onChange }) {
-  const field = fields.find((f) => f.key === col[0]);
-  return (
-    <th>
-      <span className="aa-th">
-        {col[1]}
-        {field && <ColumnFilter field={field} filters={filters} onChange={onChange} />}
-      </span>
-    </th>
-  );
-}
+const alertValue = columnValue(ALERT_COLS);
+const txnValue = columnValue(TXN_COLS);
 
 const Tier = ({ t }) => <span className={`fc-tier fc-tier-${t.toLowerCase()}`}>{t}</span>;
 const ALERTS_PER_PAGE = 8;
@@ -289,12 +268,12 @@ export default function FinancialTrails() {
   // Per-column filter options, with counts, from the loaded data.
   const aFields = useMemo(() => {
     const names = new Map((alerts || []).map((a) => [a.person, `${a.name} · ${a.person}`]));
-    return fieldsFor(ALERT_COLS, alerts, {
+    return columnFields(ALERT_COLS, alerts, {
       entity: (p) => names.get(p) || p,
       typology: (k) => TYPOLOGIES[k]?.label || k,
     });
   }, [alerts]);
-  const tFields = useMemo(() => fieldsFor(TXN_COLS, flagged), [flagged]);
+  const tFields = useMemo(() => columnFields(TXN_COLS, flagged), [flagged]);
 
   const filteredAlerts = useMemo(() => applyFilters(alerts || [], aFilters, alertValue), [alerts, aFilters]);
   const filteredTxns = useMemo(() => applyFilters(flagged || [], tFilters, txnValue), [flagged, tFilters]);

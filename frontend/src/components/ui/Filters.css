@@ -83,6 +83,7 @@
 .flt-more { padding-bottom: 7px; }
 
 /* Column-header trigger */
+.flt-th { display: inline-flex; align-items: center; white-space: nowrap; }
 .flt-col {
   display: inline-flex; align-items: center; gap: 3px; height: 22px; min-width: 22px; padding: 0 4px;
   margin-left: 4px; vertical-align: middle; color: var(--text-4, var(--text-3));

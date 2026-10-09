@@ -474,8 +474,3 @@ export async function saveCustodyRecord(person) {
   return r && r.ok;
 }
 
-// Sections list joined for search/filter.
-export const allSections = (people) =>
-  [...new Set(people.flatMap((p) => p.sections.map((s) => s.code)))].sort();
-export const allFacilities = (people) =>
-  [...new Set(people.map((p) => p.facility).filter(Boolean))].sort();

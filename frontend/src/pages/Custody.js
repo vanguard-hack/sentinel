@@ -11,15 +11,37 @@ import HBarList from '../components/charts/BarRows';
 import { useAccess } from '../context/AccessContext';
 import {
   getRegistry, seedCustody, STATUS, STATUS_ORDER, fmtDate,
-  allSections, allFacilities,
 } from '../utils/custody';
+import { FilterBar, FilterTh, applyFilters, columnValue, columnFields } from '../components/ui/Filters';
 import { Database } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const PER_PAGE = 12;
-const RELEASE_WINDOWS = [
-  ['any', 'All release windows'], ['30', 'Releasing ≤ 30 days'],
-  ['90', 'Releasing ≤ 90 days'], ['365', 'Releasing ≤ 1 year'],
+// Numeric and date columns filter by band, measured from the registry's `now`.
+const DAY = 86400000;
+const band = (bands, cuts) => (n) => (n == null ? null : bands[cuts.findIndex((c) => n < c)]);
+const CASE_BANDS = ['1', '2', '3', '4+'];
+const CUSTODY_BANDS = ['Under 30 days', '30–180 days', '180 days – 1 year', 'Over 1 year'];
+const HEARING_BANDS = ['Past', 'Within 7 days', '8–30 days', '31–90 days', 'Later'];
+const RELEASE_BANDS = ['≤ 30 days', '31–90 days', '91 days – 1 year', 'Over 1 year'];
+const caseBand = band(CASE_BANDS, [2, 3, 4, Infinity]);
+const custodyBand = band(CUSTODY_BANDS, [30, 180, 365, Infinity]);
+const hearingBand = band(HEARING_BANDS, [0, 8, 31, 91, Infinity]);
+const releaseBand = band(RELEASE_BANDS, [31, 91, 366, Infinity]);
+
+// Table columns, then the release window — a filter with no column of its own.
+const registryCols = (now) => [
+  ['person', 'Person', (p) => p.personId],
+  ['status', 'Status', (p) => p.status, STATUS_ORDER],
+  ['facility', 'Facility', (p) => p.facility],
+  ['section', 'Sections', (p) => p.sections.map((x) => x.code)],
+  ['cases', 'Cases', (p) => caseBand(p.cases.length), CASE_BANDS],
+  ['custody', 'Custody', (p) => custodyBand(p.custodyDays), CUSTODY_BANDS],
+  ['hearing', 'Next hearing', (p) => hearingBand(p.nextHearing && Math.floor((p.nextHearing - now) / DAY)), HEARING_BANDS],
+  ['release', 'Release window', (p) => {
+    const rel = p.sentence?.expectedRelease;
+    return rel && rel >= now ? releaseBand(Math.floor((rel - now) / DAY)) : null;
+  }, RELEASE_BANDS],
 ];
 const ALERT_PER_PAGE = 6;
 
@@ -50,10 +72,7 @@ export default function Custody() {
   const [seeding, setSeeding] = useState(null); // { done, total } | null
 
   const [q, setQ] = useState('');
-  const [fStatus, setFStatus] = useState('All');
-  const [fFacility, setFFacility] = useState('All');
-  const [fSection, setFSection] = useState('All');
-  const [fRelease, setFRelease] = useState('any');
+  const [filters, setFilters] = useState([]);
   const [page, setPage] = useState(1);
   const [alertPage, setAlertPage] = useState(1);
   const [facLimit, setFacLimit] = useState(10);
@@ -79,29 +98,24 @@ export default function Custody() {
   }, [data, load]);
 
   const people = useMemo(() => data?.people || [], [data]);
-  const sections = useMemo(() => allSections(people), [people]);
-  const facilities = useMemo(() => allFacilities(people), [people]);
+  const cols = useMemo(() => registryCols(data?.now), [data]);
+  const fields = useMemo(() => {
+    const names = new Map(people.map((p) => [p.personId, `${p.name} · ${p.biometricId}`]));
+    return columnFields(cols, people, { person: (id) => names.get(id) || id });
+  }, [cols, people]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const relDays = fRelease === 'any' ? null : Number(fRelease);
-    return people.filter((p) => {
-      if (fStatus !== 'All' && p.status !== fStatus) return false;
-      if (fFacility !== 'All' && p.facility !== fFacility) return false;
-      if (fSection !== 'All' && !p.sections.some((s) => s.code === fSection)) return false;
-      if (relDays != null) {
-        const rel = p.sentence?.expectedRelease;
-        if (!rel || rel < data.now || rel > data.now + relDays * 86400000) return false;
-      }
+    return applyFilters(people, filters, columnValue(cols)).filter((p) => {
       if (needle) {
         const hay = `${p.name} ${p.aliases.join(' ')} ${p.biometricId} ${p.cases.map((c) => c.crimeNo).join(' ')} ${p.sections.map((s) => s.code).join(' ')}`.toLowerCase();
         if (!hay.includes(needle)) return false;
       }
       return true;
     });
-  }, [people, q, fStatus, fFacility, fSection, fRelease, data]);
+  }, [people, q, filters, cols]);
 
-  useEffect(() => { setPage(1); }, [q, fStatus, fFacility, fSection, fRelease]);
+  useEffect(() => { setPage(1); }, [q, filters]);
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const rows = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
@@ -158,21 +172,7 @@ export default function Custody() {
                 <Search size={15} className="cf-search-icon" />
                 <input className="cf-search-input" placeholder="Search name, alias, FIR, biometric ID, section…" value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
-              <select className="cf-select" value={fStatus} onChange={(e) => setFStatus(e.target.value)} title="Status">
-                <option value="All">All statuses</option>
-                {STATUS_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <select className="cf-select" value={fFacility} onChange={(e) => setFFacility(e.target.value)} title="Facility">
-                <option value="All">All facilities</option>
-                {facilities.map((f) => <option key={f} value={f}>{f}</option>)}
-              </select>
-              <select className="cf-select" value={fSection} onChange={(e) => setFSection(e.target.value)} title="Section">
-                <option value="All">All sections</option>
-                {sections.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <select className="cf-select" value={fRelease} onChange={(e) => setFRelease(e.target.value)} title="Release window">
-                {RELEASE_WINDOWS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
+              <FilterBar fields={fields} filters={filters} onChange={setFilters} />
               <span className="cust-count">{filtered.length.toLocaleString()} of {people.length.toLocaleString()}</span>
             </div>
 
@@ -180,8 +180,9 @@ export default function Custody() {
               <table className="fc-table cust-table">
                 <thead>
                   <tr>
-                    <th>Person</th><th>Status</th><th>Facility</th><th>Sections</th>
-                    <th>Cases</th><th>Custody</th><th>Next hearing</th>
+                    {cols.filter((c) => c[0] !== 'release').map((c) => (
+                      <FilterTh key={c[0]} col={c} fields={fields} filters={filters} onChange={setFilters} />
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
