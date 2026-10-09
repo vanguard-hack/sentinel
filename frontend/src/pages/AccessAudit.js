@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ShieldCheck, RefreshCw, Download, FileSpreadsheet, AlertTriangle, Check,
-  ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Search, X, Info, Copy,
+  ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Search, X, Info,
+  UserRound, BadgeCheck, LayoutGrid, Activity, MapPin, ShieldAlert, Copy,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import DateRangePicker from '../components/ui/DateRangePicker';
+import { FilterBar, ColumnFilter, applyFilters } from '../components/ui/Filters';
 import { ROLE_LABELS, ASSIGNABLE_ROLES } from '../utils/access';
 import { logAudit } from '../utils/audit';
 import { csvCell } from '../utils/csv';
@@ -268,6 +270,9 @@ function Stat({ label, now, before, bad }) {
   );
 }
 
+// The value a filter compares against, per field.
+const auditValue = (e, key) => (key === 'vpn' ? (e.vpn ? 'Yes' : 'No') : e[key] == null ? '' : String(e[key]));
+
 const statsOf = (list) => ({
   events: list.length,
   officers: new Set(list.map((e) => e.email).filter(Boolean)).size,
@@ -289,10 +294,7 @@ function AuditTab() {
   const [verdict, setVerdict] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [fUser, setFUser] = useState('All');
-  const [fRole, setFRole] = useState('All');
-  const [fFeature, setFFeature] = useState('All');
-  const [fAction, setFAction] = useState('All');
+  const [filters, setFilters] = useState([]); // [{ field, op, values }] — shared by chips and column headers
   const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
@@ -317,28 +319,42 @@ function AuditTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  const options = useMemo(() => {
-    const uniq = (k) => [...new Set((events || []).map((e) => e[k]).filter(Boolean))].sort();
-    return { users: uniq('email'), roles: uniq('role'), features: uniq('feature'), actions: uniq('action') };
+  // Filterable columns. Options (with counts) come from the loaded range, so a
+  // value only appears if it actually occurs.
+  const fields = useMemo(() => {
+    const opts = (key, label) => {
+      const counts = new Map();
+      for (const e of events || []) {
+        const v = auditValue(e, key);
+        if (v) counts.set(v, (counts.get(v) || 0) + 1);
+      }
+      return [...counts].sort((a, b) => b[1] - a[1])
+        .map(([value, count]) => ({ value, count, label: label ? label(value) : value }));
+    };
+    return [
+      { key: 'email', label: 'Officer', icon: UserRound, options: opts('email') },
+      { key: 'role', label: 'Role', icon: BadgeCheck, options: opts('role', (r) => (r === 'admin' ? 'Admin' : ROLE_LABELS[r] || r)) },
+      { key: 'feature', label: 'Feature', icon: LayoutGrid, options: opts('feature') },
+      { key: 'action', label: 'Action', icon: Activity, options: opts('action') },
+      { key: 'location', label: 'Location', icon: MapPin, options: opts('location') },
+      { key: 'vpn', label: 'VPN', icon: ShieldAlert, options: opts('vpn') },
+    ];
   }, [events]);
+  const fieldOf = (key) => fields.find((f) => f.key === key);
 
   // The same filters apply to the comparison period, so the deltas compare
   // like with like.
-  const matches = useCallback((e) => {
+  const narrow = useCallback((list) => {
     const q = query.trim().toLowerCase();
-    return (fUser === 'All' || e.email === fUser) &&
-      (fRole === 'All' || e.role === fRole) &&
-      (fFeature === 'All' || e.feature === fFeature) &&
-      (fAction === 'All' || e.action === fAction) &&
-      (!q || [e.name, e.email, e.ip, e.location, e.feature, e.action, e.detail, e.path]
+    return applyFilters(list, filters, auditValue).filter((e) => !q
+      || [e.name, e.email, e.ip, e.location, e.feature, e.action, e.detail, e.path]
         .some((v) => v && String(v).toLowerCase().includes(q)));
-  }, [fUser, fRole, fFeature, fAction, query]);
+  }, [filters, query]);
 
-  const shown = useMemo(() => (events || []).filter(matches), [events, matches]);
+  const shown = useMemo(() => narrow(events || []), [events, narrow]);
   const stats = useMemo(() => statsOf(shown), [shown]);
-  const cmpStats = useMemo(() => (cmpEvents ? statsOf(cmpEvents.filter(matches)) : null), [cmpEvents, matches]);
-  const filtered = fUser !== 'All' || fRole !== 'All' || fFeature !== 'All' || fAction !== 'All' || query;
-  const clearFilters = () => { setFUser('All'); setFRole('All'); setFFeature('All'); setFAction('All'); setQuery(''); };
+  const cmpStats = useMemo(() => (cmpEvents ? statsOf(narrow(cmpEvents)) : null), [cmpEvents, narrow]);
+  const filtered = filters.some((f) => f.values.length) || query;
   const partial = covered && (covered.from !== from || covered.to !== to);
 
   // Reset to the first page whenever the result set changes.
@@ -404,28 +420,18 @@ function AuditTab() {
             </button>
           )}
         </div>
-        <select className="cf-select aa-select" value={fUser} onChange={(e) => setFUser(e.target.value)} title="Filter by email">
-          <option value="All">All emails</option>
-          {options.users.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <select className="cf-select aa-select" value={fRole} onChange={(e) => setFRole(e.target.value)} title="Filter by role">
-          <option value="All">All roles</option>
-          {options.roles.map((o) => <option key={o} value={o}>{o === 'admin' ? 'Admin' : ROLE_LABELS[o] || o}</option>)}
-        </select>
-        <select className="cf-select aa-select" value={fFeature} onChange={(e) => setFFeature(e.target.value)} title="Filter by feature">
-          <option value="All">All features</option>
-          {options.features.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <select className="cf-select aa-select" value={fAction} onChange={(e) => setFAction(e.target.value)} title="Filter by action">
-          <option value="All">All actions</option>
-          {options.actions.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-        {filtered && <button type="button" className="aa-btn" onClick={clearFilters}>Clear filters</button>}
+        <span className="aa-spacer" />
         <button type="button" className="aa-btn" onClick={load} disabled={loading}>
           <RefreshCw size={14} className={loading ? 'aa-spin' : ''} /> Refresh
         </button>
         <ExportMenu onCsv={exportCsv} onXlsx={exportXlsx} disabled={!shown.length} />
       </div>
+
+      {events && (
+        <div className="aa-filterbar">
+          <FilterBar fields={fields} filters={filters} onChange={setFilters} />
+        </div>
+      )}
 
       {error && <div className="aa-error"><AlertTriangle size={16} /> {error}</div>}
       {!events && !error && <div className="aa-loading">Loading audit trail…</div>}
@@ -457,8 +463,16 @@ function AuditTab() {
             <table className="aa-table aa-audit">
               <thead>
                 <tr>
-                  <th>Time (IST)</th><th>Officer</th><th>Role</th>
-                  <th>Feature</th><th>Action</th><th>IP</th><th>Location</th><th>VPN</th>
+                  <th>Time (IST)</th>
+                  {[['email', 'Officer'], ['role', 'Role'], ['feature', 'Feature'], ['action', 'Action'], ['ip', 'IP'], ['location', 'Location'], ['vpn', 'VPN']]
+                    .map(([key, label]) => (
+                      <th key={key}>
+                        <span className="aa-th">
+                          {label}
+                          {fieldOf(key) && <ColumnFilter field={fieldOf(key)} filters={filters} onChange={setFilters} />}
+                        </span>
+                      </th>
+                    ))}
                 </tr>
               </thead>
               <tbody>
@@ -523,7 +537,9 @@ function AuditTab() {
             </table>
             {!shown.length && (
               <div className="aa-empty">
-                {filtered ? 'No events match these filters.' : 'No events recorded in this range.'}
+                {filtered
+                  ? <>No events match these filters. <button type="button" className="aa-link" onClick={() => { setFilters([]); setQuery(''); }}>Clear filters</button></>
+                  : 'No events recorded in this range.'}
               </div>
             )}
           </div>

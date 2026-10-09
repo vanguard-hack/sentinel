@@ -1,0 +1,94 @@
+/* frontend/src/components/ui/Filters.css — tokens from index.css */
+.flt-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+
+/* Chip: segmented [field | op | values | ×], one hairline box */
+.flt-chip {
+  display: inline-flex; align-items: stretch; height: 30px; overflow: hidden;
+  background: var(--bg-1); border: 1px solid var(--border-bright); border-radius: var(--r-ctl, 8px);
+  font-size: 12.5px;
+}
+.flt-seg {
+  display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; margin: 0;
+  font: inherit; font-size: 12.5px; color: var(--text-1); background: none; border: 0; border-radius: 0;
+  white-space: nowrap;
+}
+.flt-seg + .flt-seg { border-left: 1px solid var(--border); }
+.flt-field { color: var(--text-2); }
+.flt-field svg { color: var(--text-3); }
+.flt-op { color: var(--text-3); cursor: pointer; }
+.flt-val { color: var(--text-0); font-weight: 500; cursor: pointer; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.flt-val svg { flex: none; color: var(--text-3); }
+.flt-x { padding: 0 7px; color: var(--text-3); cursor: pointer; }
+.flt-op[data-hovered], .flt-val[data-hovered], .flt-x:hover { background: var(--hover-overlay); color: var(--text-0); }
+.flt-seg[data-focus-visible], .flt-x:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary, var(--blue-500)) 55%, transparent); outline-offset: -2px; }
+
+.flt-add {
+  display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px;
+  font: inherit; font-size: 12.5px; font-weight: 500; color: var(--text-1);
+  background: none; border: 1px dashed var(--border-bright); border-radius: var(--r-ctl, 8px); cursor: pointer;
+}
+.flt-add[data-hovered] { background: var(--hover-overlay); color: var(--text-0); }
+.flt-add[data-focus-visible] { outline: 2px solid color-mix(in srgb, var(--primary, var(--blue-500)) 55%, transparent); outline-offset: 2px; }
+.flt-clear {
+  height: 30px; padding: 0 8px; font: inherit; font-size: 12.5px; color: var(--text-3);
+  background: none; border: 0; border-radius: var(--r-ctl, 8px); cursor: pointer;
+}
+.flt-clear:hover { color: var(--text-0); background: var(--hover-overlay); }
+
+/* Popovers */
+.flt-pop {
+  min-width: 220px; max-width: min(320px, calc(100vw - 32px));
+  background: var(--bg-1); border: 1px solid var(--border-bright); border-radius: var(--r-card, 12px);
+  box-shadow: var(--shadow-pop); overflow: hidden;
+}
+.flt-pop[data-entering] { animation: flt-in .12s ease-out; }
+@keyframes flt-in { from { opacity: 0; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .flt-pop[data-entering] { animation: none; } }
+.flt-dialog { outline: none; }
+.flt-menu { padding: 4px; outline: none; }
+.flt-menu-item {
+  display: flex; align-items: center; gap: 8px; padding: 7px 9px; font-size: 13px; color: var(--text-1);
+  border-radius: 6px; cursor: pointer; outline: none;
+}
+.flt-menu-item svg { color: var(--text-3); }
+.flt-menu-item[data-focused] { background: var(--hover-overlay); color: var(--text-0); }
+
+.flt-values { display: flex; flex-direction: column; }
+.flt-search {
+  display: flex; align-items: center; gap: 7px; padding: 0 10px; height: 36px;
+  border-bottom: 1px solid var(--border); color: var(--text-3);
+}
+.flt-search input { flex: 1; min-width: 0; height: 100%; font: inherit; font-size: 13px; color: var(--text-0); background: none; border: 0; outline: none; }
+.flt-list { max-height: 260px; overflow-y: auto; padding: 4px; outline: none; }
+.flt-item {
+  display: flex; align-items: center; gap: 9px; padding: 6px 8px; font-size: 13px; color: var(--text-1);
+  border-radius: 6px; cursor: pointer; outline: none;
+}
+.flt-item[data-focused] { background: var(--hover-overlay); }
+.flt-item[data-focus-visible] { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary, var(--blue-500)) 55%, transparent); }
+.flt-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flt-check {
+  flex: none; display: grid; place-items: center; width: 15px; height: 15px; color: #fff;
+  border: 1px solid var(--border-bright); border-radius: 4px; background: var(--bg-1);
+}
+.flt-check.on { background: var(--primary, var(--blue-500)); border-color: var(--primary, var(--blue-500)); }
+.flt-count { flex: none; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.flt-empty { padding: 14px 8px; font-size: 12.5px; color: var(--text-3); text-align: center; }
+.flt-reset {
+  margin: 0; padding: 8px 12px; font: inherit; font-size: 12px; text-align: left; color: var(--text-2);
+  background: none; border: 0; border-top: 1px solid var(--border); cursor: pointer;
+}
+.flt-reset:hover { color: var(--text-0); background: var(--hover-overlay); }
+.flt-note { padding: 7px 10px 0; font-size: 11.5px; color: var(--text-3); }
+.flt-more { padding-bottom: 7px; }
+
+/* Column-header trigger */
+.flt-col {
+  display: inline-flex; align-items: center; gap: 3px; height: 22px; min-width: 22px; padding: 0 4px;
+  margin-left: 4px; vertical-align: middle; color: var(--text-4, var(--text-3));
+  background: none; border: 0; border-radius: 6px; cursor: pointer;
+}
+.flt-col[data-hovered] { color: var(--text-0); background: var(--hover-overlay); }
+.flt-col.on { color: var(--primary, var(--blue-500)); background: color-mix(in srgb, var(--primary, var(--blue-500)) 12%, transparent); }
+.flt-col[data-focus-visible] { outline: 2px solid color-mix(in srgb, var(--primary, var(--blue-500)) 55%, transparent); }
+.flt-col-n { font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; }

@@ -8,6 +8,57 @@ import {
   scoreBreakdown, narrateFinancial, screenSanctions,
 } from '../utils/financial';
 import MoneyFlowMap from './MoneyFlowMap';
+import { FilterBar, ColumnFilter, applyFilters, optionsFrom } from './ui/Filters';
+
+// Numeric columns filter by band — a list of 11,000 distinct amounts is no
+// filter at all.
+const AMOUNT_BANDS = ['Under ₹1 L', '₹1 L – ₹10 L', '₹10 L – ₹1 Cr', '₹1 Cr and above'];
+const amountBand = (n) => AMOUNT_BANDS[n < 1e5 ? 0 : n < 1e6 ? 1 : n < 1e7 ? 2 : 3];
+const SCORE_BANDS = ['80–100', '60–79', '35–59', '0–34'];
+const scoreBand = (s) => SCORE_BANDS[s >= 80 ? 0 : s >= 60 ? 1 : s >= 35 ? 2 : 3];
+
+// Column → cell value(s) the header filters match on. Assessment is free
+// text and has no filter.
+const ALERT_COLS = [
+  ['entity', 'Entity', (a) => a.person],
+  ['risk', 'Risk', (a) => a.tier, ['High', 'Medium', 'Low']],
+  ['score', 'Score', (a) => scoreBand(a.score), SCORE_BANDS],
+  ['typology', 'Typologies', (a) => a.typologies],
+  ['value', 'Flagged value', (a) => amountBand(a.value), AMOUNT_BANDS],
+  ['assessment', 'Assessment'],
+  ['firs', 'FIRs', (a) => a.firs],
+];
+const TXN_COLS = [
+  ['from', 'From', (t) => t.fromLabel],
+  ['to', 'To', (t) => t.toLabel],
+  ['amount', 'Amount', (t) => amountBand(t.amount), AMOUNT_BANDS],
+  ['channel', 'Channel', (t) => t.channel],
+  ['reason', 'Why flagged', (t) => t.reasons],
+  ['fir', 'FIR', (t) => t.crimeNo],
+];
+const getter = (cols) => {
+  const by = Object.fromEntries(cols.map(([k, , get]) => [k, get]));
+  return (row, key) => by[key](row);
+};
+const alertValue = getter(ALERT_COLS);
+const txnValue = getter(TXN_COLS);
+const fieldsFor = (cols, rows, labels = {}) => cols.filter((c) => c[2]).map(([key, label, get, order]) => ({
+  key, label,
+  options: optionsFrom(rows, get, order).map((o) => ({ ...o, label: labels[key]?.(o.value) ?? o.value })),
+}));
+
+// Header cell carrying its column's filter.
+function FilterTh({ col, fields, filters, onChange }) {
+  const field = fields.find((f) => f.key === col[0]);
+  return (
+    <th>
+      <span className="aa-th">
+        {col[1]}
+        {field && <ColumnFilter field={field} filters={filters} onChange={onChange} />}
+      </span>
+    </th>
+  );
+}
 
 const Tier = ({ t }) => <span className={`fc-tier fc-tier-${t.toLowerCase()}`}>{t}</span>;
 const ALERTS_PER_PAGE = 8;
@@ -156,9 +207,7 @@ export default function FinancialTrails() {
   const [error, setError] = useState(null);
 
   // Alert filters + paging
-  const [aEntity, setAEntity] = useState('');
-  const [aTier, setATier] = useState('');
-  const [aTypo, setATypo] = useState('');
+  const [aFilters, setAFilters] = useState([]);
   const [aPage, setAPage] = useState(1);
 
   // Sanctions/PEP screening — an explicit per-page action, not run on
@@ -168,9 +217,7 @@ export default function FinancialTrails() {
   const [screen, setScreen] = useState({ status: 'idle', results: {} });
 
   // Transaction filters + paging
-  const [tParty, setTParty] = useState('');
-  const [tChannel, setTChannel] = useState('');
-  const [tReason, setTReason] = useState('');
+  const [tFilters, setTFilters] = useState([]);
   const [tPage, setTPage] = useState(1);
 
   /* Mounting reads the cached model; only the Rebuild button pays for it
@@ -239,43 +286,22 @@ export default function FinancialTrails() {
       .sort((a, b) => b.accounts - a.accounts);
   }, [branchInfo, moneyMap]);
 
-  // Distinct option lists for the filter dropdowns.
-  const channelOpts = useMemo(
-    () => (flagged ? [...new Set(flagged.map((t) => t.channel))].sort() : []),
-    [flagged]
-  );
-  const reasonOpts = useMemo(
-    () => (flagged ? [...new Set(flagged.flatMap((t) => t.reasons))].sort() : []),
-    [flagged]
-  );
-  const typoOpts = useMemo(
-    () => (alerts ? typologyCounts.map((t) => ({ key: t.key, label: t.label })) : []),
-    [alerts, typologyCounts]
-  );
+  // Per-column filter options, with counts, from the loaded data.
+  const aFields = useMemo(() => {
+    const names = new Map((alerts || []).map((a) => [a.person, `${a.name} · ${a.person}`]));
+    return fieldsFor(ALERT_COLS, alerts, {
+      entity: (p) => names.get(p) || p,
+      typology: (k) => TYPOLOGIES[k]?.label || k,
+    });
+  }, [alerts]);
+  const tFields = useMemo(() => fieldsFor(TXN_COLS, flagged), [flagged]);
 
-  const filteredAlerts = useMemo(() => {
-    if (!alerts) return [];
-    const q = aEntity.trim().toLowerCase();
-    return alerts.filter((a) =>
-      (!q || a.name.toLowerCase().includes(q) || a.person.toLowerCase().includes(q)) &&
-      (!aTier || a.tier === aTier) &&
-      (!aTypo || a.typologies.includes(aTypo))
-    );
-  }, [alerts, aEntity, aTier, aTypo]);
-
-  const filteredTxns = useMemo(() => {
-    if (!flagged) return [];
-    const q = tParty.trim().toLowerCase();
-    return flagged.filter((t) =>
-      (!q || t.fromLabel.toLowerCase().includes(q) || t.toLabel.toLowerCase().includes(q)) &&
-      (!tChannel || t.channel === tChannel) &&
-      (!tReason || t.reasons.includes(tReason))
-    );
-  }, [flagged, tParty, tChannel, tReason]);
+  const filteredAlerts = useMemo(() => applyFilters(alerts || [], aFilters, alertValue), [alerts, aFilters]);
+  const filteredTxns = useMemo(() => applyFilters(flagged || [], tFilters, txnValue), [flagged, tFilters]);
 
   // Reset to page 1 when filters change.
-  useEffect(() => { setAPage(1); }, [aEntity, aTier, aTypo]);
-  useEffect(() => { setTPage(1); }, [tParty, tChannel, tReason]);
+  useEffect(() => { setAPage(1); }, [aFilters]);
+  useEffect(() => { setTPage(1); }, [tFilters]);
 
   const aPages = Math.max(1, Math.ceil(filteredAlerts.length / ALERTS_PER_PAGE));
   const tPages = Math.max(1, Math.ceil(filteredTxns.length / TXNS_PER_PAGE));
@@ -513,22 +539,7 @@ export default function FinancialTrails() {
         </div>
         <div className="rp-card-body">
           <div className="ft-filters">
-            <input
-              className="cf-search-input ft-filter-text"
-              placeholder="Filter entity…"
-              value={aEntity}
-              onChange={(e) => setAEntity(e.target.value)}
-            />
-            <select className="cf-select" value={aTier} onChange={(e) => setATier(e.target.value)}>
-              <option value="">All risk tiers</option>
-              <option value="High">High</option>
-              <option value="Medium">Medium</option>
-              <option value="Low">Low</option>
-            </select>
-            <select className="cf-select" value={aTypo} onChange={(e) => setATypo(e.target.value)}>
-              <option value="">All typologies</option>
-              {typoOpts.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-            </select>
+            <FilterBar fields={aFields} filters={aFilters} onChange={setAFilters} />
             <span className="ft-count">{filteredAlerts.length} of {alerts.length}</span>
             <button
               className="ft-ai-btn ft-screen-btn"
@@ -544,8 +555,7 @@ export default function FinancialTrails() {
             <table className="fc-table ft-alert-table">
               <thead>
                 <tr>
-                  <th>Entity</th><th>Risk</th><th>Score</th>
-                  <th>Typologies</th><th>Flagged value</th><th>Assessment</th><th>FIRs</th>
+                  {ALERT_COLS.map((c) => <FilterTh key={c[0]} col={c} fields={aFields} filters={aFilters} onChange={setAFilters} />)}
                 </tr>
               </thead>
               <tbody>
@@ -585,27 +595,14 @@ export default function FinancialTrails() {
         </div>
         <div className="rp-card-body">
           <div className="ft-filters">
-            <input
-              className="cf-search-input ft-filter-text"
-              placeholder="Filter from / to…"
-              value={tParty}
-              onChange={(e) => setTParty(e.target.value)}
-            />
-            <select className="cf-select" value={tChannel} onChange={(e) => setTChannel(e.target.value)}>
-              <option value="">All channels</option>
-              {channelOpts.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <select className="cf-select" value={tReason} onChange={(e) => setTReason(e.target.value)}>
-              <option value="">All reasons</option>
-              {reasonOpts.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
+            <FilterBar fields={tFields} filters={tFilters} onChange={setTFilters} />
             <span className="ft-count">{filteredTxns.length} of {flagged.length}</span>
           </div>
           <div className="cf-scroll">
             <table className="fc-table">
               <thead>
                 <tr>
-                  <th>From</th><th>To</th><th>Amount</th><th>Channel</th><th>Why flagged</th><th>FIR</th>
+                  {TXN_COLS.map((c) => <FilterTh key={c[0]} col={c} fields={tFields} filters={tFilters} onChange={setTFilters} />)}
                 </tr>
               </thead>
               <tbody>
