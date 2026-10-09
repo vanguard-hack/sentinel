@@ -119,7 +119,6 @@ export default function ReportStudio() {
                   <span className="rb-chip dim">{rt.law}</span>
                 </span>
                 <span className="rb-type-blurb">{rt.blurb}</span>
-                <span className="rb-type-by">{t('reportStudio.preparedBy')}: {rt.preparedBy}</span>
               </button>
             );
           })}
