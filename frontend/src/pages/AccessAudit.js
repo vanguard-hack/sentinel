@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ShieldCheck, RefreshCw, Download, FileSpreadsheet, AlertTriangle, Check,
-  Calendar, ChevronDown, ChevronLeft, ChevronRight, HelpCircle,
+  ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Search, X, Info,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
-import DateRangeCalendar from '../components/DateRangeCalendar';
+import DateRangePicker from '../components/ui/DateRangePicker';
 import { ROLE_LABELS, ASSIGNABLE_ROLES } from '../utils/access';
 import { logAudit } from '../utils/audit';
 import { csvCell } from '../utils/csv';
@@ -32,38 +32,6 @@ function useClickAway(ref, onAway) {
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [ref, onAway]);
-}
-
-// Single calendar-icon button → a month-grid range picker (click start, then
-// end; the span highlights). No separate From/To fields.
-function DateRangeButton({ from, to, onApply }) {
-  const [open, setOpen] = useState(false);
-  const [f, setF] = useState(from);
-  const [t, setT] = useState(to);
-  const ref = useRef(null);
-  useClickAway(ref, () => setOpen(false));
-  const openPop = () => { setF(from); setT(to); setOpen(true); };
-  const apply = () => { if (f) onApply(f, t || f); setOpen(false); };
-  return (
-    <div className="aa-daterange" ref={ref}>
-      <button
-        type="button" className="aa-btn aa-cal-btn aa-cal-icon"
-        onClick={() => (open ? setOpen(false) : openPop())}
-        title={`Date range: ${from} → ${to}`} aria-label="Select date range"
-      >
-        <Calendar size={16} />
-      </button>
-      {open && (
-        <div className="aa-daterange-pop" role="dialog" aria-label="Select date range">
-          <DateRangeCalendar from={f} to={t} onSelect={(nf, nt) => { setF(nf); setT(nt); }} />
-          <div className="aa-daterange-actions">
-            <button type="button" className="aa-btn" onClick={() => { setF(''); setT(''); }}>Clear</button>
-            <button type="button" className="aa-btn primary" onClick={apply} disabled={!f}>Apply</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 // Single Export button → dropdown to pick CSV or XLSX.
@@ -277,9 +245,43 @@ function IntegrityBanner({ verdict }) {
   );
 }
 
+// One headline figure with its change against the comparison period.
+function Stat({ label, now, before, bad }) {
+  const delta = before == null ? null : now - before;
+  const pct = before ? Math.round((delta / before) * 100) : null;
+  // More denials or anonymised hits is the bad direction; for volume, neither is.
+  const tone = delta == null || delta === 0 || bad == null ? '' : (delta > 0) === bad ? 'bad' : 'good';
+  return (
+    <div className="aa-stat">
+      <span className="aa-stat-label">{label}</span>
+      <span className="aa-stat-value">{now.toLocaleString('en-IN')}</span>
+      {delta != null && (
+        <span className={`aa-stat-delta ${tone}`}>
+          {delta > 0 ? '+' : ''}{delta.toLocaleString('en-IN')}
+          {pct != null && ` (${delta > 0 ? '+' : ''}${pct}%)`} vs. {before.toLocaleString('en-IN')}
+        </span>
+      )}
+    </div>
+  );
+}
+
+const statsOf = (list) => ({
+  events: list.length,
+  officers: new Set(list.map((e) => e.email).filter(Boolean)).size,
+  denied: list.filter((e) => e.action === 'denied').length,
+  vpn: list.filter((e) => e.vpn).length,
+});
+
 function AuditTab() {
   const [from, setFrom] = useState(daysAgo(6));
   const [to, setTo] = useState(daysAgo(0));
+  const [cmp, setCmp] = useState(null); // { start, end } or null
+  const [cmpMode, setCmpMode] = useState('off');
+  const [cmpEvents, setCmpEvents] = useState(null);
+  const [covered, setCovered] = useState(null);
+  const [capped, setCapped] = useState(false);
+  const [query, setQuery] = useState('');
+  const [openRow, setOpenRow] = useState(null);
   const [events, setEvents] = useState(null);
   const [verdict, setVerdict] = useState(null);
   const [error, setError] = useState(null);
@@ -294,15 +296,21 @@ function AuditTab() {
     setLoading(true);
     setError(null);
     try {
-      const d = await post('/server/rag/access/records', { from, to });
+      const [d, c] = await Promise.all([
+        post('/server/rag/access/records', { from, to }),
+        cmp ? post('/server/rag/access/records', { from: cmp.start, to: cmp.end }) : null,
+      ]);
       setEvents(d.events || []);
       setVerdict(d.integrity || null);
+      setCovered(d.covered || null);
+      setCapped(!!d.capped || !!c?.capped);
+      setCmpEvents(c ? c.events || [] : null);
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [from, to]);
+  }, [from, to, cmp]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -311,19 +319,27 @@ function AuditTab() {
     return { users: uniq('email'), roles: uniq('role'), features: uniq('feature'), actions: uniq('action') };
   }, [events]);
 
-  const shown = useMemo(
-    () => (events || []).filter(
-      (e) =>
-        (fUser === 'All' || e.email === fUser) &&
-        (fRole === 'All' || e.role === fRole) &&
-        (fFeature === 'All' || e.feature === fFeature) &&
-        (fAction === 'All' || e.action === fAction)
-    ),
-    [events, fUser, fRole, fFeature, fAction]
-  );
+  // The same filters apply to the comparison period, so the deltas compare
+  // like with like.
+  const matches = useCallback((e) => {
+    const q = query.trim().toLowerCase();
+    return (fUser === 'All' || e.email === fUser) &&
+      (fRole === 'All' || e.role === fRole) &&
+      (fFeature === 'All' || e.feature === fFeature) &&
+      (fAction === 'All' || e.action === fAction) &&
+      (!q || [e.name, e.email, e.ip, e.location, e.feature, e.action, e.detail, e.path]
+        .some((v) => v && String(v).toLowerCase().includes(q)));
+  }, [fUser, fRole, fFeature, fAction, query]);
+
+  const shown = useMemo(() => (events || []).filter(matches), [events, matches]);
+  const stats = useMemo(() => statsOf(shown), [shown]);
+  const cmpStats = useMemo(() => (cmpEvents ? statsOf(cmpEvents.filter(matches)) : null), [cmpEvents, matches]);
+  const filtered = fUser !== 'All' || fRole !== 'All' || fFeature !== 'All' || fAction !== 'All' || query;
+  const clearFilters = () => { setFUser('All'); setFRole('All'); setFFeature('All'); setFAction('All'); setQuery(''); };
+  const partial = covered && (covered.from !== from || covered.to !== to);
 
   // Reset to the first page whenever the result set changes.
-  useEffect(() => { setPage(1); }, [fUser, fRole, fFeature, fAction, events]);
+  useEffect(() => { setPage(1); setOpenRow(null); }, [shown]);
   const pageCount = Math.max(1, Math.ceil(shown.length / AUDIT_PER_PAGE));
   const pageRows = shown.slice((page - 1) * AUDIT_PER_PAGE, page * AUDIT_PER_PAGE);
 
@@ -369,7 +385,22 @@ function AuditTab() {
   return (
     <>
       <div className="aa-toolbar">
-        <DateRangeButton from={from} to={to} onApply={(f, t) => { setFrom(f); setTo(t); }} />
+        <DateRangePicker
+          label="Audit date range" value={{ start: from, end: to }} compare={cmpMode} maxValue={new Date().toLocaleDateString('en-CA')}
+          onChange={(r, c, mode) => { setFrom(r.start); setTo(r.end); setCmp(c); setCmpMode(mode); }}
+        />
+        <div className="cf-search aa-search">
+          <Search size={14} className="cf-search-icon" />
+          <input
+            className="cf-search-input" placeholder="Search name, IP, location, detail…"
+            value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search audit events"
+          />
+          {query && (
+            <button type="button" className="cf-search-clear" onClick={() => setQuery('')} aria-label="Clear search">
+              <X size={13} />
+            </button>
+          )}
+        </div>
         <select className="cf-select aa-select" value={fUser} onChange={(e) => setFUser(e.target.value)} title="Filter by email">
           <option value="All">All emails</option>
           {options.users.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -386,6 +417,7 @@ function AuditTab() {
           <option value="All">All actions</option>
           {options.actions.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
+        {filtered && <button type="button" className="aa-btn" onClick={clearFilters}>Clear filters</button>}
         <button type="button" className="aa-btn" onClick={load} disabled={loading}>
           <RefreshCw size={14} className={loading ? 'aa-spin' : ''} /> Refresh
         </button>
@@ -398,10 +430,25 @@ function AuditTab() {
       {events && (
         <>
           <IntegrityBanner verdict={verdict} />
+          {(partial || capped) && (
+            <div className="aa-notice" role="status">
+              <Info size={14} />
+              {partial
+                ? `The log loads at most 31 days at a time, so this shows ${covered.from} → ${covered.to}, the most recent part of the range you picked.`
+                : 'This range holds more than 5,000 events; only the newest 5,000 are shown. Narrow the range to see the rest.'}
+            </div>
+          )}
+          <div className="aa-stats">
+            <Stat label="Events" now={stats.events} before={cmpStats?.events} />
+            <Stat label="Officers" now={stats.officers} before={cmpStats?.officers} />
+            <Stat label="Access denied" now={stats.denied} before={cmpStats?.denied} bad />
+            <Stat label="Anonymised IP" now={stats.vpn} before={cmpStats?.vpn} bad />
+          </div>
           <div className="aa-count">
             {shown.length === events.length
               ? `${events.length} events`
-              : `${shown.length} of ${events.length} events`} · {from} → {to}
+              : `${shown.length} of ${events.length} events`} · {covered ? `${covered.from} → ${covered.to}` : `${from} → ${to}`}
+            {cmp && ` · compared with ${cmp.start} → ${cmp.end}`}
           </div>
           <div className="aa-table-wrap">
             <table className="aa-table aa-audit">
@@ -412,9 +459,22 @@ function AuditTab() {
                 </tr>
               </thead>
               <tbody>
-                {pageRows.map((e, i) => (
-                  <tr key={(page - 1) * AUDIT_PER_PAGE + i} title={e.device}>
-                    <td className="aa-time">{e.istTime}</td>
+                {pageRows.map((e, i) => {
+                  const k = (page - 1) * AUDIT_PER_PAGE + i;
+                  const isOpen = openRow === k;
+                  return (
+                  <React.Fragment key={k}>
+                  <tr className={`aa-row ${isOpen ? 'open' : ''}`}>
+                    <td className="aa-time">
+                      <button
+                        type="button" className="aa-expand" aria-expanded={isOpen}
+                        aria-label={isOpen ? 'Hide event details' : 'Show event details'}
+                        onClick={() => setOpenRow(isOpen ? null : k)}
+                      >
+                        <ChevronRight size={14} />
+                      </button>
+                      {e.istTime}
+                    </td>
                     <td>
                       <div className="aa-user">
                         <span className="aa-user-name">{e.name || '—'}</span>
@@ -441,9 +501,28 @@ function AuditTab() {
                         : <span className="aa-muted">—</span>}
                     </td>
                   </tr>
-                ))}
+                  {isOpen && (
+                    <tr className="aa-row-detail">
+                      <td colSpan={8}>
+                        <dl>
+                          <dt>Path</dt><dd className="aa-mono">{e.path || '—'}</dd>
+                          <dt>Detail</dt><dd>{e.detail || '—'}</dd>
+                          <dt>Device</dt><dd>{e.device || '—'}</dd>
+                          <dt>Email</dt><dd>{e.email || '—'}</dd>
+                        </dl>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
+            {!shown.length && (
+              <div className="aa-empty">
+                {filtered ? 'No events match these filters.' : 'No events recorded in this range.'}
+              </div>
+            )}
           </div>
           {shown.length > 0 && (
             <div className="aa-pagination">

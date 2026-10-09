@@ -2965,8 +2965,10 @@ async function handleAudit(req, res, action) {
   const today = new Date().toISOString().slice(0, 10);
   const to = /^\d{4}-\d{2}-\d{2}$/.test(body.to || '') ? body.to : today;
   const from = /^\d{4}-\d{2}-\d{2}$/.test(body.from || '') ? body.from : to;
+  // Newest first, so a range longer than the cap keeps its most recent days
+  // (not its oldest), and the reply says which days it actually covered.
   const days = [];
-  for (let t = Date.parse(from); t <= Date.parse(to) && days.length < 31; t += 86_400_000) {
+  for (let t = Date.parse(to); t >= Date.parse(from) && days.length < 31; t -= 86_400_000) {
     days.push(new Date(t).toISOString().slice(0, 10));
   }
   const events = [];
@@ -3012,7 +3014,12 @@ async function handleAudit(req, res, action) {
   }
 
   events.sort((a, b) => (b.ts || 0) - (a.ts || 0));
-  return json(res, 200, { events: events.slice(0, 5000), integrity: verdict });
+  return json(res, 200, {
+    events: events.slice(0, 5000),
+    integrity: verdict,
+    covered: loaded.length ? { from: loaded[loaded.length - 1].day, to: loaded[0].day } : null,
+    capped: events.length >= 5000,
+  });
 }
 
 // ── Action queue (statutory obligations across every open case) ────────────

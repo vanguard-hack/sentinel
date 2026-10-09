@@ -7109,33 +7109,39 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 /* Forecast horizon dropdown */
 .fc-horizon-select { min-width: 120px; height: 34px; }
 
-/* Access & Audit: single date-range button + popover */
-.aa-daterange { position: relative; }
-.aa-daterange-pop {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 50;
-  width: max-content;
-  padding: 12px 14px;
-  background: var(--bg-1);
-  border: 1px solid var(--border-bright);
-  border-radius: 12px;
-  box-shadow: var(--shadow-pop);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+/* Access & Audit: range picker, search, summary strip, expandable rows */
+.aa-toolbar .drp-trigger { min-height: 32px; padding: 4px 10px; }
+.aa-search { flex: 1 1 220px; max-width: 320px; }
+.aa-notice {
+  display: flex; align-items: flex-start; gap: 8px; margin: 0 0 10px; padding: 9px 12px;
+  font-size: 12.5px; color: var(--text-2); background: var(--bg-1);
+  border: 1px solid var(--border); border-radius: var(--r-ctl);
 }
-.aa-daterange-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
+.aa-notice svg { flex: none; margin-top: 2px; color: var(--text-3); }
+.aa-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0 0 10px; }
+@media (max-width: 720px) { .aa-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.aa-stat {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 12px;
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--r-card);
 }
-.aa-cal-btn { font-variant-numeric: tabular-nums; }
-.aa-cal-icon { padding: 0; width: 34px; justify-content: center; }
+.aa-stat-label { font-size: 11.5px; color: var(--text-3); }
+.aa-stat-value { font-size: 20px; font-weight: 600; color: var(--text-0); font-variant-numeric: tabular-nums; letter-spacing: -0.3px; }
+.aa-stat-delta { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.aa-stat-delta.bad { color: var(--red); }
+.aa-stat-delta.good { color: var(--green); }
+.aa-expand {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; margin: -3px 4px -3px -4px;
+  vertical-align: middle; color: var(--text-3); background: none; border: 0; border-radius: 6px; cursor: pointer;
+}
+.aa-expand:hover { background: var(--hover-overlay); color: var(--text-0); }
+.aa-expand svg { transition: transform .15s; }
+.aa-expand[aria-expanded="true"] svg { transform: rotate(90deg); }
+.aa-row.open td { border-bottom-color: transparent; }
+.aa-row-detail td { background: var(--bg-2); }
+.aa-row-detail dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 2px 0 2px 22px; font-size: 12px; }
+.aa-row-detail dt { color: var(--text-3); }
+.aa-row-detail dd { margin: 0; color: var(--text-1); word-break: break-word; }
+.aa-empty { padding: 28px 12px; text-align: center; font-size: 13px; color: var(--text-3); }
 
 /* Access & Audit: single Export button + CSV/XLSX menu */
 .aa-export { position: relative; }
@@ -7749,48 +7755,65 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   position: absolute; top: 6px; right: -40px; display: flex; flex-direction: column; gap: 4px;
 }
 @media (max-width: 1100px) { .rb-page-tools { right: 6px; flex-direction: row; z-index: 5; } }
+/* Paper tokens for the on-screen A4 sheet. Light is the printed page; dark
+   follows the app theme. Screen only — the PDF is built from its own HTML. */
+:root {
+  --pp-paper: #fff; --pp-paper-2: #f0f0f0;
+  --pp-ink: #111; --pp-ink-2: #444; --pp-ink-3: #777;
+  --pp-line: #999; --pp-line-strong: #444;
+}
+[data-theme="dark"] {
+  --pp-paper: var(--surface-1); --pp-paper-2: var(--surface-3);
+  --pp-ink: var(--ink); --pp-ink-2: var(--ink-muted); --pp-ink-3: var(--ink-subtle);
+  --pp-line: var(--ink-tertiary); --pp-line-strong: var(--ink-subtle);
+}
+[data-theme="dark"] .rb-sheet { color-scheme: dark; outline: 1px solid var(--hairline); }
+/* The colour picker's black/charcoal swatches are stored inline; on dark paper
+   they would vanish, so show them as ink. The saved value is untouched. */
+[data-theme="dark"] .rb-sheet :is([style*="#111111" i], [style*="rgb(17, 17, 17)"]) { color: var(--pp-ink) !important; }
+[data-theme="dark"] .rb-sheet :is([style*="#444444" i], [style*="rgb(68, 68, 68)"]) { color: var(--pp-ink-2) !important; }
 .rb-sheet {
-  background: #fff; color: #111; min-height: 1123px; padding: 52px 56px 40px;
+  background: var(--pp-paper); color: var(--pp-ink); min-height: 1123px; padding: 52px 56px 40px;
   border-radius: 4px; box-shadow: 0 2px 14px rgba(15, 23, 42, .18);
   font-family: Georgia, 'Times New Roman', serif; font-size: 12px; position: relative;
 }
 [data-theme="dark"] .rb-sheet { box-shadow: 0 2px 18px rgba(0, 0, 0, .55); }
-.rb-sheet-hdr { text-align: center; border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 14px; }
-.rb-sheet-org { font-size: 10px; letter-spacing: 4px; color: #333; }
-.rb-sheet-hdr h2 { font-size: 15px; letter-spacing: 1px; margin: 4px 0 0; color: #111; }
-.rb-sheet-sub { font-size: 10px; font-style: italic; color: #444; margin-top: 2px; }
-.rb-sheet-pgno { position: absolute; bottom: 14px; right: 22px; font-size: 9.5px; color: #666; }
+.rb-sheet-hdr { text-align: center; border-bottom: 2px solid var(--pp-line-strong); padding-bottom: 8px; margin-bottom: 14px; }
+.rb-sheet-org { font-size: 10px; letter-spacing: 4px; color: var(--pp-ink-2); }
+.rb-sheet-hdr h2 { font-size: 15px; letter-spacing: 1px; margin: 4px 0 0; color: var(--pp-ink); }
+.rb-sheet-sub { font-size: 10px; font-style: italic; color: var(--pp-ink-2); margin-top: 2px; }
+.rb-sheet-pgno { position: absolute; bottom: 14px; right: 22px; font-size: 9.5px; color: var(--pp-ink-3); }
 
-.rb-legend { font-size: 11.5px; font-weight: 600; margin: 12px 0 5px; color: #111; }
+.rb-legend { font-size: 11.5px; font-weight: 600; margin: 12px 0 5px; color: var(--pp-ink); }
 .rb-legend-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .rb-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 8px 14px; margin: 6px 0; }
 .rb-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.rb-lbl { font-size: 8.5px; text-transform: uppercase; letter-spacing: .5px; color: #555; }
+.rb-lbl { font-size: 8.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--pp-ink-2); }
 .rb-field input, .rb-field select, .rb-table input, .rb-narrative textarea, .rb-sig-field input {
-  font-family: inherit; font-size: 12px; color: #111; background: transparent;
-  border: 0; border-bottom: 1px dotted #888; border-radius: 0; padding: 2px 2px 3px; width: 100%;
+  font-family: inherit; font-size: 12px; color: var(--pp-ink); background: transparent;
+  border: 0; border-bottom: 1px dotted var(--pp-line); border-radius: 0; padding: 2px 2px 3px; width: 100%;
 }
 .rb-field select { cursor: pointer; }
 .rb-field input:focus, .rb-field select:focus, .rb-table input:focus, .rb-narrative textarea:focus, .rb-sig-field input:focus {
   outline: none; border-bottom: 1.5px solid var(--blue-500); background: color-mix(in srgb, var(--blue-400) 6%, transparent);
 }
 .rb-field input:disabled, .rb-field select:disabled, .rb-table input:disabled,
-.rb-narrative textarea:disabled, .rb-sig-field input:disabled { color: #111; opacity: 1; -webkit-text-fill-color: #111; }
-.rb-hint { font-size: 9px; font-style: italic; color: #777; margin-top: 2px; display: block; }
+.rb-narrative textarea:disabled, .rb-sig-field input:disabled { color: var(--pp-ink); opacity: 1; -webkit-text-fill-color: var(--pp-ink); }
+.rb-hint { font-size: 9px; font-style: italic; color: var(--pp-ink-3); margin-top: 2px; display: block; }
 
 .rb-table-scroll { overflow-x: auto; }
 .rb-table { width: 100%; border-collapse: collapse; margin: 4px 0; }
-.rb-table th, .rb-table td { border: 1px solid #444; padding: 0; font-size: 11px; vertical-align: top; }
-.rb-table th { background: #f0f0f0; font-size: 9.5px; text-transform: uppercase; letter-spacing: .3px; padding: 4px 5px; text-align: left; color: #333; }
+.rb-table th, .rb-table td { border: 1px solid var(--pp-line-strong); padding: 0; font-size: 11px; vertical-align: top; }
+.rb-table th { background: var(--pp-paper-2); font-size: 9.5px; text-transform: uppercase; letter-spacing: .3px; padding: 4px 5px; text-align: left; color: var(--pp-ink-2); }
 .rb-table td input { border-bottom: 0; padding: 4px 5px; min-width: 40px; }
 .rb-addrow {
   display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 10px; font-weight: 500;
-  color: var(--blue-600); background: none; border: 1px dashed #aaa; border-radius: 6px;
+  color: var(--blue-600); background: none; border: 1px dashed var(--pp-line); border-radius: 6px;
   padding: 3px 8px; margin: 3px 0 2px; cursor: pointer;
 }
 .rb-addrow:hover { border-color: var(--blue-500); }
 
-.rb-narrative textarea { border: 1px solid #999; border-radius: 2px; padding: 6px 8px; resize: none; line-height: 1.5; display: block; }
+.rb-narrative textarea { border: 1px solid var(--pp-line); border-radius: 2px; padding: 6px 8px; resize: none; line-height: 1.5; display: block; }
 .rb-narrative textarea:focus { border: 1px solid var(--blue-500); }
 .rb-nar-actions { display: inline-flex; gap: 6px; }
 .rb-ai-btn {
@@ -7802,12 +7825,12 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .rb-ai-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--blue-400) 16%, transparent); }
 .rb-ai-btn:disabled { opacity: .55; cursor: default; }
 
-.rb-note { font-size: 11px; font-style: italic; color: #222; margin: 10px 0; }
+.rb-note { font-size: 11px; font-style: italic; color: var(--pp-ink); margin: 10px 0; }
 .rb-sigs { display: flex; flex-wrap: wrap; gap: 20px 26px; justify-content: space-between; margin-top: 26px; }
 .rb-sig { min-width: 200px; max-width: 46%; flex: 1 1 200px; }
-.rb-sig-space { height: 34px; border-bottom: 1px solid #444; margin-bottom: 4px; }
-.rb-sig-label { font-size: 10px; font-weight: 600; color: #222; margin-bottom: 3px; }
-.rb-sig-field { display: flex; align-items: baseline; gap: 6px; font-size: 10px; color: #444; margin: 2px 0; }
+.rb-sig-space { height: 34px; border-bottom: 1px solid var(--pp-line-strong); margin-bottom: 4px; }
+.rb-sig-label { font-size: 10px; font-weight: 600; color: var(--pp-ink); margin-bottom: 3px; }
+.rb-sig-field { display: flex; align-items: baseline; gap: 6px; font-size: 10px; color: var(--pp-ink-2); margin: 2px 0; }
 .rb-sig-field span { flex: 0 0 auto; }
 
 /* ── Report Studio: free-layout blank pages & icon toolbar ─────────────── */
@@ -7819,10 +7842,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .rb-ai-fab {
   display: inline-flex; align-items: center; justify-content: center;
   width: 24px; height: 24px; border-radius: 9999px; cursor: pointer;
-  color: var(--blue-600); background: color-mix(in srgb, var(--blue-400) 10%, #ffffff 70%);
+  color: var(--blue-600); background: color-mix(in srgb, var(--blue-400) 10%, var(--pp-paper) 70%);
   border: 1px solid color-mix(in srgb, var(--blue-400) 40%, transparent);
 }
-.rb-ai-fab:hover:not(:disabled) { background: color-mix(in srgb, var(--blue-400) 22%, #ffffff 60%); }
+.rb-ai-fab:hover:not(:disabled) { background: color-mix(in srgb, var(--blue-400) 22%, var(--pp-paper) 60%); }
 .rb-ai-fab:disabled { opacity: .4; cursor: default; }
 @keyframes rb-spin { to { transform: rotate(360deg); } }
 .rb-spin { animation: rb-spin 1.1s linear infinite; }
@@ -7870,16 +7893,16 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   background: none; cursor: pointer;
 }
 
-.rb-free-canvas { position: relative; margin: 0 auto; outline: 1px dashed #d5d5d5; }
+.rb-free-canvas { position: relative; margin: 0 auto; outline: 1px dashed var(--pp-line); }
 .rb-free-empty {
   position: absolute; inset: 34% 12% auto; text-align: center;
-  font-size: 12px; font-style: italic; color: #999; pointer-events: none;
+  font-size: 12px; font-style: italic; color: var(--pp-ink-3); pointer-events: none;
 }
 .rb-guide-v { position: absolute; top: 0; bottom: 0; width: 1px; background: #e11d48; z-index: 6; pointer-events: none; }
 .rb-guide-h { position: absolute; left: 0; right: 0; height: 1px; background: #e11d48; z-index: 6; pointer-events: none; }
 
 .rb-el { position: absolute; border: 1px dashed transparent; border-radius: 4px; cursor: grab; }
-.rb-el:hover { border-color: #bbb; }
+.rb-el:hover { border-color: var(--pp-line); }
 .rb-el.sel { border: 1px solid var(--blue-500); cursor: default; z-index: 4; }
 .rb-el-body { width: 100%; height: 100%; overflow: hidden; }
 .rb-el-grip {
@@ -7898,14 +7921,14 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   background: transparent; border: 0; width: 100%; padding: 2px 4px;
 }
 .rb-el-input:focus, .rb-el-area:focus, .rb-el-label:focus { outline: none; background: color-mix(in srgb, var(--blue-400) 6%, transparent); }
-.rb-el-input.dotted { border-bottom: 1px dotted #888; }
-.rb-el-label { font-size: 8.5px; text-transform: uppercase; letter-spacing: .5px; color: #555; font-weight: 400; text-align: left; }
+.rb-el-input.dotted { border-bottom: 1px dotted var(--pp-line); }
+.rb-el-label { font-size: 8.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--pp-ink-2); font-weight: 400; text-align: left; }
 .rb-el-area { height: 100%; resize: none; line-height: 1.45; }
 .rb-el-fieldwrap { display: flex; flex-direction: column; height: 100%; }
 .rb-el-bullets { margin: 0; padding: 2px 4px 2px 20px; line-height: 1.5; }
 .rb-el-bullets li { margin: 1px 0; }
 .rb-el-table { width: 100%; border-collapse: collapse; }
-.rb-el-table td { border: 1px solid #444; padding: 0; vertical-align: top; }
+.rb-el-table td { border: 1px solid var(--pp-line-strong); padding: 0; vertical-align: top; }
 .rb-el-table td input {
   font-family: inherit; font-size: inherit; color: inherit; background: transparent;
   border: 0; width: 100%; padding: 3px 5px; min-width: 24px;
@@ -7969,8 +7992,8 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 
 /* ── Report Studio: round-4 refinements ────────────────────────────────── */
 /* Free elements always show a light outline so boxes are visible */
-.rb-el { border: 1px solid #dcdcdc; border-radius: 4px; }
-.rb-el:hover { border-color: #b9b9b9; }
+.rb-el { border: 1px solid var(--pp-line); border-radius: 4px; }
+.rb-el:hover { border-color: var(--pp-line); }
 .rb-el.is-table { border-color: transparent; }
 .rb-el.is-table:hover { border-color: transparent; }
 .rb-el.sel, .rb-el.is-table.sel { border: 1px solid var(--blue-500); }
@@ -8021,7 +8044,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 /* ── Report Studio: rich document pages (Tiptap) ───────────────────────── */
 .rb-sheet.is-doc { padding: 0; display: flex; flex-direction: column; }
 .rb-doc { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.rb-doc-loading { padding: 40px; text-align: center; color: #888; font-size: 12px; }
+.rb-doc-loading { padding: 40px; text-align: center; color: var(--pp-ink-3); font-size: 12px; }
 
 .rb-doc-bar {
   position: sticky; top: 0; z-index: 12;
@@ -8083,7 +8106,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .rb-doc-content { flex: 1; }
 .rb-doc-content .tiptap {
   min-height: 980px; padding: 46px 56px 40px; outline: none;
-  font-family: Georgia, 'Times New Roman', serif; font-size: 12px; line-height: 1.55; color: #111;
+  font-family: Georgia, 'Times New Roman', serif; font-size: 12px; line-height: 1.55; color: var(--pp-ink);
 }
 .rb-doc-content .tiptap h1 { font-size: 21px; margin: 12px 0 7px; }
 .rb-doc-content .tiptap h2 { font-size: 18px; margin: 11px 0 6px; }
@@ -8093,20 +8116,20 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .rb-doc-content .tiptap ul, .rb-doc-content .tiptap ol { margin: 5px 0; padding-left: 22px; }
 .rb-doc-content .tiptap li { margin: 2px 0; }
 .rb-doc-content .tiptap li p { margin: 0; }
-.rb-doc-content .tiptap hr { border: 0; border-top: 1px solid #999; margin: 10px 0; }
-.rb-doc-content .tiptap blockquote { margin: 7px 0; padding-left: 11px; border-left: 3px solid #bbb; color: #333; }
+.rb-doc-content .tiptap hr { border: 0; border-top: 1px solid var(--pp-line); margin: 10px 0; }
+.rb-doc-content .tiptap blockquote { margin: 7px 0; padding-left: 11px; border-left: 3px solid var(--pp-line); color: var(--pp-ink-2); }
 .rb-doc-content .tiptap a { color: var(--blue-600); }
 .rb-doc-content .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder); float: left; height: 0; pointer-events: none;
-  color: #aaa; font-style: italic;
+  color: var(--pp-ink-3); font-style: italic;
 }
 .rb-doc-content .tiptap table {
   border-collapse: collapse; margin: 8px 0; width: 100%; table-layout: fixed; overflow: hidden;
 }
 .rb-doc-content .tiptap td, .rb-doc-content .tiptap th {
-  border: 1px solid #444; padding: 5px 7px; vertical-align: top; position: relative; min-width: 36px;
+  border: 1px solid var(--pp-line-strong); padding: 5px 7px; vertical-align: top; position: relative; min-width: 36px;
 }
-.rb-doc-content .tiptap th { background: #eee; font-weight: 600; text-align: left; }
+.rb-doc-content .tiptap th { background: var(--pp-paper-2); font-weight: 600; text-align: left; }
 .rb-doc-content .tiptap .selectedCell::after {
   content: ''; position: absolute; inset: 0; pointer-events: none;
   background: color-mix(in srgb, var(--blue-400) 18%, transparent);
@@ -8180,10 +8203,10 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .rb-textbox {
   position: absolute;
   padding: 5px 7px;
-  border: 1px solid #444;
+  border: 1px solid var(--pp-line-strong);
   border-radius: 2px;
   box-sizing: border-box;
-  background: #fff;
+  background: var(--pp-paper);
   z-index: 3;
 }
 .rb-textbox[data-bordered="false"] { border-color: transparent; }
@@ -8241,8 +8264,8 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 
 /* ── Rich narrative fields inside statutory template sheets ────────────── */
 .rb-richfield .tiptap {
-  border: 1px solid #999; border-radius: 2px; padding: 6px 8px;
-  outline: none; font-family: inherit; font-size: 12px; line-height: 1.5; color: #111;
+  border: 1px solid var(--pp-line); border-radius: 2px; padding: 6px 8px;
+  outline: none; font-family: inherit; font-size: 12px; line-height: 1.5; color: var(--pp-ink);
 }
 .rb-richfield .tiptap:focus-within { border-color: var(--blue-500); }
 .rb-richfield .tiptap p { margin: 3px 0; }
@@ -8254,13 +8277,13 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .rb-richfield .tiptap h3 { font-size: 13.5px; margin: 5px 0 3px; }
 .rb-richfield .tiptap h4 { font-size: 12.5px; margin: 5px 0 3px; }
 .rb-richfield .tiptap table { border-collapse: collapse; width: 100%; margin: 5px 0; table-layout: fixed; }
-.rb-richfield .tiptap td, .rb-richfield .tiptap th { border: 1px solid #444; padding: 3px 5px; vertical-align: top; }
-.rb-richfield .tiptap th { background: #eee; font-weight: 600; }
+.rb-richfield .tiptap td, .rb-richfield .tiptap th { border: 1px solid var(--pp-line-strong); padding: 3px 5px; vertical-align: top; }
+.rb-richfield .tiptap th { background: var(--pp-paper-2); font-weight: 600; }
 .rb-richfield .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder); float: left; height: 0; pointer-events: none;
-  color: #aaa; font-style: italic; font-size: 11px;
+  color: var(--pp-ink-3); font-style: italic; font-size: 11px;
 }
-.rb-nar-loading { padding: 10px; font-size: 11px; color: #999; font-style: italic; }
+.rb-nar-loading { padding: 10px; font-size: 11px; color: var(--pp-ink-3); font-style: italic; }
 
 /* Shared toolbar sitting above a statutory sheet: span the full sheet width,
    cancelling the sheet's own padding. */
