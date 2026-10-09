@@ -227,7 +227,7 @@ export default function AIAnalytics() {
         </button>
       </TopBar>
 
-      <main className="rp-main">
+      <main className="rp-main ai-main">
         <div className="ai-viewtabs" role="tablist" aria-label="Analytics view">
           <button
             className={`ai-viewtab ${view === 'patterns' ? 'active' : ''}`}

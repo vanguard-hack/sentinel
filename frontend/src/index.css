@@ -3782,9 +3782,12 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   flex: 1; min-width: 0; border: none; outline: none; background: transparent;
   font-size: 0.8rem; color: var(--text-0);
 }
+/* The list fills whatever height the results column sets (basis 0, so it
+   never drives the row itself) — a fixed max-height left a gap beneath it. */
+.lk-picker { display: flex; flex-direction: column; min-height: 0; }
 .lk-case-list {
   list-style: none; margin: 0; padding: 0 4px 0 0;
-  max-height: 520px; overflow-y: auto;
+  flex: 1 1 0; min-height: 320px; overflow-y: auto;
   display: flex; flex-direction: column; gap: 6px;
 }
 .lk-case {
@@ -3851,7 +3854,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 
 @media (max-width: 960px) {
   .lk-workbench { grid-template-columns: 1fr; }
-  .lk-case-list { max-height: 220px; }
+  .lk-case-list { flex: none; max-height: 220px; }
 }
 
 /* Shared table system owns density and headers. */
@@ -10194,3 +10197,6 @@ span.inv-status-dot {
 .ev-below { background: color-mix(in srgb, var(--green) 14%, transparent); color: var(--green); }
 
 .ev-noise { background: var(--bg-3); color: var(--text-3); }
+
+/* AI Analytics: every card gets breathing room under its last row. */
+.ai-main .rp-card { padding-bottom: 20px; }
