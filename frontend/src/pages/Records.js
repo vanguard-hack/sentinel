@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, Camera, CheckCircle2, FileDown, FileText, Images,
-  Loader2, Search, Trash2, X, FilePlus2, Files, CheckSquare, Square, RotateCw,
+  AlertTriangle, Camera, FileDown, FileText, Images,
+  Search, Trash2, X, FilePlus2, Files, CheckSquare, Square, RotateCw, Check,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import FileUpload from '../components/ui/FileUpload';
@@ -25,22 +25,31 @@ const fmt = (ts) => (ts
 
 // Coloured type badge per file family. The --rp-cat-* hues are the app's
 // categorical palette, already tuned for both themes.
-const BADGES = [
-  [/^pdf$/, 'PDF', 5], [/^(jpe?g|png|webp|heic|heif|gif|bmp|tiff?)$/, 'IMG', 0],
-  [/^(xlsx|xlsm|xls|csv|tsv|ods)$/, 'XLS', 1], [/^(docx|docm|rtf|txt|md|log|json|xml|eml)$/, 'DOC', 4],
-  [/^(pptx|pptm)$/, 'PPT', 2], [/^(mp3|wav|m4a|aac|ogg|opus|flac|amr)$/, 'AUD', 3],
-  [/^(mp4|mov|m4v|webm|3gp)$/, 'VID', 3], [/^(vtt|srt)$/, 'SUB', 4],
+const BADGE_HUES = [
+  [/^pdf$/, 5], [/^(jpe?g|png|webp|heic|heif|gif|bmp|tiff?)$/, 0],
+  [/^(xlsx|xlsm|xls|csv|tsv|ods)$/, 1], [/^(pptx|pptm)$/, 2],
+  [/^(mp3|wav|m4a|aac|ogg|opus|flac|amr|mp4|mov|m4v|webm|3gp)$/, 2],
 ];
 export function badgeFor(name = '') {
-  const ext = (name.split('.').pop() || '').toLowerCase();
-  const hit = BADGES.find(([re]) => re.test(ext));
-  return hit ? { label: hit[1], hue: hit[2] } : { label: ext.slice(0, 4).toUpperCase() || 'FILE', hue: 4 };
+  const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+  const hit = BADGE_HUES.find(([re]) => re.test(ext));
+  return { label: ext.slice(0, 4).toUpperCase() || 'FILE', hue: hit ? hit[1] : 4 };
 }
-const FileBadge = ({ name }) => {
+// A page outline with a folded corner and the extension badge on its foot.
+const FileIcon = ({ name }) => {
   const b = badgeFor(name);
-  return <span className="dg-badge" style={{ '--badge': `var(--rp-cat-${b.hue})` }}>{b.label}</span>;
+  return (
+    <span className="dg-file" style={{ '--badge': `var(--rp-cat-${b.hue})` }} aria-hidden="true">
+      <svg viewBox="0 0 32 40" width="32" height="40">
+        <path d="M5 1.5h15.5L30.5 11.5V36a2.5 2.5 0 0 1-2.5 2.5H5A2.5 2.5 0 0 1 2.5 36V4A2.5 2.5 0 0 1 5 1.5z" />
+        <path d="M20.5 1.5V9a2.5 2.5 0 0 0 2.5 2.5h7.5" />
+      </svg>
+      <span className="dg-badge">{b.label}</span>
+    </span>
+  );
 };
 const sizeOf = (n) => (n == null ? '' : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(1)} MB`);
+const mb = (n) => (n / 1048576).toFixed(1);
 const timeLeft = (s) => (s < 60 ? `${Math.ceil(s)}s left` : `${Math.ceil(s / 60)} min left`);
 
 const ACCEPT_LIST = '.jpg,.jpeg,.png,.webp,.heic,.heif,.gif,.bmp,.tif,.tiff,.pdf,.docx,.docm,.xlsx,.xlsm,.xls,.csv,.tsv,.ods,.pptx,.pptm,.txt,.md,.log,.json,.xml,.rtf,.eml,.vtt,.srt,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.amr,.mp4,.mov,.m4v,.webm,.3gp,image/*,application/pdf,audio/*,video/*,text/*';
@@ -230,6 +239,7 @@ export default function Records() {
   const scanOne = useCallback(async (item) => {
     const { batch } = item;
     const started = Date.now();
+    let last = 0;
     markItem(item.key, { status: 'working', error: '', progress: 0, eta: null });
     try {
       const rec = await uploadScan(item.file, {
@@ -238,6 +248,7 @@ export default function Records() {
         // paper says; Zia reads a Kannada page very differently when told so.
         lang: i18n.resolvedLanguage,
         onProgress: (p) => {
+          last = p;
           const secs = (Date.now() - started) / 1000;
           // Rate-based estimate, shown once there is enough of a sample to mean anything.
           markItem(item.key, { progress: p, eta: p > 0.05 && p < 1 && secs > 1 ? (secs / p) * (1 - p) : null });
@@ -246,7 +257,8 @@ export default function Records() {
       if (batch.asOne && !batch.appendTo && rec?.id) batch.appendTo = rec.id;
       markItem(item.key, { status: 'done', progress: null, eta: null });
     } catch (e) {
-      markItem(item.key, { status: 'failed', error: e.message, progress: null, eta: null });
+      // The bar stays where the transfer stopped, in red.
+      markItem(item.key, { status: 'failed', error: e.message, progress: last || null, eta: null });
     }
   }, [markItem, i18n.resolvedLanguage]);
 
@@ -401,6 +413,12 @@ export default function Records() {
   const busy = queue.filter((x) => x.status === 'waiting' || x.status === 'working').length;
   const done = queue.filter((x) => x.status === 'done' || x.status === 'partial').length;
   const failed = queue.filter((x) => x.status === 'failed');
+  // Footer byte count: finished files in full, the one in flight by its progress.
+  const totalBytes = queue.reduce((n, x) => n + (x.size || 0), 0);
+  const sentBytes = queue.reduce((n, x) => n + (
+    x.status === 'done' || x.status === 'partial' ? x.size || 0
+      : x.status === 'working' && x.progress != null ? x.progress * (x.size || 0) : 0
+  ), 0);
 
   return (
     <div className="cf-page">
@@ -431,7 +449,7 @@ export default function Records() {
 
         <FileUpload onFiles={stage} accept={ACCEPT_LIST} busy={!!preparing} className="dg-drop" label={t('records.chooseFiles')}>
           <span className="dg-fan" aria-hidden="true">
-            {['PDF', 'IMG', 'XLS'].map((l) => <span key={l} className="dg-fan-card"><FileBadge name={`x.${l === 'IMG' ? 'jpg' : l === 'XLS' ? 'xlsx' : 'pdf'}`} /></span>)}
+            {['x.xlsx', 'x.png', 'x.pdf'].map((n) => <span key={n} className="dg-fan-card"><FileIcon name={n} /></span>)}
           </span>
           <div className="dg-drop-copy">
             <strong>{t('records.dropTitle')}</strong>
@@ -493,61 +511,66 @@ export default function Records() {
 
         {queue.length > 0 && (
           <div className="dg-queue">
-            <div className="dg-queue-head">
-              <span>
-                {busy > 0
-                  ? <><Loader2 size={14} className="dg-spin" /> Reading {busy} file{busy === 1 ? '' : 's'}…</>
-                  : <><CheckCircle2 size={14} /> {done} file{done === 1 ? '' : 's'} digitised</>}
-              </span>
-              {busy === 0 && (
-                <button type="button" className="cf-icon-btn" title="Clear" onClick={() => setQueue([])}>
-                  <X size={14} />
-                </button>
-              )}
-            </div>
             <div className="dg-queue-list">
               {queue.map((x) => {
+                const active = x.status === 'working' || x.status === 'waiting';
                 const uploading = x.status === 'working' && x.progress != null && x.progress < 1;
+                const canRetry = x.status === 'failed' && x.file && !/too large/i.test(x.error || '');
+                let meta = sizeOf(x.size);
+                if (x.status === 'waiting') meta = `Waiting · ${sizeOf(x.size)}`;
+                else if (uploading) meta = `${mb(x.progress * x.size)} of ${mb(x.size)} MB${x.eta != null ? ` · ${timeLeft(x.eta)}` : ''}`;
+                else if (x.status === 'working') meta = x.detail || 'Reading…';
+                else if (x.status === 'failed') meta = x.error || 'Failed';
+                else if (x.status === 'partial') meta = x.error || 'Filed without the original';
                 return (
                   <div key={x.key} className={`dg-queue-item ${x.status}`}>
-                    <FileBadge name={x.name} />
+                    <FileIcon name={x.name} />
                     <div className="dg-queue-main">
-                      <div className="dg-queue-line">
-                        <span className="dg-queue-name" title={x.name}>{x.name}</span>
-                        <span className="dg-queue-status">
-                          {x.status === 'waiting' && 'Waiting'}
-                          {uploading && `Uploading ${Math.round(x.progress * 100)}%${x.eta != null ? ` · ${timeLeft(x.eta)}` : ''}`}
-                          {x.status === 'working' && !uploading && (x.detail || 'Reading…')}
-                          {x.status === 'done' && 'Done'}
-                          {x.status === 'partial' && (x.error || 'Filed without the original')}
-                          {x.status === 'failed' && (x.error || 'Failed')}
-                        </span>
-                      </div>
-                      {x.status === 'working' && (
+                      <span className="dg-queue-name" title={x.name}>
+                        <span>{x.name}</span>
+                        {x.status === 'done' && <Check size={14} className="dg-queue-ok" aria-label="Done" />}
+                      </span>
+                      <span className="dg-queue-meta">{meta}</span>
+                      {(x.status === 'working' || (x.status === 'failed' && x.progress)) && (
                         <div
-                          className={`dg-bar ${uploading ? '' : 'indeterminate'}`} role="progressbar"
+                          className={`dg-bar ${x.status === 'working' && !uploading ? 'indeterminate' : ''}`} role="progressbar"
                           aria-label={`${x.name} progress`}
-                          aria-valuenow={uploading ? Math.round(x.progress * 100) : undefined}
+                          aria-valuenow={x.progress != null ? Math.round(x.progress * 100) : undefined}
                           aria-valuemin={0} aria-valuemax={100}
                         >
-                          <span style={uploading ? { width: `${x.progress * 100}%` } : undefined} />
+                          <span style={x.progress != null && (uploading || x.status === 'failed') ? { width: `${x.progress * 100}%` } : undefined} />
                         </div>
                       )}
                     </div>
-                    <span className="dg-queue-size">{sizeOf(x.size)}</span>
-                    {x.status === 'failed' && x.file && (
-                      <button type="button" className="dg-retry" onClick={() => retry(x)} disabled={busy > 0}>
-                        <RotateCw size={12} /> Retry
-                      </button>
-                    )}
+                    <div className="dg-queue-acts">
+                      {canRetry && (
+                        <button type="button" className="dg-icon" onClick={() => retry(x)} disabled={busy > 0} aria-label={`Retry ${x.name}`} title="Retry">
+                          <RotateCw size={16} />
+                        </button>
+                      )}
+                      {!active && (
+                        <button
+                          type="button" className="dg-icon" aria-label={`Remove ${x.name} from the list`} title="Remove from list"
+                          onClick={() => setQueue((prev) => prev.filter((q) => q.key !== x.key))}
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
             </div>
-            {failed.length > 0 && (
-              <div className="dg-queue-foot">
-                {failed.length} file{failed.length === 1 ? '' : 's'} could not be read. For a photographed page, try a sharper, better-lit shot.
-              </div>
+            <div className="dg-queue-foot">
+              <span>
+                {busy > 0
+                  ? `${queue.some((x) => x.run === 'scan' && x.status === 'working') ? 'Uploading' : 'Reading'} ${done + failed.length + 1} of ${queue.length}${totalBytes ? ` · ${mb(sentBytes)} of ${mb(totalBytes)} MB` : ''}`
+                  : `${done} of ${queue.length} digitised${failed.length ? ` · ${failed.length} failed` : ''}`}
+              </span>
+              {busy === 0 && <button type="button" className="dg-clear" onClick={() => setQueue([])}>Clear list</button>}
+            </div>
+            {failed.length > 0 && busy === 0 && (
+              <div className="dg-queue-hint">For a photographed page that could not be read, try a sharper, better-lit shot.</div>
             )}
           </div>
         )}

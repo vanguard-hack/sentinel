@@ -69,10 +69,11 @@ test('detail shows extracted fields, tables and text', async () => {
 test('file types get the right badge', () => {
   const { badgeFor } = require('../pages/Records');
   expect(badgeFor('statement.PDF').label).toBe('PDF');
-  expect(badgeFor('scan.jpeg').label).toBe('IMG');
-  expect(badgeFor('ledger.xlsx').label).toBe('XLS');
-  expect(badgeFor('interview.m4a').label).toBe('AUD');
-  expect(badgeFor('mystery.zzz').label).toBe('ZZZ');
+  expect(badgeFor('scan.jpeg')).toEqual({ label: 'JPEG', hue: 0 });
+  expect(badgeFor('ledger.xlsx')).toEqual({ label: 'XLSX', hue: 1 });
+  expect(badgeFor('interview.m4a').label).toBe('M4A');
+  expect(badgeFor('mystery.zzz')).toEqual({ label: 'ZZZ', hue: 4 });
+  expect(badgeFor('noextension').label).toBe('FILE');
 });
 
 test('a failed page upload can be retried in place', async () => {
@@ -91,7 +92,7 @@ test('a failed page upload can be retried in place', async () => {
 
   await screen.findByText('Upload failed — connection lost');
   fireEvent.click(screen.getByRole('button', { name: /retry/i }));
-  await screen.findByText('Done');
+  await screen.findByLabelText('Done');
   expect(calls).toBe(2);
   expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
   global.__upload = () => Promise.resolve({ id: 'rec-3' });
