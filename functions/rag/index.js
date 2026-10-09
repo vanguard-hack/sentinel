@@ -19,6 +19,7 @@ const memory = require('./memory');
 const assistantTools = require('./tools');
 const integrity = require('./integrity');
 const grounding = require('./grounding');
+const { isSmallTalk } = require('./smalltalk');
 const guard = require('./guard');
 const forecasting = require('./forecast');
 const analytics = require('./analytics');
@@ -5833,14 +5834,18 @@ module.exports = async (req, res) => {
       // months later; it is the officer's view that should be empty, not the
       // trail.
       const groundless = isNegative(text);
-      const shownSources = groundless ? [] : citedSources;
+      // Same for small talk, whichever lane ended up answering it: a greeting
+      // looked nothing up, so a source chip under the reply would claim a
+      // lookup that never mattered. The audit trail still keeps the full list.
+      const casual = payload.source === 'chat' || isSmallTalk(rawQuery);
+      const shownSources = groundless || casual ? [] : citedSources;
 
       // Refusals, the guardrail lane, the "couldn't find an answer" fallback,
       // and anything the output guard just replaced aren't answers drawn from
       // records — there's nothing to score, same reasoning that withholds
       // sources on those paths above.
       const scoreless = !!payload.refused || payload.source === 'fallback'
-        || payload.source === 'guardrail' || outputScan.action === 'replace';
+        || payload.source === 'guardrail' || outputScan.action === 'replace' || casual;
       answerConfidence = scoreless
         ? null
         : grounding.tier(groundingResult, { sourceCount: citedSources.length, groundless });
@@ -6397,7 +6402,11 @@ module.exports = async (req, res) => {
       // CHAT must be judged on the user's ORIGINAL wording — expansion can
       // rewrite a bare "thanks!" into a restated data question.
       // A structurally unmistakable query is routed without a model call.
-      const forced = deterministicRoute(query);
+      // Small talk goes straight to the casual lane: a "hello" has no business
+      // reaching the knowledge base or the tool loop, and whatever either says
+      // back would arrive wearing a source chip for a lookup nobody needed.
+      const forced = (isSmallTalk(query) && { route: 'CHAT', confidence: 0.95, why: 'small talk' })
+        || deterministicRoute(query);
       const scored = forced || parseRouteReply(await callLLM(
         [
           { role: 'system', content: zcql.ROUTER_PROMPT +
