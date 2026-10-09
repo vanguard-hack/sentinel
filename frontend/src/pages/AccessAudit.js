@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ShieldCheck, RefreshCw, Download, FileSpreadsheet, AlertTriangle, Check,
-  ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Search, X, Info,
+  ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Search, X, Info, Copy,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import DateRangePicker from '../components/ui/DateRangePicker';
@@ -233,8 +233,11 @@ function IntegrityBanner({ verdict }) {
         <div className="aa-integrity-head-hash">
           <span>Chain head{verdict.headDay ? ` (sealed through ${verdict.headDay})` : ''}:</span>
           <code className="aa-mono">{verdict.headHash.slice(0, 32)}…</code>
-          <button type="button" className="aa-btn aa-btn-tiny" onClick={copyHead}>
-            {copied ? <><Check size={12} /> Copied</> : 'Copy'}
+          <button
+            type="button" className="aa-btn aa-btn-icon" onClick={copyHead}
+            aria-label={copied ? 'Copied' : 'Copy chain head hash'} title={copied ? 'Copied' : 'Copy'}
+          >
+            {copied ? <Check size={16} /> : <Copy size={16} />}
           </button>
           <span className="aa-integrity-hint">
             Keep a copy outside Sentinel — it is what proves this log against someone who can edit the store.
