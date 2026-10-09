@@ -3097,15 +3097,21 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* Sits directly behind the textarea, same box exactly — any mismatch in
    font/padding/line-height between the two would misalign the colour from
    the caret it is meant to sit under. */
+/* A plain block, not flex: as a flex column the "/command" span and the text
+   after it became separate flex items stacked on their own lines, so the
+   coloured text drifted away from the caret as soon as a command was typed. */
 .as-input-highlight {
   position: absolute; inset: 0; margin: 0; overflow: hidden; pointer-events: none;
-  display: flex; flex-direction: column; justify-content: center;
-  white-space: pre-wrap; word-wrap: break-word; word-break: break-word;
-  font-family: var(--font);
-  font-size: 14.5px;
-  line-height: 1.5;
-  padding: 9px 4px;
+  display: block;
   color: var(--text-1);
+}
+/* Every property that moves a glyph, set identically on both layers. */
+.as-input-highlight, .as-input {
+  font-family: var(--font); font-size: 14.5px; font-weight: 400; line-height: 1.5;
+  letter-spacing: var(--tr-body); font-feature-settings: 'cv05' 1, 'ss03' 1;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word;
+  padding: 9px 4px; border: 0; box-sizing: border-box; text-align: left; tab-size: 4;
+  scrollbar-gutter: stable; /* same text width whether or not the textarea scrolls */
 }
 .as-input-token { color: var(--blue-500); }
 .as-input {
@@ -3119,10 +3125,6 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   background: none;
   color: transparent;
   caret-color: var(--text-1);
-  font-family: var(--font);
-  font-size: 14.5px;
-  line-height: 1.5;
-  padding: 9px 4px;
   max-height: 200px;
 }
 .as-input::placeholder { color: var(--text-4); }
