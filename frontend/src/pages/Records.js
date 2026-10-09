@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, Camera, CheckCircle2, FileDown, FileText, Images, Layers,
-  Loader2, Search, Trash2, X, FilePlus2, Files, CheckSquare, Square,
+  AlertTriangle, Camera, CheckCircle2, FileDown, FileText, Images,
+  Loader2, Search, Trash2, X, FilePlus2, Files, CheckSquare, Square, RotateCw,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import FileUpload from '../components/ui/FileUpload';
@@ -22,6 +22,26 @@ import { useTranslation } from 'react-i18next';
 const fmt = (ts) => (ts
   ? new Date(ts).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
   : '—');
+
+// Coloured type badge per file family. The --rp-cat-* hues are the app's
+// categorical palette, already tuned for both themes.
+const BADGES = [
+  [/^pdf$/, 'PDF', 5], [/^(jpe?g|png|webp|heic|heif|gif|bmp|tiff?)$/, 'IMG', 0],
+  [/^(xlsx|xlsm|xls|csv|tsv|ods)$/, 'XLS', 1], [/^(docx|docm|rtf|txt|md|log|json|xml|eml)$/, 'DOC', 4],
+  [/^(pptx|pptm)$/, 'PPT', 2], [/^(mp3|wav|m4a|aac|ogg|opus|flac|amr)$/, 'AUD', 3],
+  [/^(mp4|mov|m4v|webm|3gp)$/, 'VID', 3], [/^(vtt|srt)$/, 'SUB', 4],
+];
+export function badgeFor(name = '') {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  const hit = BADGES.find(([re]) => re.test(ext));
+  return hit ? { label: hit[1], hue: hit[2] } : { label: ext.slice(0, 4).toUpperCase() || 'FILE', hue: 4 };
+}
+const FileBadge = ({ name }) => {
+  const b = badgeFor(name);
+  return <span className="dg-badge" style={{ '--badge': `var(--rp-cat-${b.hue})` }}>{b.label}</span>;
+};
+const sizeOf = (n) => (n == null ? '' : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(1)} MB`);
+const timeLeft = (s) => (s < 60 ? `${Math.ceil(s)}s left` : `${Math.ceil(s / 60)} min left`);
 
 const ACCEPT_LIST = '.jpg,.jpeg,.png,.webp,.heic,.heif,.gif,.bmp,.tif,.tiff,.pdf,.docx,.docm,.xlsx,.xlsm,.xls,.csv,.tsv,.ods,.pptx,.pptm,.txt,.md,.log,.json,.xml,.rtf,.eml,.vtt,.srt,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.amr,.mp4,.mov,.m4v,.webm,.3gp,image/*,application/pdf,audio/*,video/*,text/*';
 
@@ -95,56 +115,59 @@ export default function Records() {
   // Read and file everything that carries its own text. Each file becomes one
   // record; the queue reports them alongside scanned pages so the officer sees
   // one list, not two.
+  const markItem = useCallback((key, patch) =>
+    setQueue((prev) => prev.map((x) => (x.key === key ? { ...x, ...patch } : x))), []);
+
+  const readOne = useCallback(async (item) => {
+    const { file: f, key, batchId } = item;
+    const mark = (patch) => markItem(key, patch);
+    mark({ status: 'working', error: '', detail: '' });
+    try {
+      const { text, tables, kind, note } = await extractText(f, {
+        // The officer's language, same as the OCR path above. Left off, this
+        // defaulted to English, so a Kannada statement recording filed into
+        // Records came back as plausible Latin nonsense — the identical
+        // failure the OCR language fix addressed, one call site over.
+        transcribe: (blob, name) => transcribeAudio(
+          new File([blob], name || 'audio.wav', { type: 'audio/wav' }),
+          i18n.resolvedLanguage || 'en',
+        ),
+        onProgress: (m) => mark({ detail: m }),
+      });
+      const filed = await ingestExtracted({
+        filename: f.name,
+        mime: f.type || 'application/octet-stream',
+        text, tables, note, sourceKind: kind, batchId,
+      });
+      // Keep the original next to the text it produced, so a recording can
+      // be played back and a document downloaded as filed. The text is
+      // already filed, so a failure here does not lose the record — but it
+      // is REPORTED rather than swallowed: silently dropping the source of a
+      // transcript is exactly the kind of gap nobody notices until the
+      // recording is needed and it is not there.
+      let sourceWarning = '';
+      try {
+        await attachSource(filed.id, f);
+      } catch (e) {
+        sourceWarning = `filed, but the original was not kept — ${e.message}`;
+      }
+      mark({ status: sourceWarning ? 'partial' : 'done', detail: '', error: sourceWarning });
+      logAudit('records-ingest', 'Records', `${f.name} (${kind})`);
+    } catch (e) {
+      mark({ status: 'failed', error: e.message, detail: '' });
+    }
+  }, [markItem, i18n.resolvedLanguage]);
+
   const fileReadable = useCallback(async (files) => {
     const batchId = newBatchId();
-    setQueue((prev) => [
-      ...prev,
-      ...files.map((f) => ({ key: `${batchId}-${f.name}`, name: f.name, status: 'waiting' })),
-    ]);
-    for (const f of files) {
-      const key = `${batchId}-${f.name}`;
-      const mark = (patch) => setQueue((prev) => prev.map((x) => (x.key === key ? { ...x, ...patch } : x)));
-      mark({ status: 'working' });
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        const { text, tables, kind, note } = await extractText(f, {
-          // The officer's language, same as the OCR path above. Left off, this
-          // defaulted to English, so a Kannada statement recording filed into
-          // Records came back as plausible Latin nonsense — the identical
-          // failure the OCR language fix addressed, one call site over.
-          transcribe: (blob, name) => transcribeAudio(
-            new File([blob], name || 'audio.wav', { type: 'audio/wav' }),
-            i18n.resolvedLanguage || 'en',
-          ),
-          onProgress: (m) => mark({ detail: m }),
-        });
-        // eslint-disable-next-line no-await-in-loop
-        const filed = await ingestExtracted({
-          filename: f.name,
-          mime: f.type || 'application/octet-stream',
-          text, tables, note, sourceKind: kind, batchId,
-        });
-        // Keep the original next to the text it produced, so a recording can
-        // be played back and a document downloaded as filed. The text is
-        // already filed, so a failure here does not lose the record — but it
-        // is REPORTED rather than swallowed: silently dropping the source of a
-        // transcript is exactly the kind of gap nobody notices until the
-        // recording is needed and it is not there.
-        let sourceWarning = '';
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          await attachSource(filed.id, f);
-        } catch (e) {
-          sourceWarning = `filed, but the original was not kept — ${e.message}`;
-        }
-        mark({ status: sourceWarning ? 'partial' : 'done', detail: '', error: sourceWarning });
-        logAudit('records-ingest', 'Records', `${f.name} (${kind})`);
-      } catch (e) {
-        mark({ status: 'failed', error: e.message, detail: '' });
-      }
-    }
+    const items = files.map((f) => ({
+      key: `${batchId}-${f.name}`, name: f.name, size: f.size, status: 'waiting', file: f, run: 'read', batchId,
+    }));
+    setQueue((prev) => [...prev, ...items]);
+    // eslint-disable-next-line no-await-in-loop
+    for (const item of items) await readOne(item);
     refresh();
-  }, [refresh, i18n.resolvedLanguage]);
+  }, [readOne, refresh]);
 
   // Files (and PDF pages) are staged, not uploaded — the officer decides what
   // belongs to which document before anything is filed.
@@ -204,37 +227,53 @@ export default function Records() {
     setTray((prev) => { prev.forEach((p) => URL.revokeObjectURL(p.url)); return []; });
   }, []);
 
+  const scanOne = useCallback(async (item) => {
+    const { batch } = item;
+    const started = Date.now();
+    markItem(item.key, { status: 'working', error: '', progress: 0, eta: null });
+    try {
+      const rec = await uploadScan(item.file, {
+        batchId: batch.id, appendTo: batch.asOne ? batch.appendTo : '',
+        // The officer's own interface language is the best guess at what the
+        // paper says; Zia reads a Kannada page very differently when told so.
+        lang: i18n.resolvedLanguage,
+        onProgress: (p) => {
+          const secs = (Date.now() - started) / 1000;
+          // Rate-based estimate, shown once there is enough of a sample to mean anything.
+          markItem(item.key, { progress: p, eta: p > 0.05 && p < 1 && secs > 1 ? (secs / p) * (1 - p) : null });
+        },
+      });
+      if (batch.asOne && !batch.appendTo && rec?.id) batch.appendTo = rec.id;
+      markItem(item.key, { status: 'done', progress: null, eta: null });
+    } catch (e) {
+      markItem(item.key, { status: 'failed', error: e.message, progress: null, eta: null });
+    }
+  }, [markItem, i18n.resolvedLanguage]);
+
   // `asOne` files every staged page into a single document; otherwise each page
   // becomes its own record. Pages upload one at a time — OCR plus the reading
   // pass takes a few seconds each, and the first upload has to return the id
   // the rest append to.
   const saveTray = useCallback(async (asOne) => {
     if (!tray.length) return;
-    const batchId = newBatchId();
-    const items = tray.map((t) => ({ key: t.key, name: t.file.name, status: 'waiting', file: t.file }));
+    // Shared by every page of the batch, so a retried page still joins the
+    // document its siblings went into.
+    const batch = { id: newBatchId(), asOne, appendTo: '' };
+    const items = tray.map((t) => ({
+      key: t.key, name: t.file.name, size: t.file.size, status: 'waiting', file: t.file, run: 'scan', batch,
+    }));
     setQueue((prev) => [...prev, ...items]);
     clearTray();
-
-    let appendTo = '';
-    for (const item of items) {
-      setQueue((prev) => prev.map((x) => (x.key === item.key ? { ...x, status: 'working' } : x)));
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        const rec = await uploadScan(item.file, {
-          batchId, appendTo: asOne ? appendTo : '',
-          // The officer's own interface language is the best guess at what the
-          // paper says; Zia reads a Kannada page very differently when told so.
-          lang: i18n.resolvedLanguage,
-        });
-        if (asOne && !appendTo && rec?.id) appendTo = rec.id;
-        setQueue((prev) => prev.map((x) => (x.key === item.key ? { ...x, status: 'done' } : x)));
-      } catch (e) {
-        setQueue((prev) => prev.map((x) => (x.key === item.key ? { ...x, status: 'failed', error: e.message } : x)));
-      }
-    }
+    // eslint-disable-next-line no-await-in-loop
+    for (const item of items) await scanOne(item);
     logAudit('digitise-batch', 'Records', `${items.length} page(s)`);
     refresh();
-  }, [tray, clearTray, refresh, i18n.resolvedLanguage]);
+  }, [tray, clearTray, refresh, scanOne]);
+
+  const retry = useCallback(async (item) => {
+    await (item.run === 'scan' ? scanOne(item) : readOne(item));
+    refresh();
+  }, [scanOne, readOne, refresh]);
 
   // Paste a file straight onto the page — copy it in Finder or Explorer, or
   // take a screenshot, then Ctrl/Cmd+V anywhere on Records.
@@ -391,7 +430,9 @@ export default function Records() {
         />
 
         <FileUpload onFiles={stage} accept={ACCEPT_LIST} busy={!!preparing} className="dg-drop" label={t('records.chooseFiles')}>
-          <Layers size={22} strokeWidth={1.7} className="dg-drop-icon" />
+          <span className="dg-fan" aria-hidden="true">
+            {['PDF', 'IMG', 'XLS'].map((l) => <span key={l} className="dg-fan-card"><FileBadge name={`x.${l === 'IMG' ? 'jpg' : l === 'XLS' ? 'xlsx' : 'pdf'}`} /></span>)}
+          </span>
           <div className="dg-drop-copy">
             <strong>{t('records.dropTitle')}</strong>
             <span>{t('records.dropHint')}</span>
@@ -465,18 +506,43 @@ export default function Records() {
               )}
             </div>
             <div className="dg-queue-list">
-              {queue.map((x) => (
-                <div key={x.key} className={`dg-queue-item ${x.status}`}>
-                  <span className="dg-queue-name">{x.name}</span>
-                  <span className="dg-queue-status">
-                    {x.status === 'waiting' && 'Waiting'}
-                    {x.status === 'working' && (x.detail || 'Reading…')}
-                    {x.status === 'done' && 'Done'}
-                    {x.status === 'partial' && (x.error || 'Filed without the original')}
-                    {x.status === 'failed' && (x.error || 'Failed')}
-                  </span>
-                </div>
-              ))}
+              {queue.map((x) => {
+                const uploading = x.status === 'working' && x.progress != null && x.progress < 1;
+                return (
+                  <div key={x.key} className={`dg-queue-item ${x.status}`}>
+                    <FileBadge name={x.name} />
+                    <div className="dg-queue-main">
+                      <div className="dg-queue-line">
+                        <span className="dg-queue-name" title={x.name}>{x.name}</span>
+                        <span className="dg-queue-status">
+                          {x.status === 'waiting' && 'Waiting'}
+                          {uploading && `Uploading ${Math.round(x.progress * 100)}%${x.eta != null ? ` · ${timeLeft(x.eta)}` : ''}`}
+                          {x.status === 'working' && !uploading && (x.detail || 'Reading…')}
+                          {x.status === 'done' && 'Done'}
+                          {x.status === 'partial' && (x.error || 'Filed without the original')}
+                          {x.status === 'failed' && (x.error || 'Failed')}
+                        </span>
+                      </div>
+                      {x.status === 'working' && (
+                        <div
+                          className={`dg-bar ${uploading ? '' : 'indeterminate'}`} role="progressbar"
+                          aria-label={`${x.name} progress`}
+                          aria-valuenow={uploading ? Math.round(x.progress * 100) : undefined}
+                          aria-valuemin={0} aria-valuemax={100}
+                        >
+                          <span style={uploading ? { width: `${x.progress * 100}%` } : undefined} />
+                        </div>
+                      )}
+                    </div>
+                    <span className="dg-queue-size">{sizeOf(x.size)}</span>
+                    {x.status === 'failed' && x.file && (
+                      <button type="button" className="dg-retry" onClick={() => retry(x)} disabled={busy > 0}>
+                        <RotateCw size={12} /> Retry
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             {failed.length > 0 && (
               <div className="dg-queue-foot">

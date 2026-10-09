@@ -145,7 +145,27 @@ export const isPdf = (file) => /pdf/i.test(file.type) || /\.pdf$/i.test(file.nam
 const OCR_LANG = { kn: 'kan', hi: 'hin', en: 'eng' };
 export const ocrLangFor = (uiLang) => OCR_LANG[String(uiLang || '').slice(0, 2).toLowerCase()] || 'eng';
 
-export async function uploadScan(file, { batchId = '', caseMasterId = '', appendTo = '', lang = '' } = {}) {
+// XHR rather than fetch: fetch cannot report upload progress, and a phone
+// photo over a station uplink is the part of the wait the officer can see.
+// onProgress(fraction) covers the transfer only; OCR happens after it.
+function postWithProgress(url, body, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.setRequestHeader('Content-Type', 'text/plain');
+    if (onProgress) xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch { /* non-JSON error page */ }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new Error(data.error || `HTTP ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error('Upload failed — connection lost'));
+    xhr.send(body);
+  });
+}
+
+export async function uploadScan(file, { batchId = '', caseMasterId = '', appendTo = '', lang = '', onProgress } = {}) {
   const blob = await normaliseImage(file);
   const hex = toHex(await blob.arrayBuffer());
   const qs = new URLSearchParams({
@@ -156,13 +176,7 @@ export async function uploadScan(file, { batchId = '', caseMasterId = '', append
     appendTo,
     lang: ocrLangFor(lang),
   });
-  const res = await fetch(`/server/rag/digitise/upload?${qs}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: hex,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  const data = await postWithProgress(`/server/rag/digitise/upload?${qs}`, hex, onProgress);
   return data.record;
 }
 

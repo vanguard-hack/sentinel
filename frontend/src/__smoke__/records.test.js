@@ -26,8 +26,9 @@ jest.mock('../utils/digitise', () => ({
   updateRecord: (p) => Promise.resolve({ ...p, fields: {}, tables: [], text: p.text || '' }),
   deleteRecord: () => Promise.resolve({}),
   fetchScanUrl: () => Promise.resolve('data:image/jpeg;base64,AAA'),
-  uploadScan: () => Promise.resolve({ id: 'rec-3' }),
+  uploadScan: (...a) => global.__upload(...a),
   newBatchId: () => 'batch-1',
+  isPdf: () => false,
   recordsToCsv: (rows) => `Title\n${rows.map((r) => r.title).join('\n')}`,
   searchRecords: () => Promise.resolve([]),
 }), { virtual: true });
@@ -35,6 +36,7 @@ jest.mock('../utils/audit', () => ({ logAudit: () => {} }), { virtual: true });
 jest.mock('../components/TopBar', () => ({ __esModule: true, default: () => null }), { virtual: true });
 
 global.__records = RECORDS;
+global.__upload = () => Promise.resolve({ id: 'rec-3' });
 
 const Records = require('../pages/Records').default;
 const RecordDetail = require('../pages/RecordDetail').default;
@@ -62,4 +64,35 @@ test('detail shows extracted fields, tables and text', async () => {
   expect(screen.getByText('Property')).toBeTruthy();
   expect(screen.getByText('18000')).toBeTruthy();
   expect(screen.getByText(/FIR No 0042\/2026/)).toBeTruthy();
+});
+
+test('file types get the right badge', () => {
+  const { badgeFor } = require('../pages/Records');
+  expect(badgeFor('statement.PDF').label).toBe('PDF');
+  expect(badgeFor('scan.jpeg').label).toBe('IMG');
+  expect(badgeFor('ledger.xlsx').label).toBe('XLS');
+  expect(badgeFor('interview.m4a').label).toBe('AUD');
+  expect(badgeFor('mystery.zzz').label).toBe('ZZZ');
+});
+
+test('a failed page upload can be retried in place', async () => {
+  URL.createObjectURL = () => 'blob:x';
+  URL.revokeObjectURL = () => {};
+  let calls = 0;
+  global.__upload = () => (++calls === 1
+    ? Promise.reject(new Error('Upload failed — connection lost'))
+    : Promise.resolve({ id: 'rec-9' }));
+
+  const { container } = render(<ConfirmProvider><Records /></ConfirmProvider>);
+  await screen.findByText('FIR 42/2026');
+  const input = container.querySelector('input[type="file"]:not([capture])');
+  fireEvent.change(input, { target: { files: [new File(['x'], 'page.png', { type: 'image/png' })] } });
+  fireEvent.click(await screen.findByRole('button', { name: /save/i }));
+
+  await screen.findByText('Upload failed — connection lost');
+  fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+  await screen.findByText('Done');
+  expect(calls).toBe(2);
+  expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
+  global.__upload = () => Promise.resolve({ id: 'rec-3' });
 });
