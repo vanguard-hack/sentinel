@@ -198,7 +198,7 @@ export default function Custody() {
                       </td>
                       <td><Chip status={p.status} /></td>
                       <td className="cust-fac">{p.facility || '—'}</td>
-                      <td className="cust-secs">{p.sections.slice(0, 2).map((s) => <span key={s.code} className="cust-sec">{s.code}</span>)}{p.sections.length > 2 && <span className="cust-sec more">+{p.sections.length - 2}</span>}</td>
+                      <td><div className="cust-secs">{p.sections.slice(0, 2).map((s) => <span key={s.code} className="cust-sec">{s.code}</span>)}{p.sections.length > 2 && <span className="cust-sec more">+{p.sections.length - 2}</span>}</div></td>
                       <td>{p.cases.length}</td>
                       <td className="cust-num">{p.custodyDays != null ? `${p.custodyDays} d` : '—'}</td>
                       <td className="cust-num">{p.nextHearing ? fmtDate(p.nextHearing) : '—'}</td>

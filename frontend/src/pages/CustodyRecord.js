@@ -118,7 +118,7 @@ export default function CustodyRecord() {
                     <td className="fc-pid">{c.crimeNo}</td>
                     <td>{fmtDate(c.date)}</td>
                     <td>{c.subHead}{c.heinous && <span className="cust-heinous" title="Heinous">●</span>}<div className="cust-head-sub">{c.head}</div></td>
-                    <td className="cust-secs">{c.sections.map((s) => <span key={s.code} className="cust-sec" title={s.desc}>{s.code}</span>)}</td>
+                    <td><div className="cust-secs">{c.sections.map((s) => <span key={s.code} className="cust-sec" title={s.desc}>{s.code}</span>)}</div></td>
                     <td>{c.station}<div className="cust-head-sub">{c.district}</div></td>
                     <td>{c.status}</td>
                   </tr>
@@ -167,7 +167,7 @@ export default function CustodyRecord() {
                       <td>{b.court}</td>
                       <td><span className={`cust-bail ${b.outcome === 'Granted' ? 'ok' : 'no'}`}>{b.outcome}</span></td>
                       <td>{b.surety}</td>
-                      <td className="cust-conds">{b.conditions.length ? b.conditions.map((c) => <span key={c} className="cust-cond">{c}</span>) : '—'}</td>
+                      <td>{b.conditions.length ? <div className="cust-conds">{b.conditions.map((c) => <span key={c} className="cust-cond">{c}</span>)}</div> : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
