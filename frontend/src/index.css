@@ -2921,7 +2921,9 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    .as-msg-body's 4px padding-top to approximate a multi-line first-line
    alignment that doesn't apply here). */
 .as-msg-thinking { align-items: center; }
-.as-msg-thinking .as-msg-body { padding-top: 0; }
+/* Centre the indicator on the 30px avatar. As an inline-flex inside a block
+   it sat on a text baseline and the line box pushed it below the logo. */
+.as-msg-thinking .as-msg-body { padding-top: 0; display: flex; align-items: center; min-height: 30px; }
 .as-msg-text { color: var(--text-1); font-size: 14.5px; line-height: 1.65; white-space: pre-wrap; word-wrap: break-word; }
 .as-msg-user .as-msg-text { color: var(--text-0); }
 .as-msg-files { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }

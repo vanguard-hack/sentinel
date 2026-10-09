@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Plus, MessageSquare, Trash2,
-  Paperclip, Mic, ArrowUp, X, Shield, FileText, PanelLeft,
+  Paperclip, Mic, ArrowUp, X, FileText, PanelLeft,
   Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, MoreVertical,
   Star, Pencil, FileDown, CheckSquare, AlertTriangle, ShieldAlert, Search,
 } from 'lucide-react';
@@ -23,6 +23,7 @@ import ModelPicker from '../components/ModelPicker';
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
 import Avatar from '../components/Avatar';
+import SentinelMark from '../components/SentinelMark';
 import Thinking from '../components/Thinking';
 import TopBar from '../components/TopBar';
 import i18n from '../i18n';
@@ -1293,7 +1294,7 @@ export default function Assistant() {
           <MessageScroller className="as-thread" dependency={`${activeId}-${messages.length}-${sending}`}>
             {messages.length === 0 && !sending ? (
               <div className="as-greeting">
-                <Shield size={40} strokeWidth={1.3} />
+                <SentinelMark size={40} />
                 <h1>How can I help?</h1>
                 <p>Ask a question, attach a file, or use the mic to speak.</p>
                 <div className="as-suggestions">
@@ -1309,7 +1310,7 @@ export default function Assistant() {
                 {messages.map((m) => (
                   <div key={m.id} className={`as-msg as-msg-${m.role}`}>
                     <div className="as-avatar">
-                      {m.role === 'user' ? <Avatar user={user} size={30} /> : <Shield size={16} />}
+                      {m.role === 'user' ? <Avatar user={user} size={30} /> : <SentinelMark size={18} />}
                     </div>
                     <div className="as-msg-body">
                       {m.files && m.files.length > 0 && (
@@ -1386,7 +1387,7 @@ export default function Assistant() {
                 ))}
                 {sending && (
                   <div className="as-msg as-msg-assistant as-msg-thinking">
-                    <div className="as-avatar"><Shield size={16} /></div>
+                    <div className="as-avatar"><SentinelMark size={18} /></div>
                     <div className="as-msg-body">
                       <Thinking label={sherlockLabel} />
                     </div>
