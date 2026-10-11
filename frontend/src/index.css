@@ -323,6 +323,17 @@ a:hover { color: var(--primary-hover); }
 
 ::selection { background: var(--primary-tint); color: var(--text-0); }
 
+/* Smooth-by-default: every element eases a color/elevation state change
+   instead of snapping, even where a component below doesn't declare its own
+   transition (most hover/active states on buttons, table rows, nav items,
+   etc. only ever touch these properties). A component's own `transition`
+   is a same-specificity class rule, so it still wins and can set a
+   different duration/easing deliberately. The reduced-motion block below
+   zeroes this out like everything else. */
+*, *::before, *::after {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
 input, textarea, select { font-family: inherit; letter-spacing: var(--tr-body); }
 input::placeholder, textarea::placeholder { color: var(--text-4); }
 
@@ -4674,7 +4685,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
   flex-direction: column;
 }
 /* Replayed on every route change — see App.tsx's usePageTransition. */
-.app-main.page-transition-in { animation: pageIn 0.2s ease-out; }
+.app-main.page-transition-in { animation: pageIn 0.26s cubic-bezier(0.23, 1, 0.32, 1); }
 @keyframes pageIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
