@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useDeferredValue } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Building2, RefreshCw, AlertTriangle, Search, ChevronLeft, ChevronRight,
@@ -104,19 +104,18 @@ export default function Custody() {
     return columnFields(cols, people, { person: (id) => names.get(id) || id });
   }, [cols, people]);
 
+  // Search text for every column, built once per load — not per keystroke.
+  const hay = useMemo(() => new Map(people.map((p) => [p, [p.name, ...p.aliases, p.biometricId, p.status, p.facility,
+    ...p.cases.map((c) => c.crimeNo), ...p.sections.map((s) => s.code), p.cases.length,
+    p.custodyDays != null && `${p.custodyDays} d`, p.nextHearing && fmtDate(p.nextHearing)]
+    .filter(Boolean).join(' ').toLowerCase()])), [people]);
+  const dq = useDeferredValue(q);
+
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return applyFilters(people, filters, columnValue(cols)).filter((p) => {
-      if (needle) {
-        // Every column the row shows, so search reaches all of them.
-        const hay = [p.name, ...p.aliases, p.biometricId, p.status, p.facility, ...p.cases.map((c) => c.crimeNo),
-          ...p.sections.map((s) => s.code), p.cases.length, p.custodyDays != null && `${p.custodyDays} d`,
-          p.nextHearing && fmtDate(p.nextHearing)].filter(Boolean).join(' ').toLowerCase();
-        if (!hay.includes(needle)) return false;
-      }
-      return true;
-    });
-  }, [people, q, filters, cols]);
+    const needle = dq.trim().toLowerCase();
+    const rows = applyFilters(people, filters, columnValue(cols));
+    return needle ? rows.filter((p) => hay.get(p).includes(needle)) : rows;
+  }, [people, dq, filters, cols, hay]);
 
   useEffect(() => { setPage(1); }, [q, filters]);
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
