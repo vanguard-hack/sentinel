@@ -1,3 +1,5 @@
+import { ROLE_LABELS } from './access';
+
 // Client-side audit capture. Events are queued locally and flushed to the
 // rag function in small batches (timer + page-hide beacon) so navigation is
 // never blocked. The server enriches each batch with the caller's verified
@@ -102,3 +104,30 @@ if (typeof document !== 'undefined') {
     if (document.visibilityState === 'hidden') flush(true);
   });
 }
+
+// Every column the row shows, as one lowercase string — so one search box
+// covers time, officer, role (code and label), feature, action, IP, location,
+// VPN and the expanded detail. Built once per event and cached: the range can
+// hold 5000 events and this runs on every keystroke.
+const HAYSTACKS = new WeakMap();
+export const auditHaystack = (e) => {
+  let s = HAYSTACKS.get(e);
+  if (s === undefined) {
+    s = [
+      e.istTime, e.name, e.email, e.role, ROLE_LABELS[e.role], e.role === 'admin' && 'Admin',
+      e.feature, e.action, e.ip, e.location, e.vpn ? 'Yes VPN' : 'No', e.detail, e.path,
+    ].filter(Boolean).join(' ').toLowerCase();
+    HAYSTACKS.set(e, s);
+  }
+  return s;
+};
+
+// Space-separated terms AND together, each matched against the whole row.
+export const auditSearch = (list, query) => {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return list;
+  return list.filter((e) => {
+    const hay = auditHaystack(e);
+    return terms.every((t) => hay.includes(t));
+  });
+};
