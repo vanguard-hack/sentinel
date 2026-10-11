@@ -16,6 +16,7 @@ const crypto = require('./crypto');
 const sanctions = require('./sanctions');
 const sherlock = require('./sherlock');
 const memory = require('./memory');
+const planner = require('./planner');
 const assistantTools = require('./tools');
 const integrity = require('./integrity');
 const grounding = require('./grounding');
@@ -222,7 +223,7 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 // model so the big model's budget is reserved for summaries, ZCQL generation
 // and knowledge fallbacks.
 const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
-const GROQ_MODEL_FAST = process.env.GROQ_MODEL_FAST || 'qwen/qwen3.6-27b';
+const GROQ_MODEL_FAST = process.env.GROQ_MODEL_FAST || 'qwen/qwen3.8-27b';
 
 async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeoutMs = 12_000, model = GROQ_MODEL } = {}) {
   if (!process.env.GROQ_API_KEY) return null;
@@ -802,28 +803,6 @@ function deterministicRoute(query) {
 // over a confident-looking wrong route. Tune from the logged decisions.
 const ROUTE_CONFIDENCE_FLOOR = 0.55;
 
-function parseRouteReply(raw) {
-  if (!raw) return null;
-  const txt = String(raw);
-  // Accept {"route":"ZCQL","confidence":0.8} or a bare word, so a model that
-  // ignores the JSON instruction still produces a usable decision.
-  try {
-    const m = txt.match(/\{[\s\S]*\}/);
-    if (m) {
-      const o = JSON.parse(m[0]);
-      const route = String(o.route || '').toUpperCase();
-      if (['CHAT', 'GUIDE', 'ZCQL', 'RAG', 'BOTH', 'TOOLS'].includes(route)) {
-        const c = Number(o.confidence);
-        return { route, confidence: Number.isFinite(c) ? Math.max(0, Math.min(1, c)) : 0.6 };
-      }
-    }
-  } catch { /* fall through to word matching */ }
-  const word = /\b(BOTH|TOOLS|CHAT|GUIDE|ZCQL|RAG)\b/i.exec(txt);
-  // A bare word carries no self-reported confidence; assume just above the
-  // floor so it is used, but treated as weaker than a scored answer.
-  return word ? { route: word[1].toUpperCase(), confidence: 0.6 } : null;
-}
-
 // ── VLM trigger ──────────────────────────────────────────────────────────
 // Whether an attached image gets an actual Qwen VLM pass, on top of the OCR/
 // objects/barcode digest vision.js already produced for it. The VLM is a
@@ -862,16 +841,9 @@ const VLM_SYSTEM_PROMPT =
   + 'another system component, not shown to the officer directly — skip '
   + 'pleasantries, framing, or restating the question.';
 
-// Cheap deterministic fast paths first, mirroring deterministicRoute() above:
-// an unambiguous case is resolved without a model call at all.
-const VISUAL_QUESTION_RE = /\b(describe|explain (this|the) (image|photo|picture)|what does .*look like|what('?s| is) (in|shown|visible|happening)|how many (people|persons|men|women|vehicles|cars)|is there a|what colou?r|what is (he|she|they|the \w+) wearing|who is in|what'?s? going on|the scene)\b/i;
-const OCR_ONLY_RE = /\b(crime (no|number)|fir (no|number)|which section|what section|police station|what date|what does it say)\b/i;
-
 async function needsVisualAnalysis(question) {
   const q = String(question || '').trim();
   if (!q) return false;
-  if (VISUAL_QUESTION_RE.test(q)) return true;
-  if (OCR_ONLY_RE.test(q)) return false;
   const out = await callLLM(
     [
       {
@@ -1085,14 +1057,6 @@ async function localiseAnswer(text, lang) {
   );
   return (out && out.trim()) || text;
 }
-
-const EXPAND_PROMPT =
-  'Rewrite the user question as ONE clear, self-contained question for searching a ' +
-  'police crime-analytics knowledge base (FIRs, gangs, police stations, modus operandi, ' +
-  'investigation officers, crime FAQs, crime statistics). Use the conversation context ' +
-  'to resolve pronouns and references ("it", "that gang", "there") into explicit names. ' +
-  'Preserve every specific detail (names, codes, places, dates); expand abbreviations; ' +
-  'do NOT invent details or add assumptions. Output ONLY the rewritten question.';
 
 const CHAT_SYSTEM =
   'You are Sentinel Assistant, a friendly assistant inside a Karnataka police ' +
@@ -5594,7 +5558,9 @@ module.exports = async (req, res) => {
     const sessionId = typeof body.session_id === 'string' ? body.session_id.trim().slice(0, 80) : '';
     let memBuffer = null; // the live cache buffer for this session
     let memFacts = []; // long-term structured facts for this officer
-    let memRecall = null; // semantic recall, only when the question asked for it
+    let memRecall = null; // semantic recall, only when the planner asked for it
+    let plan = null; // the planner's reading of this message (see planner.js)
+    let plannedCasual = false; // planner judged it small talk — no source chips
 
     // Who is asking, for the clearance filter. Resolved once and memoised:
     // every redaction decision below depends on it.
@@ -5675,6 +5641,9 @@ module.exports = async (req, res) => {
             : 'route=none',
           slashName ? `command=/${slashName}` : null,
           `lang=${lid.lang}`,
+          plan && plan.entities.length
+            ? `entities=${plan.entities.map((e) => `${e.type}:${e.value}`).join('|').slice(0, 300)}`
+            : null,
           `clearance=${callerRole || 'none'}`,
           pc && pc.current_module ? `page=${pc.current_module}` : null,
           validatorChecks.length ? `validator=${validatorChecks.join('|')}` : null,
@@ -5752,6 +5721,28 @@ module.exports = async (req, res) => {
     // came to skip finalAnswer entirely, taking the tier-2 guard and the
     // decision record with them. One exit makes that class of drift
     // impossible.
+    // Did this text actually answer the question? Judged by a model reading
+    // both, because a non-answer has endless phrasings ("the passages do not
+    // cover…", "no record of that…") and a missed one skips the whole
+    // fallback chain. Memoised per text, so the several checks one answer
+    // passes through cost one call. The keyword rule is only the fallback for
+    // when no model answers. Judged against rawQuery: `query` is declared
+    // further down, and the refusal lanes reach respondWith before it exists.
+    const judged = new Map();
+    const nonAnswer = async (text) => {
+      const t = String(text || '').trim();
+      if (!t) return true;
+      if (judged.has(t)) return judged.get(t);
+      const v = await planner.judgeAnswer({
+        question: rawQuery,
+        answer: t,
+        llm: (m, o) => callLLM(m, { ...o, model: GROQ_MODEL_FAST }),
+      });
+      const out = v === null ? isNegative(t) : v;
+      judged.set(t, out);
+      return out;
+    };
+
     const respondWith = async (rawText, payload = {}, citations) => {
       // Every lane's answer passes through here before it reaches the wire,
       // so this is the one place a stray markdown table or duplicated list
@@ -5834,11 +5825,11 @@ module.exports = async (req, res) => {
       // assistant consulted before giving up is exactly what a reviewer needs
       // months later; it is the officer's view that should be empty, not the
       // trail.
-      const groundless = isNegative(text);
       // Same for small talk, whichever lane ended up answering it: a greeting
       // looked nothing up, so a source chip under the reply would claim a
       // lookup that never mattered. The audit trail still keeps the full list.
-      const casual = payload.source === 'chat' || isSmallTalk(rawQuery);
+      const casual = payload.source === 'chat' || plannedCasual;
+      const groundless = !casual && !payload.refused && await nonAnswer(text);
       const shownSources = groundless || casual ? [] : citedSources;
 
       // Refusals, the guardrail lane, the "couldn't find an answer" fallback,
@@ -6197,10 +6188,6 @@ module.exports = async (req, res) => {
       (process.env.RAG_DOCUMENT_IDS
         ? process.env.RAG_DOCUMENT_IDS.split(',').map((s) => s.trim()).filter(Boolean)
         : []);
-    // Recent-FIRs-in-a-place questions are answered from the FIR knowledge-base
-    // document — scope retrieval to it so the FIR records are always the context
-    // (unless the caller already scoped the search explicitly).
-    if (!documents.length && isRecentFirQuery(query)) documents = [FIR_DOC_ID];
     const token = await getAccessToken();
     const callRag = async (q, docs, timeoutMs) => {
       const payload = { query: q };
@@ -6249,117 +6236,142 @@ module.exports = async (req, res) => {
     };
 
     // ── Assembled memory context ─────────────────────────────────────────
-    // Read before the router runs, so short-term buffer, long-term facts and
-    // (only when the question asks for it) semantic recall reach every lane
-    // below identically. Memory is per-officer: an unidentified caller and a
-    // request with no session id both get nothing rather than someone else's.
+    // The short-term buffer and long-term facts are read up front — cheap,
+    // and the planner needs them to resolve "that gang". Semantic recall is
+    // NOT: it runs only when the planner says the message leans on an earlier
+    // session. Memory is per-officer: an unidentified caller and a request
+    // with no session id both get nothing rather than someone else's.
     if (sessionId) {
       await resolveCaller();
       const badge = badgeId();
       try {
         memBuffer = await memory.readBuffer(clearanceApp, sessionId, badge);
-        if (badge) {
-          memFacts = await memory.readFacts(clearanceApp, badge);
-          // Recall is a tool, not a step: reaching for past conversations on
-          // every turn would spend a retrieval call to answer "how many FIRs
-          // in Hubballi", which has nothing to do with what was said before.
-          if (memory.wantsRecall(query)) {
-            memRecall = await memory.recall(clearanceApp, badge, query, {
-              facts: memFacts,
-              // Scoped to this officer's own KB documents. An unscoped search
-              // would read every officer's memory, which is the single thing
-              // this feature must never do.
-              ragSearch: async (q, docs) => pickAnswer((await callRag(q, docs, 12_000)).data || {}),
-            });
-          }
-        }
+        if (badge) memFacts = await memory.readFacts(clearanceApp, badge);
       } catch (e) {
         console.error('memory read failed (non-fatal):', e && e.message);
       }
-      const assembled = memory.assemble({ buffer: memBuffer, facts: memFacts, recalled: memRecall });
+      const assembled = memory.assemble({ buffer: memBuffer, facts: memFacts });
       // A live buffer is more trustworthy than the client's copy; an expired
       // one is not resurrected behind the officer's back.
       if (assembled.history.length) history = assembled.history;
-      // What the officer is remembered for rides along as a system turn at the
-      // head of the history, which is what every Groq lane already spreads —
-      // so chat, guide, the attachment reader and the final fallback all see
-      // it without any of them knowing memory exists.
-      if (assembled.longTerm) {
-        // Recalled memory is prose the officer once saw, not prose they are
-        // cleared to see now — roles change, cases get sealed. It goes through
-        // the same pre-retrieval filter as every other retrieved text.
-        const f = redaction.filterText(assembled.longTerm, await resolveCaller());
-        longTermContext = f.text;
-        if (f.redactions.length) {
-          redactionLog = redactionLog.concat(
-            f.redactions.map((r) => ({ ...r, stage: 'pre-retrieval', source: 'memory' }))
-          );
-        }
-        // Long-term memory is the one injection vector that PERSISTS, and it
-        // lands in the system role — the position a model trusts most.
-        //
-        // The chain is real: a poisoned attachment is fenced on the way in and
-        // is not obeyed, but the assistant's answer still describes it, that
-        // answer enters the turn buffer, and consolidation asks a model to
-        // extract durable "facts" from the transcript. A sentence crafted to
-        // read like a fact about the officer can survive that summarising step
-        // and come back, sessions later, as a system instruction — with the
-        // original document long gone and nothing on screen to explain it.
-        //
-        // So this is the one place the response is to DISCARD rather than
-        // fence. Everywhere else the officer asked to read the thing and
-        // refusing would be its own denial of service; here it is background
-        // context they never requested, so dropping it costs a little recall
-        // and removes the only path by which an injection outlives the request
-        // that carried it.
-        const memScan = guard.scanUntrusted(longTermContext);
-        if (memScan.length) {
-          threatLog = threatLog.concat(memScan.map((x) => ({ ...x, stage: 'memory-recall' })));
-          console.warn('memory recall discarded — injection markers:', guard.summarise(memScan));
-          longTermContext = '';
-        }
-        if (longTermContext) {
-          // Fenced even when clean. It is machine-written prose derived from
-          // older conversations, not a system instruction someone authored.
-          history = [{
-            role: 'system',
-            content: guard.fence(longTermContext, 'notes remembered from this officer\u2019s earlier sessions'),
-          }].concat(history);
-        }
+    }
+
+    // Recalled memory is prose the officer once saw, not prose they are
+    // cleared to see now — roles change, cases get sealed. It goes through the
+    // same pre-retrieval filter as every other retrieved text.
+    //
+    // Long-term memory is also the one injection vector that PERSISTS, and it
+    // lands in the system role — the position a model trusts most. A poisoned
+    // attachment is fenced on the way in and not obeyed, but the answer still
+    // describes it, that answer enters the turn buffer, and consolidation can
+    // turn a sentence crafted to read like a fact into a "fact" that comes
+    // back sessions later as a system instruction. So this is the one place
+    // the response is to DISCARD rather than fence: it is background the
+    // officer never requested, and dropping it closes the only path by which
+    // an injection outlives the request that carried it.
+    const screenMemory = async (text, source) => {
+      if (!text) return '';
+      const f = redaction.filterText(text, await resolveCaller());
+      if (f.redactions.length) {
+        redactionLog = redactionLog.concat(
+          f.redactions.map((r) => ({ ...r, stage: 'pre-retrieval', source }))
+        );
       }
+      const scan = guard.scanUntrusted(f.text);
+      if (scan.length) {
+        threatLog = threatLog.concat(scan.map((x) => ({ ...x, stage: 'memory-recall' })));
+        console.warn('memory discarded — injection markers:', guard.summarise(scan));
+        return '';
+      }
+      return f.text;
+    };
+    // Facts and recall are screened separately so a second planning pass does
+    // not filter — and log — the same facts twice.
+    const factsContext = await screenMemory(memory.assemble({ facts: memFacts }).longTerm, 'memory');
+    let recallContext = '';
+    const longTerm = () => [factsContext, recallContext].filter(Boolean).join('\n\n').slice(0, 3000);
+
+    // ── Planner ──────────────────────────────────────────────────────────
+    // One structured model call decides what the keyword checks used to:
+    // the self-contained question, the lane, whether earlier sessions are
+    // needed, whether an attached file also needs the records, what it names.
+    // Chained: when it asks for memory, recall runs and the planner reads the
+    // message again with what came back, so "the gang I asked about last
+    // week" is resolved against the gang it actually was.
+    const planContext = () => {
+      const bits = [];
+      const lt = longTerm();
+      if (lt) bits.push(lt);
+      if (summary) bits.push('Earlier conversation topics: ' + summary);
+      const spoken = history.filter((m) => m.role !== 'system');
+      if (spoken.length) bits.push('Recent conversation:\n' + spoken.map((m) => `${m.role}: ${m.content}`).join('\n'));
+      return bits.join('\n\n');
+    };
+    // Fast model: the planner runs on every message, and keeping it off the
+    // big model's day cap is what makes that affordable.
+    const fastLLM = (messages, opts) => callLLM(messages, { ...opts, model: GROQ_MODEL_FAST });
+    const hasAttachment = !!rawAttachedContext;
+    plan = await planner.plan({ query, context: planContext(), hasAttachment, llm: fastLLM });
+    if (plan) plan.decided_by = 'planner';
+    if ((plan ? plan.needs_memory : memory.wantsRecall(query)) && sessionId && badgeId()) {
+      try {
+        memRecall = await memory.recall(clearanceApp, badgeId(), plan ? plan.standalone_question : query, {
+          facts: memFacts,
+          // Scoped to this officer's own KB documents. An unscoped search
+          // would read every officer's memory, which is the single thing
+          // this feature must never do.
+          ragSearch: async (q, docs) => pickAnswer((await callRag(q, docs, 12_000)).data || {}),
+        });
+      } catch (e) {
+        console.error('memory recall failed (non-fatal):', e && e.message);
+      }
+      recallContext = await screenMemory(memory.assemble({ recalled: memRecall }).longTerm, 'memory');
+      if (recallContext && plan) {
+        const refined = await planner.plan({ query, context: planContext(), hasAttachment, llm: fastLLM });
+        if (refined) plan = { ...refined, needs_memory: true, decided_by: 'planner+recall' };
+      }
+    }
+    // No model answered: the old keyword rules, so an outage degrades to the
+    // behaviour that shipped before the planner rather than to nothing.
+    if (!plan) {
+      const forced = (isSmallTalk(query) && { route: 'CHAT', confidence: 0.95, why: 'small talk' })
+        || deterministicRoute(query);
+      plan = {
+        route: forced ? forced.route : null,
+        confidence: forced ? forced.confidence : 0,
+        why: forced ? forced.why : undefined,
+        standalone_question: query,
+        needs_memory: !!memRecall,
+        needs_records: !!deterministicRoute(query),
+        recent_firs: isRecentFirQuery(query),
+        entities: [],
+        decided_by: forced ? 'fallback-rules' : 'default',
+      };
+    }
+    plannedCasual = plan.route === 'CHAT';
+    // Recent-FIRs-in-a-place questions are answered from the FIR knowledge-base
+    // document — scope retrieval to it so the FIR records are always the context
+    // (unless the caller already scoped the search explicitly).
+    if (!documents.length && plan.recent_firs) documents = [FIR_DOC_ID];
+
+    // What the officer is remembered for rides along as a system turn at the
+    // head of the history, which is what every lane already spreads — so
+    // chat, guide, the attachment reader and the final fallback all see it
+    // without any of them knowing memory exists. Fenced even when clean: it
+    // is machine-written prose from older conversations, not an instruction.
+    longTermContext = longTerm();
+    if (longTermContext) {
+      history = [{
+        role: 'system',
+        content: guard.fence(longTermContext, 'notes remembered from this officer’s earlier sessions'),
+      }].concat(history);
     }
     // History is final here — the server buffer and recalled memory have both
     // had their say. Mirrored for the grounding check, which runs from a
     // closure defined above this line.
     turnHistory = history;
 
-    // Expand the question into a self-contained one for better retrieval,
-    // using conversation context to resolve pronouns and references
-    // (best-effort — the raw query is used if Groq is absent or slow).
-    // Expansion exists ONLY to resolve conversational references ("it", "that
-    // gang") into a standalone question. Without history there is nothing to
-    // resolve — the raw question is always more faithful than a rewrite (small
-    // models invent filters/years, which poisons ZCQL generation downstream).
-    const contextBits = [];
-    if (longTermContext) contextBits.push(longTermContext);
-    if (summary) contextBits.push('Earlier conversation topics: ' + summary);
-    const spokenTurns = history.filter((m) => m.role !== 'system');
-    if (spokenTurns.length) {
-      contextBits.push(
-        'Recent conversation:\n' + spokenTurns.map((m) => `${m.role}: ${m.content}`).join('\n')
-      );
-    }
-    const expanded = contextBits.length
-      ? await callLLM(
-          [
-            { role: 'system', content: EXPAND_PROMPT },
-            { role: 'user', content: contextBits.join('\n\n') + '\n\nQuestion: ' + query },
-          ],
-          // Fast model: keeps follow-up questions off the big model's day cap.
-          { maxTokens: 160, temperature: 0.2, timeoutMs: 6_000, model: GROQ_MODEL_FAST }
-        )
-      : null;
-    const searchQuery = (expanded || '').trim() || query;
+    const searchQuery = plan.standalone_question || query;
 
     // ── Attached-image answers ───────────────────────────────────────────
     // An attachment usually means "read this for me", so the digest answers
@@ -6369,8 +6381,7 @@ module.exports = async (req, res) => {
     // extra context and normal routing runs instead.
     if (attachedContext) {
       evidence.add(attachedContext);
-      const alsoNeedsRecords = deterministicRoute(query);
-      if (!alsoNeedsRecords) {
+      if (!plan.needs_records) {
         const seen = await callLLM(
           [
             { role: 'system', content: VISION_SYSTEM },
@@ -6400,40 +6411,18 @@ module.exports = async (req, res) => {
     // RAG; RAG failure or non-answer → Groq llama (the final fallback).
     let zcqlDebug; // populated when the ZCQL path was tried but abandoned
     if (process.env.GROQ_API_KEY) {
-      // CHAT must be judged on the user's ORIGINAL wording — expansion can
-      // rewrite a bare "thanks!" into a restated data question.
-      // A structurally unmistakable query is routed without a model call.
-      // Small talk goes straight to the casual lane: a "hello" has no business
-      // reaching the knowledge base or the tool loop, and whatever either says
-      // back would arrive wearing a source chip for a lookup nobody needed.
-      const forced = (isSmallTalk(query) && { route: 'CHAT', confidence: 0.95, why: 'small talk' })
-        || deterministicRoute(query);
-      const scored = forced || parseRouteReply(await callLLM(
-        [
-          { role: 'system', content: zcql.ROUTER_PROMPT +
-            '\n\nReply ONLY as JSON: {"route":"CHAT|GUIDE|ZCQL|RAG|BOTH|TOOLS","confidence":0.0-1.0}. ' +
-            'Use BOTH when the question needs written procedure AND specific record data. ' +
-            'Set confidence below 0.5 when the intent is genuinely unclear.' },
-          {
-            role: 'user',
-            content:
-              searchQuery === query
-                ? query
-                : `Original message: ${query}\n(With context resolved: ${searchQuery})`,
-          },
-        ],
-        { maxTokens: 40, temperature: 0, timeoutMs: 5_000, model: GROQ_MODEL_FAST }
-      ));
-      // An unclear route falls back to RAG: the knowledge base is the broadest
-      // source, so a wrong guess there degrades to a weaker answer rather than
-      // to a confidently wrong one from a narrow source.
+      // The planner chose the lane above (or, with no model, the old keyword
+      // rules did). An unclear route falls back to RAG: the knowledge base is
+      // the broadest source, so a wrong guess there degrades to a weaker
+      // answer rather than to a confidently wrong one from a narrow source.
+      const scored = plan.route ? plan : null;
       const lowConfidence = !!scored && scored.confidence < ROUTE_CONFIDENCE_FLOOR;
       const route = !scored ? null : lowConfidence ? 'RAG' : scored.route;
       routeDecision = {
         route: route || 'RAG',
         confidence: scored ? scored.confidence : 0,
-        decided_by: forced ? 'override' : scored ? 'classifier' : 'default',
-        why: forced ? forced.why : lowConfidence ? 'below confidence floor' : undefined,
+        decided_by: plan.decided_by,
+        why: lowConfidence ? 'below confidence floor' : plan.why,
       };
       const routed = route; // existing branches below match on this
 
@@ -6578,7 +6567,7 @@ module.exports = async (req, res) => {
               if (fanoutRag) {
                 const rr = await fanoutRag;
                 const sop = rr && rr.ok ? extractAgui(pickAnswer(rr.data)) : null;
-                if (sop && sop.text && !isNegative(sop.text)) {
+                if (sop && sop.text && !(await nonAnswer(sop.text))) {
                   return await respondWith(sop.text.trim(), {
                     components: sop.components,
                     source: 'rag',
@@ -6706,7 +6695,7 @@ module.exports = async (req, res) => {
             if (fanoutRag) {
               const rr = await fanoutRag;
               const sop = rr && rr.ok ? extractAgui(pickAnswer(rr.data)) : null;
-              if (sop && sop.text && !isNegative(sop.text)) {
+              if (sop && sop.text && !(await nonAnswer(sop.text))) {
                 answerText += `\n\n**Procedure**\n\n${sop.text.trim()}`;
                 ragCited = ragCitations(rr);
               }
@@ -6714,7 +6703,7 @@ module.exports = async (req, res) => {
             // A negative prose ("no matching records", "does not answer...")
             // with a rendered data table is a contradiction — the rows didn't
             // answer the question, so don't show them.
-            const showComponents = flat.length > 0 && !isNegative(answerText);
+            const showComponents = flat.length > 0 && !(await nonAnswer(answerText));
             return await respondWith(answerText, {
               components: showComponents ? components : [],
               source: 'zcql',
@@ -6769,12 +6758,12 @@ module.exports = async (req, res) => {
     // If the expanded query struck out, retry RAG with the user's original
     // wording before ever leaving the knowledge base — expansion must never
     // cause a fallback that plain RAG would have answered.
-    if (isNegative(text) && searchQuery !== query) {
+    if (searchQuery !== query && await nonAnswer(text)) {
       try {
         const retry = await callRag(query, documents, 25_000);
         if (retry.ok) {
           const e2 = extractAgui(pickAnswer(retry.data));
-          if (!isNegative(e2.text)) {
+          if (!(await nonAnswer(e2.text))) {
             first = retry;
             text = e2.text;
             components = e2.components;
@@ -6789,7 +6778,7 @@ module.exports = async (req, res) => {
     // records — scanned documents are station-specific and will never be in
     // the knowledge base, so they are often the only place an answer exists.
     let digitisedHits = null;
-    if (isNegative(text)) {
+    if (await nonAnswer(text)) {
       const fromScans = digitisedPromise
         ? await digitisedPromise
         : await answerFromDigitised(req, query, await resolveCaller());
@@ -6803,7 +6792,7 @@ module.exports = async (req, res) => {
     }
 
     // Fallback LLM: only when neither the knowledge base nor the scans answer.
-    if (isNegative(text)) {
+    if (await nonAnswer(text)) {
       const fb = await callLLM(
         [{ role: 'system', content: FALLBACK_SYSTEM }, ...history, { role: 'user', content: query }],
         { maxTokens: 900, temperature: 0.4, timeoutMs: 15_000 }

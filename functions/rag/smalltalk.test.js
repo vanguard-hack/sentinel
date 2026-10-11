@@ -19,25 +19,32 @@ for (const q of [
 ]) check(`not casual: "${q}"`, isSmallTalk(q) === false);
 
 // The real source rule from respondWith in index.js, run rather than regexed.
+// Small talk is now the planner's call (plannedCasual); the non-answer check
+// is the async model judge, stubbed here.
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
-  const start = src.indexOf('const groundless = isNegative(text);');
+  const start = src.indexOf("const casual = payload.source === 'chat' || plannedCasual;");
   const end = src.indexOf('const shownSources', start);
   const fragment = src.slice(start, src.indexOf('\n', end));
   check('respondWith source rule found in index.js', start > 0 && end > start);
-  const shown = new Function('isNegative', 'isSmallTalk', 'text', 'payload', 'rawQuery', 'citedSources',
+  const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
+  const shown = new AsyncFunction('nonAnswer', 'plannedCasual', 'text', 'payload', 'citedSources',
     `${fragment}\nreturn shownSources;`);
-  const isNegative = (t) => /couldn'?t find|don'?t have/i.test(t);
+  const nonAnswer = async (t) => /couldn'?t find|don'?t have/i.test(t);
   const cites = [{ source_type: 'rag_document', display_name: 'Knowledge base' }];
-  check('greeting answered by the KB shows no source',
-    shown(isNegative, isSmallTalk, 'Hello! I am ready to assist you.', { source: 'rag' }, 'hello there', cites).length === 0);
-  check('chat lane shows no source',
-    shown(isNegative, isSmallTalk, 'Hi!', { source: 'chat' }, 'yo', cites).length === 0);
-  check('negative answer shows no source',
-    shown(isNegative, isSmallTalk, "I couldn't find that.", { source: 'rag' }, 'cases in Mysuru', cites).length === 0);
-  check('a real answer keeps its source',
-    shown(isNegative, isSmallTalk, 'Section 41 allows arrest without warrant when…', { source: 'rag' }, 'what is section 41', cites).length === 1);
+  (async () => {
+    check('greeting answered by the KB shows no source',
+      (await shown(nonAnswer, true, 'Hello! I am ready to assist you.', { source: 'rag' }, cites)).length === 0);
+    check('chat lane shows no source',
+      (await shown(nonAnswer, false, 'Hi!', { source: 'chat' }, cites)).length === 0);
+    check('negative answer shows no source',
+      (await shown(nonAnswer, false, "I couldn't find that.", { source: 'rag' }, cites)).length === 0);
+    check('a real answer keeps its source',
+      (await shown(nonAnswer, false, 'Section 41 allows arrest without warrant when…', { source: 'rag' }, cites)).length === 1);
+    let judgedCasual = false;
+    await shown(async () => { judgedCasual = true; return false; }, true, 'Hi!', { source: 'rag' }, cites);
+    check('small talk never spends a judge call', !judgedCasual);
+    console.log(failed ? `${failed} failed` : 'All small-talk checks passed.');
+    process.exit(failed ? 1 : 0);
+  })();
 }
-
-console.log(failed ? `${failed} failed` : 'All small-talk checks passed.');
-process.exit(failed ? 1 : 0);

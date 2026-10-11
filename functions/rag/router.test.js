@@ -19,9 +19,10 @@ const grab = (name) => {
 };
 const consts = src.match(/^const (?:CRIME_NO_RE|BARE_CRIME_NO_RE|STATS_RE|SOP_RE|ROUTE_CONFIDENCE_FLOOR) = .*$/gm).join('\n');
 // eslint-disable-next-line no-new-func
-const { deterministicRoute, parseRouteReply } = new Function(
-  consts + '\n' + grab('deterministicRoute') + '\n' + grab('parseRouteReply') +
-  '\nreturn { deterministicRoute, parseRouteReply };'
+// deterministicRoute is now only the fallback for when the planner (planner.js)
+// gets no model answer; its rules still have to hold for that case.
+const { deterministicRoute } = new Function(
+  consts + '\n' + grab('deterministicRoute') + '\nreturn { deterministicRoute };'
 )();
 
 // ── Deterministic override ────────────────────────────────────────────────
@@ -37,18 +38,6 @@ check('a pure procedure question is left to the classifier',
   deterministicRoute('what is the procedure for filing a chargesheet') === null);
 check('small talk is left to the classifier',
   deterministicRoute('thanks, that helps') === null);
-
-// ── Confidence parsing ────────────────────────────────────────────────────
-check('a scored JSON reply is parsed',
-  parseRouteReply('{"route":"ZCQL","confidence":0.82}')?.confidence === 0.82);
-check('a bare word still routes', parseRouteReply('RAG')?.route === 'RAG');
-check('a bare word is not treated as high confidence',
-  parseRouteReply('RAG').confidence < 0.75);
-check('an unparseable reply yields no route', parseRouteReply('¯\\_(ツ)_/¯') === null);
-check('confidence is clamped to 0..1',
-  parseRouteReply('{"route":"RAG","confidence":7}').confidence === 1);
-check('an unknown route name is rejected, not passed through',
-  parseRouteReply('{"route":"SQL","confidence":0.9}') === null);
 
 // ── Tier 1: clearance filter ──────────────────────────────────────────────
 const rows = [{ CrimeNo: '42/2026', VictimName: 'A Kumar', AccusedName: 'B Rao', latitude: 12.976543, Total: 7 }];
@@ -100,9 +89,9 @@ check('a plain year is not redacted',
 // query — which single-lookup tools like osint_lookup always are. Both bugs
 // together meant an OSINT question about a bare IP was routed to ZCQL, which
 // correctly (and uselessly) reported that the Data Store has no IP column.
-const routerCallSite = src.slice(src.indexOf("if (process.env.GROQ_API_KEY) {"), src.indexOf('const lowConfidence ='));
-check('the JSON route instruction actually offers TOOLS as an option',
-  /"route":"[^"]*\bTOOLS\b[^"]*"/.test(routerCallSite));
+const planner = require('./planner');
+check('the planner\'s JSON route instruction actually offers TOOLS as an option',
+  /"route": "[^"]*\bTOOLS\b[^"]*"/.test(planner.PLANNER_PROMPT) && planner.ROUTES.includes('TOOLS'));
 check('the router prompt carves out single-lookup external-data questions for TOOLS',
   /single lookup the Data Store has\s*\n?\s*no column for/.test(zcql.ROUTER_PROMPT.replace(/\n/g, ' ')));
 check('  with a worked example of the exact failure that was seen',

@@ -74,7 +74,7 @@ Routes that accept an object key from the client pass it through `confineKey(key
 - **RAG** — QuickML knowledge base retrieval.
 - **TOOLS** — a bounded tool-calling loop on Claude, with clearance-filtered tools; falls through to the older lanes on failure.
 
-Provider chain is `PROVIDER_ORDER` (Groq, then Claude). Groq retired the llama models; current ones are `gpt-oss-120b` and `qwen3.6-27b`, which emit reasoning tokens that `callGroq` has to strip.
+Provider chain is `PROVIDER_ORDER` (Groq, then Claude). Groq retired the llama models; current ones are `gpt-oss-120b` and `qwen3.8-27b` (qwen3.6 was retired in turn — check `GET /openai/v1/models` when a fast call 404s), which emit reasoning tokens that `callGroq` has to strip.
 
 ### The safety modules
 
