@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import DateRangePicker from '../components/ui/DateRangePicker';
-import { FilterBar, ColumnFilter, applyFilters } from '../components/ui/Filters';
+import { ColumnFilter, applyFilters } from '../components/ui/Filters';
 import { ROLE_LABELS, ASSIGNABLE_ROLES } from '../utils/access';
 import { logAudit } from '../utils/audit';
 import { csvCell } from '../utils/csv';
@@ -273,6 +273,14 @@ function Stat({ label, now, before, bad }) {
 // The value a filter compares against, per field.
 const auditValue = (e, key) => (key === 'vpn' ? (e.vpn ? 'Yes' : 'No') : e[key] == null ? '' : String(e[key]));
 
+// Every column the row shows, as one lowercase string — so one search box
+// covers time, officer, role (code and label), feature, action, IP, location,
+// VPN and the expanded detail.
+const auditHaystack = (e) => [
+  e.istTime, e.name, e.email, e.role, ROLE_LABELS[e.role], e.role === 'admin' && 'Admin',
+  e.feature, e.action, e.ip, e.location, e.vpn ? 'Yes VPN' : 'No', e.detail, e.path,
+].filter(Boolean).join(' ').toLowerCase();
+
 const statsOf = (list) => ({
   events: list.length,
   officers: new Set(list.map((e) => e.email).filter(Boolean)).size,
@@ -341,10 +349,12 @@ function AuditTab() {
   // The same filters apply to the comparison period, so the deltas compare
   // like with like.
   const narrow = useCallback((list) => {
-    const q = query.trim().toLowerCase();
-    return applyFilters(list, filters, auditValue).filter((e) => !q
-      || [e.name, e.email, e.ip, e.location, e.feature, e.action, e.detail, e.path]
-        .some((v) => v && String(v).toLowerCase().includes(q)));
+    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return applyFilters(list, filters, auditValue).filter((e) => {
+      if (!terms.length) return true;
+      const hay = auditHaystack(e);
+      return terms.every((t) => hay.includes(t));
+    });
   }, [filters, query]);
 
   const shown = useMemo(() => narrow(events || []), [events, narrow]);
@@ -415,7 +425,7 @@ function AuditTab() {
         <div className="cf-search aa-search">
           <Search size={14} className="cf-search-icon" />
           <input
-            className="cf-search-input" placeholder="Search name, IP, location, detail…"
+            className="cf-search-input" placeholder="Search any column — officer, role, feature, IP, location…"
             value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search audit events"
           />
           {query && (
@@ -427,11 +437,6 @@ function AuditTab() {
         <span className="aa-spacer" />
         <ExportMenu onCsv={exportCsv} onXlsx={exportXlsx} disabled={!shown.length} />
       </div>
-      {events && (
-        <div className="aa-filterbar">
-          <FilterBar fields={fields} filters={filters} onChange={setFilters} />
-        </div>
-      )}
     </>
   );
 
