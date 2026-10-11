@@ -357,6 +357,28 @@ const DEFINITIONS = [
     },
   },
   {
+    name: 'recall_memory',
+    description:
+      'Look up what you remember about THIS officer from earlier sessions: their ' +
+      'stated preferences, the cases and people they keep returning to, and notes ' +
+      'from past conversations. Use it when the question leans on something said ' +
+      'before ("like last time", "the gang I mentioned", "my usual district") or ' +
+      'when knowing what they are working on would change the answer. It holds no ' +
+      'case records — use query_records for those — and it only ever reaches this ' +
+      'officer\'s own memory. A remembered note is what was said then, not a fact ' +
+      'about the records now; check anything that matters against the records.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'What to look for in past conversations. Resolve pronouns before calling.',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'sanctions_check',
     description:
       'Check a name — a person or an organisation — against OpenSanctions\' ' +
@@ -894,7 +916,7 @@ async function queryRecords(app, { zcql: statement, rollup, district }, role, ac
  * turn ending.
  */
 async function run(name, input, deps) {
-  const { app, role, ragSearch, digitisedSearch, access, caseObligations } = deps;
+  const { app, role, ragSearch, digitisedSearch, access, caseObligations, recallMemory } = deps;
   try {
     switch (name) {
       case 'lookup_reference':
@@ -917,6 +939,33 @@ async function run(name, input, deps) {
           found: true,
           text: w.text,
           ...(w.suspicious ? { _threat: w.findings } : {}),
+          _redactions: f.redactions || [],
+        };
+      }
+
+      case 'recall_memory': {
+        // Whose memory is decided by the session inside recallMemory, never by
+        // anything in `input` — the model can say what to look for, not whom.
+        if (typeof recallMemory !== 'function') return { error: 'Memory is unavailable.' };
+        const text = await recallMemory(String((input && input.query) || ''));
+        if (!text) return { found: false, note: 'Nothing remembered about that.' };
+        // What the officer saw then is not what they are cleared for now.
+        const f = redaction.filterText(String(text).slice(0, MAX_TEXT), role);
+        // Discarded, not fenced — the same call index.js makes for preloaded
+        // memory. Memory is the one place an injection outlives the request
+        // that carried it, and this is background the officer never asked to
+        // read, so dropping it costs a little recall and closes that path.
+        const threats = guard.scanUntrusted(f.text);
+        if (threats.length) {
+          return {
+            found: false,
+            note: 'Nothing usable remembered about that.',
+            _threat: threats.map((t) => ({ ...t, stage: 'memory-recall' })),
+          };
+        }
+        return {
+          found: true,
+          text: guard.fence(f.text, 'notes remembered from this officer’s earlier sessions'),
           _redactions: f.redactions || [],
         };
       }

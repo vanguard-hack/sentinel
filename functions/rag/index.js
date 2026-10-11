@@ -572,7 +572,7 @@ const TOOL_SYSTEM =
  * key, or the model produced nothing — so the caller can fall through to the
  * lanes that were already there.
  */
-async function runToolLoop({ query, history, app, role, req, bucket }) {
+async function runToolLoop({ query, history, app, role, req, bucket, recallMemory }) {
   if (!process.env.ANTHROPIC_API_KEY) return null;
   const started = Date.now();
   const used = [];       // what ran, for the audit trail
@@ -597,6 +597,7 @@ async function runToolLoop({ query, history, app, role, req, bucket }) {
   const deps = {
     app,
     role,
+    recallMemory,
     ragSearch: async (q) => {
       const token = await getAccessToken();
       const r = await fetch(RAG_API_URL, {
@@ -6456,6 +6457,20 @@ module.exports = async (req, res) => {
           req,
           bucket: clearanceBucket,
           access,
+          // Memory as a tool rather than a preload: the loop drops system
+          // turns from history, so the long-term block assembled above never
+          // reached this lane. The officer is the session's, never the model's.
+          recallMemory: async (q) => {
+            const badge = badgeId();
+            if (!badge || !clearanceApp) return null;
+            const facts = memFacts.length ? memFacts : await memory.readFacts(clearanceApp, badge);
+            const recalled = await memory.recall(clearanceApp, badge, q, {
+              facts,
+              // Scoped to this officer's own KB documents inside recall().
+              ragSearch: async (qq, docs) => pickAnswer((await callRag(qq, docs, 12_000)).data || {}),
+            });
+            return memory.assemble({ facts, recalled }).longTerm || null;
+          },
         });
         if (looped) {
           validatorChecks.push(`tools:${looped.used.join(',')}|iterations=${looped.iterations}`);
