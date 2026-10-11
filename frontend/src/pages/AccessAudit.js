@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
-  ShieldCheck, RefreshCw, Download, FileSpreadsheet, AlertTriangle, Check,
+  ShieldCheck, Download, FileSpreadsheet, AlertTriangle, Check,
   ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Search, X, Info,
   UserRound, BadgeCheck, LayoutGrid, Activity, MapPin, ShieldAlert, Copy,
 } from 'lucide-react';
@@ -293,12 +293,10 @@ function AuditTab() {
   const [events, setEvents] = useState(null);
   const [verdict, setVerdict] = useState(null);
   const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState([]); // [{ field, op, values }] — shared by chips and column headers
   const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
       const [d, c] = await Promise.all([
@@ -312,8 +310,6 @@ function AuditTab() {
       setCmpEvents(c ? c.events || [] : null);
     } catch (e) {
       setError(e.message);
-    } finally {
-      setLoading(false);
     }
   }, [from, to, cmp]);
 
@@ -401,13 +397,21 @@ function AuditTab() {
     logAudit('export-xlsx', 'Access & Audit', `${shown.length} events`);
   };
 
-  return (
+  const dateChanged = from !== daysAgo(6) || to !== daysAgo(0) || !!cmp;
+  const clearDates = () => { setFrom(daysAgo(6)); setTo(daysAgo(0)); setCmp(null); setCmpMode('off'); };
+  // Toolbar sits under the summary cards once the log has loaded.
+  const toolbar = (
     <>
       <div className="aa-toolbar">
         <DateRangePicker
           label="Audit date range" value={{ start: from, end: to }} compare={cmpMode} maxValue={new Date().toLocaleDateString('en-CA')}
           onChange={(r, c, mode) => { setFrom(r.start); setTo(r.end); setCmp(c); setCmpMode(mode); }}
         />
+        {dateChanged && (
+          <button type="button" className="aa-btn aa-btn-icon" onClick={clearDates} aria-label="Clear date range" title="Clear date range">
+            <X size={14} />
+          </button>
+        )}
         <div className="cf-search aa-search">
           <Search size={14} className="cf-search-icon" />
           <input
@@ -421,18 +425,19 @@ function AuditTab() {
           )}
         </div>
         <span className="aa-spacer" />
-        <button type="button" className="aa-btn" onClick={load} disabled={loading}>
-          <RefreshCw size={14} className={loading ? 'aa-spin' : ''} /> Refresh
-        </button>
         <ExportMenu onCsv={exportCsv} onXlsx={exportXlsx} disabled={!shown.length} />
       </div>
-
       {events && (
         <div className="aa-filterbar">
           <FilterBar fields={fields} filters={filters} onChange={setFilters} />
         </div>
       )}
+    </>
+  );
 
+  return (
+    <>
+      {!events && toolbar}
       {error && <div className="aa-error"><AlertTriangle size={16} /> {error}</div>}
       {!events && !error && <div className="aa-loading">Loading audit trail…</div>}
 
@@ -453,6 +458,7 @@ function AuditTab() {
             <Stat label="Access denied" now={stats.denied} before={cmpStats?.denied} bad />
             <Stat label="Anonymised IP" now={stats.vpn} before={cmpStats?.vpn} bad />
           </div>
+          {toolbar}
           <div className="aa-count">
             {shown.length === events.length
               ? `${events.length} events`
