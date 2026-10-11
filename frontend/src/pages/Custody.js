@@ -12,7 +12,7 @@ import { useAccess } from '../context/AccessContext';
 import {
   getRegistry, seedCustody, STATUS, STATUS_ORDER, fmtDate,
 } from '../utils/custody';
-import { FilterBar, FilterTh, applyFilters, columnValue, columnFields } from '../components/ui/Filters';
+import { FilterTh, applyFilters, columnValue, columnFields } from '../components/ui/Filters';
 import { Database } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -108,7 +108,10 @@ export default function Custody() {
     const needle = q.trim().toLowerCase();
     return applyFilters(people, filters, columnValue(cols)).filter((p) => {
       if (needle) {
-        const hay = `${p.name} ${p.aliases.join(' ')} ${p.biometricId} ${p.cases.map((c) => c.crimeNo).join(' ')} ${p.sections.map((s) => s.code).join(' ')}`.toLowerCase();
+        // Every column the row shows, so search reaches all of them.
+        const hay = [p.name, ...p.aliases, p.biometricId, p.status, p.facility, ...p.cases.map((c) => c.crimeNo),
+          ...p.sections.map((s) => s.code), p.cases.length, p.custodyDays != null && `${p.custodyDays} d`,
+          p.nextHearing && fmtDate(p.nextHearing)].filter(Boolean).join(' ').toLowerCase();
         if (!hay.includes(needle)) return false;
       }
       return true;
@@ -170,10 +173,8 @@ export default function Custody() {
             <div className="cust-filters">
               <div className="cf-search">
                 <Search size={15} className="cf-search-icon" />
-                <input className="cf-search-input" placeholder="Search name, alias, FIR, biometric ID, section…" value={q} onChange={(e) => setQ(e.target.value)} />
+                <input className="cf-search-input" placeholder="Search all columns…" value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
-              <FilterBar fields={fields} filters={filters} onChange={setFilters} />
-              <span className="cust-count">{filtered.length.toLocaleString()} of {people.length.toLocaleString()}</span>
             </div>
 
             <div className="cf-scroll">
