@@ -39,6 +39,13 @@ jobs:
         working-directory: functions/rag
         run: npm ci --no-audit --no-fund
 
+      # Only the function's runtime deps: they run server-side with the provider
+      # keys. The frontend is skipped on purpose — react-scripts 5's build-time
+      # tree carries ~150 unfixable advisories that never reach the bundle.
+      - name: Audit function dependencies
+        working-directory: functions/rag
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Syntax-check the function
         working-directory: functions/rag
         run: node --check index.js

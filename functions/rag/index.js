@@ -2205,6 +2205,20 @@ const RATE_METERED = Number(process.env.RATE_LIMIT_METERED_PER_MIN) || 20;
 const RATE_WINDOW_MS = 60_000;
 const rateBuckets = new Map();
 
+// The rate limit counts requests, not tokens, so one request carrying a
+// megabyte of question would still bill every lane it fans out to. Long
+// material belongs in an attachment, which has its own caps.
+const MAX_QUERY_CHARS = 8000;
+
+function readQuery(body) {
+  if (typeof body.query !== 'string' || !body.query.trim()) return { status: 400, error: 'query is required' };
+  const query = body.query.trim();
+  if (query.length > MAX_QUERY_CHARS) {
+    return { status: 413, error: `Question is too long (${query.length} characters; limit ${MAX_QUERY_CHARS}). Attach long material as a file instead.` };
+  }
+  return { query };
+}
+
 function rateLimited(key, max) {
   const now = Date.now();
   // Bounded: a container that has seen many officers must not hold every
@@ -5498,8 +5512,9 @@ module.exports = async (req, res) => {
     if (path.endsWith('/memory/forget')) return await handleMemory(req, res, 'forget');
 
     const body = JSON.parse((await readBody(req)) || '{}');
-    const rawQuery = (body.query || '').trim();
-    if (!rawQuery) return json(res, 400, { error: 'query is required' });
+    const q = readQuery(body);
+    if (q.error) return json(res, q.status, { error: q.error });
+    const rawQuery = q.query;
 
     // Model switcher: an officer can pick which LLM answers THIS turn (see
     // MODEL_CHOICES) from the assistant composer; anything else — unset,
