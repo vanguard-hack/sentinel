@@ -92,3 +92,19 @@ describe('nested lists keep their structure', () => {
     expect(c.querySelector('li ul')).toBeNull();
   });
 });
+
+describe('model-written links cannot leave the app disguised as internal ones', () => {
+  test('an internal path renders as a link', () => {
+    const a = renderText('See [the case](/records/42).').querySelector('a');
+    expect(a && a.getAttribute('href')).toBe('/records/42');
+  });
+
+  test.each(['//evil.example/x', '/\\evil.example/x'])('protocol-relative %s is not linked', (url) => {
+    const c = renderText(`Open [the case](${url}) now.`);
+    expect(c.querySelector('a')).toBeNull();
+  });
+
+  test('javascript: URLs are never linked', () => {
+    expect(renderText('[x](javascript:alert(1))').querySelector('a')).toBeNull();
+  });
+});

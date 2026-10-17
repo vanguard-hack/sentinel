@@ -34,7 +34,7 @@ export function normaliseText(input) {
 }
 
 const INLINE_RE =
-  /(\[[^\]\n]+\]\((?:https?:\/\/|\/)[^)\s]+\)|\*\*\*[^*\n]+\*\*\*|\*\*[^*\n]+\*\*|(?<![\w*])\*[^*\n]+\*(?![\w*])|__[^_\n]+__|(?<![\w_])_[^_\n]+_(?![\w_])|~~[^~\n]+~~|`[^`\n]+`|https?:\/\/[^\s<>()]+)/g;
+  /(\[[^\]\n]+\]\((?:https?:\/\/|\/(?![\/\\]))[^)\s]+\)|\*\*\*[^*\n]+\*\*\*|\*\*[^*\n]+\*\*|(?<![\w*])\*[^*\n]+\*(?![\w*])|__[^_\n]+__|(?<![\w_])_[^_\n]+_(?![\w_])|~~[^~\n]+~~|`[^`\n]+`|https?:\/\/[^\s<>()]+)/g;
 
 // Footnote markers written into the prose by the model — "[1]", "[2]".
 //
@@ -104,7 +104,7 @@ export function renderInline(text, keyPrefix = 'i', opts = null) {
   const parts = String(text == null ? '' : text).split(INLINE_RE);
   return parts.filter((p) => p !== undefined && p !== '').map((part, i) => {
     const key = `${keyPrefix}-${i}`;
-    const link = part.match(/^\[([^\]\n]+)\]\(((?:https?:\/\/|\/)[^)\s]+)\)$/);
+    const link = part.match(/^\[([^\]\n]+)\]\(((?:https?:\/\/|\/(?![\/\\]))[^)\s]+)\)$/);
     if (link) {
       const external = /^https?:\/\//.test(link[2]);
       return (
