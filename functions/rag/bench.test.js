@@ -98,7 +98,7 @@ check('  and reports the dataset it measured', new RegExp(`${S.rows} FIRs`).test
 check('  and writes the report', fs.existsSync(path.join(__dirname, '..', '..', 'BENCHMARK.md')));
 
 const report = fs.readFileSync(path.join(__dirname, '..', '..', 'BENCHMARK.md'), 'utf8');
-check('the report states the results table', /\| Metric \| What it measures \| Result \|/.test(report));
+check('the report states the results table', /\| Metric \| What it measures \| Pass rate \|/.test(report));
 check('the report says ground truth is computed, not typed',
   /computed, never typed/i.test(report));
 check('the report is honest that injection detection is defeatable',
@@ -111,10 +111,10 @@ check('the report names the untested end-to-end section rather than omitting it'
 // The meta-test. Break one control, watch the matching gate fail, confirm the
 // process exits non-zero so CI would stop.
 const FAULTS = [
-  ['clearance', /Clearance leakage/],
+  ['clearance', /No clearance leakage/],
   ['validator', /Unsafe query refusal/],
   ['grounding', /Fabricated record detection/],
-  ['guard', /Officers wrongly refused/],
+  ['guard', /No officers wrongly refused/],
 ];
 for (const [fault, expected] of FAULTS) {
   const r = runBench(['--inject-fault', fault]);
