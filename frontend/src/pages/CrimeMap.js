@@ -962,6 +962,34 @@ export default function CrimeMap() {
               <div><dt>Density</dt><dd>{dDensity != null ? `${fmt(dDensity)} /km²` : '—'}</dd></div>
             </dl>
 
+            {patrolOn && beats && (
+              <div className="map-cmd beat-section" aria-live="polite">
+                {beats.loading && <p className="beat-note">Loading FIRs for this district…</p>}
+                {beats.error && <p className="beat-note">{beats.error}</p>}
+                {beats.stops && (
+                  <>
+                    <div className="map-cmd-title">Patrol · why these stops</div>
+                    <p className="beat-note">{beats.shift?.label} · from {beats.firs.toLocaleString()} FIRs</p>
+                    {beats.stops.length < 2
+                      ? <p className="beat-note">Too few located FIRs here to plan a route.</p>
+                      : (
+                        <ol className="beat-list">
+                          {beats.stops.map((b, i) => (
+                            <li key={i}>
+                              <span className="beat-rank">{i + 1}</span>
+                              <div>
+                                <span className="beat-label">{b.label}</span>
+                                <span className="beat-why">
+                                  {b.reasons.recent} in last 30 days · {b.reasons.inShift} in shift
+                                  {b.reasons.heinous ? ` · ${b.reasons.heinous} heinous` : ''}
+                                  {b.reasons.repeat ? ` · ${b.reasons.repeat} with repeat offenders` : ''}
+                                </span>
+                              </div>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+
             {crime && (
               <div className="map-crime">
                 <div className="map-cmd-title">Crime · 2025</div>
@@ -1131,35 +1159,6 @@ export default function CrimeMap() {
           )}
         </div>
 
-        {level === 'district' && patrolOn && beats && (
-          <div className="beat-panel" aria-live="polite">
-            {beats.loading && <p className="beat-note">Loading FIRs for this district…</p>}
-            {beats.error && <p className="beat-note">{beats.error}</p>}
-            {beats.stops && (
-              <>
-                <div className="beat-head">
-                  <b>Why these stops</b>
-                  <span>{beats.shift?.label} · from {beats.firs.toLocaleString()} FIRs</span>
-                </div>
-                {beats.stops.length < 2
-                  ? <p className="beat-note">Too few located FIRs here to plan a route.</p>
-                  : (
-                    <ol className="beat-list">
-                      {beats.stops.map((b, i) => (
-                        <li key={i}>
-                          <span className="beat-rank">{i + 1}</span>
-                          <div>
-                            <span className="beat-label">{b.label}</span>
-                            <span className="beat-why">
-                              {b.reasons.recent} in last 30 days · {b.reasons.inShift} in shift
-                              {b.reasons.heinous ? ` · ${b.reasons.heinous} heinous` : ''}
-                              {b.reasons.repeat ? ` · ${b.reasons.repeat} with repeat offenders` : ''}
-                            </span>
-                          </div>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
               </>
             )}
           </div>
