@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Mic } from 'lucide-react';
 import { VoiceBeam } from 'voice-glow';
+import { useMotionValue } from 'motion/react';
+import { VoiceOrb } from './voice-orb/VoiceOrb';
 import { transcribeVoice, speak, recordUtterance } from '../utils/voice';
 
 const LANG = { en: 'English', hi: 'Hindi', kn: 'Kannada' };
@@ -43,7 +45,6 @@ export default function VoiceMode(props) {
 function VoiceModeScreen({ onAsk, onClose }) {
   const phone = usePhone();
   const [phase, setPhase] = useState('starting');
-  const [level, setLevel] = useState(0);
   const [micStream, setMicStream] = useState(null);
   const [heard, setHeard] = useState(null);   // { lang, original, english }
   const [reply, setReply] = useState('');
@@ -51,6 +52,7 @@ function VoiceModeScreen({ onAsk, onClose }) {
   const finishRef = useRef(null);  // ends the current listening turn early
   const interruptRef = useRef(null); // stops the current playback
   const speakLevel = useRef(0);    // playback loudness, read by the glow each frame
+  const orbLevel = useMotionValue(0); // drives the desktop orb without re-rendering per frame
   const onAskRef = useRef(onAsk);
   onAskRef.current = onAsk;
 
@@ -71,8 +73,8 @@ function VoiceModeScreen({ onAsk, onClose }) {
       }
       while (!session.signal.aborted) {
         setPhase('listening');
-        setLevel(0);
-        const blob = await recordUtterance(stream, { signal: session.signal, onLevel: setLevel, finishRef });
+        orbLevel.set(0);
+        const blob = await recordUtterance(stream, { signal: session.signal, onLevel: (v) => orbLevel.set(v), finishRef });
         if (session.signal.aborted) break;
         if (!blob) continue;
 
@@ -97,7 +99,7 @@ function VoiceModeScreen({ onAsk, onClose }) {
         interruptRef.current = () => turn.abort();
         session.signal.addEventListener('abort', () => turn.abort(), { once: true });
         try {
-          await speak(answer, turn.signal, (v) => { speakLevel.current = v; });
+          await speak(answer, turn.signal, (v) => { speakLevel.current = v; orbLevel.set(v); });
         } catch (e) { if (!turn.signal.aborted) setNote(e.message); }
         interruptRef.current = null;
       }
@@ -107,7 +109,7 @@ function VoiceModeScreen({ onAsk, onClose }) {
       session.abort();
       stream?.getTracks().forEach((tr) => tr.stop());
     };
-  }, []);
+  }, [orbLevel]);
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -173,12 +175,10 @@ function VoiceModeScreen({ onAsk, onClose }) {
         <X size={20} />
       </button>
 
-      <button
-        className={`vm-orb vm-${phase}`}
-        style={{ '--level': phase === 'listening' ? level.toFixed(3) : 0 }}
-        onClick={tap}
-        aria-label={tapLabel}
-      />
+      {/* beui.dev voice-orb. Clicking it ends your turn or interrupts. */}
+      <button className="vm-orb-btn" onClick={tap} aria-label={tapLabel} title={tapLabel}>
+        <VoiceOrb activity={orbLevel} active={phase !== 'error'} speed={phase === 'thinking' || phase === 'transcribing' ? 1.8 : 1} />
+      </button>
 
       <p className="vm-status" aria-live="polite">{phase === 'error' ? note : STATUS[phase]}</p>
       {note && phase !== 'error' && <p className="vm-note" aria-live="polite">{note}</p>}

@@ -1621,13 +1621,11 @@ export default function Assistant() {
             </VoiceBeam>
             {/* Only speaks when it has something to say. The idle blurb that
                 used to sit here said nothing the page does not already. */}
-            {!narrowComposer && (voiceError || transcribing || listening) && (
+            {/* Recording says so through the glowing composer and the pulsing mic;
+                no line of text repeats it. */}
+            {!narrowComposer && (voiceError || transcribing) && (
               <p className={`as-disclaimer ${voiceError ? 'as-voice-error' : ''}`}>
-                {voiceError
-                  ? `Voice input: ${voiceError}`
-                  : transcribing
-                  ? 'Transcribing audio with Zia…'
-                  : 'Recording — click the mic again to stop.'}
+                {voiceError ? `Voice input: ${voiceError}` : 'Transcribing audio with Zia…'}
               </p>
             )}
           </div>
