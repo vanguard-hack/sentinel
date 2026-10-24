@@ -165,6 +165,45 @@ function Narrative({ alert }) {
   );
 }
 
+/* Actual (rows) × predicted (columns). Each cell is shaded by its share of its
+   row, green where the detector was right and red where it was wrong, so an
+   empty diagonal or a full error cell reads at a glance. */
+function ConfusionMatrix({ c }) {
+  const rows = [
+    ['Laundering', [['Caught', c.tp, true], ['Missed', c.fn, false]]],
+    ['Ordinary', [['False alarm', c.fp, false], ['Correctly clear', c.tn, true]]],
+  ];
+  return (
+    <div className="ft-cm" role="table" aria-label="Confusion matrix">
+      <span className="ft-cm-corner" />
+      <span className="ft-cm-col">Flagged</span>
+      <span className="ft-cm-col">Not flagged</span>
+      {rows.map(([label, cells]) => {
+        const total = cells[0][1] + cells[1][1];
+        return (
+          <React.Fragment key={label}>
+            <span className="ft-cm-row">{label}</span>
+            {cells.map(([name, n, right]) => {
+              const share = total ? n / total : 0;
+              return (
+                <div
+                  key={name}
+                  className={`ft-cm-cell ${right ? 'ok' : 'bad'}`}
+                  style={{ '--share': share }}
+                  role="cell"
+                >
+                  <span className="ft-cm-n">{n.toLocaleString()}</span>
+                  <span className="ft-cm-name">{name} · {Math.round(share * 100)}%</span>
+                </div>
+              );
+            })}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
 function Pagination({ page, pages, setPage }) {
   if (pages <= 1) return null;
   return (
@@ -317,7 +356,7 @@ export default function FinancialTrails() {
   }
 
   return (
-    <>
+    <div className="ft-stack">
       <section className="rp-card rp-card-wide">
         <div className="rp-card-head cl-head">
           <div>
@@ -353,15 +392,7 @@ export default function FinancialTrails() {
               <Kpi value={pct(validation.confusion.f1)} label="F1" />
               <Kpi value={validation.confusion.mcc == null ? '—' : validation.confusion.mcc.toFixed(2)} label="MCC" />
             </div>
-            <table className="cl-cal-table fc-confusion">
-              <thead>
-                <tr><th /><th>Flagged (predicted)</th><th>Not flagged (predicted)</th></tr>
-              </thead>
-              <tbody>
-                <tr><th>Laundering profile (actual)</th><td>{validation.confusion.tp.toLocaleString()} caught</td><td className={validation.confusion.fn > 0 ? 'cl-gap-bad' : ''}>{validation.confusion.fn.toLocaleString()} missed</td></tr>
-                <tr><th>Ordinary profile (actual)</th><td className={validation.confusion.fp > 0 ? 'cl-gap-bad' : ''}>{validation.confusion.fp.toLocaleString()} false alarm</td><td>{validation.confusion.tn.toLocaleString()} correctly clear</td></tr>
-              </tbody>
-            </table>
+            <ConfusionMatrix c={validation.confusion} />
           </div>
         </section>
       )}
@@ -424,7 +455,7 @@ export default function FinancialTrails() {
       </section>
 
       {/* Prioritised alerts — analyst decision support */}
-      <section id="fin-alerts" className="rp-card rp-card-wide ft-section">
+      <section id="fin-alerts" className="rp-card rp-card-wide">
         <div className="rp-card-head">
           <h2>Prioritised alerts</h2>
         </div>
@@ -479,13 +510,12 @@ export default function FinancialTrails() {
       </section>
 
       {/* Flagged transactions */}
-      <section id="fin-txns" className="rp-card rp-card-wide ft-section">
+      <section id="fin-txns" className="rp-card rp-card-wide">
         <div className="rp-card-head">
           <h2>Flagged transactions</h2>
         </div>
         <div className="rp-card-body">
           <div className="ft-filters">
-            <FilterBar fields={tFields} filters={tFilters} onChange={setTFilters} />
             <span className="ft-count">{filteredTxns.length} of {flagged.length}</span>
           </div>
           <div className="cf-scroll">
@@ -515,6 +545,6 @@ export default function FinancialTrails() {
           <Pagination page={tPage} pages={tPages} setPage={setTPage} />
         </div>
       </section>
-    </>
+    </div>
   );
 }
