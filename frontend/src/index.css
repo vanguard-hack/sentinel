@@ -10235,7 +10235,7 @@ span.inv-status-dot {
    One orb on the canvas. It swells with the officer's voice while listening
    (--level, 0..1), breathes while working, and pulses while speaking. */
 .vm-overlay {
-  position: fixed; inset: 0; z-index: 1000;
+  position: fixed; inset: 0; z-index: 1100; /* above .app-sidebar (1050) */
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 20px; padding: 24px 16px;
   background: var(--bg-0); color: var(--text-0);

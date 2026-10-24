@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Mic } from 'lucide-react';
 import { VoiceBeam } from 'voice-glow';
 import { transcribeVoice, speak, recordUtterance } from '../utils/voice';
@@ -32,7 +33,14 @@ const clip = (s, n) => (s.length > n ? `${s.slice(0, n)}…` : s);
  * `onAsk(englishText)` — the page's own send(), so it lands in the chat thread
  * like a typed one — and the returned answer text is read aloud.
  */
-export default function VoiceMode({ onAsk, onClose }) {
+// Rendered into <body> so no page ancestor can trap it in its own stacking
+// context — the page transition animates a transform — and stacked above the
+// sidebar (z-index 1050), which otherwise showed over the overlay.
+export default function VoiceMode(props) {
+  return createPortal(<VoiceModeScreen {...props} />, document.body);
+}
+
+function VoiceModeScreen({ onAsk, onClose }) {
   const phone = usePhone();
   const [phase, setPhase] = useState('starting');
   const [level, setLevel] = useState(0);
