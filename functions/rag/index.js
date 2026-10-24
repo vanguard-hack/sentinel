@@ -4294,8 +4294,13 @@ async function handleSanctionsBatch(req, res) {
 // client already has cross this endpoint — no case data, no clearance
 // filtering — so the router's session gate is all the access control this
 // needs. ORS_API_KEY is optional: with none configured (or on any ORS
-// failure) this reports `available:false` and the map keeps the straight-line
-// route it already draws, rather than erroring the feature out.
+// failure) this reports `available:false` and the map draws no route line.
+//
+// Every stop snaps to its nearest road however far away it is (radiuses -1).
+// ORS's default 350 m rejected the WHOLE route whenever one hotspot sat in a
+// forest or a field — the Devarayanadurga hills near Tumakuru did it — and
+// the map was left with straight lines. `stops` returns where each stop
+// landed on the road, so the pins sit on the route rather than beside it.
 async function handlePatrolDirections(req, res) {
   const key = process.env.ORS_API_KEY;
   if (!key) return json(res, 200, { available: false });
@@ -4324,6 +4329,7 @@ async function handlePatrolDirections(req, res) {
 
   try {
     let coords = [];
+    let snapped = [];
     let distanceM = 0;
     let durationS = 0;
     for (const leg of legs) {
@@ -4331,16 +4337,20 @@ async function handlePatrolDirections(req, res) {
       const orsRes = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
         method: 'POST',
         headers: { Authorization: key, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coordinates: leg }),
+        body: JSON.stringify({ coordinates: leg, radiuses: leg.map(() => -1) }),
         signal: AbortSignal.timeout(12000),
       });
-      if (!orsRes.ok) return json(res, 200, { available: false });
+      // 429 is ORS's per-minute limit: the client retries on `retry`.
+      if (!orsRes.ok) return json(res, 200, { available: false, retry: orsRes.status === 429 || orsRes.status >= 500 });
       const data = await orsRes.json();
       const feat = data?.features?.[0];
       const legCoords = feat?.geometry?.coordinates;
       if (!Array.isArray(legCoords) || !legCoords.length) return json(res, 200, { available: false });
       // The joint coordinate is the end of one leg and the start of the
       // next — drop the duplicate so the stitched line doesn't double back.
+      // way_points index the stops within this leg's geometry.
+      const wp = (feat.properties.way_points || []).map((i) => legCoords[i]).filter(Boolean);
+      snapped = snapped.length ? snapped.concat(wp.slice(1)) : wp;
       coords = coords.length ? coords.concat(legCoords.slice(1)) : legCoords;
       distanceM += feat.properties.summary.distance;
       durationS += feat.properties.summary.duration;
@@ -4349,6 +4359,7 @@ async function handlePatrolDirections(req, res) {
     return json(res, 200, {
       available: true,
       coordinates: coords.map(([lng, lat]) => [lat, lng]),
+      stops: snapped.length === stops.length ? snapped.map(([lng, lat]) => ({ lat, lng })) : null,
       distanceKm: Math.round((distanceM / 1000) * 10) / 10,
       durationMin: Math.round(durationS / 60),
     });

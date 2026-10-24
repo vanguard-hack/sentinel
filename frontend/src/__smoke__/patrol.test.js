@@ -187,11 +187,27 @@ test('fetchRoadRoute returns the road geometry and distance when ORS answers', a
   }));
   const stops = [{ lat: 12.97, lng: 77.59 }, { lat: 12.99, lng: 77.60 }];
   const result = await fetchRoadRoute(stops);
-  expect(result).toEqual({ coordinates: [[12.97, 77.59], [12.99, 77.60]], distanceKm: 4.2, durationMin: 9 });
+  expect(result).toEqual({ coordinates: [[12.97, 77.59], [12.99, 77.60]], stops: null, distanceKm: 4.2, durationMin: 9 });
+});
+
+test('fetchRoadRoute retries when ORS is busy instead of settling for straight lines', async () => {
+  global.fetch = jest.fn()
+    .mockResolvedValueOnce(ok({ available: false, retry: true }))
+    .mockResolvedValueOnce(ok({ available: true, coordinates: [[1, 2], [3, 4]], stops: [{ lat: 1, lng: 2 }, { lat: 3, lng: 4 }], distanceKm: 1, durationMin: 2 }));
+  const stops = [{ lat: 12.97, lng: 77.59 }, { lat: 12.99, lng: 77.60 }];
+  const result = await fetchRoadRoute(stops, { delayMs: 0 });
+  expect(global.fetch).toHaveBeenCalledTimes(2);
+  expect(result.stops).toEqual([{ lat: 1, lng: 2 }, { lat: 3, lng: 4 }]);
+});
+
+test('fetchRoadRoute does not retry a permanent failure', async () => {
+  global.fetch = jest.fn(async () => ok({ available: false }));
+  await fetchRoadRoute([{ lat: 1, lng: 2 }, { lat: 3, lng: 4 }], { delayMs: 0 });
+  expect(global.fetch).toHaveBeenCalledTimes(1);
 });
 
 test('fetchRoadRoute fails soft — a network error is null, not a throw', async () => {
   global.fetch = jest.fn(async () => { throw new Error('offline'); });
   const stops = [{ lat: 12.97, lng: 77.59 }, { lat: 12.99, lng: 77.60 }];
-  await expect(fetchRoadRoute(stops)).resolves.toBeNull();
+  await expect(fetchRoadRoute(stops, { delayMs: 0 })).resolves.toBeNull();
 });

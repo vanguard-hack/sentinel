@@ -628,7 +628,10 @@ export default function CrimeMap() {
           `<button type="button" class="patrol-nav-btn" data-seg="${segIdx}">Navigate in Google Maps →</button>`
         );
 
-        const segLatLngs = segment.map((s) => [s.lat, s.lng]);
+        // Starts empty: the line is drawn only from the road geometry once it
+        // arrives. A straight segment between stops is never shown — it
+        // crosses fields and hills no car can drive.
+        const segLatLngs = [];
         // Nav-style rendering: a light casing underneath makes the route read
         // clearly against any basemap colour, then a bold solid line on top —
         // the same construction turn-by-turn apps use so the route reads at a
@@ -641,7 +644,7 @@ export default function CrimeMap() {
           color: segColor, weight: 6, opacity: 1, lineCap: 'round', lineJoin: 'round',
           className: `patrol-route-line patrol-route-line-${segIdx % SEGMENT_COLORS}`,
         }).addTo(patrolLayer);
-        segLine.bindPopup(buildPopupHtml(null, segment.length > 1 ? segKm : null));
+        segLine.bindPopup(buildPopupHtml(null, null));
 
         // Checkpoint pins — one per stop, numbered in visiting order within
         // this car's leg. Without these the route was JUST a line: nothing
@@ -650,8 +653,7 @@ export default function CrimeMap() {
         // count) drew NO polyline at all — a route with one point is
         // invisible — so the whole leg looked like it had vanished. A
         // checkpoint pin has no such degenerate case: it is always visible.
-        segment.forEach((stop, stopIdx) => {
-          L.marker([stop.lat, stop.lng], {
+        const pins = segment.map((stop, stopIdx) => L.marker([stop.lat, stop.lng], {
             icon: L.divIcon({
               className: 'patrol-checkpoint-icon',
               html: `<span class="patrol-checkpoint-pin" style="background:${segColor}">${stopIdx + 1}</span>`,
@@ -659,10 +661,9 @@ export default function CrimeMap() {
             }),
           })
             .bindTooltip(`${stopIdx + 1}. ${stop.label}${stop.reasons ? ` · ${stop.reasons.recent} in last 30 days · ${stop.reasons.inShift} in this shift` : ''}`, { direction: 'top', offset: [0, -10] })
-            .addTo(patrolLayer);
-        });
+            .addTo(patrolLayer));
 
-        return { segment, segCasing, segLine, buildPopupHtml };
+        return { segment, segCasing, segLine, buildPopupHtml, pins, segKm };
       });
       patrolLayer.addTo(map);
 
@@ -682,14 +683,29 @@ export default function CrimeMap() {
       // every segment's request in parallel is what was silently losing most
       // of them to OpenRouteService's per-minute rate limit once car count
       // stopped being capped.
+      let roadKm = 0;
+      let roadFailed = 0;
       mapWithConcurrency(segRefs, 4, async (ref) => {
         if (ref.segment.length < 2) return;
         const road = await fetchRoadRoute(ref.segment);
-        if (!road || reqId !== patrolRequestId) return;
+        if (reqId !== patrolRequestId) return;
+        if (!road) { roadFailed += 1; return; }
         const roadLatLngs = road.coordinates.map(([lat, lng]) => [lat, lng]);
         ref.segCasing.setLatLngs(roadLatLngs);
         ref.segLine.setLatLngs(roadLatLngs);
-        ref.segLine.setPopupContent(ref.buildPopupHtml(road, tourLength(ref.segment) / 1000));
+        ref.segLine.setPopupContent(ref.buildPopupHtml(road, ref.segKm));
+        // Each pin moves to where its stop met the road, so it sits on the
+        // route instead of in the field beside it.
+        if (road.stops) road.stops.forEach((p, i) => ref.pins[i]?.setLatLng([p.lat, p.lng]));
+        roadKm += road.distanceKm;
+      }).then(() => {
+        if (reqId !== patrolRequestId) return;
+        setPatrolInfo((info) => info && {
+          ...info,
+          km: Math.round(roadKm * 10) / 10,
+          roadFailed,
+          roadsReady: true,
+        });
       });
 
       // Purely informational — shows where you are on the map. Never feeds
@@ -1150,7 +1166,12 @@ export default function CrimeMap() {
           {level === 'district' && !patrolInfo && `${selectedDistrict}, ${selectedState}`}
           {level === 'district' && patrolInfo && (
             <>
-              {`Patrol route${patrolInfo.shift ? ` · variant ${patrolInfo.shift + 1}` : ''}${patrolInfo.cars > 1 ? ` · ${patrolInfo.cars} cars` : ''} · ${patrolInfo.stops} stops · ~${patrolInfo.km} km`}
+              {`Patrol route${patrolInfo.shift ? ` · variant ${patrolInfo.shift + 1}` : ''}${patrolInfo.cars > 1 ? ` · ${patrolInfo.cars} cars` : ''} · ${patrolInfo.stops} stops · `}
+              {!patrolInfo.roadsReady
+                ? 'finding roads…'
+                : patrolInfo.roadFailed
+                  ? `road route unavailable for ${patrolInfo.roadFailed} car${patrolInfo.roadFailed > 1 ? 's' : ''} — try Vary route`
+                  : `${patrolInfo.km} km by road`}
               {patrolInfo.tourSavingsPct != null && (patrolInfo.tourSavingsPct >= 0
                 ? ` · ${patrolInfo.tourSavingsPct}% shorter than random order`
                 : ` · ${-patrolInfo.tourSavingsPct}% longer than random order`)}

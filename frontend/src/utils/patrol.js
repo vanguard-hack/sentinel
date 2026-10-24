@@ -262,24 +262,29 @@ export function validatePatrolRoute(stops, { start, trials = 20, incidentSamples
 
 // Road-snapped preview: ask the backend (which proxies OpenRouteService) for
 // the actual road geometry between these stops, in the same order the
-// nearest-neighbour heuristic already picked. Best-effort — no key
-// configured, a timeout, or any ORS error all resolve to `null`, and the
-// caller keeps drawing the straight-line route it already has.
-export async function fetchRoadRoute(stops) {
+// nearest-neighbour heuristic already picked. Busy or failed calls are
+// retried; anything still failing resolves to `null`, and the caller draws no
+// line rather than a straight one. `stops` is where each stop met the road.
+export async function fetchRoadRoute(stops, { retries = 3, delayMs = 1500 } = {}) {
   if (!stops || stops.length < 2) return null;
-  try {
-    const res = await fetch('/server/rag/patrol/directions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stops: stops.map((s) => ({ lat: s.lat, lng: s.lng })) }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json().catch(() => null);
-    if (!data || !data.available) return null;
-    return { coordinates: data.coordinates, distanceKm: data.distanceKm, durationMin: data.durationMin };
-  } catch {
-    return null;
+  // ORS limits requests per minute and several cars ask at once, so a busy
+  // answer is retried with backoff rather than giving up on the road route.
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, delayMs * attempt));
+    try {
+      const res = await fetch('/server/rag/patrol/directions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stops: stops.map((s) => ({ lat: s.lat, lng: s.lng })) }),
+      });
+      const data = res.ok ? await res.json().catch(() => null) : null;
+      if (data && data.available) {
+        return { coordinates: data.coordinates, stops: data.stops || null, distanceKm: data.distanceKm, durationMin: data.durationMin };
+      }
+      if (data && !data.retry) return null; // not a transient failure
+    } catch { /* network blip — retry */ }
   }
+  return null;
 }
 
 // Hand off "navigate this route" to Google Maps — turn-by-turn voice
