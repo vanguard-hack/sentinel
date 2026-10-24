@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { lookupIfscMany } from '../utils/publicRefs';
 import {
-  AlertTriangle, RefreshCw, Landmark, ChevronLeft, ChevronRight, Ruler, Sparkles,
+  AlertTriangle, RefreshCw, Landmark, ChevronLeft, ChevronRight, Sparkles,
 } from 'lucide-react';
 import {
   getFinancialTrails, refreshFinancialTrails, formatRs, TYPOLOGIES,
@@ -42,7 +42,6 @@ const txnValue = columnValue(TXN_COLS);
 const Tier = ({ t }) => <span className={`fc-tier fc-tier-${t.toLowerCase()}`}>{t}</span>;
 const ALERTS_PER_PAGE = 8;
 const TXNS_PER_PAGE = 12;
-const pct = (v) => (v == null || !Number.isFinite(v) ? '—' : `${Math.round(v * 100)}%`);
 
 function Kpi({ value, label }) {
   return (
@@ -165,45 +164,6 @@ function Narrative({ alert }) {
   );
 }
 
-/* Actual (rows) × predicted (columns). Each cell is shaded by its share of its
-   row, green where the detector was right and red where it was wrong, so an
-   empty diagonal or a full error cell reads at a glance. */
-function ConfusionMatrix({ c }) {
-  const rows = [
-    ['Laundering', [['Caught', c.tp, true], ['Missed', c.fn, false]]],
-    ['Ordinary', [['False alarm', c.fp, false], ['Correctly clear', c.tn, true]]],
-  ];
-  return (
-    <div className="ft-cm" role="table" aria-label="Confusion matrix">
-      <span className="ft-cm-corner" />
-      <span className="ft-cm-col">Flagged</span>
-      <span className="ft-cm-col">Not flagged</span>
-      {rows.map(([label, cells]) => {
-        const total = cells[0][1] + cells[1][1];
-        return (
-          <React.Fragment key={label}>
-            <span className="ft-cm-row">{label}</span>
-            {cells.map(([name, n, right]) => {
-              const share = total ? n / total : 0;
-              return (
-                <div
-                  key={name}
-                  className={`ft-cm-cell ${right ? 'ok' : 'bad'}`}
-                  style={{ '--share': share }}
-                  role="cell"
-                >
-                  <span className="ft-cm-n">{n.toLocaleString()}</span>
-                  <span className="ft-cm-name">{name} · {Math.round(share * 100)}%</span>
-                </div>
-              );
-            })}
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
-}
-
 function Pagination({ page, pages, setPage }) {
   if (pages <= 1) return null;
   return (
@@ -256,7 +216,7 @@ export default function FinancialTrails() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const { summary, alerts, typologyCounts, flagged, moneyMap, branches, validation } = data || {};
+  const { summary, alerts, typologyCounts, flagged, moneyMap, branches } = data || {};
   // Which node the map has pinned. Focus is a highlight, not a re-layout.
   const [mapSel, setMapSel] = useState(null);
 
@@ -375,27 +335,6 @@ export default function FinancialTrails() {
           </div>
         </div>
       </section>
-
-      {validation && (
-        <section className="rp-card rp-card-wide">
-          <div className="rp-card-head">
-            <h2><Ruler size={16} /> Does the score find laundering?</h2>
-            <span className="rp-card-sub">
-              {validation.positives.toLocaleString()} planted laundering profiles · {validation.negatives.toLocaleString()} ordinary
-            </span>
-          </div>
-          <div className="rp-card-body">
-            <div className="cl-kpi-row">
-              <Kpi value={validation.auc == null ? '—' : validation.auc.toFixed(2)} label={`ROC AUC — ${validation.aucBand}`} />
-              <Kpi value={pct(validation.confusion.precision)} label="Precision — flags that are real" />
-              <Kpi value={pct(validation.confusion.recall)} label="Recall — real cases caught" />
-              <Kpi value={pct(validation.confusion.f1)} label="F1" />
-              <Kpi value={validation.confusion.mcc == null ? '—' : validation.confusion.mcc.toFixed(2)} label="MCC" />
-            </div>
-            <ConfusionMatrix c={validation.confusion} />
-          </div>
-        </section>
-      )}
 
       {/* Where the money went — real branches behind synthetic accounts */}
       {districts.length > 1 && (

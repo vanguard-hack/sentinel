@@ -7342,22 +7342,6 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
 .ft-bd-points { font-size: 10.5px; color: var(--text-3); width: 22px; text-align: right; flex-shrink: 0; }
 .ft-bd-more-label { font-size: 10.5px; font-weight: 500; color: var(--text-4); font-style: italic; }
 
-/* Financial trails: model-validation confusion matrix */
-.ft-cm {
-  display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px;
-  margin-top: 16px; font-size: 12px;
-}
-.ft-cm-col { text-align: center; color: var(--text-3); font-weight: 500; padding-bottom: 2px; }
-.ft-cm-row { align-self: center; color: var(--text-2); font-weight: 500; padding-right: 10px; }
-.ft-cm-cell {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: 14px 8px; border-radius: 8px; border: 1px solid var(--border);
-  --tint: var(--green);
-  background: color-mix(in srgb, var(--tint) calc(var(--share) * 28%), var(--bg-1));
-}
-.ft-cm-cell.bad { --tint: var(--red); }
-.ft-cm-n { font-size: 20px; font-weight: 600; color: var(--text-0); font-variant-numeric: tabular-nums; }
-.ft-cm-name { color: var(--text-3); }
 .ft-alert-table .ft-flags { max-width: 240px; }
 .ft-alert-table td { vertical-align: top; }
 .fc-table td.ft-entity-cell { white-space: normal; min-width: 140px; max-width: 180px; vertical-align: top; }
