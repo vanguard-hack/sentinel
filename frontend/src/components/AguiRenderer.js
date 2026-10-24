@@ -428,6 +428,9 @@ function AguiComponent({ spec }) {
   return (
     <div className="agui-block">
       {spec.title && <div className="agui-block-title">{renderInline(normaliseText(spec.title), 'bt')}</div>}
+      {/* Built from the tool's own result, not retyped by the model —
+          functions/rag/widgets.js. */}
+      {spec.grounded && <div className="agui-grounded">Drawn directly from the records</div>}
       {body}
     </div>
   );

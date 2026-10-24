@@ -249,7 +249,7 @@ export async function deleteSessionRemote(id, email) {
   }
 }
 
-async function toWav(blob) {
+export async function toWav(blob) {
   const AC = window.AudioContext || window.webkitAudioContext;
   const ctx = new AC();
   let decoded;

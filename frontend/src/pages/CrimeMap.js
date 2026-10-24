@@ -14,7 +14,8 @@ import {
 } from 'lucide-react';
 import { H, CRIME, STATE, DISTRICT, refreshAllData } from '../data/hierarchyStore';
 import { loadPersonnel } from '../utils/personnel';
-import { optimalOrder, tourLength, validatePatrolRoute, fetchRoadRoute, buildGoogleMapsNavUrl, currentLocation, splitIntoSegments, mapWithConcurrency } from '../utils/patrol';
+import { optimalOrder, tourLength, validatePatrolRoute, fetchRoadRoute, buildGoogleMapsNavUrl, currentLocation, splitIntoSegments, mapWithConcurrency, planBeats, SHIFTS, shiftForHour } from '../utils/patrol';
+import { getLinkageData } from '../utils/caselinkage';
 import { pointInFeature, randomPointInFeature } from '../utils/geo';
 import TopBar from '../components/TopBar';
 
@@ -110,18 +111,6 @@ const CITY_HOTSPOTS = [
   { city: 'Hassan',     lat: 13.00, lng: 76.10, n: 7 },
 ];
 const CATEGORIES = ['Theft', 'Assault', 'Burglary', 'Vehicle', 'Fraud', 'Vandalism'];
-// Patrol stops are weighted by social cost, not raw hotspot intensity alone
-// — a violent category outranks a public-order one of equal raw intensity.
-// Follows Collazos et al. 2019 (Medellín hot-spots: crime index from average
-// sentence length) and Ramakrishnan et al. 2024 (Atlanta: community impact
-// folded into hotspot selection).
-//
-// Vandalism was 0.6 on harm intuition alone; Braga, Turchan, Papachristos &
-// Hureau's 2019 Campbell review (65 studies, 78 tests) found disorder
-// offenses carry the SECOND-largest hot-spots effect size (d=0.161) — behind
-// drug, ahead of property (0.124) and violent crime (0.102). Harm still
-// sets the overall order; the gap is narrowed rather than left at intuition.
-const CATEGORY_SEVERITY = { Assault: 1.3, Vehicle: 1.1, Burglary: 1.0, Theft: 0.9, Fraud: 0.7, Vandalism: 0.75 };
 
 function generateHotspots() {
   const pts = [];
@@ -227,6 +216,8 @@ export default function CrimeMap() {
   const [patrolCars, setPatrolCarsState] = useState(1);
   const [patrolCarsInput, setPatrolCarsInput] = useState('1'); // free-typed text, committed on blur/Enter
   const [patrolInfo, setPatrolInfo] = useState(null); // { stops, km } while a route is drawn
+  const [patrolShift, setPatrolShiftState] = useState(() => shiftForHour(new Date().getHours()).key);
+  const [beats, setBeats] = useState(null); // ranked stops with reasons, or { loading } / { error }
   const [lightbox, setLightbox] = useState(null); // full-screen image URL
   const [dataReady, setDataReady] = useState('loading'); // 'loading' | 'ready' | 'error'
   const navigate = useNavigate();
@@ -422,6 +413,12 @@ export default function CrimeMap() {
     let patrolSegments = []; // latest computed per-car stop sequences, for the "Navigate" handoff
     let patrolCarsLocal = 1;
     let patrolRequestId = 0; // guards the async road-route fetch against a newer route replacing it mid-flight
+    let patrolShiftLocal = SHIFTS.find((x) => x.key === shiftForHour(new Date().getHours()).key);
+    // FIRs with coordinates, loaded on the first patrol request. The same
+    // session-cached build Case linkage uses, so it is often already warm.
+    let firCases = null;
+    let repeatPersons = new Set();
+    let firLoad = null;
     const SEGMENT_COLORS = 6; // rp-cat-0 .. rp-cat-5
     const current = { level: 'india', state: null, district: null, districtBounds: null };
 
@@ -548,7 +545,7 @@ export default function CrimeMap() {
     // route — those are different concerns that used to be conflated here.
     const MAX_STOPS = 8;
     // Which stop anchors the walk. 0 = the district centre (the default,
-    // "shortest overall" route); every click of "New shift" moves this to the
+    // "shortest overall" route); every click of "Vary route" moves this to the
     // next stop instead — see the note on predictability below.
     let shiftIdx = 0;
     const computePatrolRoute = () => {
@@ -558,27 +555,33 @@ export default function CrimeMap() {
       const districtFeature = current.districtFeature;
       if (!dname || !bounds || !districtFeature) { setPatrolInfo(null); return; }
 
-      // bounds.contains() is a cheap first pass (a district's RECTANGULAR
-      // bbox) — a real district is never actually a rectangle, so it's
-      // followed by an exact point-in-polygon test against the district's
-      // real shape. Skipping that second test was why a hotspot sitting in
-      // the bbox but genuinely inside a neighbouring district could get
-      // picked up as a "stop", pulling the drawn route across the border.
-      const inBounds = points
-        .filter((p) => bounds.contains([p.lat, p.lng]))
-        .filter((p) => pointInFeature(p.lat, p.lng, districtFeature));
-      const severityScore = (p) => p.intensity * (CATEGORY_SEVERITY[p.category] || 1);
-      const candidates = [...inBounds]
-        .sort((a, b) => severityScore(b) - severityScore(a))
-        .slice(0, MAX_STOPS)
-        .map((p) => ({ lat: p.lat, lng: p.lng, label: `${p.category} hotspot` }));
+      if (!firCases) {
+        setBeats({ loading: true });
+        firLoad = firLoad || getLinkageData()
+          .then((d) => {
+            firCases = d.cases;
+            d.casesByPerson.forEach((cids, pid) => { if (cids.size >= 2) repeatPersons.add(pid); });
+          })
+          .catch((e) => { firLoad = null; setBeats({ error: e.message || 'FIR data could not be loaded' }); throw e; });
+        firLoad.then(() => { if (patrolOnLocal) computePatrolRoute(); }).catch(() => {});
+        return;
+      }
 
-      if (candidates.length < 2) { setPatrolInfo(null); return; }
-      const stops = candidates.slice(0, MAX_STOPS);
+      // Stops are the district's highest-priority FIR cells for the chosen
+      // shift (planBeats, utils/patrol.js). bounds.contains() is a cheap first
+      // pass on the district's rectangle; pointInFeature is the exact test, so
+      // a FIR just across the border never pulls the route into the
+      // neighbouring district.
+      const inDistrict = firCases.filter((c) =>
+        Number.isFinite(c.lat) && bounds.contains([c.lat, c.lon]) && pointInFeature(c.lat, c.lon, districtFeature));
+      const ranked = planBeats(inDistrict, { shift: patrolShiftLocal, repeatPersons, limit: MAX_STOPS });
+      setBeats({ shift: patrolShiftLocal, stops: ranked, firs: inDistrict.length });
+      if (ranked.length < 2) { setPatrolInfo(null); return; }
+      const stops = ranked;
 
       // Nearest-neighbour walk, plus a comparison against random orderings of
       // these same stops — see utils/patrol.js for the method (Kim et al.
-      // 2023). Shift 0 anchors on the district centre; "New shift" anchors on
+      // 2023). Shift 0 anchors on the district centre; "Vary route" anchors on
       // a different stop each time, so the route an officer actually drives
       // varies rather than repeating the identical loop every visit.
       const centerLL = bounds.getCenter();
@@ -655,7 +658,7 @@ export default function CrimeMap() {
               iconSize: [22, 22],
             }),
           })
-            .bindTooltip(`${stopIdx + 1}. ${stop.label}`, { direction: 'top', offset: [0, -10] })
+            .bindTooltip(`${stopIdx + 1}. ${stop.label}${stop.reasons ? ` · ${stop.reasons.recent} in last 30 days · ${stop.reasons.inShift} in this shift` : ''}`, { direction: 'top', offset: [0, -10] })
             .addTo(patrolLayer);
         });
 
@@ -711,12 +714,16 @@ export default function CrimeMap() {
       shiftIdx = 0;
       setPatrolOn(on);
       if (on) computePatrolRoute();
-      else { patrolRequestId += 1; remove(patrolLayer); patrolLayer = null; patrolSegments = []; setPatrolInfo(null); }
+      else { patrolRequestId += 1; remove(patrolLayer); patrolLayer = null; patrolSegments = []; setPatrolInfo(null); setBeats(null); }
     };
     const shufflePatrolShift = () => {
       if (!patrolOnLocal) return;
       shiftIdx += 1;
       computePatrolRoute();
+    };
+    const setPatrolShift = (key) => {
+      patrolShiftLocal = SHIFTS.find((x) => x.key === key) || patrolShiftLocal;
+      if (patrolOnLocal) computePatrolRoute();
     };
     const setPatrolCars = (n) => {
       // No upper cap on the input itself — splitIntoSegments already clamps
@@ -731,7 +738,7 @@ export default function CrimeMap() {
     // buildPopupHtml above), so its "Navigate" button is wired once, here,
     // via delegation — reading `patrolSegments` fresh on each click, keyed
     // by the segment index on the button, rather than a snapshot taken when
-    // the popup was built, so it's correct even after a "New shift" or a
+    // the popup was built, so it's correct even after a "Vary route" or a
     // change in car count.
     map.on('popupopen', (e) => {
       const btn = e.popup.getElement()?.querySelector('.patrol-nav-btn');
@@ -749,7 +756,7 @@ export default function CrimeMap() {
 
     ctrlRef.current = {
       showIndia, showState, showDistrict, back, setHotspots, togglePolice, setDistrictMode: setDistrictMode2,
-      setPatrol, shufflePatrolShift, setPatrolCars,
+      setPatrol, shufflePatrolShift, setPatrolCars, setPatrolShift,
       zoomIn:  () => map.setZoom(map.getZoom() + 0.6, { animate: true }),
       zoomOut: () => map.setZoom(map.getZoom() - 0.6, { animate: true }),
     };
@@ -818,6 +825,7 @@ export default function CrimeMap() {
   const togglePolice = () => { ctrlRef.current?.togglePolice(); };
   const togglePatrol = () => { ctrlRef.current?.setPatrol(!patrolOn); };
   const shufflePatrol = () => { ctrlRef.current?.shufflePatrolShift(); };
+  const changePatrolShift = (key) => { setPatrolShiftState(key); ctrlRef.current?.setPatrolShift(key); };
   const changePatrolCars = (n) => {
     const clamped = Math.max(1, Math.floor(n) || 1); // no upper limit — see setPatrolCars in the map effect
     setPatrolCarsState(clamped);
@@ -1086,8 +1094,19 @@ export default function CrimeMap() {
             </div>
           )}
           {level === 'district' && patrolOn && (
+            <select
+              className="map-ctrl map-ctrl-shiftsel"
+              value={patrolShift}
+              onChange={(e) => changePatrolShift(e.target.value)}
+              aria-label="Patrol shift"
+              title="Rank stops by FIRs reported in these hours"
+            >
+              {SHIFTS.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
+            </select>
+          )}
+          {level === 'district' && patrolOn && (
             <button className="map-ctrl map-ctrl-shift" onClick={shufflePatrol} title="Vary the route's starting stop — a fixed loop driven the same way every shift is easy to learn">
-              <Shuffle size={15} /> <span>New shift</span>
+              <Shuffle size={15} /> <span>Vary route</span>
             </button>
           )}
           <button className={`map-ctrl map-ctrl-hotspot ${hotspotMode !== 'off' ? 'on' : ''}`} onClick={cycleHotspots} title="Toggle crime hotspots">
@@ -1103,7 +1122,7 @@ export default function CrimeMap() {
           {level === 'district' && !patrolInfo && `${selectedDistrict}, ${selectedState}`}
           {level === 'district' && patrolInfo && (
             <>
-              {`Patrol route${patrolInfo.shift ? ` · shift ${patrolInfo.shift + 1}` : ''}${patrolInfo.cars > 1 ? ` · ${patrolInfo.cars} cars` : ''} · ${patrolInfo.stops} stops · ~${patrolInfo.km} km`}
+              {`Patrol route${patrolInfo.shift ? ` · variant ${patrolInfo.shift + 1}` : ''}${patrolInfo.cars > 1 ? ` · ${patrolInfo.cars} cars` : ''} · ${patrolInfo.stops} stops · ~${patrolInfo.km} km`}
               {patrolInfo.tourSavingsPct != null && (patrolInfo.tourSavingsPct >= 0
                 ? ` · ${patrolInfo.tourSavingsPct}% shorter than random order`
                 : ` · ${-patrolInfo.tourSavingsPct}% longer than random order`)}
@@ -1111,6 +1130,40 @@ export default function CrimeMap() {
             </>
           )}
         </div>
+
+        {level === 'district' && patrolOn && beats && (
+          <div className="beat-panel" aria-live="polite">
+            {beats.loading && <p className="beat-note">Loading FIRs for this district…</p>}
+            {beats.error && <p className="beat-note">{beats.error}</p>}
+            {beats.stops && (
+              <>
+                <div className="beat-head">
+                  <b>Why these stops</b>
+                  <span>{beats.shift?.label} · from {beats.firs.toLocaleString()} FIRs</span>
+                </div>
+                {beats.stops.length < 2
+                  ? <p className="beat-note">Too few located FIRs here to plan a route.</p>
+                  : (
+                    <ol className="beat-list">
+                      {beats.stops.map((b, i) => (
+                        <li key={i}>
+                          <span className="beat-rank">{i + 1}</span>
+                          <div>
+                            <span className="beat-label">{b.label}</span>
+                            <span className="beat-why">
+                              {b.reasons.recent} in last 30 days · {b.reasons.inShift} in shift
+                              {b.reasons.heinous ? ` · ${b.reasons.heinous} heinous` : ''}
+                              {b.reasons.repeat ? ` · ${b.reasons.repeat} with repeat offenders` : ''}
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Full-screen image viewer */}

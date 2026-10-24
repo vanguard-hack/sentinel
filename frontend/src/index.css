@@ -1326,6 +1326,45 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 }
 .map-ctrl-cars input:focus { outline: none; border-color: var(--primary); }
 
+.map-ctrl-shiftsel {
+  width: auto;
+  padding: 0 10px;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.map-ctrl-shiftsel:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 2px; }
+
+/* Beat planner: why the patrol stops are where they are (planBeats). */
+.beat-panel {
+  position: absolute;
+  left: 16px;
+  bottom: 60px;
+  width: 290px;
+  max-width: calc(100% - 32px);
+  max-height: 45vh;
+  overflow-y: auto;
+  padding: 12px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-pop);
+  z-index: 1000;
+}
+.beat-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.beat-head b { font-size: 13px; font-weight: 500; color: var(--text-0); }
+.beat-head span, .beat-note { font-size: 12px; color: var(--text-3); }
+.beat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.beat-list li { display: flex; gap: 10px; align-items: flex-start; }
+.beat-rank {
+  flex: none; width: 20px; height: 20px; border-radius: 9999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-3); color: var(--text-1); font-size: 11px; font-weight: 600;
+}
+.beat-label { display: block; font-size: 12.5px; color: var(--text-0); }
+.beat-why { display: block; font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
+
 .map-info-panel {
   position: absolute;
   top: 16px;
@@ -3313,6 +3352,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   letter-spacing: 0.01em;
 }
 .agui-block .cf-table-wrap { margin: 0; }
+.agui-grounded { margin: -6px 0 10px; font-size: 0.7rem; color: var(--text-3); }
 /* A table that slipped past the backend's own markdown->component
    conversion and had to be caught here instead (see richFormat.parseBlocks)
    — same table look everywhere, in a plain block context rather than the
@@ -10202,3 +10242,52 @@ span.inv-status-dot {
 
 /* AI Analytics: every card gets breathing room under its last row. */
 .ai-main .rp-card { padding-bottom: 20px; }
+
+/* ── Assistant voice mode (components/VoiceMode.js) ──
+   One orb on the canvas. It swells with the officer's voice while listening
+   (--level, 0..1), breathes while working, and pulses while speaking. */
+.vm-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 20px; padding: 24px 16px;
+  background: var(--bg-0); color: var(--text-0);
+}
+.vm-close {
+  position: absolute; top: 18px; right: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 8px;
+  background: var(--bg-1); color: var(--text-1);
+  border: 1px solid var(--border); cursor: pointer;
+}
+.vm-close:hover { background: var(--bg-2); }
+.vm-close:focus-visible, .vm-orb:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 4px; }
+.vm-orb {
+  --level: 0;
+  width: 168px; height: 168px; border-radius: 9999px; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  background: color-mix(in srgb, var(--primary) 22%, var(--bg-1));
+  box-shadow: 0 0 0 calc(var(--level) * 34px) color-mix(in srgb, var(--primary) 18%, transparent);
+  transform: scale(calc(1 + var(--level) * 0.12));
+  transition: transform 90ms linear, box-shadow 90ms linear, background 200ms;
+}
+.vm-orb.vm-transcribing, .vm-orb.vm-thinking, .vm-orb.vm-starting { animation: vm-breathe 1.6s ease-in-out infinite; }
+.vm-orb.vm-speaking {
+  background: color-mix(in srgb, var(--primary) 40%, var(--bg-1));
+  animation: vm-speak 0.9s ease-in-out infinite;
+}
+.vm-orb.vm-error { border-color: var(--border); background: var(--bg-1); cursor: default; }
+@keyframes vm-breathe { 50% { transform: scale(0.94); opacity: 0.75; } }
+@keyframes vm-speak { 50% { transform: scale(1.06); } }
+@media (prefers-reduced-motion: reduce) {
+  .vm-orb { transition: none; transform: none; }
+  .vm-orb.vm-transcribing, .vm-orb.vm-thinking, .vm-orb.vm-starting, .vm-orb.vm-speaking { animation: none; }
+}
+.vm-status { font-size: 15px; color: var(--text-1); text-align: center; }
+.vm-note { font-size: 13px; color: var(--text-3); text-align: center; }
+.vm-transcript { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.vm-transcript p {
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: 14px; line-height: 1.5; color: var(--text-1); overflow-wrap: anywhere;
+}
+.vm-transcript p span { font-size: 11.5px; font-weight: 500; color: var(--text-3); letter-spacing: 0.02em; }
+.vm-reply { padding-top: 10px; border-top: 1px solid var(--border); color: var(--text-0); }

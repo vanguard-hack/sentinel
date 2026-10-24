@@ -231,7 +231,9 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   // component-less. This is that same pass-2 attempt, reused rather than
   // duplicated, for the tools lane.
   check('the tools lane falls back to the shared data->component transform when the loop drew nothing',
-    /const components = v\.components\.length \? v\.components : await transformToComponents\(v\.text \|\| looped\.text\)/.test(route));
+    /: v\.components\.length \? v\.components : await transformToComponents\(v\.text \|\| looped\.text\)/.test(route));
+  check('the tools lane puts components drawn from tool results first',
+    /looped\.grounded\.length\s*\?\s*widgets\.merge\(looped\.grounded, v\.components\)/.test(route));
   check('  and that result (not the loop\'s own empty guess) is what respondWith renders',
     /return await respondWith\(v\.text \|\| looped\.text, \{\s*\n\s*components,/.test(route));
 

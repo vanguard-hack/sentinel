@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Plus, MessageSquare, Trash2,
-  Paperclip, Mic, ArrowUp, X, FileText, PanelLeft,
+  Paperclip, Mic, ArrowUp, X, FileText, PanelLeft, AudioLines,
   Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, MoreVertical,
   Star, Pencil, FileDown, CheckSquare, AlertTriangle, ShieldAlert, Search,
 } from 'lucide-react';
@@ -20,6 +20,7 @@ import {
 import { detectKind } from '../utils/extract';
 import { sizeOf } from '../utils/provenance';
 import ModelPicker from '../components/ModelPicker';
+import VoiceMode from '../components/VoiceMode';
 import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
 import Avatar from '../components/Avatar';
@@ -240,6 +241,7 @@ export default function Assistant() {
   // phrases with an honest "still running" label for that one command.
   const [sherlockLabel, setSherlockLabel] = useState(null);
   const [listening, setListening] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
   const [voiceLang] = useState(loadVoiceLang);
@@ -784,6 +786,7 @@ export default function Assistant() {
       // Persist AFTER the state update (never call side effects inside an
       // updater — a throw there unmounts the whole page).
       pushSession({ id: sessionId, title: interimTitle, messages: fullMessages });
+      return botMsg.content; // read aloud by voice mode
     } catch (err) {
       const botMsg = {
         id: uid(),
@@ -798,11 +801,19 @@ export default function Assistant() {
             : s
         )
       );
+      return botMsg.content;
     } finally {
       setSending(false);
       setSherlockLabel(null);
     }
   }, [listening, input, attachments, sending, activeId, sessions, pushSession, appRole, startNewChat, model]);
+
+  // Voice mode keeps one loop alive across renders, so it calls the latest
+  // send through a ref rather than the closure it was opened with.
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  const askByVoice = useCallback((text) => sendRef.current(text), []);
+  const closeVoiceMode = useCallback(() => setVoiceMode(false), []);
 
   // Cycle previous/next questions with Up/Down (readline-style).
   const navigateHistory = (dir) => {
@@ -1583,6 +1594,17 @@ export default function Assistant() {
                     </button>
                   </span>
                 )}
+                {canRecord && (
+                  <button
+                    className="as-comp-btn"
+                    onClick={() => setVoiceMode(true)}
+                    disabled={sending}
+                    title="Voice mode — talk to the assistant in English, Hindi or Kannada"
+                    aria-label="Start voice mode"
+                  >
+                    <AudioLines size={18} />
+                  </button>
+                )}
                 <button
                   className="as-send-btn"
                   onClick={send}
@@ -1668,6 +1690,8 @@ export default function Assistant() {
           inside the message loop: only one can be open, and a panel nested in
           a scrolling thread inherits its clipping. */}
       {openSource && <SourceViewer source={openSource} onClose={() => setCitation(null)} />}
+
+      {voiceMode && <VoiceMode onAsk={askByVoice} onClose={closeVoiceMode} />}
 
       <AnimatedToastStack toasts={toasts} onDismiss={dismissToast} position="bottom-right" fixed />
     </div>

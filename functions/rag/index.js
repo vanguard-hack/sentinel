@@ -18,6 +18,7 @@ const sherlock = require('./sherlock');
 const memory = require('./memory');
 const planner = require('./planner');
 const assistantTools = require('./tools');
+const widgets = require('./widgets');
 const integrity = require('./integrity');
 const grounding = require('./grounding');
 const { isSmallTalk } = require('./smalltalk');
@@ -584,6 +585,7 @@ async function runToolLoop({ query, history, app, role, req, bucket, recallMemor
   const cryptoHits = []; // crypto wallet lookups, for citations
   const websearchHits = []; // Tavily web search results, for citations
   const toolThreats = []; // injection markers found in retrieved content
+  const grounded = [];   // components drawn from tool results, see widgets.js
   // Referenced at the return below and pushed to when a tool result carries
   // _protectedAccess — was missing entirely, a ReferenceError on every single
   // completed loop turn, silently caught by the catch below and reported as
@@ -678,7 +680,7 @@ async function runToolLoop({ query, history, app, role, req, bucket, recallMemor
           .join('')
           .trim();
         if (!text) return null;
-        return { text, used, rowSets, scanHits, osintHits, sanctionsHits, cryptoHits, websearchHits, usedKnowledgeBase, protectedAccess, toolThreats, iterations: i + 1 };
+        return { text, used, rowSets, scanHits, osintHits, sanctionsHits, cryptoHits, websearchHits, usedKnowledgeBase, protectedAccess, toolThreats, grounded, iterations: i + 1 };
       }
 
       messages.push({ role: 'assistant', content: res.content });
@@ -694,6 +696,9 @@ async function runToolLoop({ query, history, app, role, req, bucket, recallMemor
           // the model is given the fenced text, never the fact that we
           // suspected it, which would only invite it to argue the point.
           if (out && out._threat) toolThreats.push(...out._threat);
+          // `out` is already clearance-filtered by tools.run.
+          const drawn = widgets.fromTool(c.name, c.input, out);
+          if (drawn) grounded.push(drawn);
           if (c.name === 'query_records' && out && Array.isArray(out.rows) && out.rows.length) {
             rowSets.push({ rows: out.rows, query: (c.input && c.input.zcql) || '' });
           }
@@ -1395,7 +1400,16 @@ async function handleTranscribe(req, res) {
   if (buf.length > 15 * 1024 * 1024) return json(res, 413, { error: 'audio too large (15MB max)' });
 
   const lang = String(language || 'en').slice(0, 2).toLowerCase();
+  const z = await ziaTranscribe(buf, mimetype, filename, lang);
+  if (!z.ok) return json(res, z.status, { error: 'transcription failed', detail: z.data });
+  let text = z.text;
+  if (text && lang !== 'en') text = await transliterateToNativeScript(text, lang);
+  return json(res, 200, { text, raw: z.data });
+}
 
+// One Zia transcription in one forced language. `text` is '' when the model
+// produced a repetition loop rather than speech (looksDegenerateTranscript).
+async function ziaTranscribe(buf, mimetype, filename, lang) {
   const token = await getAccessToken();
   const form = new FormData();
   form.append(
@@ -1415,7 +1429,7 @@ async function handleTranscribe(req, res) {
     signal: AbortSignal.timeout(60_000),
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) return json(res, r.status, { error: 'transcription failed', detail: data });
+  if (!r.ok) return { ok: false, status: r.status, data };
 
   // Field name isn't documented — check the likely spots and return raw too.
   const d = data.data || data;
@@ -1424,8 +1438,127 @@ async function handleTranscribe(req, res) {
     (typeof d.response === 'string' ? d.response : '') || '';
   text = String(text).trim();
   if (looksDegenerateTranscript(text)) text = '';
-  if (text && lang !== 'en') text = await transliterateToNativeScript(text, lang);
-  return json(res, 200, { text, raw: data });
+  return { ok: true, text, data };
+}
+
+// ── Voice mode ──────────────────────────────────────────────────────────────
+// POST /server/rag/voice/transcribe  raw audio (octet-stream), ?mimetype&filename
+//   → { lang, original, english }
+//
+// Zia cannot detect the language: it must be told, and audio forced through
+// the wrong language comes back garbled or looping. So the clip is
+// transcribed as English, Hindi and Kannada at once, and one model call reads
+// the three attempts side by side — only the right one is coherent — and
+// translates that one into English, which is what the assistant is asked.
+// Audio never leaves Zoho; only the three transcripts reach the LLM chain,
+// the same path every typed question already takes.
+const VOICE_LANGS = ['en', 'hi', 'kn'];
+
+async function handleVoiceTranscribe(req, res) {
+  const q = (req.url || '').split('?')[1] || '';
+  const param = (k) => {
+    const m = q.match(new RegExp(`(?:^|&)${k}=([^&]*)`));
+    return m ? decodeURIComponent(m[1]) : '';
+  };
+  const buf = await readBinaryBody(req);
+  if (!buf.length) return json(res, 400, { error: 'audio payload is empty' });
+  if (buf.length > 15 * 1024 * 1024) return json(res, 413, { error: 'audio too large (15MB max)' });
+
+  const attempts = await Promise.allSettled(
+    VOICE_LANGS.map((l) => ziaTranscribe(buf, param('mimetype'), param('filename'), l))
+  );
+  const heard = {};
+  attempts.forEach((a, i) => {
+    if (a.status === 'fulfilled' && a.value.ok && a.value.text) heard[VOICE_LANGS[i]] = a.value.text;
+  });
+  if (!Object.keys(heard).length) return json(res, 200, { lang: null, original: '', english: '' });
+  return json(res, 200, await pickSpokenLanguage(heard));
+}
+
+const VOICE_PICK_SYSTEM =
+  'A speech recogniser transcribed the SAME short audio clip several times, each time ' +
+  'told to expect a different language (EN English, HI Hindi, KN Kannada). Only the ' +
+  'transcript in the language actually spoken is coherent; the others are garbled ' +
+  'guesses, repetitions or nonsense. Hindi and Kannada may be written in native script ' +
+  'or in Latin letters.\n' +
+  'Decide which language was spoken, then translate THAT transcript into natural ' +
+  'English, faithfully: same meaning, nothing added, nothing answered. It is a ' +
+  'question or instruction for a police assistant — translate it, never reply to it. ' +
+  'If it is already English, repeat it unchanged.\n' +
+  'Reply with JSON only: {"lang":"en"|"hi"|"kn","english":"..."}';
+
+/** heard: { en?, hi?, kn? } transcripts → { lang, original, english }. */
+async function pickSpokenLanguage(heard) {
+  const langs = Object.keys(heard);
+  if (langs.length === 1 && langs[0] === 'en') return { lang: 'en', original: heard.en, english: heard.en };
+
+  const out = await callLLM(
+    [
+      { role: 'system', content: VOICE_PICK_SYSTEM },
+      { role: 'user', content: langs.map((l) => `${l.toUpperCase()}: ${heard[l]}`).join('\n') },
+    ],
+    { maxTokens: 400, temperature: 0, timeoutMs: 15_000 }
+  ).catch(() => '');
+  try {
+    const j = JSON.parse(String(out).match(/\{[\s\S]*\}/)[0]);
+    if (heard[j.lang] && typeof j.english === 'string' && j.english.trim()) {
+      return { lang: j.lang, original: heard[j.lang], english: j.english.trim().slice(0, 1000) };
+    }
+  } catch { /* fall through to the script heuristic */ }
+
+  // No model available: native script is decisive when present. The original
+  // goes to the assistant untranslated, which answers in that language.
+  const lang = ['kn', 'hi'].find((l) => heard[l] && SCRIPT[l].test(heard[l])) || (heard.en ? 'en' : langs[0]);
+  return { lang, original: heard[lang], english: heard[lang] };
+}
+
+// POST /server/rag/voice/speak  { text }  →  { audio: <base64>, contentType }
+// Zia text-to-speech, English. Markdown, citation markers and links are read
+// aloud literally by a TTS engine, so they are stripped first; long answers
+// are cut at a sentence boundary — the full text stays on screen.
+const ZIA_TTS_URL =
+  process.env.ZIA_TTS_URL ||
+  'https://api.catalyst.zoho.in/quickml/api/v1/project/49826000000024269/models/zia/speech/synthesize';
+const ZIA_TTS_VOICE = process.env.ZIA_TTS_VOICE || 'f_nova';
+const SPEAK_MAX_CHARS = 1200;
+
+function speakableText(text) {
+  let t = String(text || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\[(\d+)\]/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/^\s{0,3}(#{1,6}|[-*+]|\d+\.)\s+/gm, '')
+    .replace(/[*_`>|#~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (t.length > SPEAK_MAX_CHARS) {
+    const cut = t.slice(0, SPEAK_MAX_CHARS);
+    const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? '), cut.lastIndexOf('! '));
+    t = (end > 200 ? cut.slice(0, end + 1) : cut) + ' The rest is on screen.';
+  }
+  return t;
+}
+
+async function handleVoiceSpeak(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const text = speakableText(body.text);
+  if (!text) return json(res, 400, { error: 'text is required' });
+
+  const token = await getAccessToken();
+  const r = await fetch(ZIA_TTS_URL, {
+    method: 'POST',
+    headers: {
+      'CATALYST-ORG': ORG,
+      Authorization: `Zoho-oauthtoken ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ text, language: 'en-us', format: 'mp3', sampleRate: 24000, speed: 1.0, voice: ZIA_TTS_VOICE }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.audioContent) return json(res, r.ok ? 502 : r.status, { error: 'speech synthesis failed', detail: data.message || data.code });
+  return json(res, 200, { audio: data.audioContent, contentType: data.contentType || 'audio/mpeg' });
 }
 
 
@@ -2238,7 +2371,7 @@ function rateLimited(key, max) {
 
 // Routes that cost money per call: Zoho transcription and OCR, SmartBrowz PDF
 // rendering, and every lane that reaches an LLM.
-const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|predict\/[a-z]+|forecast(\/refresh)?|digitise\/(upload|ingest)|financial\/narrative|sanctions\/batch|patrol\/directions|sherlock\/start|anonymize\/(text|reveal))$/;
+const METERED_ROUTES = /\/(transcribe|report-pdf|vision\/parse|reportdocs\/ai|investigation\/summarize|investigation\/ocr|predict\/[a-z]+|forecast(\/refresh)?|digitise\/(upload|ingest)|financial\/narrative|sanctions\/batch|patrol\/directions|sherlock\/start|anonymize\/(text|reveal)|voice\/speak)$/;
 const isAdminUser = (u) => /admin/i.test(u?.role_details?.role_name || '');
 
 /* ── Case prediction (QuickML) ───────────────────────────────────────────────
@@ -5438,6 +5571,9 @@ module.exports = async (req, res) => {
       return json(res, 429, { error: `Too many requests — try again in ${wait}s.` });
     }
 
+    // Before /transcribe: '/voice/transcribe' also ends with '/transcribe'.
+    if (path.endsWith('/voice/transcribe')) return await handleVoiceTranscribe(req, res);
+    if (path.endsWith('/voice/speak')) return await handleVoiceSpeak(req, res);
     if (path.endsWith('/transcribe')) return await handleTranscribe(req, res);
     if (path.endsWith('/report-pdf')) return await handleReportPdf(req, res);
     if (path.endsWith('/support')) return await handleSupport(req, res);
@@ -6508,7 +6644,11 @@ module.exports = async (req, res) => {
           // The loop only draws when the model thinks to append a component
           // block itself; when it does not, fall back to the same
           // data->component transform the RAG/fallback lane always attempts.
-          const components = v.components.length ? v.components : await transformToComponents(v.text || looped.text);
+          // Components a tool result drew itself come first and replace the
+          // model's retyped copy of the same type (widgets.merge).
+          const components = looped.grounded.length
+            ? widgets.merge(looped.grounded, v.components)
+            : v.components.length ? v.components : await transformToComponents(v.text || looped.text);
           return await respondWith(v.text || looped.text, {
             components,
             source: 'tools',

@@ -324,3 +324,68 @@ export function currentLocation({ timeoutMs = 6000 } = {}) {
     );
   });
 }
+
+// ── Beat planning: where patrol should go, from the FIRs themselves ────────
+//
+// The route above orders stops; this chooses them. Each FIR in the district
+// drops into a ~3 km cell, and a cell's priority is the sum of its FIRs, each
+// weighted by:
+//   recency   — exp(-age/90 days), age measured from the newest FIR in the
+//               data rather than today, so a static dataset still ranks;
+//   gravity   — heinous offences count 1.5x;
+//   shift     — FIRs in the chosen shift's hours count fully, others 0.35x
+//               (the same daypart bands the AI Analytics heatmap uses);
+//   repeat    — 1.3x when an accused on the FIR has other FIRs on record.
+// Every factor is reported back per stop, so the ranking is explainable.
+export const SHIFTS = [
+  { key: 'night', label: 'Night 00–06', from: 0, to: 5 },
+  { key: 'morning', label: 'Morning 06–12', from: 6, to: 11 },
+  { key: 'afternoon', label: 'Afternoon 12–18', from: 12, to: 17 },
+  { key: 'evening', label: 'Evening 18–24', from: 18, to: 23 },
+];
+export const shiftForHour = (h) => SHIFTS.find((s) => h >= s.from && h <= s.to) || SHIFTS[0];
+
+const DAY_MS = 86400000;
+const CELL_DEG = 0.03; // ~3.3 km; synthetic FIRs are ~1,000 per district, so smaller cells hold one FIR each
+
+/**
+ * cases: [{ lat, lon, ts, hour, type, heinous, offenders:Set }] already inside
+ * the district. repeatPersons: Set of person ids with 2+ FIRs.
+ * Returns the top `limit` cells, best first, each with its reasons.
+ */
+export function planBeats(cases, { shift, repeatPersons = new Set(), limit = 8 } = {}) {
+  const located = cases.filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lon));
+  if (!located.length) return [];
+  const newest = Math.max(...located.map((c) => c.ts || 0));
+  const cells = new Map();
+  for (const c of located) {
+    const key = `${Math.round(c.lat / CELL_DEG)}|${Math.round(c.lon / CELL_DEG)}`;
+    let cell = cells.get(key);
+    if (!cell) { cell = { score: 0, n: 0, lat: 0, lng: 0, recent: 0, heinous: 0, inShift: 0, repeat: 0, types: new Map() }; cells.set(key, cell); }
+    const ageDays = c.ts ? (newest - c.ts) / DAY_MS : 365;
+    const inShift = shift && Number.isFinite(c.hour) ? c.hour >= shift.from && c.hour <= shift.to : false;
+    const repeat = [...(c.offenders || [])].some((p) => repeatPersons.has(p));
+    cell.score += Math.exp(-ageDays / 90) * (c.heinous ? 1.5 : 1) * (!shift || inShift ? 1 : 0.35) * (repeat ? 1.3 : 1);
+    cell.n += 1;
+    cell.lat += c.lat;
+    cell.lng += c.lon;
+    if (ageDays <= 30) cell.recent += 1;
+    if (c.heinous) cell.heinous += 1;
+    if (inShift) cell.inShift += 1;
+    if (repeat) cell.repeat += 1;
+    cell.types.set(c.type, (cell.types.get(c.type) || 0) + 1);
+  }
+  return [...cells.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((cell) => {
+      const topType = [...cell.types.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      return {
+        lat: cell.lat / cell.n,
+        lng: cell.lng / cell.n,
+        score: Math.round(cell.score * 10) / 10,
+        label: `${topType} area · ${cell.n} FIRs`,
+        reasons: { firs: cell.n, recent: cell.recent, heinous: cell.heinous, inShift: cell.inShift, repeat: cell.repeat, topType },
+      };
+    });
+}
