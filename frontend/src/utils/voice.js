@@ -26,9 +26,10 @@ export async function transcribeVoice(blob) {
 
 /**
  * Read text aloud with Zia TTS. Resolves when playback ends, or immediately
- * when `signal` aborts (the officer interrupted).
+ * when `signal` aborts (the officer interrupted). `onLevel(0..1)` follows
+ * the playback loudness, for the glow.
  */
-export async function speak(text, signal) {
+export async function speak(text, signal, onLevel) {
   const res = await fetch('/server/rag/voice/speak', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -38,6 +39,7 @@ export async function speak(text, signal) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.audio) throw new Error(data.error || `speech failed (HTTP ${res.status})`);
   const audio = new Audio(`data:${data.contentType || 'audio/mpeg'};base64,${data.audio}`);
+  const meter = onLevel ? meterElement(audio, onLevel) : null;
   await new Promise((resolve) => {
     const stop = () => { audio.pause(); resolve(); };
     if (signal?.aborted) return stop();
@@ -46,6 +48,33 @@ export async function speak(text, signal) {
     audio.onerror = resolve;
     audio.play().catch(resolve);
   });
+  meter?.();
+}
+
+// Loudness of a playing <audio>, per frame. Returns a stop function. Fails
+// soft: without Web Audio the answer still plays, just without the glow.
+function meterElement(audio, onLevel) {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AC();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    ctx.createMediaElementSource(audio).connect(analyser);
+    analyser.connect(ctx.destination);
+    const buf = new Float32Array(analyser.fftSize);
+    let raf = 0;
+    const tick = () => {
+      analyser.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      onLevel(Math.min(1, Math.sqrt(sum / buf.length) * 5));
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => { cancelAnimationFrame(raf); onLevel(0); ctx.close().catch(() => {}); };
+  } catch {
+    return null;
+  }
 }
 
 // End-of-speech detection. The noise floor is measured for the first moments

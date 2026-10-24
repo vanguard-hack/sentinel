@@ -2952,7 +2952,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* User bubble: the initials avatar fills the whole tile — no ring/gap. */
 .as-msg-user .as-avatar { background: none; overflow: hidden; }
 .as-avatar .avatar { width: 100%; height: 100%; border-radius: inherit; }
-.as-msg-assistant .as-avatar { background: var(--blue-500); }
+.as-msg-assistant .as-avatar { background: none; } /* the bot avatar draws its own body */
 .as-msg-body { flex: 1; min-width: 0; padding-top: 4px; }
 /* The loading row is a single short line, not multi-line message text —
    center it against the avatar instead of top-aligning (which relied on
@@ -10279,3 +10279,28 @@ span.inv-status-dot {
 }
 .vm-transcript p span { font-size: 11.5px; font-weight: 500; color: var(--text-3); letter-spacing: 0.02em; }
 .vm-reply { padding-top: 10px; border-top: 1px solid var(--border); color: var(--text-0); }
+
+/* Voice mode on a phone — libraries.dev/voice, type="mobile". */
+.vm-overlay.vm-phone { padding: 0; gap: 0; align-items: stretch; justify-content: stretch; }
+.vm-phone > * { flex: 1; display: flex; }
+.vm-screen {
+  flex: 1; display: flex; flex-direction: column;
+  padding: 24px 16px calc(28px + env(safe-area-inset-bottom));
+  background: var(--bg-0);
+}
+.vm-words { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; }
+.vm-centre { font-size: 22px; line-height: 1.4; color: var(--text-0); max-width: 30ch; overflow-wrap: anywhere; }
+.vm-centre-muted { color: var(--text-2); font-size: 18px; }
+.vm-sub { font-size: 14px; line-height: 1.5; color: var(--text-3); max-width: 34ch; }
+.vm-bar { display: flex; align-items: center; gap: 12px; }
+.vm-chip {
+  margin-right: auto; display: inline-flex; align-items: center; height: 44px; padding: 0 16px;
+  border-radius: 9999px; background: var(--bg-2); border: 1px solid var(--border);
+  font-size: 14px; color: var(--text-1);
+}
+.vm-round {
+  width: 44px; height: 44px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-2); border: 1px solid var(--border); color: var(--text-0); cursor: pointer;
+}
+.vm-round:disabled { opacity: 0.45; cursor: default; }
+.vm-round:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 2px; }
