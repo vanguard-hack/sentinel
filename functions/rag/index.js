@@ -1160,7 +1160,12 @@ function extractAgui(text) {
     const parsed = JSON.parse(m[1]);
     const list = Array.isArray(parsed) ? parsed : parsed.components;
     if (Array.isArray(list)) {
-      components = list.filter((c) => c && AGUI_TYPES.has(c.type));
+      // `grounded` marks a component built from a tool result (widgets.js) and
+      // renders a trust tag. Model output never gets to claim it — a document
+      // in the prompt could otherwise talk the model into forging the tag.
+      components = list
+        .filter((c) => c && AGUI_TYPES.has(c.type))
+        .map(({ grounded, ...c }) => c); // eslint-disable-line no-unused-vars
     }
   } catch {
     /* malformed block — fall back to text-only */

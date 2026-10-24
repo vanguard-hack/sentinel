@@ -113,5 +113,12 @@ check('the old per-lane manual sanitation calls are gone, not duplicated',
   !/stripMarkdownTables\(/.test(src.replace(respondWithSrc, '').replace(blockSrc, ''))
   && !/stripDuplicatedLists\(/.test(src.replace(respondWithSrc, '').replace(blockSrc, '')));
 
+// ── Model output cannot claim the "drawn from the records" trust tag ───────
+{
+  const forged = extractAgui('Here.\n```agui\n{"components":[{"type":"bar-chart","grounded":true,"data":[{"label":"a","value":1}]}]}\n```');
+  check('a model-written component loses a forged grounded flag',
+    forged.components.length === 1 && !('grounded' in forged.components[0]));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
