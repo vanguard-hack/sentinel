@@ -10282,7 +10282,9 @@ span.inv-status-dot {
 
 /* Voice mode on a phone — libraries.dev/voice, type="mobile". */
 .vm-overlay.vm-phone { padding: 0; gap: 0; align-items: stretch; justify-content: stretch; }
-.vm-phone > * { flex: 1; display: flex; }
+/* Only the beam's own wrapper — VoiceBeam also renders a <style> child,
+   which a bare `> *` would make visible. */
+.vm-phone > [data-voice-beam] { flex: 1; display: flex; }
 .vm-screen {
   flex: 1; display: flex; flex-direction: column;
   padding: 24px 16px calc(28px + env(safe-area-inset-bottom));
