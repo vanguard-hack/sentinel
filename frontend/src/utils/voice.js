@@ -25,11 +25,17 @@ export async function transcribeVoice(blob) {
 }
 
 /**
- * Read text aloud with Zia TTS. Resolves when playback ends, or immediately
- * when `signal` aborts (the officer interrupted). `onLevel(0..1)` follows
- * the playback loudness, for the glow.
+ * Read text aloud. Resolves when playback ends, or immediately when `signal`
+ * aborts (the officer interrupted). `onLevel(0..1)` follows the speech, for
+ * the glow.
+ *
+ * English goes through Zia TTS. Zia has Hindi voices but the Catalyst gateway
+ * only admits its English voice names, and it has no Kannada at all (tested
+ * 2026-10-24), so Hindi and Kannada are read by the device's own voice.
+ * Throws NoVoiceError when the device has none for that language.
  */
-export async function speak(text, signal, onLevel) {
+export async function speak(text, signal, onLevel, lang = 'en') {
+  if (lang !== 'en') return speakOnDevice(text, lang, signal, onLevel);
   const res = await fetch('/server/rag/voice/speak', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -49,6 +55,71 @@ export async function speak(text, signal, onLevel) {
     audio.play().catch(resolve);
   });
   meter?.();
+}
+
+export class NoVoiceError extends Error {}
+
+const DEVICE_TAG = { hi: 'hi-IN', kn: 'kn-IN' };
+const LANG_NAME = { hi: 'Hindi', kn: 'Kannada' };
+
+// The browser's voice list arrives asynchronously on first use.
+function deviceVoices() {
+  const synth = window.speechSynthesis;
+  const now = synth.getVoices();
+  if (now.length) return Promise.resolve(now);
+  return new Promise((resolve) => {
+    const done = () => resolve(synth.getVoices());
+    synth.addEventListener('voiceschanged', done, { once: true });
+    setTimeout(done, 1500);
+  });
+}
+
+// What a speech engine would otherwise read out literally: markdown, citation
+// markers, links. Mirrors speakableText in functions/rag/index.js.
+const speakable = (text) => String(text || '')
+  .replace(/```[\s\S]*?```/g, ' ')
+  .replace(/\[(\d+)\]/g, '')
+  .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+  .replace(/https?:\/\/\S+/g, '')
+  .replace(/^\s{0,3}(#{1,6}|[-*+]|\d+\.)\s+/gm, '')
+  .replace(/[*_`>|#~]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .slice(0, 1200);
+
+async function speakOnDevice(text, lang, signal, onLevel) {
+  if (!('speechSynthesis' in window)) throw new NoVoiceError(`This browser cannot speak ${LANG_NAME[lang]}.`);
+  const tag = DEVICE_TAG[lang];
+  const voices = await deviceVoices();
+  // On-device voices only: Chrome's "Google हिन्दी" and similar are network
+  // voices that send the answer text to Google. And never an English voice —
+  // it reads Indic script as noise.
+  const local = voices.filter((v) => v.localService);
+  const voice = local.find((v) => v.lang === tag) || local.find((v) => v.lang.toLowerCase().startsWith(lang));
+  if (!voice) throw new NoVoiceError(`No ${LANG_NAME[lang]} voice on this device — the answer is on screen.`);
+
+  const synth = window.speechSynthesis;
+  const u = new SpeechSynthesisUtterance(speakable(text));
+  u.voice = voice;
+  u.lang = voice.lang;
+  // No audio stream to measure here, so the glow pulses on each word the
+  // engine reports and eases off between them.
+  let pulse = 0;
+  let raf = 0;
+  const tick = () => { pulse *= 0.9; onLevel?.(pulse); raf = requestAnimationFrame(tick); };
+  u.onboundary = () => { pulse = 0.7; };
+  await new Promise((resolve) => {
+    const stop = () => { synth.cancel(); resolve(); };
+    if (signal?.aborted) return stop();
+    signal?.addEventListener('abort', stop, { once: true });
+    u.onend = resolve;
+    u.onerror = resolve;
+    synth.cancel();
+    synth.speak(u);
+    raf = requestAnimationFrame(tick);
+  });
+  cancelAnimationFrame(raf);
+  onLevel?.(0);
 }
 
 // Loudness of a playing <audio>, per frame. Returns a stop function. Fails

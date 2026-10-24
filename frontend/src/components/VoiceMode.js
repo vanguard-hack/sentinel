@@ -35,8 +35,9 @@ const clip = (s, n) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 /**
  * Hands-free conversation with the assistant. Each question goes through
- * `onAsk(englishText)` — the page's own send(), so it lands in the chat thread
- * like a typed one — and the returned answer text is read aloud.
+ * `onAsk(text)` — the page's own send(), so it lands in the chat thread like a
+ * typed one. Hindi and Kannada are asked in the officer's own words and
+ * answered, on screen and aloud, in that language; English likewise.
  */
 // Rendered into <body> so no page ancestor can trap it in its own stacking
 // context — the page transition animates a transform — and stacked above the
@@ -92,7 +93,10 @@ function VoiceModeScreen({ onAsk, onClose }) {
 
         setPhase('thinking');
         let answer;
-        try { answer = await onAskRef.current(t.english); } catch (e) { setNote(e.message); continue; }
+        // Asked in the officer's own words, so the assistant answers in that
+        // language (it translates for the search and back for the reply).
+        const asked = t.lang && t.lang !== 'en' && t.original ? t.original : t.english;
+        try { answer = await onAskRef.current(asked); } catch (e) { setNote(e.message); continue; }
         if (session.signal.aborted) break;
         if (!answer) { setNote('No answer came back.'); continue; }
         setReply(answer.replace(/\[\d+\]/g, '').replace(/[*_`#>]/g, ''));
@@ -102,7 +106,7 @@ function VoiceModeScreen({ onAsk, onClose }) {
         interruptRef.current = () => turn.abort();
         session.signal.addEventListener('abort', () => turn.abort(), { once: true });
         try {
-          await speak(answer, turn.signal, (v) => { speakLevel.current = v; orbLevel.set(v); });
+          await speak(answer, turn.signal, (v) => { speakLevel.current = v; orbLevel.set(v); }, t.lang || 'en');
         } catch (e) { if (!turn.signal.aborted) setNote(e.message); }
         interruptRef.current = null;
       }
