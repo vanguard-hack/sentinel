@@ -159,7 +159,7 @@ function Narrative({ alert }) {
         <span className="ft-ai-error">{state.text} <button className="ft-ai-btn" onClick={generate}>Retry</button></span>
       )}
       {state.status === 'done' && (
-        <span className="ft-ai-tag">AI-drafted from the facts above — verify before relying on it. <button className="ft-ai-btn" onClick={generate}>Regenerate</button></span>
+        <span className="ft-ai-tag">AI-drafted — verify. <button className="ft-ai-btn" onClick={generate}>Regenerate</button></span>
       )}
     </div>
   );
@@ -322,10 +322,7 @@ export default function FinancialTrails() {
         <div className="rp-card-head cl-head">
           <div>
             <h2><Landmark size={16} /> Financial trails &amp; money-laundering typologies</h2>
-            <span className="rp-card-sub">
-              Synthetic transactions modelled around accused in economic, cyber &amp; property FIRs, screened against
-              standard AML typologies — demo, analyst decision-support only
-            </span>
+            <span className="rp-card-sub">Synthetic transactions · decision support only</span>
           </div>
           <button className="cf-icon-btn" onClick={() => load(true)} title="Rebuild"><RefreshCw size={15} /></button>
         </div>
@@ -340,21 +337,12 @@ export default function FinancialTrails() {
         </div>
       </section>
 
-      {/* ── Model validation ────────────────────────────────────────────────
-          The generator plants a known answer — every accused gets one of six
-          behavioural profiles, and 'ordinary' is the only non-laundering one
-          — so the detector can be checked against it the same way Case
-          Linkage checks its own scorer: AUC for ranking, a confusion matrix
-          at the tier the tool actually flags at, and (below) whether the
-          number it prints means what it says. */}
       {validation && (
         <section className="rp-card rp-card-wide">
           <div className="rp-card-head">
             <h2><Ruler size={16} /> Does the score find laundering?</h2>
             <span className="rp-card-sub">
-              Measured against the {validation.population.toLocaleString()} accused this ledger was synthesised
-              for — {validation.positives.toLocaleString()} on a planted laundering profile,{' '}
-              {validation.negatives.toLocaleString()} on the baseline "ordinary" profile
+              {validation.positives.toLocaleString()} planted laundering profiles · {validation.negatives.toLocaleString()} ordinary
             </span>
           </div>
           <div className="rp-card-body">
@@ -374,72 +362,6 @@ export default function FinancialTrails() {
                 <tr><th>Ordinary profile (actual)</th><td className={validation.confusion.fp > 0 ? 'cl-gap-bad' : ''}>{validation.confusion.fp.toLocaleString()} false alarm</td><td>{validation.confusion.tn.toLocaleString()} correctly clear</td></tr>
               </tbody>
             </table>
-            <p className="cl-cal-note">
-              "Flagged" means the alert rule fired at all — the same bar the Prioritised alerts table below uses;
-              Tier is a severity label applied after that decision, not a second gate. This is a hand-tuned rule
-              engine measured against a ground truth this demo itself plants, not a trained, independently
-              validated model — the numbers show whether the rules are doing what they were designed to, not
-              real-world accuracy.
-            </p>
-          </div>
-        </section>
-      )}
-
-      {validation && validation.calibration && (
-        <section className="rp-card rp-card-wide">
-          <div className="rp-card-head">
-            <div>
-              <h2><Ruler size={16} /> Does the score mean what it says?</h2>
-              <span className="rp-card-sub">
-                ROC AUC above measures ranking — whether laundering profiles score above ordinary ones — and says
-                nothing about the number itself. This bins all {validation.calibration.samples.toLocaleString()} scored
-                accused and compares what the score claimed against what the planted profile actually was.
-              </span>
-            </div>
-          </div>
-          <div className="rp-card-body">
-            <div className="cl-kpi-row">
-              <Kpi
-                value={validation.calibration.ece == null ? '—' : `${(validation.calibration.ece * 100).toFixed(1)}%`}
-                label={`Calibration error — ${validation.calibration.band}`}
-              />
-              <Kpi
-                value={validation.calibration.brier == null ? '—' : validation.calibration.brier.score.toFixed(4)}
-                label={`Brier · ${validation.calibration.brier.baseRateScore.toFixed(4)} = ignore the model`}
-              />
-              <Kpi value={pct(validation.calibration.brier?.baseRate)} label="Base rate — planted laundering profile" />
-              <Kpi
-                value={validation.calibration.calibratedEce == null ? '—' : `${(validation.calibration.calibratedEce * 100).toFixed(1)}%`}
-                label="After isotonic correction"
-              />
-            </div>
-            <table className="cl-cal-table">
-              <thead>
-                <tr><th>Score band</th><th>Entities</th><th>Score said</th><th>Actually laundering</th><th>Gap</th></tr>
-              </thead>
-              <tbody>
-                {validation.calibration.bins.map((b) => (
-                  <tr key={b.lo}>
-                    <td>{Math.round(b.lo * 100)}–{Math.round(b.hi * 100)}</td>
-                    <td>{b.n.toLocaleString()}</td>
-                    <td>{pct(b.meanPredicted)}</td>
-                    <td>{pct(b.observedRate)}</td>
-                    <td className={Math.abs(b.gap) > 0.1 ? 'cl-gap-bad' : ''}>
-                      {b.gap >= 0 ? '+' : ''}{(b.gap * 100).toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="cl-cal-note">
-              Read the last two columns together. Where they diverge, a score of 70 does not mean "70% likely" —
-              however well the score ranks laundering above ordinary.{' '}
-              {validation.calibration.improved
-                ? `A monotone isotonic correction closes the gap from ${(validation.calibration.ece * 100).toFixed(1)}% to ${(validation.calibration.calibratedEce * 100).toFixed(1)}% — and because it only rescales, never reorders, the ROC AUC above is unchanged by it.`
-                : 'The raw score is already close to calibrated on this data, so no correction is applied.'}
-              {' '}Synthetic hackathon data, scored against a ground truth this demo itself plants — the method is
-              what is being shown, not the accuracy of these particular numbers on real cases.
-            </p>
           </div>
         </section>
       )}
@@ -449,17 +371,9 @@ export default function FinancialTrails() {
         <section id="fin-geography" className="rp-card rp-card-wide">
           <div className="rp-card-head">
             <h2>Where the money moved</h2>
-            <span className="rp-card-sub">
-              Branches resolved live from the public IFSC directory. The accounts are synthesised;
-              the branches they sit at are real.
-            </span>
+            <span className="rp-card-sub">{districts.length} districts · real IFSC branches, synthetic accounts</span>
           </div>
           <div className="rp-card-body">
-            <p className="aa-hint">
-              {districts.length} districts touched by the flagged accounts. Layering that crosses
-              jurisdictions is the pattern worth a second look — a chain inside one branch is
-              bookkeeping.
-            </p>
             <ul className="ft-geo">
               {districts.map((d) => (
                 <li key={d.district}>
@@ -477,7 +391,6 @@ export default function FinancialTrails() {
       <section id="fin-typologies" className="rp-card rp-card-wide">
         <div className="rp-card-head">
           <h2>Laundering typologies detected</h2>
-          <span className="rp-card-sub">Entities matching each pattern — the AML red-flag catalogue behind every alert</span>
         </div>
         <div className="rp-card-body">
           <div className="ft-typologies">
@@ -500,7 +413,7 @@ export default function FinancialTrails() {
         <div className="rp-card-head">
           <h2>Money-flow network</h2>
           <span className="rp-card-sub">
-            {moneyMap.nodes.length} accounts · {moneyMap.links.length} counterparty links · node size is the value that passed through it · hover or click to trace a chain
+            {moneyMap.nodes.length} accounts · {moneyMap.links.length} counterparty links · click a node to trace
           </span>
         </div>
         <div className="rp-card-body">
@@ -514,7 +427,6 @@ export default function FinancialTrails() {
       <section id="fin-alerts" className="rp-card rp-card-wide ft-section">
         <div className="rp-card-head">
           <h2>Prioritised alerts</h2>
-          <span className="rp-card-sub">Entities ranked by composite laundering-risk score — each with the typologies that triggered it and a plain-language read</span>
         </div>
         <div className="rp-card-body">
           <div className="ft-filters">
@@ -570,7 +482,6 @@ export default function FinancialTrails() {
       <section id="fin-txns" className="rp-card rp-card-wide ft-section">
         <div className="rp-card-head">
           <h2>Flagged transactions</h2>
-          <span className="rp-card-sub">Individual transfers driving the alerts — each links back to its FIR for follow-up</span>
         </div>
         <div className="rp-card-body">
           <div className="ft-filters">

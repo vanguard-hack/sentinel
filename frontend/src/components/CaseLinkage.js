@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Fingerprint, AlertTriangle, RefreshCw, Search, MapPin, CalendarDays,
-  ShieldCheck, SlidersHorizontal, Ruler,
+  ShieldCheck, SlidersHorizontal,
 } from 'lucide-react';
 import {
   getLinkageData, getLinkageValidation, refreshLinkage,
@@ -19,14 +19,6 @@ function Kpi({ value, label }) {
 
 const pct = (v) => `${Math.round(v * 100)}%`;
 
-const fmtRate = (v) => {
-  if (v == null || !Number.isFinite(v)) return '—';
-  if (v === 0) return '0%';
-  if (v < 0.001) return `${(v * 100).toFixed(3)}%`;
-  if (v < 0.01) return `${(v * 100).toFixed(2)}%`;
-  if (v < 0.1) return `${(v * 100).toFixed(1)}%`;
-  return `${Math.round(v * 100)}%`;
-};
 const fmtKm = (km) => (km == null ? '—' : km < 1 ? '<1 km' : `${Math.round(km)} km`);
 const fmtDays = (d) =>
   d == null ? '—' : d < 1 ? 'same day' : d < 30 ? `${Math.round(d)} d apart` : `${Math.round(d / 30)} mo apart`;
@@ -95,11 +87,6 @@ export default function CaseLinkage() {
       .catch(() => { if (alive) setVal(null); });
     return () => { alive = false; };
   }, [data]);
-
-  // Calibration is the other half of validate(): validate asks whether the
-  // model RANKS well, this asks whether its numbers mean what they say. It is
-  // cheap (~60ms) and part of the cached model.
-  const cal = data ? data.calibration : null;
 
   const matches = useMemo(() => {
     if (!data) return [];
@@ -184,82 +171,6 @@ export default function CaseLinkage() {
           </div>
         </div>
       </section>
-
-      {/* ── Calibration ──────────────────────────────────────────────────
-          The AUC above says the model ranks well. It says nothing about
-          whether its numbers mean anything, and the officer reads the number.
-          This is that second question, measured. */}
-      {cal && (
-        <section className="rp-card rp-card-wide">
-          <div className="rp-card-head">
-            <div>
-              <h2><Ruler size={16} /> Does the score mean what it says?</h2>
-              <span className="rp-card-sub">
-                ROC AUC measures ranking — whether real links land above false ones — and says
-                nothing about the number itself. A model can rank perfectly and still be wrong
-                about every probability it prints. This bins {cal.positivesScored.toLocaleString()} known
-                linked pairs against {cal.negativesSampled.toLocaleString()} sampled unlinked ones and
-                compares what the score claimed with what actually happened.
-              </span>
-            </div>
-          </div>
-          <div className="rp-card-body">
-            <div className="cl-kpi-row">
-              <Kpi
-                value={cal.ece == null ? '—' : `${(cal.ece * 100).toFixed(1)}%`}
-                label={`Calibration error — ${cal.band}`}
-              />
-              <Kpi
-                value={cal.brier == null ? '—' : cal.brier.score.toFixed(4)}
-                label={`Brier · ${cal.brier.baseRateScore.toFixed(4)} = ignore the model`}
-              />
-              <Kpi value={fmtRate(cal.baseRate)} label="Base rate — any two cases linked" />
-              <Kpi
-                value={cal.calibratedEce == null ? '—' : `${(cal.calibratedEce * 100).toFixed(1)}%`}
-                label="After isotonic correction"
-              />
-            </div>
-
-            <table className="cl-cal-table">
-              <thead>
-                <tr>
-                  <th>Score band</th>
-                  <th>Pairs</th>
-                  <th>Model said</th>
-                  <th>Actually linked</th>
-                  <th>Gap</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cal.bins.map((b) => (
-                  <tr key={b.lo}>
-                    <td>{b.lo.toFixed(1)}–{b.hi.toFixed(1)}</td>
-                    <td>{b.n.toLocaleString()}</td>
-                    <td>{fmtRate(b.meanPredicted)}</td>
-                    <td>{fmtRate(b.observedRate)}</td>
-                    <td className={Math.abs(b.gap) > 0.1 ? 'cl-gap-bad' : ''}>
-                      {b.gap >= 0 ? '+' : ''}{(b.gap * 100).toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <p className="cl-cal-note">
-              Read the last two columns together. Where they diverge the score is not a
-              probability, however good the ranking is.{' '}
-              {cal.improved
-                ? `A monotone isotonic correction closes the gap from ${(cal.ece * 100).toFixed(1)}% to ${(cal.calibratedEce * 100).toFixed(1)}% — and because it only rescales, never reorders, the ROC AUC above is unchanged by it.`
-                : 'The raw score is already close to calibrated on this data, so no correction is applied.'}
-              {' '}Unlinked pairs are sampled rather than exhaustively scored, then weighted back to
-              their true frequency — without that weighting every figure here would describe a
-              50/50 world that does not exist and would overstate each probability by two orders
-              of magnitude. Synthetic hackathon data; the method is what is being shown, not the
-              accuracy of these particular numbers.
-            </p>
-          </div>
-        </section>
-      )}
 
       {/* Analyst workbench */}
       <section className="rp-card rp-card-wide">
