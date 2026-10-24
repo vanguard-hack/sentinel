@@ -962,14 +962,50 @@ export default function CrimeMap() {
               <div><dt>Density</dt><dd>{dDensity != null ? `${fmt(dDensity)} /km²` : '—'}</dd></div>
             </dl>
 
-            {patrolOn && beats && (
+            {patrolOn && (
               <div className="map-cmd beat-section" aria-live="polite">
-                {beats.loading && <p className="beat-note">Loading FIRs for this district…</p>}
-                {beats.error && <p className="beat-note">{beats.error}</p>}
-                {beats.stops && (
+                <div className="map-cmd-title">Patrol</div>
+                <div className="beat-controls">
+                  <div className="map-ctrl map-ctrl-cars" title="How many patrol cars to split this route across">
+                    <Car size={15} />
+                    <button type="button" onClick={() => changePatrolCars(patrolCars - 1)} disabled={patrolCars <= 1} aria-label="Fewer patrol cars">−</button>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      inputMode="numeric"
+                      aria-label="Number of patrol cars"
+                      value={patrolCarsInput}
+                      onChange={(e) => setPatrolCarsInput(e.target.value)}
+                      onBlur={commitPatrolCarsInput}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { commitPatrolCarsInput(); e.target.blur(); } }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => changePatrolCars(patrolCars + 1)}
+                      disabled={!!patrolInfo && patrolCars >= patrolInfo.stops}
+                      title={patrolInfo && patrolCars >= patrolInfo.stops ? 'One car per stop already — more cars have nothing left to drive' : undefined}
+                      aria-label="More patrol cars"
+                    >+</button>
+                  </div>
+                  <select
+                    className="map-ctrl map-ctrl-shiftsel"
+                    value={patrolShift}
+                    onChange={(e) => changePatrolShift(e.target.value)}
+                    aria-label="Patrol shift"
+                    title="Rank stops by FIRs reported in these hours"
+                  >
+                    {SHIFTS.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
+                  </select>
+                  <button className="map-ctrl map-ctrl-shift" onClick={shufflePatrol} title="Vary the route's starting stop — a fixed loop driven the same way every shift is easy to learn">
+                    <Shuffle size={15} /> <span>Vary route</span>
+                  </button>
+                </div>
+                {beats?.loading && <p className="beat-note">Loading FIRs for this district…</p>}
+                {beats?.error && <p className="beat-note">{beats.error}</p>}
+                {beats?.stops && (
                   <>
-                    <div className="map-cmd-title">Patrol · why these stops</div>
-                    <p className="beat-note">{beats.shift?.label} · from {beats.firs.toLocaleString()} FIRs</p>
+                    <p className="beat-note">Why these stops · {beats.shift?.label} · from {beats.firs.toLocaleString()} FIRs</p>
                     {beats.stops.length < 2
                       ? <p className="beat-note">Too few located FIRs here to plan a route.</p>
                       : (
@@ -1099,46 +1135,6 @@ export default function CrimeMap() {
           {level === 'district' && (
             <button className={`map-ctrl map-ctrl-patrol ${patrolOn ? 'on' : ''}`} onClick={togglePatrol} title="Suggested patrol route for this district">
               <Route size={15} /> <span>Patrol route</span>
-            </button>
-          )}
-          {level === 'district' && patrolOn && (
-            <div className="map-ctrl map-ctrl-cars" title="How many patrol cars to split this route across">
-              <Car size={15} />
-              <button type="button" onClick={() => changePatrolCars(patrolCars - 1)} disabled={patrolCars <= 1} aria-label="Fewer patrol cars">−</button>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                inputMode="numeric"
-                aria-label="Number of patrol cars"
-                value={patrolCarsInput}
-                onChange={(e) => setPatrolCarsInput(e.target.value)}
-                onBlur={commitPatrolCarsInput}
-                onKeyDown={(e) => { if (e.key === 'Enter') { commitPatrolCarsInput(); e.target.blur(); } }}
-              />
-              <button
-                type="button"
-                onClick={() => changePatrolCars(patrolCars + 1)}
-                disabled={!!patrolInfo && patrolCars >= patrolInfo.stops}
-                title={patrolInfo && patrolCars >= patrolInfo.stops ? 'One car per stop already — more cars have nothing left to drive' : undefined}
-                aria-label="More patrol cars"
-              >+</button>
-            </div>
-          )}
-          {level === 'district' && patrolOn && (
-            <select
-              className="map-ctrl map-ctrl-shiftsel"
-              value={patrolShift}
-              onChange={(e) => changePatrolShift(e.target.value)}
-              aria-label="Patrol shift"
-              title="Rank stops by FIRs reported in these hours"
-            >
-              {SHIFTS.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
-            </select>
-          )}
-          {level === 'district' && patrolOn && (
-            <button className="map-ctrl map-ctrl-shift" onClick={shufflePatrol} title="Vary the route's starting stop — a fixed loop driven the same way every shift is easy to learn">
-              <Shuffle size={15} /> <span>Vary route</span>
             </button>
           )}
           <button className={`map-ctrl map-ctrl-hotspot ${hotspotMode !== 'off' ? 'on' : ''}`} onClick={cycleHotspots} title="Toggle crime hotspots">
