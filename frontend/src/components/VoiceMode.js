@@ -28,6 +28,9 @@ function usePhone() {
   return phone;
 }
 
+// Base pigment, highlight and shadow — a blue take on beui's default palette.
+const ORB_COLORS = ['#3f7be0', '#cfe2ff', '#16336e'];
+
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 /**
@@ -177,7 +180,7 @@ function VoiceModeScreen({ onAsk, onClose }) {
 
       {/* beui.dev voice-orb. Clicking it ends your turn or interrupts. */}
       <button className="vm-orb-btn" onClick={tap} aria-label={tapLabel} title={tapLabel}>
-        <VoiceOrb activity={orbLevel} active={phase !== 'error'} speed={phase === 'thinking' || phase === 'transcribing' ? 1.8 : 1} />
+        <VoiceOrb colors={ORB_COLORS} activity={orbLevel} active={phase !== 'error'} speed={phase === 'thinking' || phase === 'transcribing' ? 1.8 : 1} />
       </button>
 
       <p className="vm-status" aria-live="polite">{phase === 'error' ? note : STATUS[phase]}</p>

@@ -2952,7 +2952,7 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 /* User bubble: the initials avatar fills the whole tile — no ring/gap. */
 .as-msg-user .as-avatar { background: none; overflow: hidden; }
 .as-avatar .avatar { width: 100%; height: 100%; border-radius: inherit; }
-.as-msg-assistant .as-avatar { background: none; } /* the bot avatar draws its own body */
+.as-msg-assistant .as-avatar { background: var(--blue-500); }
 .as-msg-body { flex: 1; min-width: 0; padding-top: 4px; }
 /* The loading row is a single short line, not multi-line message text —
    center it against the avatar instead of top-aligning (which relied on

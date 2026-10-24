@@ -25,7 +25,6 @@ import AguiRenderer from '../components/AguiRenderer';
 import RichText from '../components/RichText';
 import Avatar from '../components/Avatar';
 import SentinelMark from '../components/SentinelMark';
-import { BotAvatar } from 'bot-avatars';
 import Thinking from '../components/Thinking';
 import TopBar from '../components/TopBar';
 import i18n from '../i18n';
@@ -1322,7 +1321,7 @@ export default function Assistant() {
                 {messages.map((m) => (
                   <div key={m.id} className={`as-msg as-msg-${m.role}`}>
                     <div className="as-avatar">
-                      {m.role === 'user' ? <Avatar user={user} size={30} /> : <BotAvatar type="mech" size={30} paused />}
+                      {m.role === 'user' ? <Avatar user={user} size={30} /> : <SentinelMark size={18} />}
                     </div>
                     <div className="as-msg-body">
                       {m.files && m.files.length > 0 && (
@@ -1399,8 +1398,7 @@ export default function Assistant() {
                 ))}
                 {sending && (
                   <div className="as-msg as-msg-assistant as-msg-thinking">
-                    {/* Unpaused and hopping while the answer is being worked out. */}
-                    <div className="as-avatar"><BotAvatar type="mech" size={30} state="working" /></div>
+                    <div className="as-avatar"><SentinelMark size={18} /></div>
                     <div className="as-msg-body">
                       <Thinking label={sherlockLabel} />
                     </div>
