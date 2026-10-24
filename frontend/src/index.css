@@ -1336,10 +1336,11 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 }
 .map-ctrl-shiftsel:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 2px; }
 
-/* Beat planner: why the patrol stops are where they are (planBeats). */
+/* Beat planner: why the patrol stops are where they are (planBeats).
+   Right side, beside the control column — the left is the district card. */
 .beat-panel {
   position: absolute;
-  left: 16px;
+  right: 172px;
   bottom: 60px;
   width: 290px;
   max-width: calc(100% - 32px);
@@ -1351,6 +1352,9 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   border-radius: var(--radius);
   box-shadow: var(--shadow-pop);
   z-index: 1000;
+}
+@media (max-width: 640px) {
+  .beat-panel { right: 16px; left: 16px; width: auto; bottom: 60px; max-height: 32vh; }
 }
 .beat-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
 .beat-head b { font-size: 13px; font-weight: 500; color: var(--text-0); }
