@@ -989,6 +989,10 @@ export default function CrimeMap() {
                           ))}
                         </ol>
                       )}
+                  </>
+                )}
+              </div>
+            )}
 
             {crime && (
               <div className="map-crime">
@@ -1158,11 +1162,6 @@ export default function CrimeMap() {
             </>
           )}
         </div>
-
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Full-screen image viewer */}
