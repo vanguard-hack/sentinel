@@ -1316,12 +1316,16 @@ function json(res, status, obj) {
 // Proxies to the Catalyst Zia transcription model (multipart), keeping OAuth
 // server-side like the RAG calls. Requires the refresh token to carry the
 // QuickML.deployment.READ scope in addition to QuickML.rag.READ.
+// The project-scoped sync model. The older models/zia/audio/transcribe
+// endpoint started returning 500 for every request (2026-10-24).
 const ZIA_TRANSCRIBE_URL =
   process.env.ZIA_TRANSCRIBE_URL ||
-  'https://api.catalyst.zoho.in/quickml/api/v1/models/zia/audio/transcribe';
+  'https://api.catalyst.zoho.in/quickml/api/v1/project/49826000000024269/models/zia/speech/transcribe/sync';
 const ZIA_FILE_FIELD = process.env.ZIA_FILE_FIELD || 'file';
-const ZIA_LANG_FIELD = process.env.ZIA_LANG_FIELD || 'language';
-const ZIA_LANGS = new Set(['en', 'hi', 'kn']);
+// Zia accepts no Kannada code. Its Tamil path ('ta') identifies the Indic
+// language itself and writes Kannada in Kannada script and Hindi in
+// Devanagari — measured on recorded Kannada and Hindi questions, 2026-10-24.
+const ZIA_LANG_CODE = { en: 'en', hi: 'hi', kn: 'ta' };
 
 // Zia's audio/transcribe model is Whisper-style under the hood, and Whisper's
 // known failure mode is a runaway repetition loop ("the one who is the one
@@ -1422,9 +1426,8 @@ async function ziaTranscribe(buf, mimetype, filename, lang) {
     new Blob([buf], { type: mimetype || 'audio/wav' }),
     filename || 'recording.wav'
   );
-  form.append(ZIA_LANG_FIELD, ZIA_LANGS.has(lang) ? lang : 'en');
 
-  const r = await fetch(ZIA_TRANSCRIBE_URL, {
+  const r = await fetch(`${ZIA_TRANSCRIBE_URL}?languageCode=${ZIA_LANG_CODE[lang] || 'en'}`, {
     method: 'POST',
     headers: {
       'CATALYST-ORG': ORG,
@@ -1439,7 +1442,7 @@ async function ziaTranscribe(buf, mimetype, filename, lang) {
   // Field name isn't documented — check the likely spots and return raw too.
   const d = data.data || data;
   let text =
-    d.transcript || d.transcription || d.text || d.result || d.output ||
+    d.transcription_result || d.transcript || d.transcription || d.text || d.result || d.output ||
     (typeof d.response === 'string' ? d.response : '') || '';
   text = String(text).trim();
   if (looksDegenerateTranscript(text)) text = '';
@@ -1450,14 +1453,15 @@ async function ziaTranscribe(buf, mimetype, filename, lang) {
 // POST /server/rag/voice/transcribe  raw audio (octet-stream), ?mimetype&filename
 //   → { lang, original, english }
 //
-// Zia cannot detect the language: it must be told, and audio forced through
-// the wrong language comes back garbled or looping. So the clip is
-// transcribed as English, Hindi and Kannada at once, and one model call reads
-// the three attempts side by side — only the right one is coherent — and
-// translates that one into English, which is what the assistant is asked.
+// Zia cannot tell English from an Indian language: it must be told. So the
+// clip is transcribed twice at once — as English, and through the Indic path
+// (ZIA_LANG_CODE.kn), which itself tells Hindi from Kannada and writes each
+// in its own script. The script names the Indic attempt; one model call reads
+// both side by side — only the right one is coherent — and translates that
+// one into English, which is what the assistant is asked.
 // Audio never leaves Zoho; only the three transcripts reach the LLM chain,
 // the same path every typed question already takes.
-const VOICE_LANGS = ['en', 'hi', 'kn'];
+const indicLang = (text) => (SCRIPT.hi.test(text) ? 'hi' : 'kn');
 
 async function handleVoiceTranscribe(req, res) {
   const q = (req.url || '').split('?')[1] || '';
@@ -1469,13 +1473,12 @@ async function handleVoiceTranscribe(req, res) {
   if (!buf.length) return json(res, 400, { error: 'audio payload is empty' });
   if (buf.length > 15 * 1024 * 1024) return json(res, 413, { error: 'audio too large (15MB max)' });
 
-  const attempts = await Promise.allSettled(
-    VOICE_LANGS.map((l) => ziaTranscribe(buf, param('mimetype'), param('filename'), l))
+  const [en, indic] = await Promise.allSettled(
+    ['en', 'kn'].map((l) => ziaTranscribe(buf, param('mimetype'), param('filename'), l))
   );
   const heard = {};
-  attempts.forEach((a, i) => {
-    if (a.status === 'fulfilled' && a.value.ok && a.value.text) heard[VOICE_LANGS[i]] = a.value.text;
-  });
+  if (en.status === 'fulfilled' && en.value.ok && en.value.text) heard.en = en.value.text;
+  if (indic.status === 'fulfilled' && indic.value.ok && indic.value.text) heard[indicLang(indic.value.text)] = indic.value.text;
   if (!Object.keys(heard).length) return json(res, 200, { lang: null, original: '', english: '' });
   return json(res, 200, await pickSpokenLanguage(heard));
 }
@@ -1484,8 +1487,9 @@ const VOICE_PICK_SYSTEM =
   'A speech recogniser transcribed the SAME short audio clip several times, each time ' +
   'told to expect a different language (EN English, HI Hindi, KN Kannada). Only the ' +
   'transcript in the language actually spoken is coherent; the others are garbled ' +
-  'guesses, repetitions or nonsense. Hindi and Kannada may be written in native script ' +
-  'or in Latin letters.\n' +
+  'guesses, repetitions or nonsense. English speech forced through an Indian language ' +
+  'comes back as English words spelled out in Devanagari or Kannada letters — if the EN ' +
+  'transcript is a coherent sentence and the other is just those same sounds, it was English.\n' +
   'Decide which language was spoken, then translate THAT transcript into natural ' +
   'English, faithfully: same meaning, nothing added, nothing answered. It is a ' +
   'question or instruction for a police assistant — translate it, never reply to it. ' +
