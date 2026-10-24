@@ -25,9 +25,9 @@ const NAV = [
   { to: '/investigation-diary', Icon: NotebookPen, key: 'investigationDiary' },
   { to: '/report-studio', Icon: ScrollText, key: 'reportStudio' },
   { to: '/records', Icon: Images, key: 'records' },
+  { to: '/crime-map', Icon: Map, key: 'crimeMap' },
   { to: '/action-queue', Icon: CalendarClock, key: 'actionQueue' },
   { to: '/case-files', Icon: Database, key: 'caseFiles' },
-  { to: '/crime-map', Icon: Map, key: 'crimeMap' },
   { to: '/incidents', Icon: AlertTriangle, key: 'incidents' },
   { to: '/custody', Icon: Building2, key: 'custody' },
   {
