@@ -355,27 +355,57 @@ export function clearSnapshot() { snapshots.clear(); }
  * this table has no cached copy yet and the officer is the one paying to make
  * it — the worst possible moment to hand them an error and a Retry button.
  *
- * Only 5xx is retried. A 400 (unknown table) or 403 (clearance) is an answer,
- * not a hiccup, and asking again would just be slower. */
-const SNAPSHOT_TRIES = 3;
+ * 5xx and 429 are retried. A 400 (unknown table) or 403 (clearance) is an
+ * answer, not a hiccup, and asking again would just be slower.
+ *
+ * 429 is the platform, not the network: a page that mounts several panels (and
+ * AI Analytics prefetching its other tabs) used to fire a dozen snapshot calls
+ * at once, Catalyst throttled the burst, and the first refusal was shown to the
+ * officer as "Analytics data unavailable (HTTP 429)". So calls are now gated to
+ * a few in flight, and a 429 waits — Retry-After when the platform gives one,
+ * a widening backoff otherwise — instead of failing the page. */
+const SNAPSHOT_TRIES = 6;
+const SNAPSHOT_MAX_IN_FLIGHT = 4;
 const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
+
+let inFlight = 0;
+const waiting = [];
+const acquire = () => {
+  if (inFlight < SNAPSHOT_MAX_IN_FLIGHT) { inFlight += 1; return Promise.resolve(); }
+  return new Promise((r) => { waiting.push(r); });
+};
+// The slot passes straight to the next waiter, so the count only drops when nobody is queued.
+const release = () => { const next = waiting.shift(); if (next) next(); else inFlight -= 1; };
+
+const retryDelay = (res, attempt) => {
+  const after = Number(res.headers?.get?.('Retry-After'));
+  if (Number.isFinite(after) && after >= 0) return Math.min(after, 30) * 1000;
+  return Math.min(8000, 1000 * 2 ** attempt) + Math.random() * 400;
+};
 
 async function fetchSnapshot(name) {
   let last;
   for (let attempt = 0; attempt < SNAPSHOT_TRIES; attempt += 1) {
     // eslint-disable-next-line no-await-in-loop
-    const res = await fetch('/server/rag/analytics/snapshot', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ table: name }),
-    });
+    await acquire();
+    let res;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      res = await fetch('/server/rag/analytics/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: name }),
+      });
+    } finally {
+      release();
+    }
     if (res.ok) return res;
     // eslint-disable-next-line no-await-in-loop
     const d = await res.json().catch(() => ({}));
     last = new Error(d.error || `Analytics data unavailable (HTTP ${res.status})`);
-    if (res.status < 500) throw last;
+    if (res.status < 500 && res.status !== 429) throw last;
     // eslint-disable-next-line no-await-in-loop
-    if (attempt < SNAPSHOT_TRIES - 1) await wait(1200 * (attempt + 1));
+    if (attempt < SNAPSHOT_TRIES - 1) await wait(retryDelay(res, attempt));
   }
   throw last;
 }

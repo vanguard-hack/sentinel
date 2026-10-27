@@ -59,3 +59,41 @@ test('a failed table is not remembered as its own answer', async () => {
   global.fetch = jest.fn(async () => ok(['DistrictID'], [[7]]));
   await expect(fetchSnapshotTable('Nope')).resolves.toEqual([{ DistrictID: 7 }]);
 });
+
+// "Analytics data unavailable (HTTP 429)" — the platform throttling a burst of
+// snapshot calls, with the officer's connection perfectly fine. 429 is now a
+// wait, not an answer, and Retry-After is honoured when the platform sends it.
+const throttled = () => ({
+  ok: false,
+  status: 429,
+  headers: { get: (h) => (h === 'Retry-After' ? '0' : null) },
+  json: async () => ({}),
+});
+
+test('a throttled (429) call waits and retries instead of failing the page', async () => {
+  let n = 0;
+  global.fetch = jest.fn(async () => {
+    n += 1;
+    return n <= 2 ? throttled() : ok(['DistrictID'], [[7]]);
+  });
+  await expect(fetchSnapshotTable('District')).resolves.toEqual([{ DistrictID: 7 }]);
+  expect(global.fetch).toHaveBeenCalledTimes(3);
+});
+
+test('a page asking for many tables at once never has more than four in flight', async () => {
+  let live = 0;
+  let peak = 0;
+  global.fetch = jest.fn(async () => {
+    live += 1;
+    peak = Math.max(peak, live);
+    await new Promise((r) => { setTimeout(r, 5); });
+    live -= 1;
+    return ok(['X'], [[1]]);
+  });
+  const names = Array.from({ length: 12 }, (_, i) => `T${i}`);
+  const all = await Promise.all(names.map((t) => fetchSnapshotTable(t)));
+  expect(all).toHaveLength(12);
+  expect(global.fetch).toHaveBeenCalledTimes(12);
+  expect(peak).toBeLessThanOrEqual(4);
+  expect(peak).toBeGreaterThan(1); // still parallel, just bounded
+});
