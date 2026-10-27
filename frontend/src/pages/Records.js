@@ -690,7 +690,7 @@ export default function Records() {
         </div>
       </div>
 
-      <AnimatedToastStack toasts={toasts} onDismiss={handleDismissToast} position="bottom-center" fixed />
+      <AnimatedToastStack toasts={toasts} onDismiss={handleDismissToast} position="top-center" fixed />
     </div>
   );
 }

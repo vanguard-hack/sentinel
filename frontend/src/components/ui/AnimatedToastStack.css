@@ -97,7 +97,7 @@
   display: inline-flex;
   align-items: center;
   border: none;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-ctl); /* buttons are 8px, never pill-rounded */
   background: var(--primary-tint);
   padding: 0 12px;
   font-size: var(--fs-caption);

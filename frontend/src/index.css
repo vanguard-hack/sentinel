@@ -8651,7 +8651,7 @@ tr.lk-flagged .lk-score { color: var(--rp-series, var(--primary)); }
    download and edit buttons looked stuck to the panel. */
 .dg-text-head {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; margin-bottom: 10px;
+  gap: 10px; margin: 16px 0 10px;
 }
 .dg-text-actions { display: flex; gap: 6px; }
 
