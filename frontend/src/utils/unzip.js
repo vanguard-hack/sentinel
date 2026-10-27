@@ -21,15 +21,16 @@ function findCentralDirectory(buf) {
   return null;
 }
 
-async function inflateRaw(bytes) {
+async function inflateRaw(bytes, max) {
   // deflate-raw is the ZIP storage format (no zlib header). Written and read
   // through the stream directly rather than via Blob/Response — those add two
   // more globals to depend on for no gain, and the reader loop is explicit
   // about assembling the chunks.
   const ds = new DecompressionStream('deflate-raw');
   const writer = ds.writable.getWriter();
-  writer.write(bytes);
-  writer.close();
+  // Rejected when the read side is cancelled below; that is expected.
+  writer.write(bytes).catch(() => {});
+  writer.close().catch(() => {});
   const reader = ds.readable.getReader();
   const chunks = [];
   let total = 0;
@@ -37,8 +38,14 @@ async function inflateRaw(bytes) {
     // eslint-disable-next-line no-await-in-loop
     const { done, value } = await reader.read();
     if (done) break;
-    chunks.push(value);
     total += value.length;
+    // The declared size is the file's own claim, and a crafted archive can
+    // declare 10 bytes and inflate to gigabytes. Stop at the claim.
+    if (total > max) {
+      reader.cancel().catch(() => {});
+      throw new Error('entry inflates past its declared size');
+    }
+    chunks.push(value);
   }
   const out = new Uint8Array(total);
   let at = 0;
@@ -76,14 +83,19 @@ export async function readZip(file, wanted = () => true) {
     // The local header repeats the name and extra field with its own lengths,
     // which are NOT always the same as the central directory's — the data
     // offset has to be computed from the local header itself.
-    const lnameLen = view.getUint16(localOffset + 26, true);
-    const lextraLen = view.getUint16(localOffset + 28, true);
-    const start = localOffset + 30 + lnameLen + lextraLen;
-    const raw = new Uint8Array(buf, start, compressedSize);
     try {
-      out.set(name, method === 0 ? raw : await inflateRaw(raw));
+      const lnameLen = view.getUint16(localOffset + 26, true);
+      const lextraLen = view.getUint16(localOffset + 28, true);
+      const start = localOffset + 30 + lnameLen + lextraLen;
+      // Throws on an offset or length outside the file, rather than reading past it.
+      const raw = new Uint8Array(buf, start, compressedSize);
+      // A stored entry is its own bytes, so both sizes must agree. A
+      // deflated one is capped at the size it declares, so callers that
+      // budget on `size` are budgeting on what is actually produced.
+      if (method === 0 && compressedSize !== size) continue;
+      out.set(name, method === 0 ? raw : await inflateRaw(raw, size));
     } catch {
-      // A single unreadable part shouldn't lose the rest of the document.
+      // A single unreadable (or lying) part shouldn't lose the rest of the document.
     }
   }
   return out;

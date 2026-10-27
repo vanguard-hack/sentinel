@@ -46,6 +46,14 @@ test('refuses a zip bomb from its declared size, before inflating it', async () 
   await expect(filesFromZip(load('bomb.zip'))).rejects.toThrow(/over 200 MB once unpacked/);
 });
 
+test('an entry that lies about its size is dropped once it inflates past the claim', async () => {
+  // big.txt declares 10 bytes but holds 50 MB of zeros. Trusting the
+  // declaration would let a crafted archive slip under the 200 MB cap and
+  // still exhaust the tab; inflation stops at the declared size instead.
+  const files = await filesFromZip(load('liar.zip'));
+  expect(files.map((f) => f.name)).toEqual(['ok.txt']);
+});
+
 test('a file that is not really a zip gets a plain message', async () => {
   const fake = { name: 'x.zip', arrayBuffer: async () => new ArrayBuffer(64) };
   await expect(filesFromZip(fake)).rejects.toThrow('not a readable zip file');
