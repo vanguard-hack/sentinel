@@ -14,7 +14,7 @@ import {
   listRecords, deleteRecord, uploadScan, newBatchId, recordsToCsv, searchRecords,
   pdfToImages, isPdf, ingestExtracted, attachSource,
 } from '../utils/digitise';
-import { extractText, detectKind, isPageKind, KIND_LABEL, filesFromClipboard } from '../utils/extract';
+import { extractText, detectKind, isPageKind, KIND_LABEL, filesFromClipboard, filesFromZip } from '../utils/extract';
 import { transcribeAudio } from '../utils/assistant';
 import { logAudit } from '../utils/audit';
 import { useTranslation } from 'react-i18next';
@@ -52,7 +52,7 @@ const sizeOf = (n) => (n == null ? '' : n < 1024 * 1024 ? `${Math.max(1, Math.ro
 const mb = (n) => (n / 1048576).toFixed(1);
 const timeLeft = (s) => (s < 60 ? `${Math.ceil(s)}s left` : `${Math.ceil(s / 60)} min left`);
 
-const ACCEPT_LIST = '.jpg,.jpeg,.png,.webp,.heic,.heif,.gif,.bmp,.tif,.tiff,.pdf,.docx,.docm,.xlsx,.xlsm,.xls,.csv,.tsv,.ods,.pptx,.pptm,.txt,.md,.log,.json,.xml,.rtf,.eml,.vtt,.srt,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.amr,.mp4,.mov,.m4v,.webm,.3gp,image/*,application/pdf,audio/*,video/*,text/*';
+const ACCEPT_LIST = '.jpg,.jpeg,.png,.webp,.heic,.heif,.gif,.bmp,.tif,.tiff,.pdf,.docx,.docm,.xlsx,.xlsm,.xls,.csv,.tsv,.ods,.pptx,.pptm,.txt,.md,.log,.json,.xml,.rtf,.eml,.vtt,.srt,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.amr,.mp4,.mov,.m4v,.webm,.3gp,.zip,image/*,application/pdf,audio/*,video/*,text/*';
 
 export default function Records() {
   const { t, i18n } = useTranslation();
@@ -181,9 +181,28 @@ export default function Records() {
   // Files (and PDF pages) are staged, not uploaded — the officer decides what
   // belongs to which document before anything is filed.
   const stage = useCallback(async (files) => {
-    const list = [...files];
     const accepted = [];
     const problems = [];
+    // A zip is opened here and its files take the same paths below as files
+    // dropped individually. One level only: a zip inside a zip is reported.
+    const list = [];
+    for (const f of files) {
+      if (detectKind(f) !== 'zip') { list.push(f); continue; }
+      try {
+        setPreparing(`Opening ${f.name}…`);
+        // eslint-disable-next-line no-await-in-loop
+        const inner = await filesFromZip(f);
+        const nested = inner.filter((x) => detectKind(x) === 'zip');
+        if (nested.length) problems.push(`${f.name}: zips inside a zip were skipped (${nested.map((x) => x.name).join(', ')})`);
+        const usable = inner.filter((x) => detectKind(x) !== 'zip');
+        if (!usable.length && !nested.length) problems.push(`${f.name} has no files inside`);
+        list.push(...usable);
+      } catch (e) {
+        problems.push(`${f.name} — ${e.message}`);
+      } finally {
+        setPreparing(null);
+      }
+    }
     // Files that already contain their text never enter the page tray — a
     // spreadsheet or a recording is not a page of anything, so it is read and
     // filed on the spot rather than waiting to be assembled into a document.

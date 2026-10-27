@@ -43,6 +43,7 @@ export function unusableReason(file) {
   if (file.size > MAX_READ_BYTES) return 'too large to read here';
   const kind = detectKind(file);
   if (kind === 'video') return 'video — file it in Records to transcribe it';
+  if (kind === 'zip') return 'zip archive — file it in Records to unpack it';
   if (kind === 'legacy') return 'old Office format — re-save as .docx, .xlsx or .pptx';
   return 'this file type cannot be read';
 }

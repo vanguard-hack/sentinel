@@ -34,11 +34,38 @@ const KINDS = [
   ['slides', (f) => /^(pptx|pptm)$/.test(EXT(f.name))],
   ['text', (f) => /^(txt|md|log|json|xml|rtf|eml|vtt|srt)$/.test(EXT(f.name)) || /^text\//.test(f.type)],
   ['legacy', (f) => LEGACY.has(EXT(f.name))],
+  ['zip', (f) => EXT(f.name) === 'zip'],
 ];
 
 export function detectKind(file) {
   for (const [kind, test] of KINDS) if (test(file)) return kind;
   return 'unsupported';
+}
+
+// ── ZIP archives ────────────────────────────────────────────────────────────
+// A folder of evidence often arrives zipped. Its files are unpacked in the
+// browser and handed back to be filed exactly as if they had been dropped one
+// by one. Bounded on both count and inflated size: a small archive can declare
+// gigabytes (a zip bomb), and every entry is held in memory at once.
+export const ZIP_MAX_FILES = 100;
+export const ZIP_MAX_BYTES = 200 * 1024 * 1024;
+
+export async function filesFromZip(file) {
+  let count = 0;
+  let bytes = 0;
+  const parts = await readZip(file, (name, size) => {
+    const base = name.split('/').pop();
+    // Folders, macOS resource forks and hidden files are not documents.
+    if (!base || name.startsWith('__MACOSX/') || base.startsWith('.')) return false;
+    count += 1;
+    bytes += size;
+    if (count > ZIP_MAX_FILES) throw new Error(`more than ${ZIP_MAX_FILES} files inside — split it into smaller zips`);
+    if (bytes > ZIP_MAX_BYTES) throw new Error(`over ${ZIP_MAX_BYTES / 1048576} MB once unpacked — split it into smaller zips`);
+    return true;
+  }).catch((e) => {
+    throw new Error(/readable Office/.test(e.message) ? 'not a readable zip file' : e.message);
+  });
+  return [...parts.entries()].map(([name, data]) => new File([data], name.split('/').pop()));
 }
 
 // Kinds that become a scanned page (image pipeline) rather than extracted text.

@@ -36,7 +36,8 @@ describe('records file-type detection', () => {
   it('separates legacy Office from genuinely unknown files, so the advice differs', () => {
     expect(detectKind(f('old.doc'))).toBe('legacy');
     expect(detectKind(f('deck.ppt'))).toBe('legacy');
-    expect(detectKind(f('archive.zip'))).toBe('unsupported');
+    // A .zip is unpacked by Records now (see zipupload.test.js), not refused.
+    expect(detectKind(f('archive.zip'))).toBe('zip');
     expect(detectKind(f('binary.exe'))).toBe('unsupported');
   });
 

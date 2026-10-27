@@ -48,7 +48,9 @@ async function inflateRaw(bytes) {
 
 // Returns a Map of path → Uint8Array for the entries `wanted` selects. Reading
 // only the parts we need keeps a 40MB deck from being fully inflated when all
-// we want is its slide text.
+// we want is its slide text. `wanted(name, size)` also gets the entry's
+// declared uncompressed size, so a caller can refuse a zip bomb before
+// anything is inflated.
 export async function readZip(file, wanted = () => true) {
   const buf = await file.arrayBuffer();
   const end = findCentralDirectory(buf);
@@ -61,6 +63,7 @@ export async function readZip(file, wanted = () => true) {
     if (view.getUint32(p, true) !== 0x02014b50) break;
     const method = view.getUint16(p + 10, true);
     const compressedSize = view.getUint32(p + 20, true);
+    const size = view.getUint32(p + 24, true);
     const nameLen = view.getUint16(p + 28, true);
     const extraLen = view.getUint16(p + 30, true);
     const commentLen = view.getUint16(p + 32, true);
@@ -68,7 +71,7 @@ export async function readZip(file, wanted = () => true) {
     const name = new TextDecoder().decode(new Uint8Array(buf, p + 46, nameLen));
     p += 46 + nameLen + extraLen + commentLen;
 
-    if (!wanted(name)) continue;
+    if (!wanted(name, size)) continue;
 
     // The local header repeats the name and extra field with its own lengths,
     // which are NOT always the same as the central directory's — the data
