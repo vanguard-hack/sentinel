@@ -516,6 +516,8 @@ export default function Reports() {
                   columns={['Category', 'Type', 'Outcome']}
                   unit="cases"
                   totalLabel="FIRs"
+                  defaultParticles={false}
+                  particleToggle={false}
                 />
               </Card>
               <Card id="chart-age-profile" title="Accused age profile" subtitle="Accused on record by age band" wide section="Case flow & time trends">

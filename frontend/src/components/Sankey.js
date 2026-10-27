@@ -203,8 +203,13 @@ export default function Sankey({
     let padStart = PAD_T;
     let padEnd = PAD_B;
     if (!upright) {
-      const maxLeft = Math.max(0, ...byCol[0].map((n) => cachedTextWidth(n.label)));
-      const maxRight = Math.max(0, ...byCol[numCols - 1].map((n) => cachedTextWidth(n.label)));
+      // First/last-column labels also print their value ("2,018 cases") after
+      // the name, so the gutter has to hold both — measuring the name alone
+      // pushed the long category names off the left edge.
+      const labelWidth = (n) => cachedTextWidth(n.label) + 4
+        + cachedTextWidth(`${fmt(valueOf(n))}${unit ? ` ${unit}` : ''}`);
+      const maxLeft = Math.max(0, ...byCol[0].map(labelWidth));
+      const maxRight = Math.max(0, ...byCol[numCols - 1].map(labelWidth));
       padStart = clamp(92, NW + LABEL_GAP + maxLeft + LABEL_MARGIN, mainAxisSize * 0.4);
       padEnd = clamp(84, NW + LABEL_GAP + maxRight + LABEL_MARGIN, mainAxisSize * 0.4);
     }
@@ -263,7 +268,7 @@ export default function Sankey({
       nodeList: [...nodeMap.values()], nodeMap, links: placed, total, numCols, byCol,
       headerPad,
     };
-  }, [nodes, links, upright, W, drawH, columns]);
+  }, [nodes, links, upright, W, drawH, columns, fmt, unit]);
 
   const graphIndex = useMemo(() => buildGraphIndex(links), [links]);
   const trace = useMemo(

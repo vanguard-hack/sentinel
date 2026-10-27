@@ -121,3 +121,25 @@ test('the flow spans the height it was given', () => {
   // than stopping a third of the way up as it did when scaled to fit.
   expect(Math.max(...ends)).toBeGreaterThan(600 - 40);
 });
+
+test('the left gutter holds the name AND the value printed after it', () => {
+  // "Crimes Against Property 2,018 cases" was cut off at the left edge: the
+  // gutter was sized for the name only, but the first column prints its
+  // value too. jsdom measures text at the 6.3px-per-character fallback.
+  const wide = [{ ...nodes[0], label: 'Crimes Against Property', value: 2018 }, ...nodes.slice(1)];
+  global.ResizeObserver = class {
+    constructor(cb) { this.cb = cb; }
+
+    observe(target) { this.cb([{ target, contentRect: { width: 1000, height: 400 } }], this); }
+
+    unobserve() {}
+
+    disconnect() {}
+  };
+  const { container } = render(<Sankey nodes={wide} links={links} label="Crime flow" unit="cases" />);
+  const text = container.querySelector('text.sk-label');
+  const gutter = Number(container.querySelector('svg rect').getAttribute('x'));
+  const drawnWidth = text.textContent.length * 6.3;
+  // The label is right-aligned 8px left of the bar; its start must stay on the canvas.
+  expect(gutter - 8 - drawnWidth).toBeGreaterThanOrEqual(0);
+});
