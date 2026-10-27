@@ -1,4 +1,5 @@
 import { csvCell } from './csv';
+import { retryDelayMs, RETRY_LIMITS } from './fetchRetry';
 
 // Records Digitisation data layer.
 //
@@ -148,7 +149,10 @@ export const ocrLangFor = (uiLang) => OCR_LANG[String(uiLang || '').slice(0, 2).
 // XHR rather than fetch: fetch cannot report upload progress, and a phone
 // photo over a station uplink is the part of the wait the officer can see.
 // onProgress(fraction) covers the transfer only; OCR happens after it.
-function postWithProgress(url, body, onProgress) {
+// A 429 is retried here the same way utils/fetchRetry.js retries it for every
+// fetch — XHR does not pass through that wrapper. The page was refused before
+// it was read, so sending it again cannot file it twice.
+function postWithProgress(url, body, onProgress, attempt = 0, started = Date.now()) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url);
@@ -157,8 +161,15 @@ function postWithProgress(url, body, onProgress) {
     xhr.onload = () => {
       let data = {};
       try { data = JSON.parse(xhr.responseText); } catch { /* non-JSON error page */ }
-      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-      else reject(new Error(data.error || `HTTP ${xhr.status}`));
+      if (xhr.status >= 200 && xhr.status < 300) { resolve(data); return; }
+      if (xhr.status === 429 && attempt < RETRY_LIMITS.MAX_RETRIES) {
+        const ms = retryDelayMs(xhr.getResponseHeader('Retry-After'), attempt);
+        if (Date.now() - started + ms <= RETRY_LIMITS.BUDGET_MS) {
+          setTimeout(() => postWithProgress(url, body, onProgress, attempt + 1, started).then(resolve, reject), ms);
+          return;
+        }
+      }
+      reject(new Error(data.error || `HTTP ${xhr.status}`));
     };
     xhr.onerror = () => reject(new Error('Upload failed — connection lost'));
     xhr.send(body);

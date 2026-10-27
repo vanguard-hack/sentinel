@@ -4,6 +4,11 @@ import './i18n';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { registerServiceWorker } from './utils/offline';
+import { installFetchRetry } from './utils/fetchRetry';
+
+// Before anything renders: every call to the function retries a 429 instead of
+// surfacing it (see utils/fetchRetry.js).
+installFetchRetry();
 
 // Apply the saved theme before first paint so there's no light flash while the
 // shell (which owns the theme toggle) is still mounting.
