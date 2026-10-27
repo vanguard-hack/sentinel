@@ -29,6 +29,7 @@ import Custody from './pages/Custody';
 import CustodyRecord from './pages/CustodyRecord';
 import Sidebar from './components/Sidebar';
 import LoadingScreen from './components/LoadingScreen';
+import SignInRequired from './components/SignInRequired';
 import ErrorBoundary from './components/ErrorBoundary';
 import RequireAccess from './components/RequireAccess';
 import AuditTracker from './components/AuditTracker';
@@ -59,11 +60,13 @@ function usePageTransition(dep: unknown) {
 }
 
 function AppRoutes() {
-  const { loading, signingOut } = useAuth();
+  const { user, loading, signingOut } = useAuth();
   const { pathname } = useLocation();
   const mainRef = usePageTransition(pathname);
   if (signingOut) return <LoadingScreen message="Signing out…" />;
   if (loading) return <LoadingScreen message="Verifying credentials…" />;
+  // No known officer (never signed in here, signed out, or unconfirmed): no shell.
+  if (!user) return <SignInRequired />;
 
   return (
     <ErrorBoundary>
