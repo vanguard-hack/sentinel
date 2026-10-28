@@ -56,5 +56,13 @@ assert.ok(Array.isArray(capped.checks) && capped.checks.length > 3, 'checks shou
 assert.ok(validateZcql('SELECT * FROM A, B').checks.some((c) => c.startsWith('FAIL:')), 'failures recorded');
 console.log('  ok  validator decisions are recorded for audit');
 
+// ZCQL's LIKE wildcard is *. Data Store answers LIKE '%x%' with zero rows,
+// not an error, so every name search came back empty until this.
+const liked = validateZcql("SELECT AccusedName FROM Accused WHERE AccusedName LIKE '%Mahesh O''Neil%' LIMIT 5");
+assert.strictEqual(liked.query, "SELECT AccusedName FROM Accused WHERE AccusedName LIKE '*Mahesh O''Neil*' LIMIT 5");
+assert.ok(validateZcql("SELECT CrimeNo FROM CaseMaster WHERE BriefFacts = '50% share' LIMIT 3").query.includes("'50% share'"),
+  'a % outside a LIKE pattern is data and is left alone');
+console.log('  ok  LIKE patterns use ZCQL\'s * wildcard; other literals are untouched');
+
 if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1); }
 console.log(`\nAll ${cases.length + 3} validator checks passed.`);

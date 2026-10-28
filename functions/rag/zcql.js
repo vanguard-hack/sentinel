@@ -187,6 +187,11 @@ const ROUTER_PROMPT =
 const districtLines = Object.entries(DISTRICT_IDS)
   .map(([name, id]) => `${name}=${id}`)
   .join(', ');
+// Murder, theft, rape… are minor heads. Without these the model could not
+// write "murder cases" at all and refused, citing a missing mapping.
+const minorHeadLines = Object.entries(MASTERS.crimeSubHeads || {})
+  .map(([id, name]) => `${id}=${name}`)
+  .join(', ');
 
 const SCHEMA = `FACT TABLES (query these; one table per query):
 CaseMaster(CaseMasterID, CrimeNo, CaseNo, CrimeRegisteredDate DATE, PolicePersonID, PoliceStationID, CaseCategoryID, GravityOffenceID, CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, CourtID, IncidentFromDate DATETIME, IncidentToDate DATETIME, InfoReceivedPSDate DATETIME, latitude, longitude, BriefFacts)
@@ -204,6 +209,7 @@ CaseCategoryID: 1=FIR, 3=UDR, 4=PAR, 8=Zero FIR
 GravityOffenceID: 1=Heinous, 2=Non-Heinous
 CaseStatusID: 1=Under Investigation, 2=Charge Sheeted, 3=Pending Trial, 4=Convicted, 5=Acquitted, 6=Closed - False Case, 7=Closed - Undetected
 CrimeMajorHeadID: 1=Crimes Against Body, 2=Crimes Against Property, 3=Crimes Against Women, 4=Crimes Against Children, 5=Economic Offences, 6=Cyber Crimes, 7=Narcotics, 8=Public Order, 9=Traffic Offences, 10=Other Offences
+CrimeMinorHeadID (the specific offence — murder, theft, rape…; use this, not the major head, when the question names an offence): ${minorHeadLines}
 GenderID: 1=Male, 2=Female, 3=Transgender
 ArrestSurrenderTypeID: 1=Arrest, 2=Surrender
 cstype: 'A'=Chargesheet, 'B'=False Case, 'C'=Undetected
@@ -230,7 +236,7 @@ const RULES = `RULES (follow ALL):
    NO GROUP BY: SELECT COUNT(ROWID) FROM Table WHERE ... . Group ONLY when the
    user asks for a breakdown (per district / per status / top N ...).
 6. No aliases, AS, subqueries, UNION, HAVING, or SELECT *.
-7. WHERE supports =, !=, <, >, <=, >=, LIKE '%x%', IN (...), BETWEEN, IS NULL,
+7. WHERE supports =, !=, <, >, <=, >=, LIKE '*x*' (ZCQL's wildcard is *), IN (...), BETWEEN, IS NULL,
    AND, OR, parentheses. Strings/dates in single quotes; dates 'YYYY-MM-DD';
    year filter: Col BETWEEN '2024-01-01' AND '2024-12-31'. Booleans: true/false.
 8. Filter by IDs using the mappings above; never invent IDs.
@@ -408,6 +414,12 @@ function validateZcql(raw, opts = {}) {
     q = `${q} LIMIT 0, ${maxRows}`;
     checks.push(`limit-added:${maxRows}`);
   }
+
+  // ZCQL's LIKE wildcard is *, not SQL's %. The models write % (so does this
+  // file's own prompt), and Data Store answers LIKE '%Mahesh%' with zero rows
+  // rather than an error — every name search came back empty, silently.
+  const wild = q.replace(/(\bLIKE\s+')((?:[^']|'')*)'/gi, (m, head, body) => `${head}${body.replace(/%/g, '*')}'`);
+  if (wild !== q) { q = wild; checks.push('like-wildcard-normalised'); }
 
   return { ok: true, query: q, table: tables[0], checks };
 }

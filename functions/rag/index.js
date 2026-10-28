@@ -14,6 +14,7 @@ const catalystGLM = require('./catalystGLM');
 const attribution = require('./sources');
 const crypto = require('./crypto');
 const sanctions = require('./sanctions');
+const osint = require('./osint');
 const sherlock = require('./sherlock');
 const memory = require('./memory');
 const planner = require('./planner');
@@ -964,6 +965,74 @@ function parseSlash(text) {
   return { name, arg };
 }
 
+// /osint, /sanctions and /crypto are lookups, not questions. Answered straight
+// from their modules they cannot depend on a model being up (or funded), and a
+// model cannot answer them from memory — which it did when the tool lane was
+// down: "Ramesh Kumar Gowda is on no sanctions list", checked against nothing.
+const DIRECT_LOOKUPS = new Set(['osint', 'sanctions', 'crypto']);
+const day = (s) => String(s || '').slice(0, 10);
+
+async function directLookup(name, arg) {
+  const v = String(arg || '').trim();
+  if (!v) return { text: `Add what to look up — for example \`/${name} ${name === 'osint' ? '8.8.8.8' : name === 'crypto' ? '<wallet address>' : '<name>'}\`.`, citations: [] };
+
+  if (name === 'osint') {
+    const kind = osint.isValidIp(v) ? 'ip' : osint.isValidDomain(v) ? 'domain' : null;
+    if (!kind) return { text: `“${v}” is not a valid IP address or domain.`, citations: [] };
+    const r = await osint.lookup({ kind, value: v });
+    if (r.error) return { text: r.error, citations: [] };
+    const rd = r.rdap || {};
+    const ab = r.abuseipdb || {};
+    const ev = (a) => (rd.events || []).find((e) => e.action === a);
+    const lines = [`**${kind === 'ip' ? 'IP address' : 'Domain'} ${v}**`, ''];
+    if (rd.available) {
+      lines.push(`- **Registered to:** ${rd.name || 'not stated'}${rd.country ? ` (${rd.country})` : ''}`);
+      if (ev('registration')) lines.push(`- **Registered on:** ${day(ev('registration').date)}`);
+      if (ev('expiration')) lines.push(`- **Expires on:** ${day(ev('expiration').date)}`);
+      if (rd.startAddress) lines.push(`- **Network range:** ${rd.startAddress} – ${rd.endAddress}`);
+    } else {
+      lines.push(`- **Registration data:** not available${rd.note ? ` — ${rd.note}` : ''}`);
+    }
+    if (kind === 'ip') {
+      lines.push(ab.available
+        ? `- **Abuse confidence:** ${ab.abuseConfidenceScore}% from ${ab.totalReports} report(s)${ab.isWhitelisted ? ', whitelisted' : ''}`
+          + `\n- **Network:** ${[ab.isp, ab.countryCode, ab.usageType].filter(Boolean).join(' · ') || 'unknown'}`
+        : `- **Abuse reputation:** not available${ab.note ? ` — ${ab.note}` : ''}`);
+    }
+    lines.push('', `_${r.sovereignty}_`);
+    return { text: lines.join('\n'), citations: [attribution.fromOsint(r)] };
+  }
+
+  if (name === 'sanctions') {
+    const r = await sanctions.search({ query: v });
+    if (r.error) return { text: `Sanctions screening could not run: ${r.error}`, citations: [] };
+    const text = r.found
+      ? [`**Possible sanctions / watchlist matches for “${v}”** (${r.total} in OpenSanctions)`, '',
+        ...r.matches.map((m) => `- **${m.name}**${m.schema ? ` (${m.schema})` : ''} — on ${m.datasets.length} list(s)`
+          + (m.datasets.length ? `, including ${m.datasets.slice(0, 4).join(', ')}` : '')),
+        '', 'A name match is a lead, not an identification — confirm with date of birth or nationality.',
+        '', `_${r.sovereignty}_`].join('\n')
+      : [`**No sanctions or watchlist match for “${v}”** in OpenSanctions.`, '',
+        'This means no listed person or entity matched the name. It is not a clearance.',
+        '', `_${r.sovereignty}_`].join('\n');
+    return { text, citations: r.found ? [attribution.fromSanctions(r.matches)] : [] };
+  }
+
+  const r = await crypto.lookup({ address: v });
+  if (r.error) return { text: r.error, citations: [] };
+  const w = r.bitcoin || r.ethereum || {};
+  const lines = [`**${r.chain === 'bitcoin' ? 'Bitcoin' : 'Ethereum'} wallet ${v}**`, ''];
+  if (!w.available) {
+    lines.push(`Balance lookup is not available right now${w.note ? ` — ${w.note}` : ''}.`);
+  } else if (r.chain === 'bitcoin') {
+    lines.push(`- **Balance:** ${w.balanceBtc} BTC`, `- **Transactions:** ${w.txCount}`);
+  } else {
+    lines.push(`- **Balance:** ${w.balanceEth} ETH`);
+  }
+  lines.push('', `_${r.sovereignty}_`);
+  return { text: lines.join('\n'), citations: w.available ? [attribution.fromCrypto(r)] : [] };
+}
+
 // Turn a command into the question the existing pipeline answers best. The
 // wording matters: it is what the router and the ZCQL generator see.
 function slashToQuery(name, arg) {
@@ -974,11 +1043,13 @@ function slashToQuery(name, arg) {
     case 'fir':
       return isPlace
         ? `List the 10 most recent FIRs registered in ${arg} district — crime number, registration date, police station, crime type and case status.`
-        : `Show the FIR with crime number ${arg} — registration date, police station, district, sections of law, case status and brief facts.`;
+        // Only CaseMaster columns: asking for sections of law (another table)
+        // made the generator refuse the whole lookup as an impossible join.
+        : `Show the FIR with crime number ${arg} — registration date, police station, crime type, case status and brief facts.`;
     case 'case':
       return isPlace
         ? `List the 10 most recent cases registered in ${arg} district — case number, police station, current case status and registration date.`
-        : `Show case ${arg} — case number, investigating officer, police station, district, current case status and registration date.`;
+        : `Show the case with case number ${arg} — crime number, investigating officer, police station, current case status and registration date.`;
     case 'suspect':
       return `List every case in which the accused person ${arg} is named, with crime number, date, police station and case status.`;
     case 'person':
@@ -5816,6 +5887,12 @@ module.exports = async (req, res) => {
     // not always the one that was asked for.
     let deliveredLang = null;
 
+    // Assigned further down, once the memory state it writes exists. Declared
+    // here because finalAnswer can run before that point — the injection
+    // guard answers early — and a `const` there was a TDZ crash (HTTP 500 on
+    // "ignore all previous instructions…") instead of a refusal.
+    let rememberTurn = async () => {};
+
     const finalAnswer = async (text, lang) => {
       const localised = await localiseAnswer(text, lang);
       // localiseAnswer falls back to the English text when the model call
@@ -6145,7 +6222,7 @@ module.exports = async (req, res) => {
     // remembered. Entirely best-effort: losing a memory write must never cost
     // the officer their answer.
     let bufferedTurns = 0;
-    const rememberTurn = async (answerText) => {
+    rememberTurn = async (answerText) => {
       console.error('[memory-diag] rememberTurn entry', {
         sessionId,
         hasApp: !!clearanceApp,
@@ -6353,6 +6430,11 @@ module.exports = async (req, res) => {
 
       // Missing-person cases are not a structured registry either; they live in
       // digitised paper and drafted reports, which is where this searches.
+      if (DIRECT_LOOKUPS.has(slash.name)) {
+        const direct = await directLookup(slash.name, slash.arg);
+        return await respondWith(direct.text, { components: [], source: 'command' }, direct.citations);
+      }
+
       if (slash.name === 'missing') {
         const hits = await searchDigitised(slashBucket, `missing person ${slash.arg}`, 5);
         const answer = hits.length
@@ -6643,7 +6725,7 @@ module.exports = async (req, res) => {
         decided_by: plan.decided_by,
         why: lowConfidence ? 'below confidence floor' : plan.why,
       };
-      const routed = route; // existing branches below match on this
+      let routed = route; // existing branches below match on this
 
       // Multi-lookup questions. Deliberately placed first among the lanes and
       // deliberately allowed to fall through: if the loop cannot run — no key,
@@ -6730,6 +6812,10 @@ module.exports = async (req, res) => {
         if (Date.now() >= requestStartedAt + TOOL_LOOP_DEADLINE_MS) {
           return await respondWith(SLOW_ANSWER, { components: [], source: 'timeout', route: routeDecision });
         }
+        // No Claude (no key, no credit, an error): most TOOLS questions are
+        // record questions, and the records lane answers those without it.
+        // Without this they skipped straight to RAG and the generic fallback.
+        routed = 'ZCQL';
       }
 
       if (routed && /chat/i.test(routed)) {

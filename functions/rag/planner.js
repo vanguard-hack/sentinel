@@ -44,7 +44,10 @@ const PLANNER_PROMPT =
   'already covers it, or the message stands on its own.\n' +
   'needs_records: only meaningful when the officer attached a file. True when answering ' +
   'also needs the police case database (matching the file against records on file, ' +
-  'counts, an FIR lookup), false when the file alone answers it ("what does this say").\n' +
+  'counts, an FIR lookup), false when the file alone answers it ("what does this say"). ' +
+  'A question that points at the file itself ("in the attached sheet", "this document", ' +
+  '"the file") is answered from the file — false, even when it asks for counts or rankings.\n' +
+  'If no file is attached, needs_records is false.\n' +
   'recent_firs: true when the officer wants the most recent / latest / newest FIRs or ' +
   'cases in a particular place.\n' +
   'entities: the people, places, case numbers, gangs, organisations and laws the ' +
