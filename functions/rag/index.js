@@ -1080,7 +1080,7 @@ function slashToQuery(name, arg) {
         : 'Give a crime count summary by crime major head across all districts.';
     case 'hotspot':
       return arg
-        ? `Which police stations and areas in ${arg} have the highest number of registered crimes? List the top ones by count.`
+        ? `List the top 10 police stations in ${arg} district by number of registered FIRs.`
         : 'Which districts have the highest number of registered crimes? List the top districts by count.';
     case 'wanted':
       return arg
@@ -6471,7 +6471,12 @@ module.exports = async (req, res) => {
       }
 
       if (slash.name === 'missing') {
-        const hits = await searchDigitised(slashBucket, `missing person ${slash.arg}`, 5);
+        // Search on the name alone, then keep only records about a missing
+        // person: searching "missing person <name>" matched any document that
+        // merely contained the word "person".
+        const hits = (await searchDigitised(slashBucket, slash.arg, 20))
+          .filter((h) => /missing/i.test(`${h.title} ${h.docType} ${h.excerpt}`))
+          .slice(0, 5);
         const answer = hits.length
           ? `**Missing-person records matching “${slash.arg}”**\n\n` +
             hits.map((h, i) => `${i + 1}. **${h.title}** (${h.docType}) — ${h.excerpt.slice(0, 180).trim()}…`).join('\n')

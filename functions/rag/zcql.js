@@ -232,6 +232,7 @@ District questions are ALWAYS answerable this way — never reply that district
 information is unavailable. Examples:
   "Top 5 districts by cases" → {"zcql": "SELECT CaseMaster.PoliceStationID, COUNT(ROWID) FROM CaseMaster GROUP BY CaseMaster.PoliceStationID", "rollup": "district", "district": null, "topN": 5}
   "How many cases in Udupi?" → {"zcql": "SELECT COUNT(ROWID) FROM CaseMaster", "rollup": null, "district": "Udupi", "topN": null}
+  "Top police stations in Belagavi by cases" → {"zcql": "SELECT CaseMaster.PoliceStationID, COUNT(ROWID) FROM CaseMaster GROUP BY CaseMaster.PoliceStationID ORDER BY COUNT(ROWID) DESC LIMIT 10", "rollup": null, "district": "Belagavi", "topN": 10}
 Data covers 2023-01-01 to 2026-06-30.`;
 
 const RULES = `RULES (follow ALL):
