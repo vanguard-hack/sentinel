@@ -148,7 +148,7 @@ const ROUTER_PROMPT =
   '"Which officer registered the most cases?" → ZCQL. ' +
   '"recent FIRs in Bengaluru City" → RAG. "latest FIRs in Mysuru" → RAG. ' +
   '"What is a cognizable ' +
-  'offence?" → RAG. "What does Section 379 IPC say?" → RAG. ' +
+  'offence?" → RAG. "What does Section 379 IPC say?" → TOOLS. ' +
   '"Hey, how are you?" → CHAT. "thanks, that helped!" → CHAT. ' +
   '"good morning" → CHAT. "what all can you do?" → CHAT.\n\n' +
   'Answer TOOLS when ONE question needs MORE THAN ONE lookup to answer — most ' +
@@ -181,7 +181,14 @@ const ROUTER_PROMPT =
   '"is Ravi Kumar on any sanctions list?" → TOOLS. ' +
   '"check this crypto wallet: bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" → TOOLS. ' +
   '"who is the Bangalore City Police Commissioner?" → TOOLS. ' +
-  '"who is the current Chief Minister of Karnataka?" → TOOLS.';
+  '"who is the current Chief Minister of Karnataka?" → TOOLS.\n\n' +
+  // The knowledge base answered "old IPC section for theft" with 304 (it is
+  // 379). legal_lookup holds the exact entry, and only the tool loop has it.
+  'Also answer TOOLS for a SPECIFIC section of law — its punishment, whether it is ' +
+  'bailable or cognizable, or its IPC↔BNS equivalent: the legal reference tool holds ' +
+  'the exact entry. Examples: "punishment for theft under the BNS and the old IPC ' +
+  'section?" → TOOLS. "is IPC 302 bailable?" → TOOLS. General explanations of law or ' +
+  'procedure ("what is a cognizable offence?", "what does the case diary contain?") stay RAG.';
 
 // ── schema + rules for the generator ────────────────────────────────────────
 const districtLines = Object.entries(DISTRICT_IDS)
@@ -221,6 +228,10 @@ To restrict to ONE district, put its name in the "district" field of your reply
 and write the query WITHOUT any station or district condition; the station list
 for that district is filled in for you. To break results down BY district,
 GROUP BY CaseMaster.PoliceStationID and set "rollup":"district".
+District questions are ALWAYS answerable this way — never reply that district
+information is unavailable. Examples:
+  "Top 5 districts by cases" → {"zcql": "SELECT CaseMaster.PoliceStationID, COUNT(ROWID) FROM CaseMaster GROUP BY CaseMaster.PoliceStationID", "rollup": "district", "district": null, "topN": 5}
+  "How many cases in Udupi?" → {"zcql": "SELECT COUNT(ROWID) FROM CaseMaster", "rollup": null, "district": "Udupi", "topN": null}
 Data covers 2023-01-01 to 2026-06-30.`;
 
 const RULES = `RULES (follow ALL):

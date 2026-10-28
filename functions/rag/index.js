@@ -1050,7 +1050,10 @@ function slashToQuery(name, arg) {
   switch (name) {
     case 'fir':
       return isPlace
-        ? `List the 10 most recent FIRs registered in ${arg} district — crime number, registration date, police station, crime type and case status.`
+        // No "recent/latest": those words send a question to the knowledge
+        // base's statewide recent-FIR document, which is how a Ballari FIR
+        // turned up in the Udupi list.
+        ? `List 10 FIRs registered in ${arg} district, sorted by registration date descending — crime number, registration date, police station, crime type and case status.`
         // Only CaseMaster columns: asking for sections of law (another table)
         // made the generator refuse the whole lookup as an impossible join.
         : `Show the FIR with crime number ${arg} — registration date, police station, crime type, case status and brief facts.`;
@@ -6832,7 +6835,11 @@ module.exports = async (req, res) => {
         // No Claude (no key, no credit, an error): most TOOLS questions are
         // record questions, and the records lane answers those without it.
         // Without this they skipped straight to RAG and the generic fallback.
-        routed = 'ZCQL';
+        // A law question now routes here too, and its fallback is the
+        // knowledge base, not the database.
+        routed = /\b(section|sec\.|ipc|bns|bnss|crpc|act|bail(able)?|punish\w*|cogni[sz]able)\b/i.test(searchQuery)
+          ? 'RAG'
+          : 'ZCQL';
       }
 
       if (routed && /chat/i.test(routed)) {
