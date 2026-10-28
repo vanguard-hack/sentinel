@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Lock, WifiOff } from 'lucide-react';
-import { signIn, signedOutMark } from '../utils/catalyst';
+import { signIn } from '../utils/catalyst';
 
 // Shown instead of the app whenever no officer is known on this device: never
 // signed in here, signed out, or a session the SDK could not confirm. Offline
@@ -9,7 +9,6 @@ import { signIn, signedOutMark } from '../utils/catalyst';
 // connection gets this screen — not the menus.
 export default function SignInRequired() {
   const [online, setOnline] = useState(typeof navigator === 'undefined' || navigator.onLine);
-  const signedOut = !!signedOutMark();
 
   useEffect(() => {
     // Back online: re-run the auth flow from the top rather than waiting for a click.
@@ -29,10 +28,10 @@ export default function SignInRequired() {
         <div className="ra-denied-icon">
           {online ? <Lock size={26} strokeWidth={1.8} /> : <WifiOff size={26} strokeWidth={1.8} />}
         </div>
-        <h2>{!online ? 'You are offline' : signedOut ? 'You are signed out' : 'Sign in to continue'}</h2>
+        <h2>{online ? 'Sign in to continue' : 'You are offline'}</h2>
         <p>
           {online
-            ? (signedOut ? 'Sign in to open Sentinel again.' : 'We could not confirm your sign-in. Sign in again to open Sentinel.')
+            ? 'We could not confirm your sign-in. Sign in again to open Sentinel.'
             : 'Connect to the internet to sign in. Sentinel will reload when the connection is back.'}
         </p>
         {online && (

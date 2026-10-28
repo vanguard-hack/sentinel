@@ -21,15 +21,6 @@ export const AUTH_URLS = {
   resetPassword: `${CATALYST_BASE}/reset-password`,
 };
 
-// Set the moment the officer asks to sign out, cleared only by asking to sign
-// in. While it is set the app shows the signed-out screen whatever the SDK or
-// the cached profile claim, so a logout that half-landed can never leave the
-// app looking signed in while the server refuses every request.
-const SIGNED_OUT_KEY = 'sentinel_signed_out';
-export const signedOutMark = () => { try { return localStorage.getItem(SIGNED_OUT_KEY); } catch { return null; } };
-export const setSignedOutMark = (v) => { try { localStorage.setItem(SIGNED_OUT_KEY, v); } catch { /* storage blocked */ } };
-const clearSignedOutMark = () => { try { localStorage.removeItem(SIGNED_OUT_KEY); } catch { /* storage blocked */ } };
-
 // The server is the authority on the session: true = live, false = it answered
 // 401, null = could not tell (offline, cold start, outage).
 export const serverSession = async () => {
@@ -43,7 +34,7 @@ export const serverSession = async () => {
   } catch { return null; }
 };
 
-export const signIn        = () => { clearSignedOutMark(); window.location.href = AUTH_URLS.login; };
+export const signIn        = () => { window.location.href = AUTH_URLS.login; };
 export const signUp        = () => { window.location.href = AUTH_URLS.signup; };
 export const resetPassword = () => { window.location.href = AUTH_URLS.resetPassword; };
 
@@ -75,12 +66,15 @@ export const resetPassword = () => { window.location.href = AUTH_URLS.resetPassw
  * Kept as a note because the symptom (a spinner, then the app again) is
  * identical for both causes, and the timing one is the tempting explanation.
  *
- * The redirect target is this deployment's own index (the documented value for
- * a Web Client mounted at /app), not the Catalyst login page. After the cookie
- * is gone the app's own auth check runs and sends an unauthenticated visitor to
- * login — one path in and out of the session instead of two. */
+ * The SDK fallback below returns to this deployment's own index (the
+ * documented value for a Web Client mounted at /app); the app's auth check then
+ * sends an unauthenticated visitor to login. */
 const APP_HOME = () =>
   `${window.location.origin}${process.env.PUBLIC_URL || ''}/index.html`;
+
+// Where sign-out ends: the login page itself, so the officer is asked for
+// credentials straight away rather than shown an intermediate screen.
+const AFTER_SIGNOUT = () => AUTH_URLS.login;
 
 // Long enough that it cannot race a logout that is simply slow; short enough
 // that a genuinely dead SDK call does not strand the officer on a spinner. It
@@ -113,14 +107,13 @@ export const prepareSignOut = () => {
   if (!pendingLogoutUrl) {
     pendingLogoutUrl = fetch('/__catalyst/sdk/init.js', { cache: 'no-store', signal: AbortSignal.timeout(4000) })
       .then((r) => r.text())
-      .then((t) => logoutUrlFrom(t, APP_HOME()))
+      .then((t) => logoutUrlFrom(t, AFTER_SIGNOUT()))
       .catch(() => null);
   }
   return pendingLogoutUrl;
 };
 
 export const signOut = async () => {
-  if (!signedOutMark()) setSignedOutMark('1');
   const home = APP_HOME();
   const url = await prepareSignOut();
   if (url) { window.location.href = url; return; }

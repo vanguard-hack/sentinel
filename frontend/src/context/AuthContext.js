@@ -5,8 +5,6 @@ import {
   signIn as catalystSignIn,
   signOut as catalystSignOut,
   prepareSignOut,
-  signedOutMark,
-  setSignedOutMark,
   serverSession,
 } from '../utils/catalyst';
 import { wipeOfflineData, pendingCount } from '../utils/offline';
@@ -91,23 +89,6 @@ export function AuthProvider({ children }) {
 
     (async () => {
       initCatalyst();
-
-      // The officer signed out. Whatever the SDK or the cache now say, show the
-      // signed-out screen — never the app. If the server still honours the
-      // session, the logout did not land: end it once more (the mark goes to
-      // '2' first so this cannot loop), and otherwise just stay signed out.
-      // The check runs AFTER the screen is up: awaiting it first held the
-      // officer on a splash for as long as a cold function start took.
-      const mark = signedOutMark();
-      if (mark) {
-        clearCache();
-        settle();
-        if (mark === '1' && (await serverSession()) === true && !cancelled) {
-          setSignedOutMark('2');
-          catalystSignOut();
-        }
-        return;
-      }
 
       // Time-boxed, never hangs. Already bounced through login once (guard
       // set) means the session most likely exists and the SDK is just slow —
@@ -235,7 +216,6 @@ export function AuthProvider({ children }) {
     }
     clearGuard();
     clearCache();
-    setSignedOutMark('1');
     /* A station terminal is shared. Nothing of this officer's may outlive their
        session: cached shell, reference data and any queued write all go.
        BOUNDED, and deliberately so. Ending the session is what signing out
