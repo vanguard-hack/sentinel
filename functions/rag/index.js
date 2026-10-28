@@ -71,7 +71,7 @@ const { AsyncLocalStorage } = require('async_hooks');
  *                         VLM self-client below — see catalystGLM.js.
  *   GROQ_API_KEY          provider 2 (fast, cheap)
  *   ANTHROPIC_API_KEY     provider 3 (Claude) — dormant until set
- *   CLAUDE_MODEL          default claude-opus-5
+ *   CLAUDE_MODEL          default claude-sonnet-5-5
  *   CLAUDE_MODEL_FAST     default = CLAUDE_MODEL; set claude-haiku-4-5 to cut
  *                         the cost of routing/expansion calls
  *   LLM_PROVIDER_ORDER    default "glm,groq,claude"; reorder to change which
@@ -302,7 +302,11 @@ async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeout
 //
 // Dormant until ANTHROPIC_API_KEY is set: with no key this returns null and
 // the chain behaves exactly as it did with Groq alone.
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-opus-5';
+// Sonnet, not Opus: the tool loop must finish inside Catalyst's 30 s, and
+// Sonnet takes each step in about half the time (measured 1.7 s vs 3.4 s on
+// the same first tool call). A four-step question fitted with Opus only
+// sometimes.
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-5-5';
 // The cheap lane (routing, expansion, one-word classification). Defaults to
 // the same model; set CLAUDE_MODEL_FAST=claude-haiku-4-5 to cut the cost of
 // the high-volume calls.
@@ -6149,7 +6153,10 @@ module.exports = async (req, res) => {
       // looked nothing up, so a source chip under the reply would claim a
       // lookup that never mattered. The audit trail still keeps the full list.
       const casual = payload.source === 'chat' || plannedCasual;
-      const groundless = !casual && !payload.refused && await nonAnswer(text);
+      // A lane that delivered rows or a chart answered with data; the LLM judge
+      // only decides for prose-only replies (it dropped /fir's source chip).
+      const groundless = !casual && !payload.refused
+        && !(payload.components || []).length && await nonAnswer(text);
       const shownSources = groundless || casual ? [] : citedSources;
 
       // Refusals, the guardrail lane, the "couldn't find an answer" fallback,
