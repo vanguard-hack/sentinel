@@ -4,6 +4,7 @@ import {
   getCurrentUser,
   signIn as catalystSignIn,
   signOut as catalystSignOut,
+  prepareSignOut,
   signedOutMark,
   setSignedOutMark,
   serverSession,
@@ -95,16 +96,16 @@ export function AuthProvider({ children }) {
       // signed-out screen — never the app. If the server still honours the
       // session, the logout did not land: end it once more (the mark goes to
       // '2' first so this cannot loop), and otherwise just stay signed out.
+      // The check runs AFTER the screen is up: awaiting it first held the
+      // officer on a splash for as long as a cold function start took.
       const mark = signedOutMark();
       if (mark) {
         clearCache();
-        if (mark === '1' && (await serverSession()) === true) {
-          if (cancelled) return;
+        settle();
+        if (mark === '1' && (await serverSession()) === true && !cancelled) {
           setSignedOutMark('2');
           catalystSignOut();
-          return;
         }
-        if (!cancelled) settle();
         return;
       }
 
@@ -206,6 +207,7 @@ export function AuthProvider({ children }) {
     // Feedback first: the checks below can take a few seconds, and a click
     // that showed nothing for that long read as "Sign out does nothing".
     setSigningOut(true);
+    prepareSignOut(); // look up the logout URL while local data is cleared
     // Queued work is the officer's own and has not reached the server yet, so
     // signing out would destroy it. Warn before that happens rather than after.
     let pending = 0;

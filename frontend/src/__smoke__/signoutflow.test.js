@@ -28,6 +28,7 @@ jest.mock('../utils/catalyst', () => ({
   getCurrentUser: () => Promise.resolve({ name: 'Officer', email: 'o@ksp.gov.in' }),
   signIn: () => {},
   signOut: (...a) => mockSdkSignOut(...a),
+  prepareSignOut: () => Promise.resolve(null),
   signedOutMark: () => mockMark,
   setSignedOutMark: (v) => { mockMark = v; },
   serverSession: (...a) => mockServer(...a),

@@ -106,14 +106,23 @@ export const logoutUrlFrom = (initJs, home) => {
   return domain ? `${domain[1]}/accounts/p/${zaid[1]}/logout?servicename=ZohoCatalyst&serviceurl=${encodeURIComponent(local)}` : local;
 };
 
+// Started as soon as Sign out is clicked, so the lookup overlaps the local
+// clean-up instead of adding to it.
+let pendingLogoutUrl = null;
+export const prepareSignOut = () => {
+  if (!pendingLogoutUrl) {
+    pendingLogoutUrl = fetch('/__catalyst/sdk/init.js', { cache: 'no-store', signal: AbortSignal.timeout(4000) })
+      .then((r) => r.text())
+      .then((t) => logoutUrlFrom(t, APP_HOME()))
+      .catch(() => null);
+  }
+  return pendingLogoutUrl;
+};
+
 export const signOut = async () => {
   if (!signedOutMark()) setSignedOutMark('1');
   const home = APP_HOME();
-  let url = null;
-  try {
-    const r = await fetch('/__catalyst/sdk/init.js', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
-    url = logoutUrlFrom(await r.text(), home);
-  } catch { /* unreachable — fall back to the SDK below */ }
+  const url = await prepareSignOut();
   if (url) { window.location.href = url; return; }
   const cat = getCatalyst();
   if (cat && cat.auth && typeof cat.auth.signOut === 'function') {
