@@ -1231,7 +1231,7 @@ const FALLBACK_SYSTEM =
 
 // A RAG non-answer: empty, or a short "I don't know" style reply.
 const NEGATIVE_RE =
-  /i'?m not sure|i don'?t (know|have)|not sure what information|no (relevant |such )?information|couldn'?t find|cannot find|unable to (find|answer)|not (available|mentioned|provided) in/i;
+  /i['’]?m not sure|i don['’]?t (know|have)|not sure what information|no (relevant |such )?information|couldn['’]?t find|cannot find|unable to (find|answer)|not (available|mentioned|provided) in|no (matching )?(records?|results?|cases?|firs?) (were |was )?found/i;
 // A "meta" non-answer talks ABOUT the retrieved context instead of answering —
 // e.g. "the provided context does not state…". A genuine data answer never
 // refers to "the provided/given context", so these are high-precision signals
@@ -6050,8 +6050,11 @@ module.exports = async (req, res) => {
       const t = String(text || '').trim();
       if (!t) return true;
       if (judged.has(t)) return judged.get(t);
+      // "/fir udupi" means nothing to the judge, which then called a correct
+      // ten-row answer a non-answer. Judge against the question it stands for.
+      const asSlash = parseSlash(rawQuery);
       const v = await planner.judgeAnswer({
-        question: rawQuery,
+        question: asSlash ? slashToQuery(asSlash.name, asSlash.arg) : rawQuery,
         answer: t,
         llm: (m, o) => callLLM(m, { ...o, model: GROQ_MODEL_FAST }),
       });
@@ -7042,7 +7045,10 @@ module.exports = async (req, res) => {
             // A negative prose ("no matching records", "does not answer...")
             // with a rendered data table is a contradiction — the rows didn't
             // answer the question, so don't show them.
-            const showComponents = flat.length > 0 && !(await nonAnswer(answerText));
+            // Deterministic, not the LLM judge: the judge sometimes ruled a
+            // correct summary ("The list contains 10 FIRs…") a non-answer and
+            // the officer lost real rows. Only a plainly negative reply hides them.
+            const showComponents = flat.length > 0 && !isNegative(answerText);
             return await respondWith(answerText, {
               components: showComponents ? components : [],
               source: 'zcql',
