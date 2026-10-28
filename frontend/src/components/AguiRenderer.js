@@ -54,6 +54,13 @@ const cleanSeries = (data) =>
     .filter((d) => d && typeof d.label === 'string' && plottable(d.value))
     .map((d) => ({ label: d.label, value: Number(d.value) }));
 
+// A date, crime number or short id reads as one token; wrapping it
+// ("2026-06-" / "17") makes it two. Values with spaces still wrap between words.
+const isToken = (v) => {
+  const s = String(v ?? '');
+  return s.length <= 24 && (!/\s/.test(s) || s.length <= 8);
+};
+
 function AguiTable({ spec, pageSize = 8 }) {
   const [page, setPage] = useState(0);
   const [q, setQ] = useState('');
@@ -103,7 +110,10 @@ function AguiTable({ spec, pageSize = 8 }) {
           onChange={(e) => { setQ(e.target.value); setPage(0); }}
         />
       )}
+      {/* cf-scroll: a table wider than the chat column scrolls inside its
+          card instead of spilling past the card's edge. */}
       <div className="cf-table-wrap">
+        <div className="cf-scroll">
         <table className="cf-table">
           <thead>
             <tr>
@@ -120,11 +130,16 @@ function AguiTable({ spec, pageSize = 8 }) {
           <tbody>
             {slice.map((r, i) => (
               <tr key={i}>
-                {columns.map((_, j) => <td key={j}>{renderCell(r[j])}</td>)}
+                {columns.map((_, j) => (
+                  <td key={j} className={isToken(r[j]) ? 'agui-td-short' : undefined}>
+                    {renderCell(r[j])}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       </div>
       {pages > 1 && (
         <div className="cf-pager">

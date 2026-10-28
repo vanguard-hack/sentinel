@@ -3152,6 +3152,16 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
   scrollbar-gutter: stable; /* same text width whether or not the textarea scrolls */
 }
 .as-input-token { color: var(--blue-500); }
+/* A slash command in a sent message or an answer (/help lists them). */
+.as-cmd-token, .rf-cmd {
+  color: var(--blue-500);
+  font-weight: 600;
+}
+/* Matches .rf-prose code's specificity so the command colour wins over it. */
+code.rf-cmd, .rf-prose code.rf-cmd, .as-msg-text code.rf-cmd {
+  color: var(--blue-500);
+  background: color-mix(in srgb, var(--blue-500) 12%, transparent);
+}
 .as-input {
   position: relative;
   display: flex;
@@ -3347,6 +3357,11 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
    scrollable panel .cf-table-wrap is otherwise sized for. */
 .rf-prose .cf-table-wrap { flex: none; margin: 8px 0; }
 .agui-block .cf-table td, .agui-block .cf-table th { white-space: normal; }
+/* The card clips to its rounded corners and the table scrolls inside it. */
+.agui-block .cf-table-wrap { overflow: hidden; }
+.agui-block .cf-scroll { overflow-x: auto; }
+.agui-block .cf-table { width: 100%; --tbl-cell-x: 10px; }
+.agui-block .cf-table td.agui-td-short { white-space: nowrap; }
 .agui-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

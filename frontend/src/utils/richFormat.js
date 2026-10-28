@@ -10,6 +10,13 @@
 // Output is React elements, never dangerouslySetInnerHTML: the model must
 // never be able to inject markup.
 import React from 'react';
+import { COMMANDS } from './slashCommands';
+
+// `/fir [FIR number]` in an answer is a command; `/usr/bin` is not.
+const isCommandCode = (s) => {
+  const m = /^\/([a-z][a-z-]*)(?=\s|$)/.exec(s);
+  return !!m && COMMANDS.some((c) => c.name === m[1]);
+};
 
 const ENTITIES = {
   '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'",
@@ -122,7 +129,11 @@ export function renderInline(text, keyPrefix = 'i', opts = null) {
     if (/^\*[^*\n]+\*$/.test(part)) return <em key={key}>{part.slice(1, -1)}</em>;
     if (/^_[^_\n]+_$/.test(part)) return <em key={key}>{part.slice(1, -1)}</em>;
     if (/^~~[^~\n]+~~$/.test(part)) return <del key={key}>{part.slice(2, -2)}</del>;
-    if (/^`[^`\n]+`$/.test(part)) return <code key={key}>{part.slice(1, -1)}</code>;
+    if (/^`[^`\n]+`$/.test(part)) {
+      const inner = part.slice(1, -1);
+      // `/fir [FIR number]` in a /help answer reads as a command, not as code.
+      return <code key={key} className={isCommandCode(inner) ? 'rf-cmd' : undefined}>{inner}</code>;
+    }
     if (opts && opts.onCitation) return withCitations(part, key, opts);
     return <React.Fragment key={key}>{highlightEntities(part, key)}</React.Fragment>;
   });

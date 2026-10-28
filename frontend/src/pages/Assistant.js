@@ -152,6 +152,15 @@ function ProtectedAccessPanel({ access, onRequest, busy }) {
 // read, fenced as data, and nothing in it was obeyed. What the officer learns
 // is that the file was written to manipulate a machine reader, which is worth
 // knowing about a document in an investigation.
+// A sent "/fir udupi" keeps the command marked, as it was in the composer.
+// Only a real command — "/2026 was a busy year" stays plain text.
+function SentText({ text }) {
+  const parsed = parseCommand(text);
+  if (!parsed || !parsed.cmd) return text;
+  const token = leadingSlashToken(text.trimStart());
+  return <><span className="as-cmd-token">{token}</span>{text.trimStart().slice(token.length)}</>;
+}
+
 function AttachmentWarning({ warning }) {
   if (!warning || !warning.notice) return null;
   return (
@@ -1341,7 +1350,7 @@ export default function Assistant() {
                               citationCount={(sourcesByMessage.get(m.id) || []).length}
                               onCitation={(n) => setCitation({ messageId: m.id, n })}
                             />
-                          ) : m.content}
+                          ) : <SentText text={m.content} />}
                         </div>
                       )}
                       {m.role === 'assistant' && <AguiRenderer components={m.components} />}
