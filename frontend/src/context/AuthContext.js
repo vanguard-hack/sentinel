@@ -4,6 +4,9 @@ import {
   getCurrentUser,
   signIn as catalystSignIn,
   signOut as catalystSignOut,
+  signedOutMark,
+  setSignedOutMark,
+  serverSession,
 } from '../utils/catalyst';
 import { wipeOfflineData, pendingCount } from '../utils/offline';
 
@@ -87,6 +90,24 @@ export function AuthProvider({ children }) {
 
     (async () => {
       initCatalyst();
+
+      // The officer signed out. Whatever the SDK or the cache now say, show the
+      // signed-out screen — never the app. If the server still honours the
+      // session, the logout did not land: end it once more (the mark goes to
+      // '2' first so this cannot loop), and otherwise just stay signed out.
+      const mark = signedOutMark();
+      if (mark) {
+        clearCache();
+        if (mark === '1' && (await serverSession()) === true) {
+          if (cancelled) return;
+          setSignedOutMark('2');
+          catalystSignOut();
+          return;
+        }
+        if (!cancelled) settle();
+        return;
+      }
+
       // Time-boxed, never hangs. Already bounced through login once (guard
       // set) means the session most likely exists and the SDK is just slow —
       // give it longer. A 4 s answer there used to show "Sign in to continue"
@@ -100,6 +121,7 @@ export function AuthProvider({ children }) {
         writeCache(currentUser); // persist profile so a slow SDK never loses the name
         setUser(currentUser);
         settle();
+        serverSession(); // a 401 here flips the app to signed out (watcher below)
         return;
       }
 
@@ -146,8 +168,28 @@ export function AuthProvider({ children }) {
       const cached = readCache();
       if (cached) setUser(cached);
       settle();
+      if (cached) serverSession();
     })();
     return () => { cancelled = true; clearTimeout(watchdog); };
+  }, []);
+
+  // The server decides whether there is a session, not the SDK or the cached
+  // profile. Any API call it answers with 401 means the session is gone, so the
+  // app drops to the sign-in screen at once instead of leaving every page to
+  // show its own "sign in" error under a shell that still looks signed in.
+  useEffect(() => {
+    const original = window.fetch;
+    if (typeof original !== 'function') return undefined;
+    window.fetch = async (...args) => {
+      const res = await original(...args);
+      const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+      if (res.status === 401 && url.includes('/server/rag/')) {
+        clearCache();
+        setUser(null);
+      }
+      return res;
+    };
+    return () => { window.fetch = original; };
   }, []);
 
   // Defeat Chrome's back/forward cache (bfcache): when the page is restored from
@@ -191,6 +233,7 @@ export function AuthProvider({ children }) {
     }
     clearGuard();
     clearCache();
+    setSignedOutMark('1');
     /* A station terminal is shared. Nothing of this officer's may outlive their
        session: cached shell, reference data and any queued write all go.
        BOUNDED, and deliberately so. Ending the session is what signing out

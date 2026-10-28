@@ -19,6 +19,8 @@ import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 const mockSdkSignOut = jest.fn();
+const mockServer = jest.fn();
+let mockMark = null;
 const mockOffline = { pendingCount: jest.fn(), wipeOfflineData: jest.fn() };
 
 jest.mock('../utils/catalyst', () => ({
@@ -26,6 +28,9 @@ jest.mock('../utils/catalyst', () => ({
   getCurrentUser: () => Promise.resolve({ name: 'Officer', email: 'o@ksp.gov.in' }),
   signIn: () => {},
   signOut: (...a) => mockSdkSignOut(...a),
+  signedOutMark: () => mockMark,
+  setSignedOutMark: (v) => { mockMark = v; },
+  serverSession: (...a) => mockServer(...a),
 }));
 jest.mock('../utils/offline', () => ({
   pendingCount: (...a) => mockOffline.pendingCount(...a),
@@ -35,9 +40,10 @@ jest.mock('../utils/offline', () => ({
 const { AuthProvider, useAuth } = require('../context/AuthContext');
 
 function Harness() {
-  const { signOut, signingOut } = useAuth();
+  const { signOut, signingOut, user, loading } = useAuth();
   return (
     <div>
+      {!loading && <span>{user ? 'signed-in' : 'signed-out'}</span>}
       <button type="button" onClick={signOut}>Sign out</button>
       {signingOut && <span>Signing out…</span>}
     </div>
@@ -52,6 +58,8 @@ const clickSignOut = async () => {
 beforeEach(() => {
   jest.useFakeTimers();
   mockSdkSignOut.mockClear();
+  mockServer.mockReset().mockResolvedValue(true);
+  mockMark = null;
   mockOffline.pendingCount.mockReset().mockResolvedValue(0);
   mockOffline.wipeOfflineData.mockReset().mockResolvedValue(undefined);
 });
@@ -119,4 +127,32 @@ test('…and accepting the warning goes through with it', async () => {
   await clickSignOut();
   expect(mockSdkSignOut).toHaveBeenCalled();
   confirm.mockRestore();
+});
+
+test('after sign-out the app shows signed out, even if the SDK still reports a user', async () => {
+  mockMark = '1';
+  mockServer.mockResolvedValue(false);
+  await act(async () => { render(<AuthProvider><Harness /></AuthProvider>); });
+  expect(screen.getByText('signed-out')).toBeTruthy();
+  expect(mockSdkSignOut).not.toHaveBeenCalled();
+});
+
+test('a logout that did not land is retried once, never in a loop', async () => {
+  mockMark = '1';
+  await act(async () => { render(<AuthProvider><Harness /></AuthProvider>); });
+  expect(mockSdkSignOut).toHaveBeenCalledTimes(1);
+  expect(mockMark).toBe('2');
+  mockSdkSignOut.mockClear();
+  await act(async () => { render(<AuthProvider><Harness /></AuthProvider>); });
+  expect(mockSdkSignOut).not.toHaveBeenCalled();
+});
+
+test('a 401 from the API drops the app to signed out at once', async () => {
+  const real = window.fetch;
+  window.fetch = jest.fn().mockResolvedValue({ status: 401, ok: false });
+  await act(async () => { render(<AuthProvider><Harness /></AuthProvider>); });
+  expect(screen.getByText('signed-in')).toBeTruthy();
+  await act(async () => { await window.fetch('/server/rag/'); });
+  expect(screen.getByText('signed-out')).toBeTruthy();
+  window.fetch = real;
 });

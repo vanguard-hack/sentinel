@@ -21,7 +21,29 @@ export const AUTH_URLS = {
   resetPassword: `${CATALYST_BASE}/reset-password`,
 };
 
-export const signIn        = () => { window.location.href = AUTH_URLS.login; };
+// Set the moment the officer asks to sign out, cleared only by asking to sign
+// in. While it is set the app shows the signed-out screen whatever the SDK or
+// the cached profile claim, so a logout that half-landed can never leave the
+// app looking signed in while the server refuses every request.
+const SIGNED_OUT_KEY = 'sentinel_signed_out';
+export const signedOutMark = () => { try { return localStorage.getItem(SIGNED_OUT_KEY); } catch { return null; } };
+export const setSignedOutMark = (v) => { try { localStorage.setItem(SIGNED_OUT_KEY, v); } catch { /* storage blocked */ } };
+const clearSignedOutMark = () => { try { localStorage.removeItem(SIGNED_OUT_KEY); } catch { /* storage blocked */ } };
+
+// The server is the authority on the session: true = live, false = it answered
+// 401, null = could not tell (offline, cold start, outage).
+export const serverSession = async () => {
+  try {
+    const r = await fetch('/server/rag/access/me', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      signal: AbortSignal.timeout(10000),
+    });
+    if (r.status === 401) return false;
+    return r.ok ? true : null;
+  } catch { return null; }
+};
+
+export const signIn        = () => { clearSignedOutMark(); window.location.href = AUTH_URLS.login; };
 export const signUp        = () => { window.location.href = AUTH_URLS.signup; };
 export const resetPassword = () => { window.location.href = AUTH_URLS.resetPassword; };
 
@@ -76,6 +98,7 @@ export const logoutUrlFrom = (initJs, home) => {
 };
 
 export const signOut = async () => {
+  if (!signedOutMark()) setSignedOutMark('1');
   const home = APP_HOME();
   const cat = getCatalyst();
   if (cat && cat.auth && typeof cat.auth.signOut === 'function') {
