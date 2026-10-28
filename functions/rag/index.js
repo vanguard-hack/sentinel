@@ -427,6 +427,30 @@ async function callLLM(messages, opts = {}) {
 const TOOL_MAX_ITERATIONS = Number(process.env.TOOL_MAX_ITERATIONS) || 6;
 const TOOL_BUDGET_MS = Number(process.env.TOOL_BUDGET_MS) || 45_000;
 
+// Catalyst ends an Advanced I/O function at 30 seconds ("The maximum timeout
+// of an Advanced I/O function is 30 seconds" — Catalyst docs) and sends the
+// browser NOTHING: the officer sees "Failed to fetch", not an answer. That is
+// what a slow /person did. So an assistant request works to a deadline taken
+// from when the request started, not from when the loop did, and the loop
+// keeps the last stretch back for the answer itself.
+const ASSISTANT_DEADLINE_MS = 25_000;   // the backstop reply goes out here
+const TOOL_LOOP_DEADLINE_MS = 21_000;   // the loop must be done by here
+const TOOL_ANSWER_RESERVE_MS = 8_000;   // kept for the final, tool-less turn
+const SLOW_ANSWER =
+  'That question needed more lookups than fit in one answer, so I stopped before the time limit. ' +
+  'Try narrowing it — one person, one case or one district at a time.';
+
+// How long the next model call may take, and whether tools must be withdrawn
+// so the model answers from what it already has.
+function loopClock(deadlineAt, now = Date.now()) {
+  const left = deadlineAt - now;
+  return {
+    left,
+    outOfTime: left < TOOL_ANSWER_RESERVE_MS,
+    callTimeoutMs: Math.max(2_000, Math.min(30_000, left)),
+  };
+}
+
 // The schema, restated for the tool loop.
 //
 // It is NOT zcql.js's ZCQL_SYSTEM. That prompt drives a single-shot generator
@@ -574,9 +598,10 @@ const TOOL_SYSTEM =
  * key, or the model produced nothing — so the caller can fall through to the
  * lanes that were already there.
  */
-async function runToolLoop({ query, history, app, role, req, bucket, recallMemory }) {
+async function runToolLoop({ query, history, app, role, req, bucket, recallMemory, deadline }) {
   if (!process.env.ANTHROPIC_API_KEY) return null;
   const started = Date.now();
+  const deadlineAt = Math.min(deadline || Infinity, started + TOOL_BUDGET_MS);
   const used = [];       // what ran, for the audit trail
   const rowSets = [];    // Data Store rows, for citations
   const scanHits = [];   // digitised records, for citations
@@ -655,7 +680,9 @@ async function runToolLoop({ query, history, app, role, req, bucket, recallMemor
     while (messages.length && messages[0].role === 'assistant') messages.shift();
 
     for (let i = 0; i < TOOL_MAX_ITERATIONS; i++) {
-      const outOfTime = Date.now() - started > TOOL_BUDGET_MS;
+      const clock = loopClock(deadlineAt);
+      if (clock.left <= 0) return null;
+      const outOfTime = clock.outOfTime;
       const res = await client.messages.create(
         {
           model: CLAUDE_MODEL,
@@ -669,7 +696,10 @@ async function runToolLoop({ query, history, app, role, req, bucket, recallMemor
             : { tools: assistantTools.DEFINITIONS }),
           messages,
         },
-        { timeout: 30_000 }
+        // No SDK retries: a timed-out call retried twice is three timeouts,
+        // which is how a 30 s ceiling gets blown by a loop that thought it
+        // had budget left.
+        { timeout: clock.callTimeoutMs, maxRetries: 0 }
       );
 
       const calls = (res.content || []).filter((b) => b.type === 'tool_use');
@@ -937,11 +967,18 @@ function parseSlash(text) {
 // Turn a command into the question the existing pipeline answers best. The
 // wording matters: it is what the router and the ZCQL generator see.
 function slashToQuery(name, arg) {
+  // A crime or case number always carries digits. "/fir udupi" is a place,
+  // and asking for "the FIR with crime number udupi" could only ever fail.
+  const isPlace = (name === 'fir' || name === 'case') && arg && !/\d/.test(arg);
   switch (name) {
     case 'fir':
-      return `Show the FIR with crime number ${arg} — registration date, police station, district, sections of law, case status and brief facts.`;
+      return isPlace
+        ? `List the 10 most recent FIRs registered in ${arg} district — crime number, registration date, police station, crime type and case status.`
+        : `Show the FIR with crime number ${arg} — registration date, police station, district, sections of law, case status and brief facts.`;
     case 'case':
-      return `Show case ${arg} — case number, investigating officer, police station, district, current case status and registration date.`;
+      return isPlace
+        ? `List the 10 most recent cases registered in ${arg} district — case number, police station, current case status and registration date.`
+        : `Show case ${arg} — case number, investigating officer, police station, district, current case status and registration date.`;
     case 'suspect':
       return `List every case in which the accused person ${arg} is named, with crime number, date, police station and case status.`;
     case 'person':
@@ -1306,6 +1343,9 @@ function readBody(req) {
 }
 
 function json(res, status, obj) {
+  // The assistant's deadline backstop may already have answered; a lane that
+  // finishes afterwards must not throw ERR_HTTP_HEADERS_SENT on top of it.
+  if (res.headersSent || res.writableEnded) return;
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(obj));
@@ -5678,6 +5718,14 @@ module.exports = async (req, res) => {
     // rest of this request via requestModelContext (see its own comment for
     // why a plain variable would not be safe here).
     const requestedModel = MODEL_CHOICES.includes(body.model) ? body.model : null;
+    const requestStartedAt = Date.now();
+    // Backstop under Catalyst's 30 s kill: whatever lane is still running, the
+    // officer gets a real reply instead of a dropped connection.
+    const watchdog = setTimeout(() => {
+      console.warn(`assistant: deadline reached after ${ASSISTANT_DEADLINE_MS} ms — sent the slow-answer reply`);
+      json(res, 200, { answer: SLOW_ANSWER, sources: [], components: [], source: 'timeout' });
+    }, ASSISTANT_DEADLINE_MS);
+    try {
     return await requestModelContext.run(orderForModel(requestedModel), async () => {
 
     // Multilingual entry point. Everything downstream — routing, ZCQL, RAG —
@@ -6617,6 +6665,7 @@ module.exports = async (req, res) => {
           req,
           bucket: clearanceBucket,
           access,
+          deadline: requestStartedAt + TOOL_LOOP_DEADLINE_MS,
           // Memory as a tool rather than a preload: the loop drops system
           // turns from history, so the long-term block assembled above never
           // reached this lane. The officer is the session's, never the model's.
@@ -6675,6 +6724,11 @@ module.exports = async (req, res) => {
             route: routeDecision,
             expandedQuery: searchQuery === query ? undefined : searchQuery,
           }, cites);
+        }
+        // The loop gave up at its deadline. Falling through now would start a
+        // second, slower lane with too little time left to finish it.
+        if (Date.now() >= requestStartedAt + TOOL_LOOP_DEADLINE_MS) {
+          return await respondWith(SLOW_ANSWER, { components: [], source: 'timeout', route: routeDecision });
         }
       }
 
@@ -7031,6 +7085,9 @@ module.exports = async (req, res) => {
       raw: first.data,
     }, citations);
     });
+    } finally {
+      clearTimeout(watchdog);
+    }
   } catch (e) {
     return json(res, 500, { error: e.message || String(e) });
   }

@@ -131,7 +131,38 @@ const fakeApp = (rows) => ({ zcql: () => ({ executeZCQLQuery: async () => rows }
   check('the loop is bounded by an iteration cap',
     /for \(let i = 0; i < TOOL_MAX_ITERATIONS/.test(loop));
   check('and by a wall-clock budget, because a waiting officer is not the model\'s concern',
-    /Date\.now\(\) - started > TOOL_BUDGET_MS/.test(loop));
+    /loopClock\(deadlineAt\)/.test(loop) && /started \+ TOOL_BUDGET_MS/.test(loop));
+
+  // Catalyst kills an Advanced I/O function at 30 s with no response, which
+  // the browser reports as "Failed to fetch". The real clock, evaluated:
+  const clockSrc = src.slice(src.indexOf('const ASSISTANT_DEADLINE_MS'), src.indexOf('// The schema, restated'));
+  const clk = new Function(`${clockSrc}; return { loopClock, ASSISTANT_DEADLINE_MS, TOOL_LOOP_DEADLINE_MS, TOOL_ANSWER_RESERVE_MS };`)();
+  check('the backstop reply goes out before Catalyst\'s 30 s kill',
+    clk.ASSISTANT_DEADLINE_MS < 30_000 && clk.TOOL_LOOP_DEADLINE_MS < clk.ASSISTANT_DEADLINE_MS);
+  check('with plenty of time left, tools stay available',
+    clk.loopClock(100_000, 80_000).outOfTime === false);
+  check('inside the answer reserve, tools are withdrawn so the model answers',
+    clk.loopClock(100_000, 100_000 - clk.TOOL_ANSWER_RESERVE_MS + 1).outOfTime === true);
+  check('no single model call may outlive the deadline',
+    clk.loopClock(100_000, 95_000).callTimeoutMs === 5_000);
+  check('a passed deadline is reported, so the loop stops instead of calling',
+    clk.loopClock(100_000, 100_500).left <= 0);
+  check('model calls are not retried by the SDK, which would multiply the wait',
+    /maxRetries: 0/.test(loop) && /timeout: clock\.callTimeoutMs/.test(loop));
+
+  // After the backstop has replied, the lane that finishes late must be a
+  // no-op — not a second write that throws ERR_HTTP_HEADERS_SENT.
+  const jsonSrc = src.slice(src.indexOf('function json(res, status, obj)'), src.indexOf('// ── Zia audio-to-text'));
+  const sendJson = new Function(`${jsonSrc}; return json;`)();
+  const fakeRes = () => {
+    const r = { headersSent: false, writableEnded: false, writes: 0, setHeader() {}, end(b) { r.writes++; r.body = b; r.headersSent = r.writableEnded = true; } };
+    return r;
+  };
+  const r1 = fakeRes();
+  sendJson(r1, 200, { answer: 'backstop' });
+  sendJson(r1, 200, { answer: 'late lane' });
+  check('a reply after the backstop is dropped, and the officer keeps the first one',
+    r1.writes === 1 && /backstop/.test(r1.body));
   check('tools are withdrawn on the last turn, which forces an answer',
     /i === TOOL_MAX_ITERATIONS - 1 \|\| outOfTime[\s\S]{0,60}\?\s*\{\}/.test(loop));
   // Ordering, not distance. This was a character-window regex twice, and it

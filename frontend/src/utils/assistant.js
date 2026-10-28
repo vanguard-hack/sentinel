@@ -396,11 +396,14 @@ export async function generateReply(
       attachmentWarning: data.attachment_warning || null,
     };
   } catch (e) {
+    // fetch() only rejects when no response arrived at all: offline, or the
+    // connection dropped before the function answered.
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     return {
-      text:
-        '⚠️ Couldn’t reach the assistant backend. Once the RAG proxy function is ' +
-        'deployed and its credentials are set, answers will appear here.\n\n' +
-        `(${e.message || e})`,
+      text: offline
+        ? '⚠️ You appear to be offline. Reconnect and ask again.'
+        : '⚠️ The connection dropped before an answer came back. Please ask again — ' +
+          'if it happens twice, try a narrower question.',
       components: [],
     };
   }

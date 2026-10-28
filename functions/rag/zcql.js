@@ -44,8 +44,23 @@ for (const [uid, u] of Object.entries(MASTERS.units)) {
  * labour as `rollup` and as join_records: the model states intent, the code
  * does the arithmetic it has the data for.
  */
+// Officers still say the old English names; the data uses the current ones.
+// "/fir bangalore" found no district at all before this.
+const DISTRICT_ALIASES = {
+  bangalore: 'bengaluru city', 'bangalore rural': 'bengaluru rural', bengaluru: 'bengaluru city',
+  mysore: 'mysuru', mangalore: 'dakshina kannada', mangaluru: 'dakshina kannada',
+  belgaum: 'belagavi', gulbarga: 'kalaburagi', bijapur: 'vijayapura', shimoga: 'shivamogga',
+  tumkur: 'tumakuru', bellary: 'ballari', hubli: 'dharwad', hubballi: 'dharwad',
+  chikmagalur: 'chikkamagaluru', karwar: 'uttara kannada', bagalkot: 'bagalkote',
+  davangere: 'davanagere', chamrajnagar: 'chamarajanagar', chickballapur: 'chikkaballapura',
+};
+const canonicalDistrict = (name) => {
+  const n = String(name || '').trim().toLowerCase().replace(/\s+district$/, '');
+  return DISTRICT_ALIASES[n] || n;
+};
+
 function stationsInDistrict(name) {
-  const needle = String(name || '').trim().toLowerCase();
+  const needle = canonicalDistrict(name);
   if (!needle) return null;
   const entries = Object.entries(MASTERS.districts || {});
   const exact = entries.find(([, dn]) => String(dn).toLowerCase() === needle);
@@ -604,6 +619,7 @@ module.exports = {
   tablesInQuery,
   validateZcql,
   stationsInDistrict,
+  canonicalDistrict,
   withStationFilter,
   MAX_ROWS,
 };

@@ -703,7 +703,7 @@ async function attachedFor(app, attach, attachWhere, ids) {
 // Unit.DistrictID -> PoliceStationID. masters.json already holds both maps, so
 // this resolves without touching the Data Store.
 function stationsInDistrict(name) {
-  const needle = String(name || '').trim().toLowerCase();
+  const needle = zcql.canonicalDistrict(name);
   if (!needle) return null;
   const districtId = Object.entries(masters.districts || {})
     .find(([, dn]) => String(dn).toLowerCase() === needle
