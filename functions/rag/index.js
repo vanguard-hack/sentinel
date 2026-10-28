@@ -807,6 +807,11 @@ const VISION_SYSTEM =
   'given, say so rather than answering from the part you have.\n' +
   'Where the extract is marked [redacted] or [phone redacted], the data exists but is ' +
   'above the caller\'s clearance: say it is restricted, do not speculate about it.\n' +
+  'If the officer asks who a person in a photograph is, lead with this: Sentinel does ' +
+  'not identify people from their face, because a wrong name in a police record is ' +
+  'worse than none. Then say what the extracts do show (how many people, any name or ' +
+  'caption printed in the image), and suggest searching by name if they know who it ' +
+  'might be (for example /person <name>). Do not dwell on unreadable OCR fragments.\n' +
   'Be concise and factual. Use markdown, never raw HTML.';
 
 // ── Intent routing ──────────────────────────────────────────────────────────
