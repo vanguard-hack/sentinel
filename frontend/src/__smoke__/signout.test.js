@@ -9,6 +9,12 @@ test('builds the logout URL from this deployment\'s init.js', () => {
   expect(url).toBe(`${window.location.origin}/accounts/p/50043006231/logout?servicename=ZohoCatalyst&serviceurl=https%3A%2F%2Fx.example%2Fapp%2Findex.html`);
 });
 
+test('with auth_domain, the Zoho login session ends first, then this origin\'s', () => {
+  const url = logoutUrlFrom(init.replace('});', '\tauth_domain : "https://accounts.zohoportal.in",\n});'), 'https://x.example/app/index.html');
+  const local = `${window.location.origin}/accounts/p/50043006231/logout?servicename=ZohoCatalyst&serviceurl=https%3A%2F%2Fx.example%2Fapp%2Findex.html`;
+  expect(url).toBe(`https://accounts.zohoportal.in/accounts/p/50043006231/logout?servicename=ZohoCatalyst&serviceurl=${encodeURIComponent(local)}`);
+});
+
 test('no zaid, no URL — the caller falls back instead of a broken logout', () => {
   expect(logoutUrlFrom('', 'h')).toBeNull();
   expect(logoutUrlFrom(undefined, 'h')).toBeNull();

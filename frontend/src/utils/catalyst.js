@@ -89,34 +89,41 @@ const APP_HOME = () =>
 // and can try again, which is the truth rather than a login page that bounces.
 const SIGNOUT_ESCAPE_MS = 8000;
 
-// The same logout URL the SDK builds (constructSignOutUrl in SDK 4.6.2), for
-// when the SDK itself is missing. ZAID differs between Development and
-// Production, so it is read from this deployment's own init.js, never hardcoded.
+// Two sessions exist, and both must end. The app's own cookie is cleared by
+// /accounts/p/<ZAID>/logout on this origin — the URL the SDK builds. But the
+// Zoho login itself lives on auth_domain (accounts.zohoportal.in), and while
+// THAT session survives, the login page signs the officer straight back in
+// without asking for a password. So log out there first, and let it hand over
+// to this origin's logout, which returns to the app. ZAID and auth_domain differ
+// between Development and Production, so both come from this deployment's
+// init.js, never hardcoded.
 export const logoutUrlFrom = (initJs, home) => {
-  const m = /zaid\s*:\s*"(\d+)"/.exec(String(initJs || ''));
-  return m ? `${window.location.origin}/accounts/p/${m[1]}/logout?servicename=ZohoCatalyst&serviceurl=${encodeURIComponent(home)}` : null;
+  const src = String(initJs || '');
+  const zaid = /zaid\s*:\s*"(\d+)"/.exec(src);
+  if (!zaid) return null;
+  const local = `${window.location.origin}/accounts/p/${zaid[1]}/logout?servicename=ZohoCatalyst&serviceurl=${encodeURIComponent(home)}`;
+  const domain = /auth_domain\s*:\s*"(https:\/\/[^"]+)"/.exec(src);
+  return domain ? `${domain[1]}/accounts/p/${zaid[1]}/logout?servicename=ZohoCatalyst&serviceurl=${encodeURIComponent(local)}` : local;
 };
 
 export const signOut = async () => {
   if (!signedOutMark()) setSignedOutMark('1');
   const home = APP_HOME();
+  let url = null;
+  try {
+    const r = await fetch('/__catalyst/sdk/init.js', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
+    url = logoutUrlFrom(await r.text(), home);
+  } catch { /* unreachable — fall back to the SDK below */ }
+  if (url) { window.location.href = url; return; }
   const cat = getCatalyst();
   if (cat && cat.auth && typeof cat.auth.signOut === 'function') {
     try {
       setTimeout(() => { window.location.href = home; }, SIGNOUT_ESCAPE_MS);
       cat.auth.signOut(home);
       return;
-    } catch { /* SDK present but unbound — fall through to the direct logout */ }
+    } catch { /* SDK present but unbound */ }
   }
-  // No usable SDK. Going to the login page here used to bounce the officer
-  // straight back in: the HttpOnly session cookie was still alive. Only the
-  // server's logout endpoint can end it, so go there directly.
-  let url = null;
-  try {
-    const r = await fetch('/__catalyst/sdk/init.js', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
-    url = logoutUrlFrom(await r.text(), home);
-  } catch { /* unreachable — fall back below */ }
-  window.location.href = url || `${window.location.origin}/__catalyst/auth/login`;
+  window.location.href = `${window.location.origin}/__catalyst/auth/login`;
 };
 
 // Race a promise against a timeout so a hung/unconfigured SDK can't block the app.
