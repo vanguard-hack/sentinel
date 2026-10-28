@@ -82,12 +82,16 @@ export function AuthProvider({ children }) {
       const late = readCache();
       if (late) setUser(late);
       setLoading(false);
-    }, 9000);
+    }, 18000);
     const settle = () => { clearTimeout(watchdog); setLoading(false); };
 
     (async () => {
       initCatalyst();
-      const currentUser = await getCurrentUser(); // time-boxed to 4 s, never hangs
+      // Time-boxed, never hangs. Already bounced through login once (guard
+      // set) means the session most likely exists and the SDK is just slow —
+      // give it longer. A 4 s answer there used to show "Sign in to continue"
+      // to a signed-in officer, and every Sign in click repeated the loop.
+      const currentUser = await getCurrentUser(readGuard() ? 12000 : 4000);
 
       if (cancelled) return;
 
@@ -157,6 +161,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    // Feedback first: the checks below can take a few seconds, and a click
+    // that showed nothing for that long read as "Sign out does nothing".
+    setSigningOut(true);
     // Queued work is the officer's own and has not reached the server yet, so
     // signing out would destroy it. Warn before that happens rather than after.
     let pending = 0;
@@ -180,9 +187,8 @@ export function AuthProvider({ children }) {
         `${pending} offline ${word} ${pending === 1 ? 'has' : 'have'} not been synced yet and will be lost.\n\n` +
         'Reconnect and let them sync before signing out, or continue to discard them.'
       );
-      if (!ok) return;
+      if (!ok) { setSigningOut(false); return; }
     }
-    setSigningOut(true); // immediate feedback — the SDK call below then navigates away
     clearGuard();
     clearCache();
     /* A station terminal is shared. Nothing of this officer's may outlive their

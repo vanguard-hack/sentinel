@@ -67,17 +67,33 @@ const APP_HOME = () =>
 // and can try again, which is the truth rather than a login page that bounces.
 const SIGNOUT_ESCAPE_MS = 8000;
 
-export const signOut = () => {
+// The same logout URL the SDK builds (constructSignOutUrl in SDK 4.6.2), for
+// when the SDK itself is missing. ZAID differs between Development and
+// Production, so it is read from this deployment's own init.js, never hardcoded.
+export const logoutUrlFrom = (initJs, home) => {
+  const m = /zaid\s*:\s*"(\d+)"/.exec(String(initJs || ''));
+  return m ? `${window.location.origin}/accounts/p/${m[1]}/logout?servicename=ZohoCatalyst&serviceurl=${encodeURIComponent(home)}` : null;
+};
+
+export const signOut = async () => {
   const home = APP_HOME();
   const cat = getCatalyst();
   if (cat && cat.auth && typeof cat.auth.signOut === 'function') {
-    setTimeout(() => { window.location.href = home; }, SIGNOUT_ESCAPE_MS);
-    cat.auth.signOut(home);
-    return;
+    try {
+      setTimeout(() => { window.location.href = home; }, SIGNOUT_ESCAPE_MS);
+      cat.auth.signOut(home);
+      return;
+    } catch { /* SDK present but unbound — fall through to the direct logout */ }
   }
-  // No SDK on the page: nothing here can clear an HttpOnly cookie, so hand the
-  // browser to Catalyst's own auth origin rather than pretending to sign out.
-  window.location.href = `${window.location.origin}/__catalyst/auth/login`;
+  // No usable SDK. Going to the login page here used to bounce the officer
+  // straight back in: the HttpOnly session cookie was still alive. Only the
+  // server's logout endpoint can end it, so go there directly.
+  let url = null;
+  try {
+    const r = await fetch('/__catalyst/sdk/init.js', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
+    url = logoutUrlFrom(await r.text(), home);
+  } catch { /* unreachable — fall back below */ }
+  window.location.href = url || `${window.location.origin}/__catalyst/auth/login`;
 };
 
 // Race a promise against a timeout so a hung/unconfigured SDK can't block the app.
@@ -91,7 +107,7 @@ const withTimeout = (promise, ms) =>
 // component. getCurrentProjectUser() resolves to { content: { first_name,
 // last_name, email_id, ... } }. Returns null if the SDK is unavailable, the
 // call times out, or no session exists. Never throws, never hangs.
-export const getCurrentUser = async () => {
+export const getCurrentUser = async (timeoutMs = 4000) => {
   try {
     const cat = getCatalyst();
     if (!cat) return null;
@@ -101,7 +117,7 @@ export const getCurrentUser = async () => {
     // than reject a promise. Inside this try, that still resolves to null.
     const um = typeof cat.userManagement === 'function' ? cat.userManagement() : cat.userManagement;
     if (!um || typeof um.getCurrentProjectUser !== 'function') return null;
-    const res = await withTimeout(um.getCurrentProjectUser(), 4000);
+    const res = await withTimeout(um.getCurrentProjectUser(), timeoutMs);
     return res?.content ?? res ?? null;
   } catch {
     return null;
