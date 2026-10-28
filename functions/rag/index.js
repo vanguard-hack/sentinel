@@ -233,6 +233,7 @@ async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeout
   // multi-call question (router + generator + prose) can trip. A third attempt
   // is reserved for the model-downgrade path below.
   let waited = false;
+  let switched = false;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       // gpt-oss are reasoning models: reasoning tokens spend from max_tokens
@@ -272,7 +273,14 @@ async function callGroq(messages, { maxTokens = 1024, temperature = 0.3, timeout
           await new Promise((s) => setTimeout(s, Math.min(retry, 8_000)));
           continue;
         }
-        if (model !== GROQ_MODEL_FAST) { model = GROQ_MODEL_FAST; continue; }
+        // Each model has its own 200k-tokens-a-day cap. The fast model carries
+        // the planner and every query generation, so it runs out first — and
+        // then every data question failed while the main model's day sat unused.
+        if (!switched) {
+          switched = true;
+          model = model === GROQ_MODEL_FAST ? GROQ_MODEL : GROQ_MODEL_FAST;
+          continue;
+        }
         return null;
       }
       const d = await r.json().catch(() => ({}));
@@ -1209,7 +1217,14 @@ const FALLBACK_SYSTEM =
   'IMPORTANT: never begin your reply with a disclaimer or a negative statement such as ' +
   '"I don\'t have data", "I don\'t have real-time access", "I cannot find", or a caveat ' +
   'about privacy/restrictions — lead directly with the substantive answer and the ' +
-  'information you do have. Do not preface the answer with what you lack.';
+  'information you do have. Do not preface the answer with what you lack.\n\n' +
+  'ONE EXCEPTION, and it overrides the rule above: you have NOT been shown Sentinel\'s ' +
+  'case records. Never state a count, total, figure, crime number, case detail or ' +
+  'person\'s record from them — any such number would be invented. If the question ' +
+  'is about the records (how many cases or FIRs, which station or district, a named ' +
+  'accused, a specific FIR), reply only: "I couldn\'t reach the case records just now — ' +
+  'please ask again in a moment." Likewise never cite a section number of a law ' +
+  'unless you are certain of it.';
 
 // A RAG non-answer: empty, or a short "I don't know" style reply.
 const NEGATIVE_RE =
@@ -5892,6 +5907,9 @@ module.exports = async (req, res) => {
     // guard answers early — and a `const` there was a TDZ crash (HTTP 500 on
     // "ignore all previous instructions…") instead of a refusal.
     let rememberTurn = async () => {};
+    // Same reason: respondWith reads it, and the guard can respond before the
+    // attachments are examined.
+    let attachmentThreat = null;
 
     const finalAnswer = async (text, lang) => {
       const localised = await localiseAnswer(text, lang);
@@ -6389,7 +6407,6 @@ module.exports = async (req, res) => {
     // contains a suspicious sentence is its own denial of service.
     const rawAttachedContext = [visionContext, docContext].filter(Boolean).join('\n\n');
     let attachedContext = '';
-    let attachmentThreat = null;
     if (rawAttachedContext) {
       const w = guard.wrapUntrusted(rawAttachedContext, 'a file the officer attached to this message');
       attachedContext = w.text;
