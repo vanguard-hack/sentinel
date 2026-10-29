@@ -44,14 +44,6 @@ const CATS = 6;
 const DRAW_MS = 900;
 const EASE = 'cubic-bezier(0.85, 0, 0.15, 1)';
 const SPRING = { stiffness: 520, damping: 42, mass: 0.6 };
-// Below this many points a brush has nothing useful to narrow.
-const MIN_POINTS_FOR_BRUSH = 14;
-const BRUSH_HEIGHT = 72;
-const BRUSH_MARGIN = { top: 4, right: 16, bottom: 18, left: 40 };
-// Same curve as the main plot — a brush that previews the series in a
-// different spline than the chart it controls would misrepresent the shape
-// of what dragging it reveals.
-const BRUSH_CURVE = curveCatmullRom;
 // Width of the "spotlight" that reveals the hovered neighbourhood at full
 // brightness. A soft-edged band, not a hard cut, centred on the cursor.
 const SPOTLIGHT_W = 90;
@@ -106,19 +98,6 @@ export function Plot({ width, height, series, ariaLabel }) {
     return Math.max(1, ...vals);
   }, [rows]);
 
-  // tweenYDomainOnXDomainChange: narrowing the brush changes which points are
-  // in view, which changes the honest max for THIS window — rescale the axis
-  // straight to that new max and every line height jumps with it. Springing
-  // the max itself, and deriving the scale from the eased value every tick,
-  // is what turns that jump into the same glide the brush's own handles move
-  // with, rather than a chart that looks like it broke on every drag.
-  const maxVSpring = useSpring(maxV, SPRING);
-  const [tweenedMaxV, setTweenedMaxV] = useState(maxV);
-  useEffect(() => {
-    maxVSpring.set(maxV);
-    return maxVSpring.on('change', setTweenedMaxV);
-  }, [maxV, maxVSpring]);
-
   const xScale = useMemo(
     () => scaleLinear({ range: [0, innerW], domain: [0, Math.max(1, n - 1)] }),
     [innerW, n]
@@ -130,9 +109,9 @@ export function Plot({ width, height, series, ariaLabel }) {
       // without `nice` rounding the max up a whole tick — that was empty
       // padding above the lines. Domain still starts at 0 so a count chart
       // does not exaggerate a flat series.
-      domain: [0, Math.max(1, tweenedMaxV) * 1.04],
+      domain: [0, maxV * 1.04],
     }),
-    [innerH, tweenedMaxV]
+    [innerH, maxV]
   );
 
   /* The reveal.
@@ -407,161 +386,11 @@ export function Plot({ width, height, series, ariaLabel }) {
   );
 }
 
-/**
- * The mini multi-line preview under the main plot, with two draggable edges
- * and a draggable middle that pans both together. Always drawn against the
- * FULL series — it's the map, not the view. Pointer listeners are on
- * `window`, not the SVG, because a drag leaving this 72px strip (routine —
- * it's a short target) must not silently stop tracking the mouse.
- */
-function RangeBrush({ rows, width, range, onChange }) {
-  const svgRef = useRef(null);
-  const drag = useRef(null);
-  const rangeRef = useRef(range);
-  rangeRef.current = range;
-  const n = rows[0]?.points.length ?? 0;
-  const innerW = Math.max(0, width - BRUSH_MARGIN.left - BRUSH_MARGIN.right);
-  const innerH = Math.max(0, BRUSH_HEIGHT - BRUSH_MARGIN.top - BRUSH_MARGIN.bottom);
-
-  const maxV = useMemo(() => {
-    const vals = rows.flatMap((s) => s.points.map((p) => p.value ?? 0));
-    return Math.max(1, ...vals);
-  }, [rows]);
-  const xScale = useMemo(
-    () => scaleLinear({ range: [0, innerW], domain: [0, Math.max(1, n - 1)] }),
-    [innerW, n]
-  );
-  const yScale = useMemo(
-    () => scaleLinear({ range: [innerH, 2], domain: [0, maxV] }),
-    [innerH, maxV]
-  );
-
-  const idxAt = useCallback((clientX) => {
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return 0;
-    const rel = clientX - rect.left - BRUSH_MARGIN.left;
-    return Math.min(n - 1, Math.max(0, Math.round((rel / Math.max(1, innerW)) * (n - 1))));
-  }, [innerW, n]);
-
-  useEffect(() => {
-    const onMove = (e) => {
-      const d = drag.current;
-      if (!d) return;
-      const i = idxAt(e.clientX);
-      if (d.mode === 'start') onChange([Math.min(i, rangeRef.current[1]), rangeRef.current[1]]);
-      else if (d.mode === 'end') onChange([rangeRef.current[0], Math.max(i, rangeRef.current[0])]);
-      else if (d.mode === 'pan') {
-        const span = d.origRange[1] - d.origRange[0];
-        const s = Math.max(0, Math.min(n - 1 - span, d.origRange[0] + (i - d.anchorIdx)));
-        onChange([s, s + span]);
-      }
-    };
-    const onUp = () => { drag.current = null; };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-  }, [idxAt, onChange, n]);
-
-  if (innerW <= 0 || n < 2) return null;
-  const x0 = xScale(range[0]);
-  const x1 = xScale(range[1]);
-  const startLabel = rows[0].points[range[0]]?.dateLabel || rows[0].points[range[0]]?.label;
-  const endLabel = rows[0].points[range[1]]?.dateLabel || rows[0].points[range[1]]?.label;
-
-  return (
-    <svg
-      ref={svgRef}
-      className="bk-brush-svg"
-      width={width}
-      height={BRUSH_HEIGHT}
-      role="slider"
-      aria-label="Visible date range"
-      aria-valuemin={0}
-      aria-valuemax={n - 1}
-      aria-valuenow={range[1]}
-      aria-valuetext={`${startLabel} to ${endLabel}`}
-    >
-      <g transform={`translate(${BRUSH_MARGIN.left},${BRUSH_MARGIN.top})`}>
-        {rows.map((s, si) =>
-          runsOf(s.points).map((run, ri) => (
-            <LinePath
-              key={`${s.name}-${ri}`}
-              data={run}
-              x={(d) => xScale(d.i)}
-              y={(d) => yScale(d.value)}
-              curve={BRUSH_CURVE}
-              stroke={`var(--rp-cat-${si % CATS})`}
-              strokeWidth={1.4}
-              strokeLinecap="round"
-              fill="none"
-              className="bk-brush-line"
-            />
-          ))
-        )}
-        <rect x={0} y={0} width={Math.max(0, x0)} height={innerH} className="bk-brush-mask" />
-        <rect x={x1} y={0} width={Math.max(0, innerW - x1)} height={innerH} className="bk-brush-mask" />
-        <rect
-          x={x0}
-          y={0}
-          width={Math.max(1, x1 - x0)}
-          height={innerH}
-          className="bk-brush-window"
-          onPointerDown={(e) => {
-            drag.current = { mode: 'pan', anchorIdx: idxAt(e.clientX), origRange: [...rangeRef.current] };
-          }}
-        />
-        <rect
-          x={x0 - 4}
-          y={0}
-          width={8}
-          height={innerH}
-          rx={3}
-          className="bk-brush-handle"
-          onPointerDown={(e) => { e.stopPropagation(); drag.current = { mode: 'start' }; }}
-        />
-        <rect
-          x={x1 - 4}
-          y={0}
-          width={8}
-          height={innerH}
-          rx={3}
-          className="bk-brush-handle"
-          onPointerDown={(e) => { e.stopPropagation(); drag.current = { mode: 'end' }; }}
-        />
-      </g>
-      <text x={BRUSH_MARGIN.left} y={BRUSH_HEIGHT - 4} className="bk-brush-label" textAnchor="start">
-        {startLabel}
-      </text>
-      <text x={BRUSH_MARGIN.left + innerW} y={BRUSH_HEIGHT - 4} className="bk-brush-label" textAnchor="end">
-        {endLabel}
-      </text>
-    </svg>
-  );
-}
-
-export default function TrendLine({ series, height = 340, ariaLabel = 'Trend over time', brush }) {
+// No range bar: it took a strip of the card and, on long ranges, left the plot
+// above it blank. The page's own date-range picker already narrows the window.
+export default function TrendLine({ series, height = 340, ariaLabel = 'Trend over time' }) {
   const rows = (series || []).filter((s) => s.points && s.points.length);
-  const n = rows[0]?.points.length ?? 0;
-  const showBrush = brush ?? (n >= MIN_POINTS_FOR_BRUSH);
-  const [range, setRange] = useState(() => [0, Math.max(0, n - 1)]);
-  const rowsRef = useRef(rows);
-  useEffect(() => {
-    // A different series (a new range preset, a different card) makes any
-    // prior selection meaningless — indices from the old series would slice
-    // the new one at the wrong points.
-    if (rowsRef.current !== rows) {
-      rowsRef.current = rows;
-      setRange([0, Math.max(0, (rows[0]?.points.length ?? 1) - 1)]);
-    }
-  }, [rows]);
-
   if (!rows.length) return <div className="rp-empty">No data</div>;
-  const visibleRows = showBrush
-    ? rows.map((s) => ({ ...s, points: s.points.slice(range[0], range[1] + 1) }))
-    : rows;
 
   return (
     <div className="bk-chart-wrap">
@@ -573,20 +402,11 @@ export default function TrendLine({ series, height = 340, ariaLabel = 'Trend ove
         <ParentSize debounceTime={0}>
           {({ width, height: mh }) =>
             width < 10 ? null : (
-              <Plot width={width} height={mh || height} series={visibleRows} ariaLabel={ariaLabel} />
+              <Plot width={width} height={mh || height} series={rows} ariaLabel={ariaLabel} />
             )
           }
         </ParentSize>
       </div>
-      {showBrush && (
-        <ParentSize debounceTime={0}>
-          {({ width }) =>
-            width < 10 ? null : (
-              <RangeBrush rows={rows} width={width} range={range} onChange={setRange} />
-            )
-          }
-        </ParentSize>
-      )}
     </div>
   );
 }

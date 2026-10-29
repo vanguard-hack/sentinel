@@ -143,3 +143,16 @@ describe('the responsive wrapper', () => {
     expect(c.querySelector('.bk-chart')).not.toBeNull();
   });
 });
+
+describe('long ranges', () => {
+  // Five years of months used to bring up a range bar, and with it a blank
+  // plot. The chart now draws the whole window itself, and no range bar.
+  test('60 months draw real lines and no range bar', () => {
+    const long = (k) => ({ name: `h${k}`, points: Array.from({ length: 60 }, (_, i) => ({ label: `m${i}`, value: 50 + ((i * 7 + k * 13) % 40) })) });
+    const c = draw([long(1), long(2), long(3)]);
+    const paths = [...c.querySelectorAll('path')];
+    expect(paths.length).toBe(3);
+    paths.forEach((p) => expect(p.getAttribute('d')).toMatch(/^M[\d.]+,[\d.]+C/));
+    expect(c.querySelector('.bk-brush-svg')).toBeNull();
+  });
+});
