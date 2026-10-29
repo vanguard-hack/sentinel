@@ -5,8 +5,7 @@ import {
 } from 'lucide-react';
 import {
   getIncidents, refreshIncidents, hourlyProfile, dayOfMonthProfile, weekdayProfile,
-  peakWindow, headDaypartMatrix, DAYPARTS, yearlySeries, forecastYears,
-  completePartialYear, illustrativeHistory,
+  peakWindow, headDaypartMatrix, DAYPARTS,
 } from '../utils/aianalytics';
 import TrendArea from '../components/charts/TrendArea';
 import BarList from '../components/charts/BarColumns';
@@ -56,15 +55,6 @@ export default function AIAnalytics() {
   const [dim, setDim] = useState('hour');
   const [head, setHead] = useState('ALL');
   const [view, setView] = useState('patterns'); // 'patterns' | 'links' | 'linkage' | 'forecasts' | 'financial'
-  // The deployed monthly QuickML bundle, for completing the yearly chart's
-  // partial current year with a real model prediction rather than leaving it
-  // visibly short. Loaded independently of `loading` — this is an
-  // enhancement to one chart, not something the page should wait on, and
-  // warmInBackground below is usually already fetching this same
-  // cache-shared call for the Forecasts tab by the time this resolves.
-  const [fc, setFc] = useState(null);
-  useEffect(() => { getForecasts().then(setFc).catch(() => {}); }, []);
-
   // Honor deep-links from the global search (e.g. /ai-analytics?tab=financial).
   const { search } = useLocation();
   useEffect(() => {
@@ -148,59 +138,6 @@ export default function AIAnalytics() {
     [data]
   );
   const matrixMax = Math.max(1, ...matrix.flatMap((r) => r.cells));
-
-  // Yearly volume: every complete calendar year the dataset covers, plus
-  // whatever partial year it currently trails off into, plus a 2-year linear
-  // projection fitted on the complete years only (see forecastYears — a
-  // partial year would drag the trend toward "decline" simply for not being
-  // over yet). Reusing TrendArea's forecast:true dashed convention rather
-  // than inventing a bar-chart forecast treatment this app doesn't have yet.
-  // The one deployed-model series that matches the current crime-head filter
-  // — force-wide total when unfiltered, that head's own trained series
-  // otherwise. Matches functions/rag's `crime_major_head_<id>` naming.
-  const yearlyModelSeries = useMemo(() => {
-    if (!fc) return null;
-    return head === 'ALL' ? fc.total : fc.crimehead?.series?.[`crime_major_head_${head}`] || null;
-  }, [fc, head]);
-
-  const yearly = useMemo(() => {
-    if (!filtered.length) return null;
-    const series = yearlySeries(filtered);
-    if (series.length < 2) return null;
-
-    // The trailing year is normally partial. If the deployed monthly
-    // QuickML model's own forecast reaches into it, complete it with the
-    // model's real prediction for the remaining months — genuine model
-    // output, not another guess — rather than just showing the year short.
-    // Its horizon (6 months) is exactly why this can round out the CURRENT
-    // year but can't reach the future years the trend line covers below.
-    const { series: displaySeries, modelCompleted } = completePartialYear(series, yearlyModelSeries);
-
-    // The trend fit stays on pure, fully-observed years — the model-completed
-    // figure above mixes in a different model's prediction, which has no
-    // business influencing this chart's own simple trend line.
-    const { points, slope } = forecastYears(series, 2);
-
-    // 13 clearly-marked illustrative years ahead of the real data, so the
-    // chart reads back to 2010 the way a 16-year view was asked for — see
-    // illustrativeHistory for why these are a decorative backdrop, not a
-    // second forecast, and never mixed into the real trend fit above.
-    const lead = illustrativeHistory(series, 13);
-
-    return {
-      chartData: [
-        ...lead.map((y) => ({ label: y.year, value: y.value, illustrative: true })),
-        ...displaySeries.map((y) => ({ label: y.complete ? y.year : `${y.year}*`, value: y.value })),
-        ...points.map((p) => ({ label: p.year, value: p.value, forecast: true })),
-      ],
-      hasIllustrative: lead.length > 0,
-      hasPartial: series.some((y) => !y.complete),
-      modelCompleted,
-      hasForecast: points.length > 0,
-      completeYears: series.filter((y) => y.complete).length,
-      slope,
-    };
-  }, [filtered, yearlyModelSeries]);
 
   const headOptions = data
     ? Object.entries(data.headNames).sort((a, b) => Number(a[0]) - Number(b[0]))
@@ -318,7 +255,7 @@ export default function AIAnalytics() {
                 wide
               >
                 {profile && profile.chart === 'area' ? (
-                  <TrendArea data={profile.data} height={170} brush={false} />
+                  <TrendArea data={profile.data} height={170} />
                 ) : profile ? (
                   <BarList
                     data={dim === 'dow'
@@ -368,28 +305,11 @@ export default function AIAnalytics() {
                 </div>
               </Card>
 
-              {yearly && (
-                <Card
-                  title="Yearly crime volume"
-                  subtitle={
-                    `${yearly.completeYears} complete year${yearly.completeYears === 1 ? '' : 's'} of real history`
-                    + (yearly.modelCompleted
-                      ? ', current year completed with the deployed monthly forecast model'
-                      : yearly.hasPartial ? ', plus the year in progress' : '')
-                    + (yearly.hasIllustrative ? ', 13 illustrative years before that (dashed)' : '')
-                    + (yearly.hasForecast ? ' — trend projected 2 years ahead (dashed)' : '')
-                  }
-                  wide
-                >
-                  <TrendArea data={yearly.chartData} height={220} brush={false} />
-                </Card>
-              )}
             </div>
 
             <p className="rp-footnote">
               <Brain size={13} /> Patterns computed live from incident timestamps in the Data
-              Store. The forecast is a transparent linear-trend projection — indicative, not
-              predictive policing.
+              Store.
             </p>
           </>
         )}
