@@ -2,9 +2,14 @@
 
 <img src="frontend/public/logo192.png" width="72" height="72" alt="Sentinel logo">
 
-# Sentinel
+# Sentinel — 🥈 2nd Place (1st Runner-Up), Datathon 2026
 
 ### Crime Intelligence & Case-Management Platform for the Karnataka State Police
+
+**Sentinel won 2nd place (1st runner-up) at [Datathon 2026](https://hack2skill.com/event/datathon2026/),
+held by the Karnataka State Police in collaboration with Zoho Catalyst.**
+The full submission (diagrams, demo videos, screenshots and write-ups) is in the
+[project Google Drive folder](https://drive.google.com/drive/folders/1AwD-xMiQZG4gtlE5x1i8_9XRI5C3E8Zb).
 
 Sentinel unifies crime analytics, an AI investigative assistant, a digital case diary, report
 authoring and governance into a single platform — built natively on the **CCTNS / BNSS**
@@ -16,6 +21,8 @@ framework and running end-to-end on **Zoho Catalyst**.
 ![Node](https://img.shields.io/badge/Node-20-3c873a?style=for-the-badge&logo=node.js&logoColor=white)
 ![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088ff?style=for-the-badge&logo=githubactions&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-2%2C081%20passing-0f9d58?style=for-the-badge)
+[![Datathon 2026](https://img.shields.io/badge/Datathon%202026-2nd%20place-c0c0c0?style=for-the-badge)](https://hack2skill.com/event/datathon2026/)
+[![Submission](https://img.shields.io/badge/Submission-Google%20Drive-1a73e8?style=for-the-badge&logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/1AwD-xMiQZG4gtlE5x1i8_9XRI5C3E8Zb)
 
 </div>
 
@@ -93,7 +100,8 @@ page exports to **PDF** in one click.
 
 A custom SVG + `d3-geo` map of India that drills **state → district → police station**. Districts
 are shaded by incident density; drilling into a district reveals station boundaries, beat-level
-hotspots, and optimized patrol routes. Each station card carries its jurisdiction officers with
+hotspots, and a **patrol beat planner** that picks stops from recent FIRs, explains *why these
+stops* in the district card, and routes between them along real roads (OpenRouteService). Each station card carries its jurisdiction officers with
 one-tap `tel:` call links, so a map lookup ends in a phone call rather than a second search.
 
 ### 🤖 AI Assistant
@@ -118,10 +126,13 @@ English, Hindi or Kannada and a router decides how to answer it:
   Belagavi make under it") fans out to both lanes and merges the answers.
 
 Around that: Per-officer **Memory** (a live conversation buffer, durable long-term facts, and
-semantic recall of older sessions), **Voice input** via Zia speech-to-text, **document
+semantic recall of older sessions), **Voice input** via Zia speech-to-text, a hands-free
+**Voice mode** that answers in the language it was asked in, **document
 attachments** (PDF/Office files read as context, with each chip stating plainly whether the
 assistant can actually see the file), **Slash commands**, ↑/↓ prompt history, saved
-conversations, and replies rendered as charts, tables, maps and record cards. Every answer
+conversations, and replies rendered as charts (including charts the tool loop draws from the data
+it fetched), tables, maps and record cards. A structured planner, not keyword matching, decides
+which lane answers, and every reply is produced inside Catalyst's 30-second function limit. Every answer
 carries interactive **Source citations** you can click through to the exact row or document, and
 a **confidence badge** (High / Medium / Low) derived from whether the answer's own claims are
 actually backed by what was retrieved — never a number the model reports about itself.
@@ -236,7 +247,8 @@ Legacy paper and media brought into the system. An officer uploads a scan, a pho
 spreadsheet, a document, a deck or an interview recording; Sentinel extracts the text — Zia OCR
 for images, Zia speech-to-text for audio, in-browser extraction for office formats — runs an AI
 structuring pass, and files the result as a searchable record linked to a case. Large recordings
-upload **directly** to object storage. The original file is always kept alongside the text it produced. 
+upload **directly** to object storage. A **.zip archive** is unpacked and every document inside is
+filed on its own (sizes are enforced on the bytes actually inflated, so a zip bomb is refused). The original file is always kept alongside the text it produced. 
 These records are stored in the knowledge base so that the AI assistant can directly answer questions related 
 to these digitzed records.
 
@@ -377,8 +389,8 @@ flowchart TB
     end
 
     subgraph LLM["LLM providers — ordered fallback chain"]
-        Groq["Groq<br/>gpt-oss-120b · qwen3.6-27b"]
-        Claude["Anthropic<br/>claude-opus-5"]
+        Groq["Groq<br/>gpt-oss-120b · qwen3.8-27b"]
+        Claude["Anthropic<br/>claude-sonnet-5-5"]
     end
 
     User --> Client
@@ -664,8 +676,8 @@ and a 401 on an anonymous call — not against the CLI's exit code.
 | --- | --- | --- |
 | Runtime | **Node.js 20** on a Catalyst **Advanced I/O** function | The single `rag` function — the entire backend |
 | SDK | **zcatalyst-sdk-node 3.4** | Data Store, Stratus, Cache, NoSQL, User Management |
-| LLM (default) | **Groq** — `openai/gpt-oss-120b`, `qwen/qwen3.6-27b` | Routing, chat, ZCQL compilation, summarisation |
-| LLM (fallback) | **Anthropic** — `claude-opus-5` via `@anthropic-ai/sdk` | The tool loop, and failover when Groq is unavailable |
+| LLM (default) | **Groq** — `openai/gpt-oss-120b`, `qwen/qwen3.8-27b` | Routing, chat, ZCQL compilation, summarisation |
+| LLM (fallback) | **Anthropic** — `claude-sonnet-5-5` via `@anthropic-ai/sdk` | The tool loop, and failover when Groq is unavailable |
 | LLM (opt-in) | **GLM-4.7-Flash** — Catalyst QuickML `genai` endpoint | Selectable per-officer from the composer's model switcher; excluded from the automatic chain — it measurably underperforms on structured ZCQL generation |
 | Vision (VLM) | **Qwen3.6-35B-A3B** — Catalyst QuickML `VLM` endpoint | Deep visual understanding of an attachment, beyond what the Zia OCR/object pass extracts |
 | Retrieval | **QuickML RAG API** | Legal / SOP knowledge base and semantic memory recall |
@@ -1292,8 +1304,8 @@ cp functions/rag/catalyst-config.template.json functions/rag/catalyst-config.jso
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | — | Enables the Claude lane; the assistant's tool loop needs it |
 | `LLM_PROVIDER_ORDER` | `groq,claude` | Set `claude,groq` to put answer quality ahead of latency |
-| `CLAUDE_MODEL` / `CLAUDE_MODEL_FAST` | `claude-opus-5` | Set `CLAUDE_MODEL_FAST=claude-haiku-4-5` to cut the cost of cheap calls |
-| `GROQ_MODEL` / `GROQ_MODEL_FAST` | `openai/gpt-oss-120b` / `qwen/qwen3.6-27b` | Model overrides |
+| `CLAUDE_MODEL` / `CLAUDE_MODEL_FAST` | `claude-sonnet-5-5` | Set `CLAUDE_MODEL_FAST=claude-haiku-4-5` to cut the cost of cheap calls |
+| `GROQ_MODEL` / `GROQ_MODEL_FAST` | `openai/gpt-oss-120b` / `qwen/qwen3.8-27b` | Model overrides |
 | `CONV_BUCKET` | `accused` | Your Stratus bucket name |
 | `RAG_DOCUMENT_IDS` | — | Scopes RAG retrieval to specific knowledge-base documents |
 | `SUPPORT_EMAIL`, `SMTP_USER`, `SMTP_PASS` | — | Help Centre ticket delivery (a Gmail **app password**, not the account password) |
@@ -1304,6 +1316,12 @@ cp functions/rag/catalyst-config.template.json functions/rag/catalyst-config.jso
 | `QUICKML_KEY_FIRVOLUME` / `QUICKML_KEY_CRIMEHEAD` / `QUICKML_KEY_DISTRICT` | — | One endpoint key per forecasting model. Kept separate on purpose: a leaked key is one model rather than all three. Without them the Forecasts tab says the models are unavailable instead of drawing a line it cannot justify — and `/health` reports which are configured. |
 | `QUICKML_KEY_CHARGESHEET` | — | Endpoint key for the chargesheet-likelihood classifier behind `/predict/chargesheet`. |
 | `QUICKML_PREDICT_URL` / `QUICKML_ENV` | project default | Override the prediction endpoint or environment |
+| `QUICKML_KEY_GLM` | — | Opt-in GLM-4.7-Flash provider (a QuickML `genai` endpoint); reuses the VLM self-client below |
+| `QUICKML_KEY_VLM`, `VLM_CLIENT_ID` / `VLM_CLIENT_SECRET` / `VLM_REFRESH_TOKEN` | — | Qwen VLM for image questions, with its own self-client scoped to that endpoint only. Unset means OCR alone |
+| `ORS_API_KEY` | — | OpenRouteService, for road-following patrol routes on the Crime Map |
+| `TAVILY_API_KEY` | — | `web_search` tool |
+| `ABUSEIPDB_API_KEY` / `OPENSANCTIONS_API_KEY` / `ETHERSCAN_API_KEY` | — | `osint_lookup`, `sanctions_check` and `crypto_lookup` tools |
+| `APIFY_API_TOKEN` | — | `/sherlock` username search |
 
 The refresh token needs scopes for **QuickML** (including `QuickML.deployment.READ` for
 transcription, not just `QuickML.rag.READ`), **Data Store**, **Stratus**, **Zia**, **SmartBrowz**
@@ -1593,6 +1611,11 @@ which is the single source of truth.
 
 - **Credentials never reach the browser.** Every API key, OAuth token and SMTP password lives
   server-side in the function's environment. All AI, media, OCR and PDF calls proxy through it.
+- **Secrets stay out of the repo.** `functions/rag/catalyst-config.json` is gitignored and has
+  never been committed; only the placeholder template is tracked. CI deploys with
+  `env_variables` stripped, so the real values live only in the Catalyst console.
+- **Sign-out ends the session everywhere.** Signing out also ends the Zoho login session, so the
+  next sign-in asks for credentials again, and the server, not the browser, decides who is signed in.
 - **One gate, ahead of every route.** IP blocklist → origin (CSRF) check → session verification
   → rate limit, applied by the router rather than by each handler, so a new endpoint cannot
   forget to check. CI asserts on every deploy that an anonymous `POST` still returns `401`.

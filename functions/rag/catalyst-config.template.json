@@ -16,7 +16,18 @@
 			"QUICKML_KEY_FIRVOLUME": "<quickml endpoint key — force-wide monthly volume pipeline>",
 			"QUICKML_KEY_CRIMEHEAD": "<quickml endpoint key — monthly volume by crime head>",
 			"QUICKML_KEY_DISTRICT": "<quickml endpoint key — monthly volume by district>",
-			"ORS_API_KEY": "<openrouteservice.org api key — optional, road-snapped patrol routes on Crime Map>"
+			"ORS_API_KEY": "<openrouteservice.org api key — optional, road-snapped patrol routes on Crime Map>",
+			"ANTHROPIC_API_KEY": "<anthropic api key — optional, enables the Claude lane and the tool loop>",
+			"QUICKML_KEY_GLM": "<quickml endpoint key — optional GLM-4.7-Flash provider>",
+			"QUICKML_KEY_VLM": "<quickml endpoint key — optional Qwen VLM for image understanding>",
+			"VLM_CLIENT_ID": "<zoho self-client id scoped to the VLM endpoint>",
+			"VLM_CLIENT_SECRET": "<zoho self-client secret for the VLM endpoint>",
+			"VLM_REFRESH_TOKEN": "<zoho refresh token for the VLM endpoint>",
+			"TAVILY_API_KEY": "<tavily api key — optional, web_search tool>",
+			"ABUSEIPDB_API_KEY": "<abuseipdb api key — optional, osint_lookup tool>",
+			"OPENSANCTIONS_API_KEY": "<opensanctions api key — optional, sanctions_check tool>",
+			"ETHERSCAN_API_KEY": "<etherscan api key — optional, crypto_lookup tool>",
+			"APIFY_API_TOKEN": "<apify api token — optional, /sherlock username search>"
 		}
 	},
 	"execution": {
