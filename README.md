@@ -2,7 +2,9 @@
 
 <img src="frontend/public/logo192.png" width="72" height="72" alt="Sentinel logo">
 
-# Sentinel — 🥈 2nd Place (1st Runner-Up), Datathon 2026
+# Sentinel
+
+### 🥈 2nd Place (1st Runner-Up), Datathon 2026
 
 ### Crime Intelligence & Case-Management Platform for the Karnataka State Police
 
